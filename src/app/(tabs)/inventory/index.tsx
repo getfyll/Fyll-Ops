@@ -1,9 +1,9 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { View, Text, ScrollView, Pressable, TextInput, Modal, Image, Platform } from 'react-native';
+import { View, Text, ScrollView, Pressable, TextInput, Modal, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Plus, Search, Package, ChevronRight, ChevronDown, ChevronUp, Minus, Tag, Boxes, ClipboardList, Printer, Filter, Check, X, QrCode, PackagePlus, ArrowDownAZ, ArrowUpAZ, Clock, TrendingUp, TrendingDown, AlertTriangle, Briefcase } from 'lucide-react-native';
-import useFyllStore, { Product, ProductVariant, formatCurrency } from '@/lib/state/fyll-store';
+import { Plus, Search, Package, ChevronRight, ChevronDown, ChevronUp, Minus, Tag, Boxes, ClipboardList, Printer, Filter, Check, X, PackagePlus, ArrowDownAZ, ArrowUpAZ, Clock, TrendingUp, TrendingDown, AlertTriangle, Briefcase, Trash2, Archive } from 'lucide-react-native';
+import useFyllStore, { Product, ProductVariant, type Procurement, formatCurrency } from '@/lib/state/fyll-store';
 import { normalizeProductType } from '@/lib/product-utils';
 import { useThemeColors } from '@/lib/theme';
 import { useBreakpoint } from '@/lib/useBreakpoint';
@@ -16,11 +16,35 @@ import { ProductCardSkeleton } from '@/components/SkeletonLoader';
 import { DESKTOP_PAGE_HEADER_MIN_HEIGHT, getStandardPageHeadingStyle } from '@/lib/page-heading';
 import * as Haptics from 'expo-haptics';
 import useAuthStore from '@/lib/state/auth-store';
+import { ResolvedAttachmentImage } from '@/components/ResolvedAttachmentImage';
+import { InventoryMobileFab } from '@/components/InventoryMobileFab';
+import { capitalizeDisplayLabel } from '@/lib/display-format';
 
 // Hairline separator colors
 const SEPARATOR_LIGHT = '#EEEEEE';
 const SEPARATOR_DARK = '#333333';
 const INVENTORY_PAGE_SIZE = 24;
+const NEW_PRODUCT_WINDOW_MS = 60 * 24 * 60 * 60 * 1000;
+
+const isRecentlyAddedProduct = (product: Product) => {
+  const createdAtMs = new Date(product.createdAt).getTime();
+  if (!Number.isFinite(createdAtMs)) return false;
+  return Date.now() - createdAtMs <= NEW_PRODUCT_WINDOW_MS;
+};
+
+const buildProcurementVariantImageMap = (procurements: Procurement[]) => {
+  const imageByProductVariant = new Map<string, string>();
+  procurements.forEach((procurement) => {
+    procurement.items.forEach((item) => {
+      const productId = item.inventoryProductId || item.productId;
+      const variantId = item.variantId;
+      const imageUrl = item.imageUrl?.trim();
+      if (!productId || !variantId || !imageUrl || variantId.startsWith('charge-')) return;
+      imageByProductVariant.set(`${productId}:${variantId}`, imageUrl);
+    });
+  });
+  return imageByProductVariant;
+};
 
 interface VariantRowProps {
   product: Product;
@@ -69,7 +93,7 @@ function VariantRow({ product, variant, isOwner, onAdjustStock, onPrintLabel, on
     >
       <View className="flex-1">
         <Text style={{ color: colors.text.primary }} className="font-medium text-sm">{variantName}</Text>
-        <Text style={{ color: colors.text.tertiary }} className="text-xs mt-0.5">SKU: {variant.sku}</Text>
+        <Text style={{ color: colors.text.tertiary }} className="text-xs mt-0.5">SKU: {variant.sku.toUpperCase()}</Text>
       </View>
 
       {!isService && (
@@ -154,14 +178,18 @@ function ProductCard({ product, isOwner, onPress, onSelect, isSelected, onAdjust
   const totalStock = isService ? 0 : product.variants.reduce((sum, v) => sum + v.stock, 0);
   const totalValue = product.variants.reduce((sum, v) => sum + v.stock * v.sellingPrice, 0);
   const isOutOfStock = !isService && product.variants.every((v) => v.stock === 0);
+  const isInactive = Boolean(product.isDiscontinued);
   const stockText = isService
-    ? 'Service'
+    ? (isInactive ? 'Inactive' : 'Service')
+    : isInactive
+      ? 'Inactive'
     : isOutOfStock
       ? 'Out of stock'
       : `${totalStock} in stock`;
-  const stockTextColor = isService ? '#10B981' : (isOutOfStock ? '#EF4444' : '#10B981');
-  const chipColor = isService ? '#10B981' : isOutOfStock ? '#EF4444' : '#10B981';
+  const stockTextColor = isInactive ? '#9CA3AF' : isService ? '#10B981' : (isOutOfStock ? '#EF4444' : '#10B981');
+  const chipColor = isInactive ? '#9CA3AF' : isService ? '#10B981' : isOutOfStock ? '#EF4444' : '#10B981';
   const servicePrice = product.variants[0]?.sellingPrice ?? 0;
+  const isNewProduct = !isService && isRecentlyAddedProduct(product);
 
   const handlePress = () => {
     if (Platform.OS !== 'web') {
@@ -199,8 +227,8 @@ function ProductCard({ product, isOwner, onPress, onSelect, isSelected, onAdjust
               <View className="flex-row items-center flex-1">
                 {product.imageUrl ? (
                   <View className="w-12 h-12 rounded-lg overflow-hidden" style={{ borderWidth: 0.5, borderColor: separatorColor }}>
-                    <Image
-                      source={{ uri: product.imageUrl }}
+                    <ResolvedAttachmentImage
+                      imageUrl={product.imageUrl}
                       style={{ width: 48, height: 48 }}
                       resizeMode="cover"
                     />
@@ -214,7 +242,21 @@ function ProductCard({ product, isOwner, onPress, onSelect, isSelected, onAdjust
                   </View>
                 )}
                 <View className="ml-3 flex-1">
-                  <Text style={{ color: colors.text.primary }} className="font-bold text-base">{product.name}</Text>
+                  <View className="flex-row items-center" style={{ gap: 6 }}>
+                    <Text style={{ color: colors.text.primary, fontWeight: '500', flexShrink: 1 }} className="text-base" numberOfLines={1}>
+                      {capitalizeDisplayLabel(product.name)}
+                    </Text>
+                    {isNewProduct ? (
+                      <View
+                        className="rounded-full px-2 py-0.5"
+                        style={{ backgroundColor: 'rgba(96, 165, 250, 0.16)' }}
+                      >
+                        <Text style={{ color: '#60A5FA', fontSize: 10, fontWeight: '700' }}>
+                          new
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
                   <Text style={{ color: stockTextColor }} className="text-xs mt-0.5">
                     {stockText}
                   </Text>
@@ -226,7 +268,7 @@ function ProductCard({ product, isOwner, onPress, onSelect, isSelected, onAdjust
                   style={{ backgroundColor: `${chipColor}20` }}
                 >
                   <Text style={{ color: chipColor }} className="text-xs font-semibold">
-                    {isOutOfStock ? 'Out of stock' : isService ? 'Service' : `${totalStock} in stock`}
+                    {isInactive ? 'Inactive' : isOutOfStock ? 'Out of stock' : isService ? 'Service' : `${totalStock} in stock`}
                   </Text>
                 </View>
                 <ChevronRight size={20} color={colors.text.tertiary} strokeWidth={2} />
@@ -292,12 +334,20 @@ export default function InventoryScreen() {
   const isWebDesktop = Platform.OS === 'web' && isDesktop;
   const showSplitView = !isMobile && !isWebDesktop;
   const pageHeadingStyle = getStandardPageHeadingStyle(isMobile);
+  const mobileSectionHeadingStyle = isMobile
+    ? { ...pageHeadingStyle, fontWeight: '600' as const }
+    : pageHeadingStyle;
   const desktopHeaderMinHeight = DESKTOP_PAGE_HEADER_MIN_HEIGHT;
 
   const products = useFyllStore((s) => s.products);
-  const updateVariantStock = useFyllStore((s) => s.updateVariantStock);
+  const procurements = useFyllStore((s) => s.procurements);
+  const lastDataSyncAt = useFyllStore((s) => s.lastDataSyncAt);
+  const updateProduct = useFyllStore((s) => s.updateProduct);
+  const deleteProduct = useFyllStore((s) => s.deleteProduct);
   const userRole = useFyllStore((s) => s.userRole);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
+  const isOfflineMode = useAuthStore((s) => s.isOfflineMode);
 
   // Global low stock threshold settings
   const useGlobalLowStockThreshold = useFyllStore((s) => s.useGlobalLowStockThreshold);
@@ -308,6 +358,38 @@ export default function InventoryScreen() {
   // Show skeleton loader on first load when authenticated but no products yet
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const isInitialLoading = isAuthenticated && products.length === 0 && !hasLoadedOnce;
+  const procurementVariantImageRepairSignatureRef = useRef('');
+
+  useEffect(() => {
+    if (!products.length || !procurements.length) return;
+    const imageByProductVariant = buildProcurementVariantImageMap(procurements);
+    if (imageByProductVariant.size === 0) return;
+
+    const repairs = products
+      .map((product) => {
+        let changed = false;
+        const nextVariants = product.variants.map((variant) => {
+          if (variant.imageUrl) return variant;
+          const imageUrl = imageByProductVariant.get(`${product.id}:${variant.id}`);
+          if (!imageUrl) return variant;
+          changed = true;
+          return { ...variant, imageUrl };
+        });
+        return changed ? { product, nextVariants } : null;
+      })
+      .filter((repair): repair is { product: Product; nextVariants: ProductVariant[] } => Boolean(repair));
+
+    if (repairs.length === 0) return;
+    const signature = repairs
+      .map(({ product, nextVariants }) => `${product.id}:${nextVariants.map((variant) => `${variant.id}:${variant.imageUrl ?? ''}`).join(',')}`)
+      .join('|');
+    if (signature === procurementVariantImageRepairSignatureRef.current) return;
+    procurementVariantImageRepairSignatureRef.current = signature;
+
+    repairs.forEach(({ product, nextVariants }) => {
+      void updateProduct(product.id, { variants: nextVariants }, businessId);
+    });
+  }, [businessId, procurements, products, updateProduct]);
 
   useEffect(() => {
     if (products.length > 0) {
@@ -328,13 +410,42 @@ export default function InventoryScreen() {
   const [sortBy, setSortBy] = useState<'name-asc' | 'name-desc' | 'newest' | 'oldest' | 'stock-low' | 'stock-high'>('name-asc');
   const [visibleProductsCount, setVisibleProductsCount] = useState(INVENTORY_PAGE_SIZE);
   const [visibleServicesCount, setVisibleServicesCount] = useState(INVENTORY_PAGE_SIZE);
+  // Products synced in from a connected WooCommerce store are hidden from
+  // the main inventory view by default, so a store's already-audited manual
+  // inventory isn't diluted by an incoming catalog. Session-only — resets on
+  // reload, intentionally, so it stays an explicit "just show me these for a
+  // moment" action rather than a persistent setting.
+  const [showSyncedProducts, setShowSyncedProducts] = useState(false);
+  // Archived products (see Product.isArchived) are hidden from the main
+  // inventory view too — same session-only reveal pattern as synced ones.
+  const [showArchivedProducts, setShowArchivedProducts] = useState(false);
+  const mobileInventoryTitle = inventoryTab === 'services' ? 'Services' : 'Products';
   const activeFilterCount = (inventoryFilter !== 'all' ? 1 : 0) + (sortBy !== 'name-asc' ? 1 : 0);
   const isPaginatingRef = useRef(false);
+  const lastSyncLabel = useMemo(() => {
+    if (!lastDataSyncAt) return 'Not synced yet';
+    try {
+      return new Date(lastDataSyncAt).toLocaleString('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch (error) {
+      return 'Recently';
+    }
+  }, [lastDataSyncAt]);
 
   // Split view state
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
   const [expandedByProductId, setExpandedByProductId] = useState<Record<string, boolean>>({});
+  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
+  const [pendingBulkDelete, setPendingBulkDelete] = useState(false);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [isBulkArchiving, setIsBulkArchiving] = useState(false);
+  const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Helper to get effective threshold for a product
   const getEffectiveThreshold = (product: typeof products[0]) => {
@@ -355,9 +466,29 @@ export default function InventoryScreen() {
       product.serviceFields?.length
     );
   };
+  const serviceCount = useMemo(
+    () => products.filter((product) => isServiceProduct(product)).length,
+    [products]
+  );
+  const isSyncedProduct = (product: Product) => product.catalogSource === 'woocommerce-plugin';
+  const isArchivedProduct = (product: Product) => Boolean(product.isArchived);
+  const syncedHiddenCount = useMemo(
+    () => (showSyncedProducts ? 0 : products.filter((product) => !isServiceProduct(product) && isSyncedProduct(product)).length),
+    [products, showSyncedProducts]
+  );
+  const archivedHiddenCount = useMemo(
+    () => (showArchivedProducts ? 0 : products.filter((product) => !isServiceProduct(product) && isArchivedProduct(product)).length),
+    [products, showArchivedProducts]
+  );
 
   const filteredProducts = useMemo(() => {
     let result = products.filter((p) => !isServiceProduct(p));
+    if (!showArchivedProducts) {
+      result = result.filter((p) => !isArchivedProduct(p));
+    }
+    if (!showSyncedProducts) {
+      result = result.filter((p) => !isSyncedProduct(p));
+    }
 
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
@@ -403,7 +534,7 @@ export default function InventoryScreen() {
     });
 
     return result;
-  }, [products, searchQuery, inventoryFilter, useGlobalLowStockThreshold, globalLowStockThreshold, sortBy]);
+  }, [products, searchQuery, inventoryFilter, useGlobalLowStockThreshold, globalLowStockThreshold, sortBy, showSyncedProducts, showArchivedProducts]);
 
   const filteredServices = useMemo(() => {
     let result = products.filter((p) => isServiceProduct(p));
@@ -426,6 +557,11 @@ export default function InventoryScreen() {
     () => filteredProducts.slice(0, visibleProductsCount),
     [filteredProducts, visibleProductsCount]
   );
+  const selectedVisibleProductIds = useMemo(
+    () => visibleProducts.filter((product) => selectedProductIds.includes(product.id)).map((product) => product.id),
+    [visibleProducts, selectedProductIds]
+  );
+  const allVisibleProductsSelected = visibleProducts.length > 0 && selectedVisibleProductIds.length === visibleProducts.length;
   const visibleServices = useMemo(
     () => filteredServices.slice(0, visibleServicesCount),
     [filteredServices, visibleServicesCount]
@@ -433,6 +569,25 @@ export default function InventoryScreen() {
   const hasMoreProducts = visibleProducts.length < filteredProducts.length;
   const hasMoreServices = visibleServices.length < filteredServices.length;
   const hasMoreForCurrentTab = inventoryTab === 'services' ? hasMoreServices : hasMoreProducts;
+  const mobileInventoryStats = useMemo(() => {
+    const inventoryProducts = products.filter((p) => !isServiceProduct(p));
+    const totalStock = inventoryProducts.reduce(
+      (sum, product) => sum + product.variants.reduce((variantSum, variant) => variantSum + variant.stock, 0),
+      0
+    );
+    const lowStock = inventoryProducts.filter((product) => {
+      const threshold = useGlobalLowStockThreshold ? globalLowStockThreshold : product.lowStockThreshold;
+      const hasLowStockVariant = product.variants.some((variant) => variant.stock > 0 && variant.stock <= threshold);
+      const isOutOfStock = product.variants.length > 0 && product.variants.every((variant) => variant.stock === 0);
+      return !product.isDiscontinued && !isOutOfStock && hasLowStockVariant;
+    }).length;
+
+    return {
+      total: inventoryProducts.length,
+      totalStock,
+      lowStock,
+    };
+  }, [products, useGlobalLowStockThreshold, globalLowStockThreshold]);
 
   useEffect(() => {
     setVisibleProductsCount(INVENTORY_PAGE_SIZE);
@@ -441,6 +596,18 @@ export default function InventoryScreen() {
   useEffect(() => {
     setVisibleServicesCount(INVENTORY_PAGE_SIZE);
   }, [searchQuery, products.length]);
+
+  useEffect(() => {
+    setSelectedProductIds((previous) => previous.filter((id) => filteredProducts.some((product) => product.id === id)));
+  }, [filteredProducts]);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current);
+      }
+    };
+  }, []);
 
   const loadMoreInventoryItems = () => {
     if (isPaginatingRef.current) return;
@@ -487,7 +654,14 @@ export default function InventoryScreen() {
   }, [showSplitView, inventoryTab, filteredServices, selectedServiceId]);
 
   const handleAdjustStock = (productId: string, variantId: string, delta: number) => {
-    updateVariantStock(productId, variantId, delta);
+    const product = products.find((item) => item.id === productId);
+    if (!product) return;
+    const nextVariants = product.variants.map((variant) => (
+      variant.id === variantId
+        ? { ...variant, stock: Math.max(0, variant.stock + delta) }
+        : variant
+    ));
+    void updateProduct(productId, { variants: nextVariants }, businessId);
   };
 
   const handleAddProduct = () => {
@@ -502,6 +676,71 @@ export default function InventoryScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
     router.push('/new-service');
+  };
+
+  const showToast = (type: 'success' | 'error', message: string) => {
+    setToast({ type, message });
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+    }
+    toastTimerRef.current = setTimeout(() => setToast(null), 2200);
+  };
+
+  const toggleProductSelection = (productId: string) => {
+    setSelectedProductIds((previous) => (
+      previous.includes(productId)
+        ? previous.filter((id) => id !== productId)
+        : [...previous, productId]
+    ));
+  };
+
+  const toggleVisibleProductSelection = () => {
+    if (allVisibleProductsSelected) {
+      setSelectedProductIds((previous) => previous.filter((id) => !visibleProducts.some((product) => product.id === id)));
+      return;
+    }
+    setSelectedProductIds((previous) => {
+      const next = new Set(previous);
+      visibleProducts.forEach((product) => next.add(product.id));
+      return Array.from(next);
+    });
+  };
+
+  const confirmBulkDeleteProducts = async () => {
+    if (isBulkDeleting || selectedProductIds.length === 0) return;
+    setIsBulkDeleting(true);
+    try {
+      for (const productId of selectedProductIds) {
+        await deleteProduct(productId, businessId);
+      }
+      setPendingBulkDelete(false);
+      setSelectedProductIds([]);
+      showToast('success', selectedProductIds.length === 1 ? '1 product moved to Recycle Bin.' : `${selectedProductIds.length} products moved to Recycle Bin.`);
+    } catch (error) {
+      console.warn('Bulk product recycle bin move failed:', error);
+      showToast('error', 'Could not move selected products to Recycle Bin.');
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  };
+
+  const confirmBulkArchiveProducts = async () => {
+    if (isBulkArchiving || selectedProductIds.length === 0) return;
+    setIsBulkArchiving(true);
+    const archivedAt = new Date().toISOString();
+    try {
+      for (const productId of selectedProductIds) {
+        await updateProduct(productId, { isArchived: true, archivedAt }, businessId);
+      }
+      const count = selectedProductIds.length;
+      setSelectedProductIds([]);
+      showToast('success', count === 1 ? '1 product archived.' : `${count} products archived.`);
+    } catch (error) {
+      console.warn('Bulk product archive failed:', error);
+      showToast('error', 'Could not archive selected products.');
+    } finally {
+      setIsBulkArchiving(false);
+    }
   };
 
   const handleProductSelect = (productId: string) => {
@@ -539,15 +778,17 @@ export default function InventoryScreen() {
       : product.variants.filter((v) => v.stock > 0 && v.stock <= effectiveThreshold).length;
     const isOutOfStock = !isService && product.variants.every((v) => v.stock === 0);
 
-    const status = isService
-      ? { label: 'Service', color: '#10B981' }
+    const status = product.isDiscontinued
+      ? { label: 'Inactive', color: '#9CA3AF' }
+      : isService
+        ? { label: 'Service', color: '#10B981' }
       : isOutOfStock
         ? { label: 'Out of stock', color: '#EF4444' }
         : lowStockCount > 0
           ? { label: 'Low stock', color: '#F59E0B' }
           : { label: 'In stock', color: '#10B981' };
 
-    const primarySku = product.variants[0]?.sku ?? '—';
+    const primarySku = product.variants[0]?.sku?.toUpperCase() ?? '—';
     const category = product.categories?.[0] ?? '—';
     const displayPrice = product.variants[0]?.sellingPrice ?? 0;
 
@@ -569,65 +810,264 @@ export default function InventoryScreen() {
       <View
         style={[
           {
-            paddingHorizontal: isWebDesktop ? 28 : 20,
-            paddingTop: isWebDesktop ? 0 : 24,
-            paddingBottom: 12,
-            backgroundColor: isDark ? 'transparent' : (isWebDesktop ? colors.bg.card : colors.bg.primary),
-            borderBottomWidth: isWebDesktop ? 0 : 0.5,
+            paddingHorizontal: isWebDesktop ? 0 : 20,
+            paddingTop: isWebDesktop ? 0 : 16,
+            paddingBottom: isWebDesktop ? 0 : 8,
+            backgroundColor: isWebDesktop ? colors.bg.card : colors.bg.primary,
+            borderBottomWidth: isWebDesktop ? 1 : 0.5,
             borderBottomColor: separatorColor,
           },
-          isWebDesktop ? { maxWidth: 1456, width: '100%', alignSelf: 'flex-start' } : undefined,
+          isWebDesktop ? { width: '100%' } : undefined,
         ]}
       >
           <View
-            className={isWebDesktop ? 'flex-row items-center justify-between' : 'flex-row items-center justify-between mb-4'}
+            className={isWebDesktop ? 'flex-row items-center justify-between' : undefined}
             style={isWebDesktop ? {
+              width: '100%',
+              maxWidth: 1400,
+              alignSelf: 'flex-start',
               minHeight: desktopHeaderMinHeight,
-              borderBottomWidth: 1,
-              borderBottomColor: separatorColor,
-              marginBottom: 12,
-              marginHorizontal: -28,
-              paddingHorizontal: 28,
-            } : undefined}
+              paddingLeft: 20,
+              paddingRight: 20,
+              paddingTop: 20,
+              paddingBottom: 16,
+            } : {
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
           >
-            <View>
-            <Text style={{ color: colors.text.primary, ...pageHeadingStyle }}>Inventory</Text>
+            <View style={isWebDesktop ? undefined : { flex: 1, paddingRight: 12 }}>
+              <Text style={{ color: colors.text.primary, ...mobileSectionHeadingStyle }}>
+                {isWebDesktop ? 'Inventory' : mobileInventoryTitle}
+              </Text>
+              {isWebDesktop ? (
+                <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 4, lineHeight: 18 }}>
+                  Manage products, services, stock counts, and warehouse items.
+                </Text>
+              ) : (
+                inventoryTab === 'services' ? (
+                  <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 2 }}>
+                    {serviceCount} service{serviceCount !== 1 ? 's' : ''}
+                  </Text>
+                ) : (
+                  <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 2 }}>Inventory</Text>
+                )
+              )}
+              {isOfflineMode ? (
+                <View
+                  style={{
+                    marginTop: !isWebDesktop ? 8 : 6,
+                    alignSelf: 'flex-start',
+                    paddingHorizontal: 10,
+                    paddingVertical: 4,
+                    borderRadius: 999,
+                    backgroundColor: isDark ? 'rgba(248,113,113,0.16)' : 'rgba(239,68,68,0.12)',
+                    borderWidth: 1,
+                    borderColor: isDark ? 'rgba(248,113,113,0.35)' : 'rgba(239,68,68,0.28)',
+                  }}
+                >
+                  <Text style={{ color: isDark ? '#FCA5A5' : '#B91C1C', fontSize: 12, fontWeight: '600' }}>
+                    Offline · Last synced {lastSyncLabel}
+                  </Text>
+                </View>
+              ) : null}
+              {inventoryTab === 'products' && syncedHiddenCount > 0 ? (
+                <Pressable
+                  onPress={() => setShowSyncedProducts(true)}
+                  style={{
+                    marginTop: !isWebDesktop ? 8 : 6,
+                    alignSelf: 'flex-start',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 6,
+                    paddingHorizontal: 10,
+                    paddingVertical: 4,
+                    borderRadius: 999,
+                    backgroundColor: colors.bg.card,
+                    borderWidth: 1,
+                    borderColor: colors.border.light,
+                  }}
+                >
+                  <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '600' }}>
+                    {syncedHiddenCount} synced from WooCommerce hidden
+                  </Text>
+                  <ChevronDown size={12} color={colors.text.tertiary} strokeWidth={2.4} />
+                </Pressable>
+              ) : null}
+              {inventoryTab === 'products' && showSyncedProducts ? (
+                <Pressable
+                  onPress={() => setShowSyncedProducts(false)}
+                  style={{
+                    marginTop: !isWebDesktop ? 8 : 6,
+                    alignSelf: 'flex-start',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 6,
+                    paddingHorizontal: 10,
+                    paddingVertical: 4,
+                    borderRadius: 999,
+                    backgroundColor: colors.accent.primary + '1A',
+                    borderWidth: 1,
+                    borderColor: colors.accent.primary,
+                  }}
+                >
+                  <Text style={{ color: colors.accent.primary, fontSize: 12, fontWeight: '600' }}>
+                    Showing WooCommerce-synced products
+                  </Text>
+                  <ChevronUp size={12} color={colors.accent.primary} strokeWidth={2.4} />
+                </Pressable>
+              ) : null}
+              {inventoryTab === 'products' && archivedHiddenCount > 0 ? (
+                <Pressable
+                  onPress={() => setShowArchivedProducts(true)}
+                  style={{
+                    marginTop: !isWebDesktop ? 8 : 6,
+                    alignSelf: 'flex-start',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 6,
+                    paddingHorizontal: 10,
+                    paddingVertical: 4,
+                    borderRadius: 999,
+                    backgroundColor: colors.bg.card,
+                    borderWidth: 1,
+                    borderColor: colors.border.light,
+                  }}
+                >
+                  <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '600' }}>
+                    {archivedHiddenCount} archived hidden
+                  </Text>
+                  <ChevronDown size={12} color={colors.text.tertiary} strokeWidth={2.4} />
+                </Pressable>
+              ) : null}
+              {inventoryTab === 'products' && showArchivedProducts ? (
+                <Pressable
+                  onPress={() => setShowArchivedProducts(false)}
+                  style={{
+                    marginTop: !isWebDesktop ? 8 : 6,
+                    alignSelf: 'flex-start',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 6,
+                    paddingHorizontal: 10,
+                    paddingVertical: 4,
+                    borderRadius: 999,
+                    backgroundColor: colors.accent.primary + '1A',
+                    borderWidth: 1,
+                    borderColor: colors.accent.primary,
+                  }}
+                >
+                  <Text style={{ color: colors.accent.primary, fontSize: 12, fontWeight: '600' }}>
+                    Showing archived products
+                  </Text>
+                  <ChevronUp size={12} color={colors.accent.primary} strokeWidth={2.4} />
+                </Pressable>
+              ) : null}
             </View>
-          <View className="flex-row gap-2">
+          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+            {isWebDesktop || inventoryTab !== 'services' ? (
 	            <Pressable
-              onPress={() => {
-                if (Platform.OS !== 'web') {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                }
-                router.replace('/inventory-audit');
-	              }}
-	              className="rounded-full overflow-hidden active:opacity-80"
-	              style={{ paddingHorizontal: 14, height: 44, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(168, 85, 247, 0.08)' }}
-	            >
-	              <ClipboardList size={16} color="#A856F6" strokeWidth={2} />
-	              <Text style={{ color: '#A856F6' }} className="font-semibold ml-1.5 text-sm">Audit</Text>
-	            </Pressable>
+                onPress={() => {
+                  if (Platform.OS !== 'web') {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  }
+                  router.replace('/inventory-audit');
+	                }}
+	                className="rounded-full overflow-hidden active:opacity-80"
+	                style={{ paddingHorizontal: 14, height: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(168, 85, 247, 0.08)' }}
+	              >
+	                <ClipboardList size={16} color="#A856F6" strokeWidth={2} />
+	                <Text style={{ color: '#A856F6', marginLeft: 6, fontWeight: '600', fontSize: 12 }}>Audit</Text>
+	              </Pressable>
+            ) : null}
             <Pressable
               onPress={isMobile && inventoryTab === 'services' ? handleAddService : handleAddProduct}
               className="rounded-full overflow-hidden active:opacity-80"
               style={{
-                paddingHorizontal: 14,
+                paddingHorizontal: 16,
                 height: 44,
                 flexDirection: 'row',
                 alignItems: 'center',
+                justifyContent: 'center',
                 backgroundColor: colors.accent.primary,
+                borderRadius: 999,
               }}
             >
-              <Plus size={18} color={isDark ? '#111111' : '#FFFFFF'} strokeWidth={2.5} />
-              <Text style={{ color: isDark ? '#111111' : '#FFFFFF' }} className="font-semibold ml-1.5 text-sm">
-                {isMobile && inventoryTab === 'services' ? 'Add Service' : 'Add'}
+              <Plus size={16} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={2.4} />
+              <Text style={{ color: isDark ? '#000000' : '#FFFFFF', marginLeft: 8, fontWeight: '600', fontSize: 12 }}>
+                {isMobile && inventoryTab === 'services' ? 'Add Service' : 'Add Product'}
               </Text>
             </Pressable>
           </View>
         </View>
+      </View>
+
+      <View
+        style={{
+          width: '100%',
+          paddingHorizontal: isWebDesktop ? 0 : 20,
+          paddingTop: isWebDesktop ? 0 : 8,
+        }}
+      >
+        {isWebDesktop && inventoryTab === 'products' ? (
+          <View style={{ width: '100%', maxWidth: 1400, alignSelf: 'flex-start', paddingLeft: 20, paddingRight: 20, paddingTop: 18 }}>
+            <View style={{ flexDirection: 'row', gap: 12, marginBottom: 14 }}>
+            <View
+              style={{
+                flex: 1,
+                borderWidth: 1,
+                borderColor: colors.border.light,
+                borderRadius: 16,
+                paddingHorizontal: 14,
+                paddingVertical: 14,
+                backgroundColor: colors.bg.card,
+              }}
+            >
+              <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', letterSpacing: 0.3 }}>ITEMS</Text>
+              <Text style={{ color: colors.text.primary, fontSize: 28, fontWeight: '700', marginTop: 2 }}>
+                {mobileInventoryStats.total}
+              </Text>
+            </View>
+            <View
+              style={{
+                flex: 1,
+                borderWidth: 1,
+                borderColor: colors.border.light,
+                borderRadius: 16,
+                paddingHorizontal: 14,
+                paddingVertical: 14,
+                backgroundColor: colors.bg.card,
+              }}
+            >
+              <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', letterSpacing: 0.3 }}>TOTAL STOCK</Text>
+              <Text style={{ color: colors.text.primary, fontSize: 28, fontWeight: '700', marginTop: 2 }}>
+                {mobileInventoryStats.totalStock}
+              </Text>
+            </View>
+            <View
+              style={{
+                flex: 1,
+                borderWidth: 1,
+                borderColor: colors.border.light,
+                borderRadius: 16,
+                paddingHorizontal: 14,
+                paddingVertical: 14,
+                backgroundColor: colors.bg.card,
+              }}
+            >
+              <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', letterSpacing: 0.3 }}>LOW STOCK</Text>
+              <Text style={{ color: '#F59E0B', fontSize: 28, fontWeight: '700', marginTop: 2 }}>
+                {mobileInventoryStats.lowStock}
+              </Text>
+            </View>
+          </View>
+          </View>
+        ) : null}
 
 	        {/* Search + Filter Row */}
 	        {isWebDesktop ? (
+	          <View style={{ width: '100%', maxWidth: 1400, alignSelf: 'flex-start', paddingLeft: 20, paddingRight: 20, paddingTop: inventoryTab === 'products' ? 0 : 18 }}>
 	          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
 		            <View
 		              className="flex-row items-center rounded-full px-4"
@@ -768,18 +1208,132 @@ export default function InventoryScreen() {
 	                color={activeFilterCount > 0 ? (isDark ? '#000000' : '#FFFFFF') : colors.text.tertiary}
 	                strokeWidth={2}
 	              />
-	              {activeFilterCount > 0 && (
+		              {activeFilterCount > 0 && (
 	                <Text style={{ color: isDark ? '#000000' : '#FFFFFF' }} className="font-semibold text-sm ml-1.5">
 	                  {activeFilterCount}
 	                </Text>
-	              )}
-	            </Pressable>
+		              )}
+		            </Pressable>
 	          </View>
-        ) : (
+            {inventoryTab === 'products' ? (
+              <View
+                style={{
+                  marginTop: 14,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  paddingHorizontal: 16,
+                  height: 52,
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  borderColor: colors.border.light,
+                  backgroundColor: colors.bg.card,
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <Pressable
+                    onPress={toggleVisibleProductSelection}
+                    className="active:opacity-70"
+                    style={{
+                      width: 22,
+                      height: 22,
+                      borderRadius: 6,
+                      borderWidth: 1.5,
+                      borderColor: allVisibleProductsSelected ? colors.accent.primary : colors.border.light,
+                      backgroundColor: allVisibleProductsSelected ? colors.accent.primary : 'transparent',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    {allVisibleProductsSelected ? (
+                      <Check size={14} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={2.5} />
+                    ) : null}
+                  </Pressable>
+                  <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '500' }}>
+                    {selectedProductIds.length > 0
+                      ? `${selectedProductIds.length} selected`
+                      : 'Select products to bulk move'}
+                  </Text>
+                </View>
+
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  {selectedProductIds.length > 0 ? (
+                    <>
+                      <Pressable
+                        onPress={() => setSelectedProductIds([])}
+                        className="active:opacity-70"
+                        style={{
+                          height: 38,
+                          paddingHorizontal: 14,
+                          borderRadius: 999,
+                          borderWidth: 1,
+                          borderColor: colors.border.light,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          backgroundColor: colors.bg.primary,
+                        }}
+                      >
+                        <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '500' }}>
+                          Clear
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={confirmBulkArchiveProducts}
+                        disabled={isBulkArchiving}
+                        className="active:opacity-70"
+                        style={{
+                          height: 38,
+                          paddingHorizontal: 14,
+                          borderRadius: 999,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          backgroundColor: colors.bg.card,
+                          borderWidth: 1,
+                          borderColor: colors.border.light,
+                          flexDirection: 'row',
+                          gap: 8,
+                          opacity: isBulkArchiving ? 0.6 : 1,
+                        }}
+                      >
+                        <Archive size={15} color={colors.text.primary} strokeWidth={2} />
+                        <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }}>
+                          {isBulkArchiving ? 'Archiving...' : 'Archive'}
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => setPendingBulkDelete(true)}
+                        className="active:opacity-70"
+                        style={{
+                          height: 38,
+                          paddingHorizontal: 14,
+                          borderRadius: 999,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          backgroundColor: 'rgba(239, 68, 68, 0.14)',
+                          flexDirection: 'row',
+                          gap: 8,
+                        }}
+                      >
+                        <Trash2 size={15} color="#EF4444" strokeWidth={2} />
+                        <Text style={{ color: '#EF4444', fontSize: 13, fontWeight: '600' }}>
+                          Move to Recycle Bin
+                        </Text>
+                      </Pressable>
+                    </>
+                  ) : (
+                    <Text style={{ color: colors.text.muted, fontSize: 12 }}>
+                      Applies to checked products on this list
+                    </Text>
+                  )}
+                </View>
+              </View>
+            ) : null}
+            </View>
+        ) : inventoryTab === 'services' ? (
           <View className="flex-row gap-2">
             <View
               className="flex-1 flex-row items-center rounded-full px-4"
-              style={{ height: 52, backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light }}
+              style={{ height: 46, backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light }}
             >
               <Search size={18} color={colors.text.muted} strokeWidth={2} />
               <TextInput
@@ -791,7 +1345,99 @@ export default function InventoryScreen() {
                 selectionColor={colors.text.primary}
               />
             </View>
-            {inventoryTab === 'products' && (
+          </View>
+        ) : null}
+      </View>
+
+      <ScrollView
+        style={{
+          flex: 1,
+          paddingHorizontal: isWebDesktop ? 0 : 20,
+          paddingTop: isWebDesktop ? 0 : 16,
+          backgroundColor: showSplitView ? colors.bg.primary : colors.bg.primary,
+          maxWidth: isWebDesktop ? undefined : showSplitView ? undefined : 600,
+        }}
+	        contentContainerStyle={{
+	          maxWidth: isWebDesktop ? 1400 : isDesktop ? 600 : undefined,
+	          alignSelf: isWebDesktop ? 'flex-start' : isDesktop && !selectedProductId ? 'center' : undefined,
+	          width: '100%',
+            paddingLeft: isWebDesktop ? 20 : 0,
+            paddingRight: isWebDesktop ? 20 : 0,
+            paddingTop: isWebDesktop ? 24 : 0,
+	          paddingBottom: tabBarHeight + 16,
+        }}
+        showsVerticalScrollIndicator={false}
+        onScroll={handleInventoryScroll}
+        scrollEventThrottle={16}
+      >
+        {!isWebDesktop && inventoryTab === 'products' ? (
+          <>
+            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
+              <View
+                style={{
+                  flex: 1,
+                  borderWidth: 1,
+                  borderColor: colors.border.light,
+                  borderRadius: 16,
+                  paddingHorizontal: 12,
+                  paddingVertical: 13,
+                  backgroundColor: colors.bg.card,
+                }}
+              >
+                <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', letterSpacing: 0.3 }}>ITEMS</Text>
+                <Text style={{ color: colors.text.primary, fontSize: 22, fontWeight: '600', marginTop: 4 }}>
+                  {mobileInventoryStats.total}
+                </Text>
+              </View>
+              <View
+                style={{
+                  flex: 1,
+                  borderWidth: 1,
+                  borderColor: colors.border.light,
+                  borderRadius: 16,
+                  paddingHorizontal: 12,
+                  paddingVertical: 13,
+                  backgroundColor: colors.bg.card,
+                }}
+              >
+                <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', letterSpacing: 0.3 }}>TOTAL STOCK</Text>
+                <Text style={{ color: colors.text.primary, fontSize: 22, fontWeight: '600', marginTop: 4 }}>
+                  {mobileInventoryStats.totalStock}
+                </Text>
+              </View>
+              <View
+                style={{
+                  flex: 1,
+                  borderWidth: 1,
+                  borderColor: colors.border.light,
+                  borderRadius: 16,
+                  paddingHorizontal: 12,
+                  paddingVertical: 13,
+                  backgroundColor: colors.bg.card,
+                }}
+              >
+                <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', letterSpacing: 0.3 }}>LOW STOCK</Text>
+                <Text style={{ color: '#F59E0B', fontSize: 22, fontWeight: '600', marginTop: 4 }}>
+                  {mobileInventoryStats.lowStock}
+                </Text>
+              </View>
+            </View>
+
+            <View className="flex-row gap-2" style={{ marginBottom: 14 }}>
+              <View
+                className="flex-1 flex-row items-center rounded-full px-4"
+                style={{ height: 46, backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light }}
+              >
+                <Search size={18} color={colors.text.muted} strokeWidth={2} />
+                <TextInput
+                  placeholder="Search products or SKUs..."
+                  placeholderTextColor={colors.input.placeholder}
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  style={{ flex: 1, marginLeft: 8, color: colors.input.text, fontSize: 14 }}
+                  selectionColor={colors.text.primary}
+                />
+              </View>
               <Pressable
                 onPress={() => {
                   if (Platform.OS !== 'web') {
@@ -801,7 +1447,9 @@ export default function InventoryScreen() {
                 }}
                 className="rounded-full items-center justify-center active:opacity-70 flex-row px-4"
                 style={{
-                  height: 52,
+                  width: 46,
+                  height: 46,
+                  paddingHorizontal: 0,
                   backgroundColor: activeFilterCount > 0 ? colors.accent.primary : colors.bg.secondary,
                   borderWidth: activeFilterCount > 0 ? 0 : 0.5,
                   borderColor: separatorColor,
@@ -818,64 +1466,10 @@ export default function InventoryScreen() {
                   </Text>
                 )}
               </Pressable>
-            )}
-          </View>
-        )}
-      </View>
+            </View>
+          </>
+        ) : null}
 
-      {!isWebDesktop && (
-        <View className="px-5 pb-2 pt-3">
-          <View className="flex-row gap-3">
-            <Pressable
-              onPress={() => setInventoryTab('products')}
-              className="flex-1 items-center justify-center rounded-full active:opacity-80"
-              style={{
-                height: 40,
-                backgroundColor: inventoryTab === 'products' ? colors.text.primary : colors.bg.primary,
-                borderWidth: 1,
-                borderColor: separatorColor,
-              }}
-            >
-              <Text style={{ color: inventoryTab === 'products' ? colors.bg.primary : colors.text.primary }} className="text-sm font-semibold">
-                Products
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => setInventoryTab('services')}
-              className="flex-1 items-center justify-center rounded-full active:opacity-80"
-              style={{
-                height: 40,
-                backgroundColor: inventoryTab === 'services' ? colors.text.primary : colors.bg.primary,
-                borderWidth: 1,
-                borderColor: separatorColor,
-              }}
-            >
-              <Text style={{ color: inventoryTab === 'services' ? colors.bg.primary : colors.text.primary }} className="text-sm font-semibold">
-                Services
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-      )}
-
-      <ScrollView
-        style={{
-          flex: 1,
-          paddingHorizontal: isWebDesktop ? 28 : 20,
-          paddingTop: 16,
-          backgroundColor: showSplitView ? colors.bg.primary : (isWebDesktop ? colors.bg.primary : colors.bg.secondary),
-          maxWidth: isWebDesktop ? undefined : showSplitView ? undefined : 600,
-        }}
-	        contentContainerStyle={{
-	          maxWidth: isWebDesktop ? 1400 : isDesktop ? 600 : undefined,
-	          alignSelf: isWebDesktop ? 'flex-start' : isDesktop && !selectedProductId ? 'center' : undefined,
-	          width: '100%',
-	          paddingBottom: tabBarHeight + 16,
-        }}
-        showsVerticalScrollIndicator={false}
-        onScroll={handleInventoryScroll}
-        scrollEventThrottle={16}
-      >
         {isInitialLoading ? (
           // Show skeleton loaders while data is syncing on first load
           <View>
@@ -911,6 +1505,8 @@ export default function InventoryScreen() {
                 const tag = service.serviceTags?.[0] ?? 'General';
                 const price = service.variants[0]?.sellingPrice ?? 0;
                 const isSelectedService = showSplitView && inventoryTab === 'services' && selectedServiceId === service.id;
+                const statusLabel = service.isDiscontinued ? 'Inactive' : 'Active';
+                const statusColor = service.isDiscontinued ? '#9CA3AF' : '#10B981';
                 return (
                   <Pressable
                     key={service.id}
@@ -919,12 +1515,12 @@ export default function InventoryScreen() {
                     style={{
                       backgroundColor: colors.bg.card,
                       borderRadius: 16,
-                      padding: 16,
+                      overflow: 'hidden',
                       marginBottom: 12,
-                      borderWidth: 1,
-                      borderColor: colors.border.light,
-                      borderLeftWidth: 1,
-                      borderLeftColor: colors.border.light,
+                      borderWidth: 0.5,
+                      borderColor: separatorColor,
+                      borderLeftWidth: 0.5,
+                      borderLeftColor: separatorColor,
                       ...getActiveSplitCardStyle({
                         isSelected: isSelectedService,
                         showSplitView,
@@ -933,21 +1529,44 @@ export default function InventoryScreen() {
                       }),
                     }}
                   >
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">
-                          {service.name}
-                        </Text>
-                        <Text style={{ color: colors.text.muted }} className="text-xs mt-2">
-                          {tag}
-                        </Text>
-                        <Text style={{ color: colors.text.primary }} className="text-sm font-semibold mt-2">
-                          {formatCurrency(price)}
-                        </Text>
+                    <View className="p-3 flex-row items-center">
+                      <View className="flex-row items-center flex-1">
+                        {service.imageUrl ? (
+                          <View className="w-12 h-12 rounded-lg overflow-hidden" style={{ borderWidth: 0.5, borderColor: separatorColor }}>
+                            <ResolvedAttachmentImage
+                              imageUrl={service.imageUrl}
+                              style={{ width: 48, height: 48 }}
+                              resizeMode="cover"
+                            />
+                          </View>
+                        ) : (
+                          <View
+                            className="w-12 h-12 rounded-xl items-center justify-center"
+                            style={{ backgroundColor: 'rgba(16, 185, 129, 0.15)' }}
+                          >
+                            <Briefcase size={22} color="#10B981" strokeWidth={1.6} />
+                          </View>
+                        )}
+                        <View className="ml-3 flex-1">
+                          <Text style={{ color: colors.text.primary }} className="font-semibold text-base">
+                            {capitalizeDisplayLabel(service.name)}
+                          </Text>
+                          <Text style={{ color: colors.text.muted }} className="text-xs mt-0.5">
+                            {tag} · {formatCurrency(price)}
+                          </Text>
+                        </View>
                       </View>
-                      {showSplitView && (
-                        <ChevronRight size={18} color={colors.text.muted} strokeWidth={2} />
-                      )}
+                      <View className="flex-row items-center">
+                        <View
+                          className="rounded-full px-3 py-1 flex-row items-center mr-2"
+                          style={{ backgroundColor: `${statusColor}20` }}
+                        >
+                          <Text style={{ color: statusColor }} className="text-xs font-semibold">
+                            {statusLabel}
+                          </Text>
+                        </View>
+                        <ChevronRight size={20} color={colors.text.tertiary} strokeWidth={2} />
+                      </View>
                     </View>
                   </Pressable>
                 );
@@ -993,6 +1612,26 @@ export default function InventoryScreen() {
                 >
                 <View style={{ backgroundColor: colors.bg.card, borderBottomWidth: 1, borderBottomColor: separatorColor }}>
                   <View style={{ flexDirection: 'row', paddingHorizontal: 8, paddingVertical: 12 }}>
+                    <View style={{ width: 42, alignItems: 'center', justifyContent: 'center' }}>
+                      <Pressable
+                        onPress={toggleVisibleProductSelection}
+                        className="active:opacity-70"
+                        style={{
+                          width: 20,
+                          height: 20,
+                          borderRadius: 6,
+                          borderWidth: 1.5,
+                          borderColor: allVisibleProductsSelected ? colors.accent.primary : colors.border.light,
+                          backgroundColor: allVisibleProductsSelected ? colors.accent.primary : 'transparent',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        {allVisibleProductsSelected ? (
+                          <Check size={12} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={2.5} />
+                        ) : null}
+                      </Pressable>
+                    </View>
                     <Text style={{ color: colors.text.muted, flex: 2.2 }} className="text-xs font-semibold">
                       PRODUCT
                     </Text>
@@ -1041,6 +1680,7 @@ export default function InventoryScreen() {
                   const expanded = !!expandedByProductId[product.id];
                   const isSelected = selectedProductId === product.id && showSplitView;
                   const rowBg = isSelected ? (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)') : colors.bg.card;
+                  const isNewProduct = isRecentlyAddedProduct(product);
 
                   return (
                     <View
@@ -1056,6 +1696,29 @@ export default function InventoryScreen() {
                         className="active:opacity-70"
                         style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 14 }}
                       >
+                        <View style={{ width: 42, alignItems: 'center', justifyContent: 'center' }}>
+                          <Pressable
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              toggleProductSelection(product.id);
+                            }}
+                            className="active:opacity-70"
+                            style={{
+                              width: 20,
+                              height: 20,
+                              borderRadius: 6,
+                              borderWidth: 1.5,
+                              borderColor: selectedProductIds.includes(product.id) ? colors.accent.primary : colors.border.light,
+                              backgroundColor: selectedProductIds.includes(product.id) ? colors.accent.primary : 'transparent',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            {selectedProductIds.includes(product.id) ? (
+                              <Check size={12} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={2.5} />
+                            ) : null}
+                          </Pressable>
+                        </View>
                         <View style={{ flex: 2.2, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                           <Pressable
                             onPress={(e) => {
@@ -1082,9 +1745,21 @@ export default function InventoryScreen() {
                           </Pressable>
 
                           <View style={{ flex: 1, minWidth: 0 }}>
-                            <Text style={{ color: colors.text.primary }} className="text-sm font-semibold" numberOfLines={1}>
-                              {product.name}
-                            </Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <Text style={{ color: colors.text.primary, flexShrink: 1 }} className="text-sm font-semibold" numberOfLines={1}>
+                                {capitalizeDisplayLabel(product.name)}
+                              </Text>
+                              {isNewProduct ? (
+                                <View
+                                  className="rounded-full px-2 py-0.5"
+                                  style={{ backgroundColor: 'rgba(96, 165, 250, 0.16)' }}
+                                >
+                                  <Text style={{ color: '#60A5FA', fontSize: 9.5, fontWeight: '700' }}>
+                                    new
+                                  </Text>
+                                </View>
+                              ) : null}
+                            </View>
                             <Text style={{ color: colors.text.tertiary }} className="text-xs mt-0.5" numberOfLines={1}>
                               {product.variants.length} {product.variants.length === 1 ? 'variant' : 'variants'}
                             </Text>
@@ -1149,7 +1824,7 @@ export default function InventoryScreen() {
                                     </Text>
                                   </View>
                                   <Text style={{ color: colors.text.secondary, flex: 1 }} className="text-sm" numberOfLines={1}>
-                                    {variant.sku}
+                                    {variant.sku.toUpperCase()}
                                   </Text>
                                   <View style={{ flex: 1 }}>
                                     <Text style={{ color: colors.text.tertiary }} className="text-xs" numberOfLines={1}>
@@ -1312,35 +1987,11 @@ export default function InventoryScreen() {
         )}
       </ScrollView>
 
-      {/* Floating Scan Button */}
-      <Pressable
-        onPress={() => {
-          if (Platform.OS !== 'web') {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-          }
-          router.push('/scan');
-        }}
-        className="absolute bottom-6 right-5 rounded-full overflow-hidden active:opacity-80"
-        style={{
-          width: 56,
-          height: 56,
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: colors.accent.primary,
-          shadowColor: '#000000',
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.2,
-          shadowRadius: 12,
-          elevation: 8,
-        }}
-      >
-        <QrCode size={24} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={2} />
-      </Pressable>
     </>
   );
 
   return (
-    <View style={{ flex: 1, backgroundColor: showSplitView ? colors.bg.primary : (isWebDesktop ? colors.bg.primary : colors.bg.secondary) }}>
+    <View style={{ flex: 1, backgroundColor: colors.bg.primary }}>
       <SafeAreaView className="flex-1" edges={isWebDesktop ? [] : ['top']}>
         <SplitViewLayout
           detailContent={
@@ -1367,6 +2018,76 @@ export default function InventoryScreen() {
         >
           {masterContent}
         </SplitViewLayout>
+
+        <Modal
+          visible={pendingBulkDelete}
+          animationType="fade"
+          transparent
+          onRequestClose={() => {
+            if (!isBulkDeleting) {
+              setPendingBulkDelete(false);
+            }
+          }}
+        >
+          <Pressable
+            className="flex-1 items-center justify-center"
+            style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)' }}
+            onPress={() => {
+              if (!isBulkDeleting) {
+                setPendingBulkDelete(false);
+              }
+            }}
+          >
+            <Pressable
+              onPress={(e) => e.stopPropagation()}
+              className="w-[90%] rounded-2xl overflow-hidden"
+              style={{ backgroundColor: colors.bg.primary, maxWidth: 380 }}
+            >
+              <View className="px-5 py-4" style={{ borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
+                <Text style={{ color: colors.text.primary }} className="font-bold text-lg">Move to Recycle Bin</Text>
+                <Text style={{ color: colors.text.tertiary }} className="text-sm mt-1">
+                  {selectedProductIds.length === 1
+                    ? 'Move this product out of active inventory and keep it recoverable from Recycle Bin?'
+                    : `Move ${selectedProductIds.length} products out of active inventory and keep them recoverable from Recycle Bin?`}
+                </Text>
+              </View>
+              <View className="px-5 py-4 flex-row gap-3">
+                <Pressable
+                  onPress={() => {
+                    if (!isBulkDeleting) {
+                      setPendingBulkDelete(false);
+                    }
+                  }}
+                  className="flex-1 rounded-full items-center"
+                  style={{
+                    backgroundColor: colors.bg.secondary,
+                    height: 48,
+                    justifyContent: 'center',
+                    opacity: isBulkDeleting ? 0.5 : 1,
+                  }}
+                  disabled={isBulkDeleting}
+                >
+                  <Text style={{ color: colors.text.tertiary }} className="font-medium">Cancel</Text>
+                </Pressable>
+                <Pressable
+                  onPress={confirmBulkDeleteProducts}
+                  className="flex-1 rounded-full items-center"
+                  style={{
+                    backgroundColor: '#EF4444',
+                    height: 48,
+                    justifyContent: 'center',
+                    opacity: isBulkDeleting ? 0.7 : 1,
+                  }}
+                  disabled={isBulkDeleting}
+                >
+                  <Text className="text-white font-semibold">
+                    {isBulkDeleting ? 'Moving...' : 'Move'}
+                  </Text>
+                </Pressable>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
 
         {/* Filter Menu Modal */}
         <Modal
@@ -1612,6 +2333,40 @@ export default function InventoryScreen() {
             </Pressable>
           </Pressable>
         </Modal>
+        {toast ? (
+          <View
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              left: 20,
+              right: 20,
+              bottom: 24,
+              alignItems: 'center',
+            }}
+          >
+            <View
+              style={{
+                backgroundColor: toast.type === 'success' ? '#111111' : '#7F1D1D',
+                borderRadius: 999,
+                paddingHorizontal: 16,
+                paddingVertical: 12,
+                minHeight: 44,
+                justifyContent: 'center',
+              }}
+            >
+              <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '600' }}>
+                {toast.message}
+              </Text>
+            </View>
+          </View>
+        ) : null}
+        {!isWebDesktop ? (
+          <InventoryMobileFab
+            currentSection="products"
+            onSelectProducts={() => setInventoryTab('products')}
+            onSelectWarehouse={() => router.push('/inventory/warehouse')}
+          />
+        ) : null}
       </SafeAreaView>
     </View>
   );
