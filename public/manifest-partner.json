@@ -1,0 +1,27 @@
+{
+  "name": "Fyll Partner",
+  "short_name": "Fyll Partner",
+  "description": "Fyll partner portal",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#111111",
+  "theme_color": "#111111",
+  "icons": [
+    {
+      "src": "/icons/icon-partner-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-partner-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/apple-touch-icon-partner-180.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}

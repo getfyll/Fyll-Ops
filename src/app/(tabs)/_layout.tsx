@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Tabs, usePathname } from 'expo-router';
 import { View, Platform } from 'react-native';
-import { LayoutDashboard, Package, ShoppingCart, MoreHorizontal, BarChart3, Users, Briefcase, MessageSquare, TrendingUp, ListTodo } from 'lucide-react-native';
+import { PlatformPressable } from '@react-navigation/elements';
+import { BlurView } from 'expo-blur';
+import { LayoutDashboard, Package, ShoppingCart, MoreHorizontal, BarChart3, Users, Briefcase, MessageSquare, TrendingUp, ListTodo, Wallet } from 'lucide-react-native';
 import { useThemeColors } from '@/lib/theme';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { DesktopSidebar } from '@/components/DesktopSidebar';
@@ -12,6 +14,9 @@ import { isTeamThreadEntityId } from '@/lib/team-threads';
 import useFyllStore from '@/lib/state/fyll-store';
 import { storage } from '@/lib/storage';
 import { canShowFinanceNavigation } from '@/lib/finance-access';
+import { isBusinessFeatureEnabled } from '@/lib/feature-access';
+import { useBusinessSettings } from '@/hooks/useBusinessSettings';
+import { getTabBarStyle } from '@/lib/tab-bar-style';
 
 const ORDERS_TAB_BADGE_SEEN_KEY_PREFIX = 'orders-tab-badge-seen';
 const getOrdersTabBadgeSeenKey = (businessId: string) =>
@@ -33,15 +38,15 @@ function TabBarIcon({
     <View
       className="items-center justify-center"
       style={{
-        width: 50,
-        height: 32,
+        width: 54,
+        height: 40,
         marginTop: 2,
-        borderRadius: 16,
-        backgroundColor: focused ? (colors.bg.primary === '#FFFFFF' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.1)') : 'transparent',
+        borderRadius: 999,
+        backgroundColor: focused ? (colors.bg.primary === '#FFFFFF' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.14)') : 'transparent',
       }}
     >
       <View style={{ transform: [{ translateY: offsetY }] }}>
-        <Icon size={22} color={color} strokeWidth={focused ? 2.5 : 2} />
+        <Icon size={23} color={color} strokeWidth={focused ? 2.5 : 2} />
       </View>
     </View>
   );
@@ -56,8 +61,12 @@ export default function TabLayout() {
   const isOfflineMode = useAuthStore((s) => s.isOfflineMode);
   const [ordersTabSeenAt, setOrdersTabSeenAt] = useState(0);
   const userRole = currentUser?.role ?? 'staff';
-  const canViewInsights = ROLE_PERMISSIONS[userRole]?.canViewInsights ?? false;
-  const canViewFinance = canShowFinanceNavigation(userRole);
+  const { featureAccess } = useBusinessSettings();
+  const canViewInsights = (ROLE_PERMISSIONS[userRole]?.canViewInsights ?? false) && isBusinessFeatureEnabled(featureAccess, 'insights');
+  const canViewFinance = canShowFinanceNavigation(userRole) && isBusinessFeatureEnabled(featureAccess, 'finance');
+  const canViewPayments = isBusinessFeatureEnabled(featureAccess, 'socialCheckout');
+  const canViewThreads = isBusinessFeatureEnabled(featureAccess, 'threads');
+  const canViewTasks = isBusinessFeatureEnabled(featureAccess, 'tasks');
   const threadCountsQuery = useQuery({
     queryKey: ['collaboration-thread-counts', businessId, 'order'],
     enabled: Boolean(businessId) && !isOfflineMode,
@@ -133,19 +142,11 @@ export default function TabLayout() {
   }, [orders, ordersTabSeenAt]);
 
   const isWeb = Platform.OS === 'web';
-  const tabBarHeight = isWeb ? 80 : (Platform.OS === 'ios' ? 88 : 70);
+  const noWebFocusStyle = isWeb ? ({ outlineStyle: 'none', outlineWidth: 0, outlineColor: 'transparent' } as any) : null;
+  const tabBarHeight = isMobile ? (Platform.OS === 'ios' ? 82 : 76) : isWeb ? 80 : (Platform.OS === 'ios' ? 88 : 70);
 
   // On desktop, show sidebar instead of bottom tabs
-  const tabBarStyle = isDesktop
-    ? { display: 'none' as const }
-    : {
-        backgroundColor: colors.tabBar.bg,
-        borderTopWidth: 1,
-        borderTopColor: colors.tabBar.border,
-        height: tabBarHeight,
-        paddingTop: isWeb ? 6 : 8,
-        paddingBottom: isWeb ? 10 : (Platform.OS === 'ios' ? 28 : 12),
-      };
+  const tabBarStyle = getTabBarStyle(colors, isDesktop, isMobile);
 
   return (
     <View style={{ flex: 1, flexDirection: 'row' }}>
@@ -156,30 +157,52 @@ export default function TabLayout() {
       <View style={{ flex: 1 }}>
         <Tabs
           screenOptions={{
+            sceneStyle: { backgroundColor: colors.bg.primary },
             tabBarActiveTintColor: colors.tabBar.active,
             tabBarInactiveTintColor: colors.tabBar.inactive,
             tabBarStyle,
+            tabBarBackground: () => (
+              isMobile ? (
+                <BlurView
+                  intensity={Platform.OS === 'ios' ? 38 : 26}
+                  tint={colors.bg.primary === '#FFFFFF' ? 'light' : 'dark'}
+                  style={{ flex: 1, borderRadius: 999, overflow: 'hidden' }}
+                />
+              ) : null
+            ),
             tabBarLabelStyle: {
-              fontSize: isWeb ? 10 : 11,
+              fontSize: isMobile ? 10 : isWeb ? 10 : 11,
               fontWeight: '600',
-              marginTop: isWeb ? 2 : 2,
-              lineHeight: isWeb ? 12 : 13,
+              marginTop: isMobile ? 0 : isWeb ? 2 : 2,
+              lineHeight: isMobile ? 12 : isWeb ? 12 : 13,
               paddingBottom: isWeb ? 0 : 0,
-              height: isWeb ? 12 : undefined,
+              height: isMobile ? 12 : isWeb ? 12 : undefined,
             },
             tabBarItemStyle: {
               paddingVertical: isWeb ? 0 : 0,
               paddingTop: isWeb ? 0 : 0,
               paddingBottom: isWeb ? 0 : 0,
-              height: isWeb ? 55 : undefined,
-              maxHeight: isWeb ? 55 : undefined,
+              height: isMobile ? 62 : isWeb ? 55 : undefined,
+              maxHeight: isMobile ? 62 : isWeb ? 55 : undefined,
               justifyContent: 'center',
               alignItems: 'center',
+              ...(noWebFocusStyle ?? {}),
             },
+            // Must be PlatformPressable (not a plain Pressable) — on web these
+            // buttons render as real <a href> tags, and PlatformPressable is
+            // what calls e.preventDefault() on click so React Navigation's
+            // client-side routing handles it instead of the browser doing a
+            // full page navigation/reload to that href.
+            tabBarButton: (props: any) => (
+              <PlatformPressable
+                {...props}
+                style={[props.style, noWebFocusStyle]}
+              />
+            ),
             tabBarIconStyle: {
               marginTop: 0,
               marginBottom: 0,
-              height: isWeb ? 32 : undefined,
+              height: isMobile ? 40 : isWeb ? 32 : undefined,
             },
             headerStyle: {
               backgroundColor: colors.bg.primary,
@@ -231,6 +254,32 @@ export default function TabLayout() {
             fontWeight: '700',
           },
           headerShown: false,
+          href: canViewThreads ? undefined : null,
+        }}
+      />
+      <Tabs.Screen
+        name="payments"
+        options={{
+          title: 'Payments',
+          tabBarIcon: ({ color, focused }) => <TabBarIcon Icon={Wallet} color={color} focused={focused} />,
+          headerShown: false,
+          href: canViewPayments && !isMobile && !isTablet ? undefined : null,
+        }}
+      />
+      <Tabs.Screen
+        name="deliveries"
+        options={{
+          title: 'Delivery',
+          headerShown: false,
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="announcements"
+        options={{
+          title: 'Announcements',
+          headerShown: false,
+          href: null,
         }}
       />
       <Tabs.Screen
@@ -276,6 +325,13 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="inventory-audit"
+        options={{
+          href: null,
+          headerShown: false,
+        }}
+      />
+      <Tabs.Screen
         name="tasks"
         options={{
           title: 'Tasks',
@@ -288,7 +344,7 @@ export default function TabLayout() {
             fontWeight: '700',
           },
           headerShown: false,
-          href: isMobile ? null : '/tasks',
+          href: canViewTasks && !isMobile ? '/tasks' : null,
         }}
       />
       <Tabs.Screen
@@ -301,6 +357,13 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="task"
+        options={{
+          href: null,
+          headerShown: false,
+        }}
+      />
+      <Tabs.Screen
         name="two"
         options={{
           href: null,
@@ -310,6 +373,7 @@ export default function TabLayout() {
         name="fulfillment"
         options={{
           href: null,
+          headerShown: false,
         }}
       />
       <Tabs.Screen

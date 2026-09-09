@@ -2,13 +2,15 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Modal, Share, Alert, ActivityIndicator, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
-import { ChevronLeft, Trash2, Edit2, User as UserIcon, Shield, X, Mail, Clock, Copy, Send, UserCog } from 'lucide-react-native';
+import { ArrowLeft, Trash2, Edit2, User as UserIcon, Shield, X, Mail, Clock, Copy, Send, UserCog } from 'lucide-react-native';
 import { useThemeColors } from '@/lib/theme';
 import useAuthStore, { TeamMember, TeamRole, PendingInvite } from '@/lib/state/auth-store';
 import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
 import * as Linking from 'expo-linking';
 import { useSettingsBack } from '@/lib/useSettingsBack';
+import { useBreakpoint } from '@/lib/useBreakpoint';
+import { buildTeamInviteLink } from '@/lib/fyll-app-url';
 
 const roleLabels: Record<TeamRole, string> = {
   admin: 'Admin',
@@ -38,6 +40,7 @@ export default function TeamManagementScreen() {
   const { from } = useLocalSearchParams<{ from?: string | string[] }>();
   const goBack = useSettingsBack();
   const colors = useThemeColors();
+  const { isDesktop } = useBreakpoint();
   const primaryPillButtonStyle = {
     backgroundColor: colors.text.primary,
     borderRadius: 999,
@@ -77,6 +80,12 @@ export default function TeamManagementScreen() {
   const isAdmin = currentUser?.role === 'admin';
   const openedFromSettings = Array.isArray(from) ? from[0] === 'settings' : from === 'settings';
   const showWebSettingsPanel = Platform.OS === 'web' && openedFromSettings;
+  const isWebDesktop = Platform.OS === 'web' && isDesktop;
+  const desktopContentWrapStyle = (
+    isWebDesktop
+      ? ({ width: '100%', maxWidth: 1440, alignSelf: 'flex-start' } as const)
+      : undefined
+  );
   const screenOuterStyle = {
     backgroundColor: colors.bg.primary,
     paddingHorizontal: 0,
@@ -88,6 +97,7 @@ export default function TeamManagementScreen() {
     ...(showWebSettingsPanel
       ? {
           width: '100%' as const,
+          overflow: 'hidden' as const,
         }
       : {}),
   } as const;
@@ -213,9 +223,8 @@ export default function TeamManagementScreen() {
 
   const handleShareInvite = async (invite: PendingInvite) => {
     try {
-      const baseUrl = process.env.EXPO_PUBLIC_APP_URL?.replace(/\/$/, '');
-      const joinLink = baseUrl
-        ? `${baseUrl}/login?invite=${invite.inviteCode}`
+      const joinLink = Platform.OS === 'web'
+        ? buildTeamInviteLink(invite.inviteCode)
         : Linking.createURL(`/login?invite=${invite.inviteCode}`);
 
       await Share.share({
@@ -310,15 +319,29 @@ export default function TeamManagementScreen() {
       <View className="flex-1" style={screenOuterStyle}>
         <View style={screenInnerStyle}>
         <SafeAreaView className="flex-1" edges={['top']}>
-          <View className="px-5 pt-4 pb-3 flex-row items-center">
-            <Pressable
-              onPress={goBack}
-              className="w-10 h-10 rounded-xl items-center justify-center mr-3 active:opacity-50"
-              style={{ backgroundColor: colors.bg.secondary }}
+          <View style={desktopContentWrapStyle}>
+            <View
+              className={isWebDesktop ? 'pl-5 pr-7 pt-4 pb-3 flex-row items-center' : 'px-5 pt-4 pb-3 flex-row items-center'}
+              style={isWebDesktop ? { paddingTop: 10, paddingBottom: 10 } : undefined}
             >
-              <ChevronLeft size={20} color={colors.text.primary} strokeWidth={2} />
-            </Pressable>
-            <Text style={{ color: colors.text.primary }} className="text-xl font-bold">Team</Text>
+              <Pressable
+                onPress={goBack}
+                className="w-10 h-10 rounded-xl items-center justify-center mr-3 active:opacity-50"
+                style={{ backgroundColor: 'transparent' }}
+              >
+                <ArrowLeft size={20} color={colors.text.primary} strokeWidth={2} />
+              </Pressable>
+              <Text
+                style={{
+                  color: colors.text.primary,
+                  fontSize: Platform.OS === 'web' ? 14 : 20,
+                  lineHeight: Platform.OS === 'web' ? 18 : 24,
+                  fontWeight: '600',
+                }}
+              >
+                Team
+              </Text>
+            </View>
           </View>
           <View className="flex-1 items-center justify-center px-6">
             <Shield size={48} color={colors.text.tertiary} strokeWidth={1.5} />
@@ -340,54 +363,72 @@ export default function TeamManagementScreen() {
       <View style={screenInnerStyle}>
       <SafeAreaView className="flex-1" edges={['top']}>
         {/* Header */}
-        <View className="px-5 pt-4 pb-3 flex-row items-center justify-between" style={{ borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
-          <View className="flex-row items-center">
-            <Pressable
-              onPress={goBack}
-              className="w-10 h-10 rounded-xl items-center justify-center mr-3 active:opacity-50"
-              style={{ backgroundColor: colors.bg.secondary }}
+        <View style={{ borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
+          <View style={desktopContentWrapStyle}>
+            <View
+              className={isWebDesktop ? 'pl-5 pr-7 pt-4 pb-3 flex-row items-center justify-between' : 'px-5 pt-4 pb-3 flex-row items-center justify-between'}
+              style={isWebDesktop ? { paddingTop: 10, paddingBottom: 10 } : undefined}
             >
-              <ChevronLeft size={20} color={colors.text.primary} strokeWidth={2} />
-            </Pressable>
-            <View>
-              <Text style={{ color: colors.text.primary }} className="text-xl font-bold">Team</Text>
-              <Text style={{ color: colors.text.tertiary }} className="text-xs">{teamMembers.length} members</Text>
+              <View className="flex-row items-center">
+                <Pressable
+                  onPress={goBack}
+                  className="w-10 h-10 rounded-xl items-center justify-center mr-3 active:opacity-50"
+                  style={{ backgroundColor: 'transparent' }}
+                >
+                  <ArrowLeft size={20} color={colors.text.primary} strokeWidth={2} />
+                </Pressable>
+                <View>
+                  <Text
+                    style={{
+                      color: colors.text.primary,
+                      fontSize: Platform.OS === 'web' ? 14 : 20,
+                      lineHeight: Platform.OS === 'web' ? 18 : 24,
+                      fontWeight: '600',
+                    }}
+                  >
+                    Team
+                  </Text>
+                  <Text style={{ color: colors.text.tertiary }} className="text-xs">{teamMembers.length} members</Text>
+                </View>
+              </View>
+              <Pressable
+                onPress={() => {
+                  resetInviteForm();
+                  setShowInviteModal(true);
+                }}
+                className="flex-row items-center px-4 rounded-full active:opacity-80"
+                style={[primaryPillButtonStyle, { height: 42 }]}
+              >
+                <Mail size={16} color={colors.bg.primary} strokeWidth={2} />
+                <Text style={primaryPillTextStyle} className="font-semibold ml-2 text-sm">Invite</Text>
+              </Pressable>
             </View>
           </View>
-          <Pressable
-            onPress={() => {
-              resetInviteForm();
-              setShowInviteModal(true);
-            }}
-            className="flex-row items-center px-4 rounded-full active:opacity-80"
-            style={[primaryPillButtonStyle, { height: 42 }]}
-          >
-            <Mail size={16} color={colors.bg.primary} strokeWidth={2} />
-            <Text style={primaryPillTextStyle} className="font-semibold ml-2 text-sm">Invite</Text>
-          </Pressable>
         </View>
 
-        <ScrollView className="flex-1 px-5 pt-4" showsVerticalScrollIndicator={false}>
-          {/* Pending Invites Section */}
-          {pendingInvitesFiltered.length > 0 && (
-            <View className="mb-6">
-              <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase mb-3 tracking-wider">
-                Pending Invites ({pendingInvitesFiltered.length})
-              </Text>
-              {pendingInvitesFiltered.map((invite) => (
-                <View
-                  key={invite.id}
-                  className="rounded-xl p-4 mb-3"
-                  style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
-                >
-                  <View className="flex-row items-center">
+        <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
+          <View style={desktopContentWrapStyle}>
+            <View className={isWebDesktop ? 'pl-5 pr-7 pt-4' : 'px-5 pt-4'}>
+              {/* Pending Invites Section */}
+              {pendingInvitesFiltered.length > 0 && (
+                <View className="mb-6">
+                  <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase mb-3 tracking-wider">
+                    Pending Invites ({pendingInvitesFiltered.length})
+                  </Text>
+                  {pendingInvitesFiltered.map((invite) => (
                     <View
-                      className="w-10 h-10 rounded-full items-center justify-center mr-3"
-                      style={{ backgroundColor: colors.bg.secondary }}
+                      key={invite.id}
+                      className="rounded-xl p-4 mb-3"
+                      style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
                     >
-                      <Mail size={18} color={colors.text.tertiary} strokeWidth={2} />
-                    </View>
-                    <View className="flex-1">
+                      <View className="flex-row items-center">
+                        <View
+                          className="w-10 h-10 rounded-full items-center justify-center mr-3"
+                          style={{ backgroundColor: colors.bg.secondary }}
+                        >
+                          <Mail size={18} color={colors.text.tertiary} strokeWidth={2} />
+                        </View>
+                        <View className="flex-1">
                       <Text style={{ color: colors.text.primary }} className="font-medium text-sm">
                         {invite.email}
                       </Text>
@@ -443,98 +484,109 @@ export default function TeamManagementScreen() {
                       Delete
                     </Text>
                   </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {/* Team Members Section */}
+              <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase mb-3 tracking-wider">
+                Team Members ({teamMembers.length})
+              </Text>
+              {teamMembers.map((member) => (
+                <View
+                  key={member.id}
+                  className="rounded-xl p-4 mb-3"
+                  style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+                >
+                  <View className="flex-row items-center">
+                    <View
+                      className="w-12 h-12 rounded-full items-center justify-center mr-3"
+                      style={{ backgroundColor: `${roleColors[member.role]}15` }}
+                    >
+                      <Text style={{ color: roleColors[member.role] }} className="text-lg font-bold">
+                        {member.name.charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                    <View className="flex-1">
+                      <View className="flex-row items-center">
+                        <Text style={{ color: colors.text.primary }} className="font-semibold text-base mr-2">
+                          {member.name}
+                        </Text>
+                        {member.id === currentUser?.id && (
+                          <View className="px-2 py-0.5 rounded-full" style={{ backgroundColor: colors.bg.secondary }}>
+                            <Text style={{ color: colors.text.tertiary }} className="text-xs">You</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={{ color: colors.text.tertiary }} className="text-sm">{member.email}</Text>
+                    </View>
+                    <View
+                      className="flex-row items-center px-2 py-1 rounded-full"
+                      style={{ backgroundColor: `${roleColors[member.role]}15` }}
+                    >
+                      {roleIcons[member.role]}
+                      <Text style={{ color: roleColors[member.role] }} className="text-xs font-medium ml-1">
+                        {roleLabels[member.role]}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View className="flex-row items-center justify-between mt-3 pt-3" style={{ borderTopWidth: 1, borderTopColor: colors.border.light }}>
+                    <Text style={{ color: colors.text.muted }} className="text-xs">
+                      Last login: {formatDate(member.lastLogin)}
+                    </Text>
+                    <View className="flex-row">
+                      <Pressable
+                        onPress={() => openEditModal(member)}
+                        className="p-2 rounded-lg mr-1 active:opacity-50"
+                        style={{ backgroundColor: colors.bg.secondary }}
+                      >
+                        <Edit2 size={16} color={colors.text.tertiary} strokeWidth={2} />
+                      </Pressable>
+                      {member.id !== currentUser?.id && (
+                        <Pressable
+                          onPress={() => handleDelete(member)}
+                          className="p-2 rounded-lg active:opacity-50"
+                          style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)' }}
+                        >
+                          <Trash2 size={16} color="#EF4444" strokeWidth={2} />
+                        </Pressable>
+                      )}
+                    </View>
+                  </View>
                 </View>
               ))}
+              <View className="h-24" />
             </View>
-          )}
-
-          {/* Team Members Section */}
-          <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase mb-3 tracking-wider">
-            Team Members ({teamMembers.length})
-          </Text>
-          {teamMembers.map((member) => (
-            <View
-              key={member.id}
-              className="rounded-xl p-4 mb-3"
-              style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
-            >
-              <View className="flex-row items-center">
-                <View
-                  className="w-12 h-12 rounded-full items-center justify-center mr-3"
-                  style={{ backgroundColor: `${roleColors[member.role]}15` }}
-                >
-                  <Text style={{ color: roleColors[member.role] }} className="text-lg font-bold">
-                    {member.name.charAt(0).toUpperCase()}
-                  </Text>
-                </View>
-                <View className="flex-1">
-                  <View className="flex-row items-center">
-                    <Text style={{ color: colors.text.primary }} className="font-semibold text-base mr-2">
-                      {member.name}
-                    </Text>
-                    {member.id === currentUser?.id && (
-                      <View className="px-2 py-0.5 rounded-full" style={{ backgroundColor: colors.bg.secondary }}>
-                        <Text style={{ color: colors.text.tertiary }} className="text-xs">You</Text>
-                      </View>
-                    )}
-                  </View>
-                  <Text style={{ color: colors.text.tertiary }} className="text-sm">{member.email}</Text>
-                </View>
-                <View
-                  className="flex-row items-center px-2 py-1 rounded-full"
-                  style={{ backgroundColor: `${roleColors[member.role]}15` }}
-                >
-                  {roleIcons[member.role]}
-                  <Text style={{ color: roleColors[member.role] }} className="text-xs font-medium ml-1">
-                    {roleLabels[member.role]}
-                  </Text>
-                </View>
-              </View>
-
-              <View className="flex-row items-center justify-between mt-3 pt-3" style={{ borderTopWidth: 1, borderTopColor: colors.border.light }}>
-                <Text style={{ color: colors.text.muted }} className="text-xs">
-                  Last login: {formatDate(member.lastLogin)}
-                </Text>
-                <View className="flex-row">
-                  <Pressable
-                    onPress={() => openEditModal(member)}
-                    className="p-2 rounded-lg mr-1 active:opacity-50"
-                    style={{ backgroundColor: colors.bg.secondary }}
-                  >
-                    <Edit2 size={16} color={colors.text.tertiary} strokeWidth={2} />
-                  </Pressable>
-                  {member.id !== currentUser?.id && (
-                    <Pressable
-                      onPress={() => handleDelete(member)}
-                      className="p-2 rounded-lg active:opacity-50"
-                      style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)' }}
-                    >
-                      <Trash2 size={16} color="#EF4444" strokeWidth={2} />
-                    </Pressable>
-                  )}
-                </View>
-              </View>
-            </View>
-          ))}
-          <View className="h-24" />
+          </View>
         </ScrollView>
 
         {/* Invite Modal */}
         <Modal
           visible={showInviteModal}
           transparent
-          animationType="none"
+          animationType="fade"
           onRequestClose={() => { setShowInviteModal(false); resetInviteForm(); }}
         >
           <Pressable
-            className="flex-1 justify-end"
+            className="flex-1 items-center justify-center px-5"
             style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
             onPress={() => { setShowInviteModal(false); resetInviteForm(); }}
           >
             <Pressable onPress={() => {}}>
-            <View className="rounded-t-3xl px-5 pt-6 pb-10" style={{ backgroundColor: colors.bg.primary }}>
+            <View
+              className="rounded-3xl px-5 pt-6 pb-6"
+              style={{
+                backgroundColor: colors.bg.primary,
+                width: '100%',
+                maxWidth: 520,
+                borderWidth: 1,
+                borderColor: colors.border.light,
+              }}
+            >
               <View className="flex-row items-center justify-between mb-6">
-                <Text style={{ color: colors.text.primary }} className="text-xl font-bold">
+                <Text style={{ color: colors.text.primary, fontSize: 14, lineHeight: 18, fontWeight: '600' }}>
                   {lastCreatedInvite ? 'Invite Created' : 'Invite Member'}
                 </Text>
                 <Pressable
@@ -601,7 +653,7 @@ export default function TeamManagementScreen() {
                     <Text style={{ color: colors.text.secondary }} className="text-sm font-medium mb-2">Email Address</Text>
                     <View
                       className="rounded-xl px-4 flex-row items-center"
-                      style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.input.border, height: 50 }}
+                      style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light, height: 50 }}
                     >
                       <Mail size={18} color={colors.text.tertiary} strokeWidth={1.5} />
                       <TextInput
@@ -703,7 +755,7 @@ export default function TeamManagementScreen() {
             <Pressable onPress={() => {}}>
             <View className="rounded-t-3xl px-5 pt-6 pb-10" style={{ backgroundColor: colors.bg.primary }}>
               <View className="flex-row items-center justify-between mb-6">
-                <Text style={{ color: colors.text.primary }} className="text-xl font-bold">Edit Member</Text>
+                <Text style={{ color: colors.text.primary, fontSize: 14, lineHeight: 18, fontWeight: '600' }}>Edit Member</Text>
                 <Pressable
                   onPress={() => {
                     setShowEditModal(false);
@@ -721,7 +773,7 @@ export default function TeamManagementScreen() {
                 <Text style={{ color: colors.text.secondary }} className="text-sm font-medium mb-2">Name</Text>
                 <View
                   className="rounded-xl px-4"
-                  style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.input.border, height: 50, justifyContent: 'center' }}
+                  style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light, height: 50, justifyContent: 'center' }}
                 >
                   <TextInput
                     value={formName}
@@ -739,7 +791,7 @@ export default function TeamManagementScreen() {
                 <Text style={{ color: colors.text.secondary }} className="text-sm font-medium mb-2">Email</Text>
                 <View
                   className="rounded-xl px-4"
-                  style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.input.border, height: 50, justifyContent: 'center' }}
+                  style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light, height: 50, justifyContent: 'center' }}
                 >
                   <TextInput
                     value={formEmail}
@@ -759,7 +811,7 @@ export default function TeamManagementScreen() {
                 <Text style={{ color: colors.text.secondary }} className="text-sm font-medium mb-2">New Password (optional)</Text>
                 <View
                   className="rounded-xl px-4"
-                  style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.input.border, height: 50, justifyContent: 'center' }}
+                  style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light, height: 50, justifyContent: 'center' }}
                 >
                   <TextInput
                     value={formPassword}

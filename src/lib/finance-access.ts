@@ -1,13 +1,13 @@
 import type { TeamRole } from '@/lib/state/auth-store';
 
-export type FinanceSection = 'overview' | 'expenses' | 'refunds' | 'procurement' | 'settings';
+export type FinanceSection = 'overview' | 'revenue' | 'other-income' | 'expenses' | 'refunds' | 'procurement' | 'costing' | 'salary' | 'settings';
 
 export const canAccessFinanceScreen = (role: TeamRole): boolean => {
   return role === 'admin' || role === 'manager' || role === 'staff';
 };
 
 export const canShowFinanceNavigation = (role: TeamRole): boolean => {
-  return role === 'admin' || role === 'manager';
+  return role === 'admin' || role === 'manager' || role === 'staff';
 };
 
 export const canCreateExpenseRequestForRole = (role: TeamRole): boolean => {
@@ -23,9 +23,9 @@ export const canCreateRefundRequestForRole = (role: TeamRole): boolean => {
 };
 
 export const getAllowedFinanceSections = (role: TeamRole): FinanceSection[] => {
-  if (role === 'admin') return ['overview', 'expenses', 'refunds', 'procurement', 'settings'];
-  if (role === 'manager') return ['expenses', 'refunds', 'procurement'];
-  return ['expenses', 'refunds'];
+  if (role === 'admin') return ['overview', 'revenue', 'other-income', 'expenses', 'refunds', 'procurement', 'costing', 'salary', 'settings'];
+  if (role === 'manager') return ['expenses', 'refunds', 'procurement', 'salary'];
+  return ['expenses', 'refunds', 'procurement'];
 };
 
 export const getDefaultFinanceSectionForRole = (role: TeamRole): FinanceSection => {

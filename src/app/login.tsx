@@ -8,6 +8,8 @@ import useAuthStore from '@/lib/state/auth-store';
 import * as Haptics from 'expo-haptics';
 import { FyllLogo } from '@/components/FyllLogo';
 import { supabase } from '@/lib/supabase';
+import { isPartnerPortalHostname } from '@/lib/partner-host';
+import PartnerLoginScreen from './partner-login';
 
 type AuthMode = 'login' | 'invite' | 'signup';
 const AUTH_HERO_LOCAL_URI = '/images/auth-hero.png';
@@ -15,8 +17,12 @@ const AUTH_TEAM_HERO_LOCAL_URI = '/images/fyll-auth-team.png';
 const AUTH_HERO_FALLBACK_URI = 'https://images.unsplash.com/photo-1623177579166-7029cf1d4d7e?auto=format&fit=crop&w=2000&q=80';
 
 export default function LoginScreen() {
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && isPartnerPortalHostname(window.location.hostname)) {
+    return <PartnerLoginScreen />;
+  }
+
   const router = useRouter();
-  const { invite: inviteParam, access: accessParam } = useLocalSearchParams<{ invite?: string; access?: string }>();
+  const { invite: inviteParam, access: accessParam, signup: signupParam, returnTo: returnToParam } = useLocalSearchParams<{ invite?: string; access?: string; signup?: string; returnTo?: string | string[] }>();
   const colors = useThemeColors();
   const { width } = useWindowDimensions();
   const isWeb = Platform.OS === 'web';
@@ -28,6 +34,10 @@ export default function LoginScreen() {
   const signup = useAuthStore((s) => s.signup);
   const getInviteByCode = useAuthStore((s) => s.getInviteByCode);
   const acceptInvite = useAuthStore((s) => s.acceptInvite);
+  const returnTo = Array.isArray(returnToParam) ? returnToParam[0] : returnToParam;
+  const loginRedirectPath = typeof returnTo === 'string' && returnTo.startsWith('/') && !returnTo.startsWith('//')
+    ? returnTo
+    : '/(tabs)';
 
   const [mode, setMode] = useState<AuthMode>('login');
   const [authHeroUri, setAuthHeroUri] = useState<string>(AUTH_HERO_LOCAL_URI);
@@ -72,6 +82,12 @@ export default function LoginScreen() {
   }, [inviteParam]);
 
   useEffect(() => {
+    if (signupParam === '1' || signupParam === 'true') {
+      setMode('signup');
+    }
+  }, [signupParam]);
+
+  useEffect(() => {
     if (!accessParam || typeof accessParam !== 'string') return;
     const trimmed = accessParam.trim();
     if (!trimmed) return;
@@ -98,7 +114,7 @@ export default function LoginScreen() {
 
       if (result.success) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        router.replace('/(tabs)');
+        router.replace(loginRedirectPath);
       } else {
         setError(result.error || 'Login failed');
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -209,7 +225,7 @@ export default function LoginScreen() {
 
     if (result.success) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.replace('/(tabs)');
+      router.replace(loginRedirectPath);
     } else {
       setInviteError(result.error || 'Failed to create account');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -328,7 +344,7 @@ export default function LoginScreen() {
 
     if (result.success) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.replace('/welcome');
+      router.replace(loginRedirectPath === '/(tabs)' ? '/welcome' : loginRedirectPath);
     } else {
       setSignupError(result.error || 'Failed to create account');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);

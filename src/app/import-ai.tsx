@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, ScrollView, ActivityIndicator, Platform, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
-import { ChevronLeft, Upload, Sparkles, ShoppingCart, Users, Package, Receipt, CheckCircle2, AlertTriangle } from 'lucide-react-native';
+import { ArrowLeft, Upload, Sparkles, ShoppingCart, Users, Package, Receipt, CheckCircle2, AlertTriangle } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
@@ -201,7 +201,8 @@ export default function ImportAiScreen() {
   const { from } = useLocalSearchParams<{ from?: string | string[] }>();
   const goBack = useSettingsBack();
   const colors = useThemeColors();
-  const panelStyles = getSettingsWebPanelStyles(isFromSettingsRoute(from), colors.bg.primary, colors.border.light);
+  const openedFromSettings = isFromSettingsRoute(from);
+  const panelStyles = getSettingsWebPanelStyles(openedFromSettings, colors.bg.primary, colors.border.light);
   const { isDesktop } = useBreakpoint();
   const useImportTypeGrid = Platform.OS === 'web' && isDesktop;
 
@@ -803,7 +804,7 @@ export default function ImportAiScreen() {
           const normalizedSupplier = normalizeLookupValue(supplierName);
           if (normalizedSupplier && !existingSuppliers.has(normalizedSupplier)) {
             existingSuppliers.add(normalizedSupplier);
-            addFinanceSupplier({ id: `finance-supplier-${generateEntityId()}`, name: supplierName });
+            addFinanceSupplier({ id: `finance-supplier-${generateEntityId()}`, name: supplierName }, businessId);
           }
         });
 
@@ -902,6 +903,7 @@ export default function ImportAiScreen() {
               discountCode: draft.discountCode || undefined,
               discountAmount,
               paymentMethod: draft.paymentMethod || paymentMethods[0]?.name || 'Imported',
+              orderClassification: 'Sale',
               status: draft.status || orderStatuses[0]?.name || 'Processing',
               source: draft.source || saleSources[0]?.name || 'Imported CSV',
               subtotal,
@@ -975,12 +977,21 @@ export default function ImportAiScreen() {
             <Pressable
               onPress={goBack}
               className="w-10 h-10 rounded-xl items-center justify-center mr-3 active:opacity-50"
-              style={{ backgroundColor: colors.bg.secondary }}
+              style={{ backgroundColor: 'transparent' }}
             >
-              <ChevronLeft size={24} color={colors.text.primary} strokeWidth={2} />
+              <ArrowLeft size={24} color={colors.text.primary} strokeWidth={2} />
             </Pressable>
             <View style={{ flex: 1 }}>
-              <Text style={{ color: colors.text.primary }} className="font-bold text-xl">AI Import Assistant</Text>
+              <Text
+                style={{
+                  color: colors.text.primary,
+                  fontSize: Platform.OS === 'web' ? 14 : 20,
+                  lineHeight: Platform.OS === 'web' ? 18 : 24,
+                  fontWeight: '600',
+                }}
+              >
+                AI Import Assistant
+              </Text>
               <Text style={{ color: colors.text.tertiary }} className="text-sm mt-0.5">Choose what to import, then upload one CSV file.</Text>
             </View>
           </View>

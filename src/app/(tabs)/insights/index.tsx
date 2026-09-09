@@ -34,7 +34,6 @@ import { SalesBarChart } from '@/components/stats/SalesBarChart';
 import { HorizontalBarChart } from '@/components/stats/HorizontalBarChart';
 import { type FyllAiMetric } from '@/components/FyllAiAnalyticsCard';
 import { FyllAiAssistantDrawer } from '@/components/FyllAiAssistantDrawer';
-import { FyllAiButton } from '@/components/FyllAiButton';
 import { useAnalytics } from '@/hooks/useAnalytics';
 import { askFyllAssistant, type FyllAssistantResponse } from '@/lib/fyll-ai-assistant';
 import { TimeRange, TabKey } from '@/lib/analytics-utils';
@@ -52,6 +51,7 @@ import TodayInsight from '@/app/insights/today';
 import InventoryTodayInsight from '@/app/insights/inventory-today';
 import AddonsInsight from '@/app/insights/addons';
 import ServicesInsight from '@/app/insights/services';
+import PartnerJobsInsight from '@/app/insights/partner-jobs';
 import PlatformsInsight from '@/app/insights/platforms';
 import LocationsInsight from '@/app/insights/locations';
 // Note: some legacy insight routes don't have dedicated screens (low-stock, out-of-stock, best-sellers).
@@ -118,8 +118,8 @@ const kpiConfigByTab: Record<TabKey, KpiConfig[]> = {
       getChange: (a) => a.kpiMetrics.orders.change,
     },
     {
-      label: 'Delivered',
-      getValue: (a) => a.deliveredOrders.toString(),
+      label: 'Completed',
+      getValue: (a) => a.completedOrders.toString(),
     },
     {
       label: 'Processing',
@@ -396,6 +396,7 @@ export default function InsightsScreen() {
   const timeRangeOptions = useMemo<{ key: TimeRange; label: string }[]>(
     () => [
       { key: '7d', label: 'Last 7 days' },
+      { key: 'month', label: 'This Month' },
       { key: '30d', label: 'Last 30 days' },
       { key: 'year', label: 'This Year' },
     ],
@@ -407,8 +408,9 @@ export default function InsightsScreen() {
     '/insights/sales': { title: 'Sales Analytics', subtitle: 'Revenue breakdown and trends' },
     '/insights/today': { title: 'Today', subtitle: 'Orders and revenue summary' },
     '/insights/inventory-today': { title: 'Inventory Today', subtitle: 'Daily inventory summary' },
-    '/insights/addons': { title: 'Top Add-ons Revenue', subtitle: 'Best performing add-ons' },
+    '/insights/addons': { title: 'Add-ons Revenue', subtitle: 'Full add-on performance' },
     '/insights/services': { title: 'Service Revenue', subtitle: 'Service performance analysis' },
+    '/insights/partner-jobs': { title: 'Partner Job Reports', subtitle: 'Category, service, and monthly volume' },
     '/insights/platforms': { title: 'Platform Analytics', subtitle: 'Sales channel breakdown' },
     '/insights/locations': { title: 'Customer Locations', subtitle: 'Geographic breakdown' },
     '/insights/orders': { title: 'Orders Analytics', subtitle: 'Order status and performance' },
@@ -427,7 +429,7 @@ export default function InsightsScreen() {
     const totalOrders = analytics.totalOrders;
     const refundsAmount = analytics.refundsAmount;
     const refundRate = totalSales > 0 ? refundsAmount / totalSales : 0;
-    const deliveredRate = totalOrders > 0 ? analytics.deliveredOrders / totalOrders : 0;
+    const completedRate = totalOrders > 0 ? analytics.completedOrders / totalOrders : 0;
     const repeatRate = (analytics.returningVsNew?.returningPercentage ?? 0) / 100;
 
     let score = 50;
@@ -440,8 +442,8 @@ export default function InsightsScreen() {
     if (refundRate <= 0.03) score += 8;
     else if (refundRate >= 0.08) score -= 12;
 
-    if (deliveredRate >= 0.6) score += 8;
-    else if (deliveredRate < 0.35 && totalOrders > 0) score -= 6;
+    if (completedRate >= 0.6) score += 8;
+    else if (completedRate < 0.35 && totalOrders > 0) score -= 6;
 
     if (repeatRate >= 0.4) score += 8;
     else if (repeatRate < 0.2 && totalOrders > 0) score -= 5;
@@ -455,7 +457,7 @@ export default function InsightsScreen() {
     } else if (totalOrders > 0 && refundRate >= 0.07) {
       headline = 'Revenue is active, but refund pressure is high enough to impact net performance.';
     } else if (totalOrders > 0) {
-      headline = 'Core performance is stable with healthy delivery throughput and manageable refund load.';
+      headline = 'Core performance is stable with healthy completion throughput and manageable refund load.';
     }
 
     const recommendations: { id: string; text: string }[] = [];
@@ -467,10 +469,10 @@ export default function InsightsScreen() {
       });
     }
 
-    if (analytics.processingOrders > analytics.deliveredOrders) {
+    if (analytics.processingOrders > analytics.completedOrders) {
       recommendations.push({
         id: 'ops-throughput',
-        text: 'Processing orders are above delivered orders. Tighten shipping SLA and prioritize pending fulfillment.',
+        text: 'Processing orders are above completed orders. Tighten shipping SLA and prioritize pending fulfillment.',
       });
     }
 
@@ -491,7 +493,7 @@ export default function InsightsScreen() {
     if (recommendations.length === 0) {
       recommendations.push({
         id: 'steady',
-        text: 'Performance is balanced. Keep daily checks on sales change, refund rate, and delivery throughput.',
+        text: 'Performance is balanced. Keep daily checks on sales change, refund rate, and completion throughput.',
       });
     }
 
@@ -507,9 +509,9 @@ export default function InsightsScreen() {
         tone: refundRate >= 0.05 ? 'negative' : refundRate > 0.02 ? 'neutral' : 'positive',
       },
       {
-        label: 'Delivered Rate',
-        value: `${(deliveredRate * 100).toFixed(0)}%`,
-        tone: deliveredRate >= 0.6 ? 'positive' : deliveredRate > 0.35 ? 'neutral' : 'negative',
+        label: 'Completed Rate',
+        value: `${(completedRate * 100).toFixed(0)}%`,
+        tone: completedRate >= 0.6 ? 'positive' : completedRate > 0.35 ? 'neutral' : 'negative',
       },
     ];
 
@@ -557,7 +559,7 @@ export default function InsightsScreen() {
       };
     }
     const refundRate = analytics.totalSales > 0 ? (analytics.refundsAmount / analytics.totalSales) * 100 : 0;
-    const deliveredRate = analytics.totalOrders > 0 ? (analytics.deliveredOrders / analytics.totalOrders) * 100 : 0;
+    const completedRate = analytics.totalOrders > 0 ? (analytics.completedOrders / analytics.totalOrders) * 100 : 0;
     const repeatRate = analytics.returningVsNew?.returningPercentage ?? 0;
 
     try {
@@ -572,7 +574,7 @@ export default function InsightsScreen() {
           { label: 'Orders', value: analytics.totalOrders.toLocaleString() },
           { label: 'Refund Amount', value: formatCurrency(analytics.refundsAmount) },
           { label: 'Refund Rate', value: `${refundRate.toFixed(1)}%` },
-          { label: 'Delivered Rate', value: `${deliveredRate.toFixed(0)}%` },
+          { label: 'Completed Rate', value: `${completedRate.toFixed(0)}%` },
           { label: 'Returning Customers', value: `${repeatRate.toFixed(0)}%` },
         ],
         recommendations: insightsAiRecommendations,
@@ -624,19 +626,19 @@ export default function InsightsScreen() {
 
     if (q.includes('delivery') || q.includes('operations') || q.includes('fulfillment')) {
       return {
-        text: `Delivered rate is ${deliveredRate.toFixed(0)}% (${analytics.deliveredOrders}/${analytics.totalOrders || 0} orders). Processing orders currently at ${analytics.processingOrders}.`,
+        text: `Completed rate is ${completedRate.toFixed(0)}% (${analytics.completedOrders}/${analytics.totalOrders || 0} orders). Processing orders currently at ${analytics.processingOrders}.`,
         cards: [
           {
-            title: 'Delivered Rate',
-            value: `${deliveredRate.toFixed(0)}%`,
-            hint: `${analytics.deliveredOrders}/${analytics.totalOrders || 0} orders`,
-            tone: deliveredRate >= 60 ? 'positive' : deliveredRate > 35 ? 'neutral' : 'negative',
+            title: 'Completed Rate',
+            value: `${completedRate.toFixed(0)}%`,
+            hint: `${analytics.completedOrders}/${analytics.totalOrders || 0} orders`,
+            tone: completedRate >= 60 ? 'positive' : completedRate > 35 ? 'neutral' : 'negative',
           },
           {
             title: 'Processing Orders',
             value: analytics.processingOrders.toLocaleString(),
             hint: 'Current queue size',
-            tone: analytics.processingOrders > analytics.deliveredOrders ? 'negative' : 'neutral',
+            tone: analytics.processingOrders > analytics.completedOrders ? 'negative' : 'neutral',
           },
         ],
       };
@@ -677,7 +679,7 @@ export default function InsightsScreen() {
 
     if (q.includes('summary') || q.includes('snapshot') || q.includes('overview')) {
       return {
-        text: `Current snapshot: ${formatCurrency(analytics.totalSales)} revenue, ${analytics.totalOrders} orders, ${formatCurrency(analytics.refundsAmount)} refunds, ${deliveredRate.toFixed(0)}% delivered rate.`,
+        text: `Current snapshot: ${formatCurrency(analytics.totalSales)} revenue, ${analytics.totalOrders} orders, ${formatCurrency(analytics.refundsAmount)} refunds, ${completedRate.toFixed(0)}% completed rate.`,
         cards: [
           {
             title: 'Revenue',
@@ -696,7 +698,7 @@ export default function InsightsScreen() {
     }
 
     return {
-      text: `Current snapshot: ${formatCurrency(analytics.totalSales)} revenue, ${analytics.totalOrders} orders, ${formatCurrency(analytics.refundsAmount)} refunds, ${deliveredRate.toFixed(0)}% delivered rate.`,
+      text: `Current snapshot: ${formatCurrency(analytics.totalSales)} revenue, ${analytics.totalOrders} orders, ${formatCurrency(analytics.refundsAmount)} refunds, ${completedRate.toFixed(0)}% completed rate.`,
       cards: [],
     };
   }, [analytics, insightsAiRecommendations, insightsAiSummary.headline, timeRange, timeRangeOptions]);
@@ -765,23 +767,13 @@ export default function InsightsScreen() {
                   </Text>
                   {insightTitles[selectedInsight]?.subtitle && (
                     <Text
-                      style={{ color: colors.text.tertiary }}
-                      className="text-sm mt-1"
+                      style={{ color: colors.text.tertiary, fontSize: 12, lineHeight: 18, marginTop: 4 }}
                       numberOfLines={1}
                     >
                       {insightTitles[selectedInsight].subtitle}
                     </Text>
                   )}
                 </View>
-                <FyllAiButton
-                  label="Fyll AI Insights"
-                  onPress={() => setShowInsightsAiPanel(true)}
-                  height={40}
-                  borderRadius={20}
-                  iconSize={14}
-                  textSize={13}
-                  horizontalPadding={12}
-                />
               </View>
             </View>
           ) : (
@@ -797,47 +789,58 @@ export default function InsightsScreen() {
                     justifyContent: 'center',
                   } : undefined}
                 >
-                  <View className="flex-row items-center justify-between">
+                  <View
+                    className={isWebDesktop ? 'flex-row items-center justify-between' : undefined}
+                    style={isWebDesktop ? undefined : { gap: 4 }}
+                  >
                     <Text
                       style={{ color: colors.text.primary, ...pageHeadingStyle }}
                     >
                       Insights
                     </Text>
-                    <FyllAiButton
-                      label={isWebDesktop ? 'Fyll AI Insights' : 'Fyll AI'}
-                      onPress={() => setShowInsightsAiPanel(true)}
-                      height={40}
-                      borderRadius={20}
-                      iconSize={14}
-                      textSize={13}
-                      horizontalPadding={12}
-                    />
+                    <Text
+                      style={{
+                        color: colors.text.tertiary,
+                        fontSize: 12,
+                        lineHeight: 18,
+                        marginTop: isWebDesktop ? 4 : 0,
+                      }}
+                      numberOfLines={isWebDesktop ? 1 : 2}
+                    >
+                      Review revenue, orders, inventory, customers, and operations trends.
+                    </Text>
                   </View>
                 </View>
               </View>
 
               {/* Tabs */}
-              <View
-                className={isWebDesktop ? 'flex-row mt-3 px-5' : 'flex-row mt-4 px-5'}
-                style={isWebDesktop ? { maxWidth: 1440, width: '100%', alignSelf: 'flex-start' } : undefined}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={[
+                  { flexGrow: 0 },
+                  isWebDesktop ? { maxWidth: 1440, width: '100%', alignSelf: 'flex-start' } : undefined,
+                ]}
+                contentContainerStyle={isWebDesktop ? { marginTop: 12, paddingHorizontal: 20 } : { marginTop: 16, paddingHorizontal: 20 }}
               >
                 {tabs.map((tab) => (
                   <Pressable
                     key={tab.key}
-                    onPress={() => setActiveTab(tab.key)}
+                    onPress={() => { setActiveTab(tab.key); setSelectedInsight(null); }}
                     className="mr-6 pb-3"
                     style={{
                       borderBottomWidth: 2,
                       borderBottomColor:
-                        activeTab === tab.key
+                        !selectedInsight && activeTab === tab.key
                           ? colors.text.primary
                           : 'transparent',
-                    }}
+                      outlineStyle: 'none',
+                    } as any}
                   >
                     <Text
                       style={{
                         color:
-                          activeTab === tab.key
+                          !selectedInsight && activeTab === tab.key
                             ? colors.text.primary
                             : colors.text.tertiary,
                       }}
@@ -847,7 +850,31 @@ export default function InsightsScreen() {
                     </Text>
                   </Pressable>
                 ))}
-              </View>
+                <Pressable
+                  onPress={() => setSelectedInsight('/insights/partner-jobs')}
+                  className="mr-6 pb-3"
+                  style={{
+                    borderBottomWidth: 2,
+                    borderBottomColor:
+                      selectedInsight === '/insights/partner-jobs'
+                        ? colors.text.primary
+                        : 'transparent',
+                    outlineStyle: 'none',
+                  } as any}
+                >
+                  <Text
+                    style={{
+                      color:
+                        selectedInsight === '/insights/partner-jobs'
+                          ? colors.text.primary
+                          : colors.text.tertiary,
+                    }}
+                    className="text-base font-semibold"
+                  >
+                    Partners
+                  </Text>
+                </Pressable>
+              </ScrollView>
             </View>
           )}
         </View>
@@ -856,21 +883,22 @@ export default function InsightsScreen() {
           <EmptyState />
         ) : (
           <View style={[{ flex: 1 }, isWebDesktop ? { paddingHorizontal: webDesktopGutterPad, alignItems: 'flex-start' } : undefined]}>
-            {isWebDesktop && selectedInsight ? (
+            {(isWebDesktop && selectedInsight) || selectedInsight === '/insights/partner-jobs' ? (
               <View style={{ flex: 1, width: '100%', maxWidth: 1440, alignSelf: 'flex-start' }}>
-                {selectedInsight === '/insights/sales' && <SalesInsight inline />}
-                {selectedInsight === '/insights/today' && <TodayInsight inline />}
-                {selectedInsight === '/insights/inventory-today' && <InventoryTodayInsight inline />}
-                {selectedInsight === '/insights/addons' && <AddonsInsight inline />}
-                {selectedInsight === '/insights/services' && <ServicesInsight inline />}
-                {selectedInsight === '/insights/platforms' && <PlatformsInsight inline />}
-                {selectedInsight === '/insights/locations' && <LocationsInsight inline />}
-                {selectedInsight === '/insights/orders' && <OrdersInsight inline />}
-                {selectedInsight === '/insights/customers' && <CustomersInsight inline />}
-                {selectedInsight === '/insights/top-revenue' && <TopRevenueInsight inline />}
-                {selectedInsight === '/insights/most-restocked' && <MostRestockedInsight inline />}
-                {selectedInsight === '/insights/slow-movers' && <SlowMoversInsight inline />}
-                {selectedInsight === '/insights/refunds' && <RefundsInsight inline />}
+                {isWebDesktop && selectedInsight === '/insights/sales' && <SalesInsight inline />}
+                {isWebDesktop && selectedInsight === '/insights/today' && <TodayInsight inline />}
+                {isWebDesktop && selectedInsight === '/insights/inventory-today' && <InventoryTodayInsight inline />}
+                {isWebDesktop && selectedInsight === '/insights/addons' && <AddonsInsight inline />}
+                {isWebDesktop && selectedInsight === '/insights/services' && <ServicesInsight inline />}
+                {selectedInsight === '/insights/partner-jobs' && <PartnerJobsInsight inline />}
+                {isWebDesktop && selectedInsight === '/insights/platforms' && <PlatformsInsight inline />}
+                {isWebDesktop && selectedInsight === '/insights/locations' && <LocationsInsight inline />}
+                {isWebDesktop && selectedInsight === '/insights/orders' && <OrdersInsight inline />}
+                {isWebDesktop && selectedInsight === '/insights/customers' && <CustomersInsight inline />}
+                {isWebDesktop && selectedInsight === '/insights/top-revenue' && <TopRevenueInsight inline />}
+                {isWebDesktop && selectedInsight === '/insights/most-restocked' && <MostRestockedInsight inline />}
+                {isWebDesktop && selectedInsight === '/insights/slow-movers' && <SlowMoversInsight inline />}
+                {isWebDesktop && selectedInsight === '/insights/refunds' && <RefundsInsight inline />}
               </View>
             ) : (
               <ScrollView
@@ -1154,7 +1182,7 @@ export default function InsightsScreen() {
                           <View className="flex-row items-center justify-between mb-2">
                             <Text
                               style={{ color: colors.text.primary }}
-                              className="text-lg font-bold"
+                              className="text-base font-bold"
                             >
                               Revenue
                             </Text>
@@ -1226,7 +1254,7 @@ export default function InsightsScreen() {
                                 />
                                 <Text
                                   style={{ color: colors.text.primary }}
-                                  className="text-lg font-bold ml-2"
+                                  className="text-base font-bold ml-2"
                                 >
                                   Top Add-ons Revenue
                                 </Text>
@@ -1286,7 +1314,7 @@ export default function InsightsScreen() {
                             <View className="flex-row items-center justify-between mb-2">
                               <Text
                                 style={{ color: colors.text.primary }}
-                                className="text-lg font-bold"
+                                className="text-base font-bold"
                               >
                                 Add-ons Revenue
                               </Text>
@@ -1397,7 +1425,7 @@ export default function InsightsScreen() {
                                 />
                                 <Text
                                   style={{ color: colors.text.primary }}
-                                  className="text-lg font-bold ml-2"
+                                  className="text-base font-bold ml-2"
                                 >
                                   Top Add-ons
                                 </Text>
@@ -1465,7 +1493,7 @@ export default function InsightsScreen() {
                                 />
                                 <Text
                                   style={{ color: colors.text.primary }}
-                                  className="text-lg font-bold ml-2"
+                                  className="text-base font-bold ml-2"
                                 >
                                   Revenue by Source
                                 </Text>
@@ -1505,7 +1533,7 @@ export default function InsightsScreen() {
                             <View className="flex-row items-center justify-between mb-2">
                               <Text
                                 style={{ color: colors.text.primary }}
-                                className="text-lg font-bold"
+                                className="text-base font-bold"
                               >
                                 Service Revenue
                               </Text>
@@ -1574,7 +1602,7 @@ export default function InsightsScreen() {
                                 />
                                 <Text
                                   style={{ color: colors.text.primary }}
-                                  className="text-lg font-bold ml-2"
+                                  className="text-base font-bold ml-2"
                                 >
                                   Revenue by Service
                                 </Text>
@@ -1615,7 +1643,7 @@ export default function InsightsScreen() {
                                 />
                                 <Text
                                   style={{ color: colors.text.primary }}
-                                  className="text-lg font-bold ml-2"
+                                  className="text-base font-bold ml-2"
                                 >
                                   Top Services
                                 </Text>
@@ -1663,6 +1691,7 @@ export default function InsightsScreen() {
                           </View>
                         </Pressable>
                       )}
+
                     </>
                   )}
 
@@ -1681,7 +1710,7 @@ export default function InsightsScreen() {
                           <View className="flex-row items-center justify-between mb-2">
                             <Text
                               style={{ color: colors.text.primary }}
-                              className="text-lg font-bold"
+                              className="text-base font-bold"
                             >
                               Orders
                             </Text>
@@ -1754,7 +1783,7 @@ export default function InsightsScreen() {
                                 />
                                 <Text
                                   style={{ color: colors.text.primary }}
-                                  className="text-lg font-bold ml-2"
+                                  className="text-base font-bold ml-2"
                                 >
                                   Fulfillment Status
                                 </Text>
@@ -1826,7 +1855,7 @@ export default function InsightsScreen() {
                                 />
                                 <Text
                                   style={{ color: colors.text.primary }}
-                                  className="text-lg font-bold ml-2"
+                                  className="text-base font-bold ml-2"
                                 >
                                   Logistics Performance
                                 </Text>
@@ -1904,7 +1933,7 @@ export default function InsightsScreen() {
                           <View className="flex-row items-center justify-between mb-4">
                             <Text
                               style={{ color: colors.text.primary }}
-                              className="text-lg font-bold"
+                              className="text-base font-bold"
                             >
                               New vs Returning
                             </Text>
@@ -1990,7 +2019,7 @@ export default function InsightsScreen() {
                                 />
                                 <Text
                                   style={{ color: colors.text.primary }}
-                                  className="text-lg font-bold ml-2"
+                                  className="text-base font-bold ml-2"
                                 >
                                   Top Customers
                                 </Text>
@@ -2057,7 +2086,7 @@ export default function InsightsScreen() {
                                 />
                                 <Text
                                   style={{ color: colors.text.primary }}
-                                  className="text-lg font-bold ml-2"
+                                  className="text-base font-bold ml-2"
                                 >
                                   Customer Locations
                                 </Text>
@@ -2099,7 +2128,7 @@ export default function InsightsScreen() {
                                 />
                                 <Text
                                   style={{ color: colors.text.primary }}
-                                  className="text-lg font-bold ml-2"
+                                  className="text-base font-bold ml-2"
                                 >
                                   Customer Platforms
                                 </Text>
@@ -2142,7 +2171,7 @@ export default function InsightsScreen() {
                               />
                               <Text
                                 style={{ color: colors.text.primary }}
-                                className="text-lg font-bold ml-2"
+                                className="text-base font-bold ml-2"
                               >
                                 Units Restocked
                               </Text>
@@ -2210,7 +2239,7 @@ export default function InsightsScreen() {
                                 />
                                 <Text
                                   style={{ color: colors.text.primary }}
-                                  className="text-lg font-bold ml-2"
+                                  className="text-base font-bold ml-2"
                                 >
                                   Low Stock Items
                                 </Text>
@@ -2296,7 +2325,7 @@ export default function InsightsScreen() {
                                 />
                                 <Text
                                   style={{ color: colors.text.primary }}
-                                  className="text-lg font-bold ml-2"
+                                  className="text-base font-bold ml-2"
                                 >
                                   Out of Stock
                                 </Text>
@@ -2371,7 +2400,7 @@ export default function InsightsScreen() {
                                 />
                                 <Text
                                   style={{ color: colors.text.primary }}
-                                  className="text-lg font-bold ml-2"
+                                  className="text-base font-bold ml-2"
                                 >
                                   Best Sellers (by units)
                                 </Text>
@@ -2449,7 +2478,7 @@ export default function InsightsScreen() {
                                 />
                                 <Text
                                   style={{ color: colors.text.primary }}
-                                  className="text-lg font-bold ml-2"
+                                  className="text-base font-bold ml-2"
                                 >
                                   Top Revenue Products
                                 </Text>
@@ -2516,7 +2545,7 @@ export default function InsightsScreen() {
                                 />
                                 <Text
                                   style={{ color: colors.text.primary }}
-                                  className="text-lg font-bold ml-2"
+                                  className="text-base font-bold ml-2"
                                 >
                                   Most Restocked
                                 </Text>
@@ -2575,7 +2604,7 @@ export default function InsightsScreen() {
                                 />
                                 <Text
                                   style={{ color: colors.text.primary }}
-                                  className="text-lg font-bold ml-2"
+                                  className="text-base font-bold ml-2"
                                 >
                                   Slow Movers
                                 </Text>
@@ -2644,7 +2673,7 @@ export default function InsightsScreen() {
                               />
                               <Text
                                 style={{ color: colors.text.primary }}
-                                className="text-lg font-bold ml-2"
+                                className="text-base font-bold ml-2"
                               >
                                 New Designs
                               </Text>
@@ -2782,7 +2811,7 @@ export default function InsightsScreen() {
                               />
                               <Text
                                 style={{ color: colors.text.primary }}
-                                className="text-lg font-bold ml-2"
+                                className="text-base font-bold ml-2"
                               >
                                 Discontinue Candidates
                               </Text>

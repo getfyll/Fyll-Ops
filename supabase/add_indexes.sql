@@ -7,14 +7,22 @@
 -- Products table indexes
 CREATE INDEX IF NOT EXISTS idx_products_business_id ON public.products(business_id);
 CREATE INDEX IF NOT EXISTS idx_products_id_business_id ON public.products(id, business_id);
+CREATE INDEX IF NOT EXISTS idx_products_business_updated_desc ON public.products(business_id, updated_at DESC);
 
 -- Orders table indexes
 CREATE INDEX IF NOT EXISTS idx_orders_business_id ON public.orders(business_id);
 CREATE INDEX IF NOT EXISTS idx_orders_id_business_id ON public.orders(id, business_id);
+CREATE INDEX IF NOT EXISTS idx_orders_business_updated_desc ON public.orders(business_id, updated_at DESC);
 
 -- Customers table indexes
 CREATE INDEX IF NOT EXISTS idx_customers_business_id ON public.customers(business_id);
 CREATE INDEX IF NOT EXISTS idx_customers_id_business_id ON public.customers(id, business_id);
+CREATE INDEX IF NOT EXISTS idx_customers_business_updated_desc ON public.customers(business_id, updated_at DESC);
+
+-- Cases table indexes
+CREATE INDEX IF NOT EXISTS idx_cases_business_id ON public.cases(business_id);
+CREATE INDEX IF NOT EXISTS idx_cases_id_business_id ON public.cases(id, business_id);
+CREATE INDEX IF NOT EXISTS idx_cases_business_updated_desc ON public.cases(business_id, updated_at DESC);
 
 -- Product categories indexes
 CREATE INDEX IF NOT EXISTS idx_product_categories_business_id ON public.product_categories(business_id);
@@ -43,14 +51,9 @@ CREATE INDEX IF NOT EXISTS idx_logistics_carriers_business_id ON public.logistic
 -- Expense categories indexes
 CREATE INDEX IF NOT EXISTS idx_expense_categories_business_id ON public.expense_categories(business_id);
 
--- Procurements indexes
-CREATE INDEX IF NOT EXISTS idx_procurements_business_id ON public.procurements(business_id);
-
--- Expenses indexes
-CREATE INDEX IF NOT EXISTS idx_expenses_business_id ON public.expenses(business_id);
-
 -- Restock logs indexes
 CREATE INDEX IF NOT EXISTS idx_restock_logs_business_id ON public.restock_logs(business_id);
+CREATE INDEX IF NOT EXISTS idx_restock_logs_business_updated_desc ON public.restock_logs(business_id, updated_at DESC);
 
 -- ==================================================================
 -- ANALYZE TABLES TO UPDATE QUERY PLANNER STATISTICS
@@ -67,9 +70,8 @@ ANALYZE public.custom_services;
 ANALYZE public.payment_methods;
 ANALYZE public.logistics_carriers;
 ANALYZE public.expense_categories;
-ANALYZE public.procurements;
-ANALYZE public.expenses;
 ANALYZE public.restock_logs;
+ANALYZE public.cases;
 
 -- ==================================================================
 -- DONE! Queries should now use indexes instead of sequential scans

@@ -8,7 +8,9 @@ import { useEffect, useState } from 'react';
 import useFyllStore from '@/lib/state/fyll-store';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
 import * as Clipboard from 'expo-clipboard';
-import { sendOrderNotification, useWebPushNotifications } from '@/hooks/useWebPushNotifications';
+import { sendOrderNotification, sendExpoPushTest, useWebPushNotifications } from '@/hooks/useWebPushNotifications';
+
+type OneSignalDebugState = Record<string, unknown> | null;
 
 export default function DebugInfoScreen() {
   const router = useRouter();
@@ -18,12 +20,17 @@ export default function DebugInfoScreen() {
   const products = useFyllStore((s) => s.products);
   const { businessName } = useBusinessSettings();
   const isAdmin = currentUser?.role === 'admin';
-  const { isReady, promptForPermission } = useWebPushNotifications();
+  const { isReady, promptForPermission, getDebugState, forceResync, sendDirectSubscriptionTest } = useWebPushNotifications();
 
   const onesignalAppId = process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID ?? '';
 
   const [isSendingPush, setIsSendingPush] = useState(false);
   const [pushResult, setPushResult] = useState<string | null>(null);
+  const [oneSignalState, setOneSignalState] = useState<OneSignalDebugState>(null);
+  const [isRefreshingOneSignalState, setIsRefreshingOneSignalState] = useState(false);
+  const [isResyncingOneSignal, setIsResyncingOneSignal] = useState(false);
+  const [isSendingDirectPush, setIsSendingDirectPush] = useState(false);
+  const [isSendingExpoTest, setIsSendingExpoTest] = useState(false);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -31,6 +38,22 @@ export default function DebugInfoScreen() {
       router.replace('/(tabs)');
     }
   }, [currentUser, isAdmin, router]);
+
+  const refreshOneSignalState = async () => {
+    if (!isReady) return;
+    setIsRefreshingOneSignalState(true);
+    try {
+      const snapshot = await getDebugState();
+      setOneSignalState(snapshot);
+    } finally {
+      setIsRefreshingOneSignalState(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isReady) return;
+    void refreshOneSignalState();
+  }, [isReady]);
 
   const copyBusinessId = async () => {
     if (businessId) {
@@ -63,6 +86,69 @@ export default function DebugInfoScreen() {
       setPushResult(`❌ Error: ${String(error?.message || error)}`);
     } finally {
       setIsSendingPush(false);
+    }
+  };
+
+  const forceOneSignalRepair = async () => {
+    if (!isReady) return;
+    setIsResyncingOneSignal(true);
+    try {
+      const snapshot = await forceResync();
+      setOneSignalState(snapshot);
+    } finally {
+      setIsResyncingOneSignal(false);
+    }
+  };
+
+  const copyOneSignalState = async () => {
+    await Clipboard.setStringAsync(JSON.stringify(oneSignalState, null, 2));
+  };
+
+  const sendDirectToThisDevice = async () => {
+    const subscriptionId = typeof oneSignalState?.subscriptionId === 'string'
+      ? oneSignalState.subscriptionId.trim()
+      : '';
+    if (!businessId) {
+      setPushResult('❌ Missing businessId on this device.');
+      return;
+    }
+    if (!subscriptionId) {
+      setPushResult('❌ Missing subscriptionId on this device.');
+      return;
+    }
+
+    setIsSendingDirectPush(true);
+    setPushResult(null);
+    try {
+      await sendDirectSubscriptionTest({
+        businessId,
+        subscriptionId,
+        heading: 'Fyll iPhone Direct Test',
+        content: 'If this appears, direct device delivery works.',
+      });
+      setPushResult('✅ Sent direct test to this device subscription.');
+    } catch (error: any) {
+      setPushResult(`❌ Direct test error: ${String(error?.message || error)}`);
+    } finally {
+      setIsSendingDirectPush(false);
+    }
+  };
+
+  const sendExpoTest = async () => {
+    setIsSendingExpoTest(true);
+    setPushResult(null);
+    try {
+      const result = await sendExpoPushTest();
+      const sentCount = (result?.delivery as { sent?: number } | undefined)?.sent ?? 0;
+      if (sentCount > 0) {
+        setPushResult(`✅ Sent Expo push to ${sentCount} device(s) on this account. Check your phone.`);
+      } else {
+        setPushResult('⚠️ No registered phone push tokens found for this account. Reopen the app and allow notifications first.');
+      }
+    } catch (error: any) {
+      setPushResult(`❌ Expo push test error: ${String(error?.message || error)}`);
+    } finally {
+      setIsSendingExpoTest(false);
     }
   };
 
@@ -188,6 +274,20 @@ export default function DebugInfoScreen() {
                 </Text>
               </View>
 
+              <View className="mb-4 rounded-xl p-3" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
+                <View className="flex-row items-center justify-between mb-2">
+                  <Text style={{ color: colors.text.primary }} className="text-xs font-semibold">
+                    Live OneSignal State
+                  </Text>
+                  <Pressable onPress={copyOneSignalState} className="active:opacity-70">
+                    <Copy size={14} color={colors.text.secondary} />
+                  </Pressable>
+                </View>
+                <Text style={{ color: colors.text.secondary, fontFamily: 'monospace' }} className="text-[11px] leading-5">
+                  {oneSignalState ? JSON.stringify(oneSignalState, null, 2) : 'No OneSignal snapshot yet.'}
+                </Text>
+              </View>
+
               {Platform.OS === 'web' && (
                 <Pressable
                   onPress={promptForPermission}
@@ -199,6 +299,50 @@ export default function DebugInfoScreen() {
                   </Text>
                 </Pressable>
               )}
+
+              <Pressable
+                onPress={refreshOneSignalState}
+                disabled={isRefreshingOneSignalState || !isReady}
+                className="rounded-xl items-center justify-center active:opacity-80 mb-3"
+                style={{ height: 44, backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light, opacity: isRefreshingOneSignalState || !isReady ? 0.7 : 1 }}
+              >
+                <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">
+                  {isRefreshingOneSignalState ? 'Refreshing OneSignal…' : 'Refresh OneSignal State'}
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={forceOneSignalRepair}
+                disabled={isResyncingOneSignal || !isReady}
+                className="rounded-xl items-center justify-center active:opacity-80 mb-3"
+                style={{ height: 44, backgroundColor: '#0F766E', opacity: isResyncingOneSignal || !isReady ? 0.7 : 1 }}
+              >
+                <Text className="text-white text-sm font-semibold">
+                  {isResyncingOneSignal ? 'Repairing OneSignal…' : 'Force OneSignal Resync'}
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={sendDirectToThisDevice}
+                disabled={isSendingDirectPush || !isReady}
+                className="rounded-xl items-center justify-center active:opacity-80 mb-3"
+                style={{ height: 44, backgroundColor: '#1D4ED8', opacity: isSendingDirectPush || !isReady ? 0.7 : 1 }}
+              >
+                <Text className="text-white text-sm font-semibold">
+                  {isSendingDirectPush ? 'Sending Direct Device Test…' : 'Send Test To This iPhone Only'}
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={sendExpoTest}
+                disabled={isSendingExpoTest}
+                className="rounded-xl items-center justify-center active:opacity-80 mb-3"
+                style={{ height: 44, backgroundColor: '#9333EA', opacity: isSendingExpoTest ? 0.7 : 1 }}
+              >
+                <Text className="text-white text-sm font-semibold">
+                  {isSendingExpoTest ? 'Sending Phone Push Test…' : 'Send Test Push To My Phone'}
+                </Text>
+              </Pressable>
 
               <Pressable
                 onPress={sendOneSignalTest}

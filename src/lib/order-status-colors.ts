@@ -1,6 +1,7 @@
 import type { OrderStatus } from '@/lib/state/fyll-store';
 
 const DEFAULT_STATUS_COLOR = '#6B7280';
+const CANCELLED_STATUS_COLOR = '#6B7280';
 
 const isValidHexColor = (value: string) => /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(value);
 
@@ -47,6 +48,10 @@ export const getOrderStatusColor = (
   statusColorMap: Record<string, string>,
   fallbackColor = DEFAULT_STATUS_COLOR
 ): string => {
+  const normalizedStatus = status.trim().toLowerCase();
+  if (normalizedStatus.includes('cancel')) {
+    return CANCELLED_STATUS_COLOR;
+  }
   const normalizedFallback = normalizeHexColor(fallbackColor) ?? DEFAULT_STATUS_COLOR;
   return statusColorMap[status] ?? normalizedFallback;
 };

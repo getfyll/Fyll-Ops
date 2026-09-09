@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Alert, KeyboardAvoidingView, Platform, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
-import { ChevronLeft, Plus, Trash2, Edit3, Check, X, Palette, Tag } from 'lucide-react-native';
+import { ArrowLeft, Plus, Trash2, Edit3, Check, X, Palette, Tag } from 'lucide-react-native';
 import useFyllStore, { ProductVariable } from '@/lib/state/fyll-store';
 import useAuthStore from '@/lib/state/auth-store';
 import * as Haptics from 'expo-haptics';
@@ -15,7 +15,8 @@ export default function ProductVariablesScreen() {
   const colors = useThemeColors();
   const { from } = useLocalSearchParams<{ from?: string | string[] }>();
   const goBack = useSettingsBack();
-  const panelStyles = getSettingsWebPanelStyles(isFromSettingsRoute(from), colors.bg.primary, colors.border.light);
+  const openedFromSettings = isFromSettingsRoute(from);
+  const panelStyles = getSettingsWebPanelStyles(openedFromSettings, colors.bg.primary, colors.border.light);
   const productVariables = useFyllStore((s) => s.productVariables);
   const addProductVariable = useFyllStore((s) => s.addProductVariable);
   const updateProductVariable = useFyllStore((s) => s.updateProductVariable);
@@ -182,11 +183,20 @@ export default function ProductVariablesScreen() {
             <Pressable
               onPress={goBack}
               className="w-10 h-10 rounded-xl items-center justify-center active:opacity-50"
-              style={{ backgroundColor: colors.bg.secondary }}
+              style={{ backgroundColor: 'transparent' }}
             >
-              <ChevronLeft size={20} color={colors.text.primary} strokeWidth={2} />
+              <ArrowLeft size={20} color={colors.text.primary} strokeWidth={2} />
             </Pressable>
-            <Text style={{ color: colors.text.primary }} className="text-lg font-bold">Product Variables</Text>
+            <Text
+              style={{
+                color: colors.text.primary,
+                fontSize: Platform.OS === 'web' ? 14 : 18,
+                lineHeight: Platform.OS === 'web' ? 18 : 22,
+                fontWeight: '600',
+              }}
+            >
+              Product Variables
+            </Text>
             <View className="w-10" />
           </View>
 
@@ -416,7 +426,7 @@ export default function ProductVariablesScreen() {
               >
                 {/* Header */}
                 <View className="flex-row items-center justify-between px-5 py-4 border-b" style={{ borderBottomColor: colors.border.light }}>
-                  <Text style={{ color: colors.text.primary }} className="font-bold text-lg">New Variable</Text>
+                  <Text style={{ color: colors.text.primary, fontSize: 14, lineHeight: 18, fontWeight: '600' }}>New Variable</Text>
                   <Pressable
                     onPress={() => setShowAddModal(false)}
                     className="w-8 h-8 rounded-full items-center justify-center active:opacity-50"
@@ -490,7 +500,7 @@ export default function ProductVariablesScreen() {
             className="w-[90%] rounded-2xl p-5"
             style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light, maxWidth: 420 }}
           >
-            <Text style={{ color: colors.text.primary }} className="text-lg font-bold mb-2">Delete variable?</Text>
+            <Text style={{ color: colors.text.primary, fontSize: 14, lineHeight: 18, fontWeight: '600', marginBottom: 8 }}>Delete variable?</Text>
             <Text style={{ color: colors.text.tertiary }} className="text-sm mb-4">
               This will remove "{pendingDeleteVariable?.name}" and all of its values.
             </Text>

@@ -1,8 +1,8 @@
-import React, { useState, useMemo, useCallback } from 'react';
-import { View, Text, ScrollView, Pressable, TextInput, Platform, Switch, Modal, KeyboardAvoidingView, Keyboard, Image } from 'react-native';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import { View, Text, ScrollView, Pressable, TextInput, Platform, Switch, Modal, KeyboardAvoidingView, Keyboard, Image, useWindowDimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, X, Plus, Trash2, Package, Hash, Check, ChevronDown, Search, Camera, ImageIcon } from 'lucide-react-native';
+import { ArrowLeft, X, Plus, Trash2, Hash, Check, ChevronDown, Search, Camera, ImageIcon } from 'lucide-react-native';
 import useFyllStore, {
   ProductVariant,
   generateProductId,
@@ -16,6 +16,7 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view
 import { useImagePicker } from '@/hooks/useImagePicker';
 import { Button, StickyButtonContainer } from '@/components/Button';
 import { useThemeColors } from '@/lib/theme';
+import { prepareProductMediaForPersistence } from '@/lib/product-media';
 
 // Theme-aware colors
 
@@ -30,8 +31,10 @@ interface VariantFormData {
 export default function NewProductScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const colors = useThemeColors();
   const isWeb = Platform.OS === 'web';
+  const useSideBySideVariantSelector = width >= 768;
   const isDark = colors.bg.primary === '#111111';
   const useDesktopCanvas = isWeb && !isDark;
   const canvasBg = useDesktopCanvas ? '#F3F3F5' : colors.bg.primary;
@@ -39,6 +42,9 @@ export default function NewProductScreen() {
   const textPrimaryClass = isDark ? 'text-white' : 'text-gray-900';
   const textMutedClass = isDark ? 'text-gray-400' : 'text-gray-500';
   const cardClass = isDark ? 'bg-[#1A1A1A] border-[#333333]' : 'bg-white border-gray-200';
+  const softSurfaceClass = isDark ? 'bg-[#151515] border-[#2C2C2C]' : 'bg-gray-50 border-gray-200';
+  const sectionTitleClass = 'font-semibold text-[15px]';
+  const fieldLabelClass = 'text-xs font-semibold uppercase tracking-wider';
   const productVariables = useFyllStore((s) => s.productVariables);
   const globalCategories = useFyllStore((s) => s.categories);
   const addCategory = useFyllStore((s) => s.addCategory);
@@ -54,9 +60,10 @@ export default function NewProductScreen() {
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const [lowStockThreshold, setLowStockThreshold] = useState('5');
   const [variants, setVariants] = useState<VariantFormData[]>([]);
-  const [hasVariants, setHasVariants] = useState(true);
+  const [hasVariants, setHasVariants] = useState(false);
   const [productImageUrl, setProductImageUrl] = useState<string | null>(null);
   const [showImagePicker, setShowImagePicker] = useState(false);
+  const [activeVariableIds, setActiveVariableIds] = useState<string[]>([]);
 
   // New Design tracking state
   const [isNewDesign, setIsNewDesign] = useState(false);
@@ -76,10 +83,13 @@ export default function NewProductScreen() {
   // Variant selection modal state
   const [showVariantSelector, setShowVariantSelector] = useState<{ variantIndex: number; variableId: string } | null>(null);
   const [variantSearchQuery, setVariantSearchQuery] = useState('');
+  const [showActiveVariableSelector, setShowActiveVariableSelector] = useState(false);
 
   // Global pricing state
   const [useGlobalPrice, setUseGlobalPrice] = useState(true);
   const [globalPrice, setGlobalPrice] = useState('');
+  const [useGlobalStock, setUseGlobalStock] = useState(false);
+  const [globalStock, setGlobalStock] = useState('');
 
   const formContentStyle = useMemo(() => ({
     paddingHorizontal: 20,
@@ -93,6 +103,10 @@ export default function NewProductScreen() {
     setUseGlobalPrice(value);
   };
 
+  const handleGlobalStockToggle = (value: boolean) => {
+    setUseGlobalStock(value);
+  };
+
   // Filter categories based on search
   const filteredCategories = useMemo(() => {
     if (!categoryInput.trim()) return globalCategories.filter(cat => !categories.includes(cat));
@@ -102,23 +116,22 @@ export default function NewProductScreen() {
     );
   }, [globalCategories, categoryInput, categories]);
 
+  const activeVariables = useMemo(
+    () => productVariables.filter((variable) => activeVariableIds.includes(variable.id)),
+    [activeVariableIds, productVariables],
+  );
+
   const handleToggleVariants = (value: boolean) => {
     setHasVariants(value);
     if (value) {
       setVariants((prev) => {
         if (prev.length === 0) return [createVariant(true)];
-        return prev.map((variant) => ({
-          ...variant,
-          variableValues: productVariables.reduce((acc, v) => {
-            acc[v.name] = variant.variableValues[v.name] ?? v.values[0] ?? '';
-            return acc;
-          }, {} as Record<string, string>),
-        }));
+        return prev;
       });
     } else {
       setVariants((prev) => {
         if (prev.length === 0) return [createVariant(false)];
-        return [{ ...prev[0], variableValues: {} }];
+        return [{ ...prev[0], variableValues: {}, imageUrl: undefined }];
       });
     }
   };
@@ -126,22 +139,57 @@ export default function NewProductScreen() {
   const createVariant = useCallback((includeVariables: boolean) => ({
     id: Math.random().toString(36).substring(2, 10),
     variableValues: includeVariables
-      ? productVariables.reduce((acc, v) => {
+      ? activeVariables.reduce((acc, v) => {
         acc[v.name] = v.values[0] || '';
         return acc;
       }, {} as Record<string, string>)
       : {},
     stock: '0',
     sellingPrice: '',
-  }), [productVariables]);
+  }), [activeVariables]);
+
+  const handleToggleActiveVariable = useCallback((variableId: string) => {
+    setActiveVariableIds((prev) => (
+      prev.includes(variableId)
+        ? prev.filter((id) => id !== variableId)
+        : [...prev, variableId]
+    ));
+  }, []);
+
+  useEffect(() => {
+    if (variants.length === 0) {
+      setVariants([createVariant(hasVariants)]);
+    }
+  }, [createVariant, hasVariants, variants.length]);
+
+  useEffect(() => {
+    setActiveVariableIds((prev) => prev.filter((id) => productVariables.some((variable) => variable.id === id)));
+  }, [productVariables]);
+
+  useEffect(() => {
+    if (!hasVariants) return;
+    setVariants((prev) => {
+      if (prev.length === 0) {
+        return [createVariant(true)];
+      }
+      return prev.map((variant) => ({
+        ...variant,
+        variableValues: activeVariables.reduce((acc, variable) => {
+          acc[variable.name] = variant.variableValues[variable.name] ?? variable.values[0] ?? '';
+          return acc;
+        }, {} as Record<string, string>),
+      }));
+    });
+  }, [activeVariables, createVariant, hasVariants]);
 
   const handleAddVariant = useCallback(() => {
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
+    if (activeVariables.length === 0) return;
     const newVariant: VariantFormData = createVariant(true);
-    setVariants(prev => [...prev, newVariant]);
-  }, [createVariant]);
+    setVariants(prev => [newVariant, ...prev]);
+  }, [activeVariables.length, createVariant]);
 
   const handleUpdateVariant = useCallback((index: number, updates: Partial<VariantFormData>) => {
     setVariants(prev => {
@@ -251,10 +299,6 @@ export default function NewProductScreen() {
     if (!name.trim() || isSubmitting) return;
     if (variants.length === 0) return;
 
-    // Check all variants have images
-    const missingImages = variants.some(v => !v.imageUrl);
-    if (missingImages) return;
-
     setIsSubmitting(true);
 
     try {
@@ -266,19 +310,30 @@ export default function NewProductScreen() {
       }
 
       const productId = generateProductId();
-      const productVariants: ProductVariant[] = variants.map((v, index) => {
-        const sku = `${name.substring(0, 3).toUpperCase()}-${Object.values(v.variableValues).join('-').substring(0, 4).toUpperCase()}`;
-        // Use global price if enabled, otherwise use individual variant price
-        const finalPrice = useGlobalPrice ? (parseFloat(globalPrice) || 0) : (parseFloat(v.sellingPrice) || 0);
+      const draftedVariants: ProductVariant[] = variants.map((v, index) => {
+        const variantCode = Object.values(v.variableValues).join('-').substring(0, 4).toUpperCase() || `${index + 1}`.padStart(3, '0');
+        const sku = `${name.substring(0, 3).toUpperCase()}-${variantCode}`;
+        const finalPrice = hasVariants
+          ? (useGlobalPrice ? (parseFloat(globalPrice) || 0) : (parseFloat(v.sellingPrice) || 0))
+          : (parseFloat(v.sellingPrice) || 0);
+        const finalStock = hasVariants
+          ? (useGlobalStock ? (parseInt(globalStock, 10) || 0) : (parseInt(v.stock, 10) || 0))
+          : (parseInt(v.stock, 10) || 0);
         return {
           id: `${productId}-${index + 1}`,
           sku,
           barcode: generateVariantBarcode(),
           variableValues: v.variableValues,
-          stock: parseInt(v.stock, 10) || 0,
+          stock: finalStock,
           sellingPrice: finalPrice,
-          imageUrl: v.imageUrl,
+          imageUrl: v.imageUrl ?? productImageUrl ?? undefined,
         };
+      });
+      const preparedMedia = await prepareProductMediaForPersistence({
+        businessId,
+        productId,
+        imageUrl: productImageUrl,
+        variants: draftedVariants,
       });
 
       console.log('🚀 Submitting product:', name);
@@ -296,12 +351,14 @@ export default function NewProductScreen() {
           name: name.trim(),
           description: description.trim(),
           categories: categories,
-          variants: productVariants,
+          variants: preparedMedia.variants,
           lowStockThreshold: parseInt(lowStockThreshold, 10) || 5,
           createdAt: new Date().toISOString(),
           productType: 'product',
-          imageUrl: productImageUrl || undefined,
+          imageUrl: preparedMedia.imageUrl,
           createdBy: currentUser?.name,
+          useGlobalStock: hasVariants ? useGlobalStock : false,
+          globalStock: hasVariants && useGlobalStock ? (parseInt(globalStock, 10) || 0) : undefined,
           // New Design fields
           isNewDesign: isNewDesign,
           designYear: isNewDesign ? parseInt(designYear, 10) || new Date().getFullYear() : undefined,
@@ -332,9 +389,14 @@ export default function NewProductScreen() {
     }
   };
 
-  // Check if all variants have images
-  const allVariantsHaveImages = variants.length > 0 && variants.every(v => !!v.imageUrl);
-  const isValid = name.trim().length > 0 && variants.length > 0 && allVariantsHaveImages;
+  const primaryVariant = variants[0];
+  const singleModeHasCoreValues = Boolean(primaryVariant)
+    && (primaryVariant?.stock ?? '').trim() !== ''
+    && (primaryVariant?.sellingPrice ?? '').trim() !== '';
+  const isValid = name.trim().length > 0
+    && variants.length > 0
+    && (!hasVariants || activeVariables.length > 0)
+    && (hasVariants || singleModeHasCoreValues);
 
   return (
     <View className="flex-1" style={{ backgroundColor: canvasBg }}>
@@ -370,19 +432,11 @@ export default function NewProductScreen() {
               New Product
             </Text>
             <Text className={cn('text-xs', textMutedClass)}>
-              Track inventory, variants, and pricing
+              Choose single or variable, then fill only what matters
             </Text>
           </View>
           <View className="w-10 h-10" />
         </View>
-        <View className="px-5 pb-4 pt-2" style={{ backgroundColor: colors.bg.card, borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
-          <View className="mt-1 px-2">
-            <Text className={cn('text-center text-[11px]', textMutedClass)}>
-              Products include rich variant controls, inventory math, and pricing settings.
-            </Text>
-          </View>
-        </View>
-
         <KeyboardAwareScrollView
           className="flex-1"
           contentContainerStyle={formContentStyle}
@@ -393,35 +447,90 @@ export default function NewProductScreen() {
         >
           <View className="mt-4">
             <View className={cn('rounded-2xl p-4 border', cardClass)}>
-              <View className="flex-row items-center mb-4">
-                <View className="w-10 h-10 rounded-xl items-center justify-center mr-3" style={{ backgroundColor: colors.bg.secondary }}>
-                  <Package size={20} color={colors.text.primary} strokeWidth={2} />
-                </View>
-                <View>
-                  <Text className={cn('font-bold text-base', textPrimaryClass)}>Product Details</Text>
-                  <Text className={cn('text-xs', textMutedClass)}>Basic product information</Text>
-                </View>
+              <Text className={cn(sectionTitleClass, textPrimaryClass)}>Product Type</Text>
+              <View
+                className="flex-row mt-3 rounded-[26px] p-1.5"
+                style={{
+                  backgroundColor: isDark ? '#161616' : '#F3F4F6',
+                  borderWidth: 1,
+                  borderColor: isDark ? '#2C2C2C' : '#E5E7EB',
+                }}
+              >
+                <Pressable
+                  onPress={() => handleToggleVariants(false)}
+                  className="flex-1 rounded-[22px] active:opacity-80 items-center justify-center"
+                  style={{
+                    minHeight: 48,
+                    backgroundColor: !hasVariants ? '#111111' : 'transparent',
+                    shadowColor: !hasVariants ? '#000000' : 'transparent',
+                    shadowOpacity: !hasVariants ? 0.12 : 0,
+                    shadowRadius: 16,
+                    shadowOffset: { width: 0, height: 6 },
+                    elevation: !hasVariants ? 3 : 0,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: !hasVariants ? '#FFFFFF' : colors.text.primary,
+                      fontSize: 15,
+                      fontWeight: '500',
+                      textAlign: 'center',
+                    }}
+                  >
+                    Single Product
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => handleToggleVariants(true)}
+                  className="flex-1 rounded-[22px] active:opacity-80 items-center justify-center"
+                  style={{
+                    minHeight: 48,
+                    backgroundColor: hasVariants ? '#111111' : 'transparent',
+                    shadowColor: hasVariants ? '#000000' : 'transparent',
+                    shadowOpacity: hasVariants ? 0.12 : 0,
+                    shadowRadius: 16,
+                    shadowOffset: { width: 0, height: 6 },
+                    elevation: hasVariants ? 3 : 0,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: hasVariants ? '#FFFFFF' : colors.text.primary,
+                      fontSize: 15,
+                      fontWeight: '500',
+                      textAlign: 'center',
+                    }}
+                  >
+                    Variable Product
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+
+          <View className="mt-4">
+            <View className={cn('rounded-2xl p-4 border', cardClass)}>
+              <View className="mb-4">
+                <Text className={cn(sectionTitleClass, textPrimaryClass)}>Core Details</Text>
+                <Text className={cn('text-xs mt-1', textMutedClass)}>
+                  {hasVariants ? 'Shared details for the product before you build variations.' : 'Main product details.'}
+                </Text>
               </View>
 
-              {/* Product Image */}
-              <View className="mb-3">
-                <Text className={cn('text-xs font-medium mb-1.5 uppercase tracking-wider', textMutedClass)}>
-                  Product Image
+              {imagePicker.error && (
+                <View className="mb-2 p-3 rounded-xl" style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)' }}>
+                  <Text className="text-red-500 text-sm text-center">{imagePicker.error}</Text>
+                </View>
+              )}
+
+              <View className="mb-4">
+                <Text className={cn(fieldLabelClass, 'mb-1.5')} style={{ color: colors.text.secondary }}>
+                  Product Image{hasVariants ? '' : ' *'}
                 </Text>
-                {/* Error Toast */}
-                {imagePicker.error && (
-                  <View className="mb-2 p-3 rounded-xl" style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)' }}>
-                    <Text className="text-red-500 text-sm text-center">{imagePicker.error}</Text>
-                  </View>
-                )}
                 {productImageUrl ? (
                   <View className="flex-row items-start">
                     <View className="rounded-xl overflow-hidden" style={{ borderWidth: 1, borderColor: colors.border.light }}>
-                      <Image
-                        source={{ uri: productImageUrl }}
-                        style={{ width: 80, height: 80 }}
-                        resizeMode="cover"
-                      />
+                      <Image source={{ uri: productImageUrl }} style={{ width: 80, height: 80 }} resizeMode="cover" />
                     </View>
                     <View className="ml-3 flex-1">
                       <Pressable
@@ -462,20 +571,21 @@ export default function NewProductScreen() {
                         <View className="w-12 h-12 rounded-full items-center justify-center mb-2" style={{ backgroundColor: colors.bg.card }}>
                           <ImageIcon size={24} color={colors.text.muted} strokeWidth={1.5} />
                         </View>
-                        <Text style={{ color: colors.text.secondary }} className="text-sm font-medium">Add Product Image</Text>
-                        <Text style={{ color: colors.text.muted }} className="text-xs mt-0.5">Tap to upload from your device</Text>
+                        <Text style={{ color: colors.text.secondary }} className="text-sm font-medium">
+                          {hasVariants ? 'Add Main Product Image' : 'Add Product Image'}
+                        </Text>
+                        <Text style={{ color: colors.text.muted }} className="text-xs mt-0.5">
+                          {hasVariants ? 'Optional shared image for the product' : 'Optional'}
+                        </Text>
                       </>
                     )}
                   </Pressable>
                 )}
               </View>
 
-              {/* Product Name */}
-              <View className="mb-3">
-                <Text className="text-gray-500 text-xs font-medium mb-1.5 uppercase tracking-wider">
-                  Product Name *
-                </Text>
-                <View className={cn('rounded-xl px-4 py-3 border', cardClass)}>
+              <View className="mb-4">
+                <Text className={cn(fieldLabelClass, 'mb-1.5')} style={{ color: colors.text.secondary }}>Product Name *</Text>
+                <View className={cn('rounded-xl px-4 border', cardClass)} style={{ height: 52, justifyContent: 'center' }}>
                   <TextInput
                     placeholder="e.g. Classic Aviator Sunglasses"
                     placeholderTextColor="#9CA3AF"
@@ -487,28 +597,64 @@ export default function NewProductScreen() {
                 </View>
               </View>
 
-              {/* Categories - Right after Product Name */}
-              <View className="mb-3" style={{ zIndex: 20 }}>
-                <Text className="text-gray-500 text-xs font-medium mb-1.5 uppercase tracking-wider">Categories</Text>
-                {/* Selected Categories - Black Chips with White Text */}
+              {!hasVariants && primaryVariant ? (
+                <View className="mb-4 flex-row" style={{ gap: 12 }}>
+                  <View className="flex-1">
+                    <Text className={cn(fieldLabelClass, 'mb-1.5')} style={{ color: colors.text.secondary }}>Stock Qty *</Text>
+                    <View className={cn('flex-row items-center rounded-xl px-4 border', cardClass)} style={{ height: 52 }}>
+                      <View style={{ width: 18, alignItems: 'center' }}>
+                        <Hash size={14} color="#9CA3AF" strokeWidth={2} />
+                      </View>
+                      <TextInput
+                        placeholder="0"
+                        placeholderTextColor="#9CA3AF"
+                        value={primaryVariant.stock}
+                        onChangeText={(text) => handleUpdateVariant(0, { stock: text })}
+                        keyboardType="number-pad"
+                        className={cn('flex-1 text-sm ml-3', textPrimaryClass)}
+                        selectionColor="#111111"
+                      />
+                    </View>
+                  </View>
+                  <View className="flex-1">
+                    <Text className={cn(fieldLabelClass, 'mb-1.5')} style={{ color: colors.text.secondary }}>Price Amount *</Text>
+                    <View className={cn('flex-row items-center rounded-xl px-4 border', cardClass)} style={{ height: 52 }}>
+                      <View style={{ width: 18, alignItems: 'center' }}>
+                        <Text className="text-gray-500 text-sm">₦</Text>
+                      </View>
+                      <TextInput
+                        placeholder="0"
+                        placeholderTextColor="#9CA3AF"
+                        value={primaryVariant.sellingPrice}
+                        onChangeText={(text) => handleUpdateVariant(0, { sellingPrice: text })}
+                        keyboardType="decimal-pad"
+                        className={cn('flex-1 text-sm ml-3', textPrimaryClass)}
+                        selectionColor="#111111"
+                      />
+                    </View>
+                  </View>
+                </View>
+              ) : null}
+
+              <View className="mb-4" style={{ zIndex: 20 }}>
+                <Text className={cn(fieldLabelClass, 'mb-1.5')} style={{ color: colors.text.secondary }}>Category</Text>
                 {categories.length > 0 && (
                   <View className="flex-row flex-wrap mb-2" style={{ gap: 8 }}>
                     {categories.map((cat) => (
-                      <View key={cat} className="flex-row items-center px-3 py-1.5 rounded-lg" style={{ backgroundColor: '#111111' }}>
-                        <Text style={{ color: '#FFFFFF' }} className="text-xs font-medium mr-1">{cat}</Text>
-                        <Pressable onPress={() => handleRemoveCategory(cat)}>
-                          <X size={12} color="#FFFFFF" strokeWidth={2} />
-                        </Pressable>
-                      </View>
-                    ))}
+                    <View key={cat} className="flex-row items-center px-3 py-1.5 rounded-lg" style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}>
+                      <Text style={{ color: colors.text.primary }} className="text-xs font-medium mr-1">{cat}</Text>
+                      <Pressable onPress={() => handleRemoveCategory(cat)}>
+                          <X size={12} color={colors.text.muted} strokeWidth={2} />
+                      </Pressable>
+                    </View>
+                  ))}
                   </View>
                 )}
-                {/* Category Dropdown */}
                 <View style={{ zIndex: 10 }}>
                   <Pressable
                     onPress={() => setShowCategoryDropdown(!showCategoryDropdown)}
                     className="rounded-xl px-4 flex-row items-center"
-                    style={{ height: 52, backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.input.border }}
+                    style={{ height: 52, backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
                   >
                     <TextInput
                       placeholder="Search or add category"
@@ -559,9 +705,8 @@ export default function NewProductScreen() {
                 </View>
               </View>
 
-              {/* Description */}
-              <View className="mb-3">
-                <Text className="text-gray-500 text-xs font-medium mb-1.5 uppercase tracking-wider">Description</Text>
+              <View className="mb-4">
+                <Text className={cn(fieldLabelClass, 'mb-1.5')} style={{ color: colors.text.secondary }}>Description</Text>
                 <View className={cn('rounded-xl px-4 py-3 border', cardClass)}>
                   <TextInput
                     placeholder="Product description..."
@@ -577,27 +722,90 @@ export default function NewProductScreen() {
                 </View>
               </View>
 
-              {/* Low Stock Threshold */}
-              <View className="mb-3">
-                <Text className="text-gray-500 text-xs font-medium mb-1.5 uppercase tracking-wider">Low Stock Alert Threshold</Text>
-                <View className="rounded-xl px-4 flex-row items-center" style={{ height: 52, backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.input.border }}>
-                  <TextInput
-                    placeholder="5"
-                    placeholderTextColor={colors.text.muted}
-                    value={lowStockThreshold}
-                    onChangeText={setLowStockThreshold}
-                    keyboardType="number-pad"
-                    style={{ color: colors.text.primary, fontSize: 14, flex: 1 }}
-                    selectionColor={colors.text.primary}
-                  />
+              {hasVariants ? (
+                <View className="mb-4 border-t pt-4" style={{ borderTopColor: colors.border.light, borderTopWidth: 1 }}>
+                  <View className="flex-row items-center justify-between mb-3">
+                    <View className="flex-1 pr-3">
+                      <Text className={cn(sectionTitleClass, textPrimaryClass)}>Global Stock</Text>
+                      <Text className="text-gray-500 text-xs">Set one stock value for all variants.</Text>
+                    </View>
+                    <Switch
+                      value={useGlobalStock}
+                      onValueChange={handleGlobalStockToggle}
+                      trackColor={{ false: '#767577', true: '#111111' }}
+                      thumbColor="#FFFFFF"
+                    />
+                  </View>
+                  {useGlobalStock ? (
+                    <View>
+                      <Text className={cn(fieldLabelClass, 'mb-1.5')} style={{ color: colors.text.secondary }}>Stock Qty (All Variants)</Text>
+                      <View className={cn('flex-row items-center rounded-xl px-4 border', cardClass)} style={{ height: 52 }}>
+                        <View style={{ width: 18, alignItems: 'center' }}>
+                          <Hash size={14} color="#9CA3AF" strokeWidth={2} />
+                        </View>
+                        <TextInput
+                          placeholder="0"
+                          placeholderTextColor="#9CA3AF"
+                          value={globalStock}
+                          onChangeText={setGlobalStock}
+                          keyboardType="number-pad"
+                          className={cn('flex-1 text-sm ml-3', textPrimaryClass)}
+                          selectionColor="#111111"
+                        />
+                      </View>
+                    </View>
+                  ) : (
+                    <Text className={cn('text-xs mt-2', textMutedClass)}>
+                      Individual variant stock will be entered inside each variant card below.
+                    </Text>
+                  )}
                 </View>
-              </View>
+              ) : null}
 
-              {/* New Design Toggle */}
-              <View className="mb-3">
+              {hasVariants ? (
+                <View className="mb-4 border-t pt-4" style={{ borderTopColor: colors.border.light, borderTopWidth: 1 }}>
+                  <View className="flex-row items-center justify-between mb-3">
+                    <View className="flex-1 pr-3">
+                      <Text className={cn(sectionTitleClass, textPrimaryClass)}>Global Pricing</Text>
+                      <Text className="text-gray-500 text-xs">Set one price for all variants or price each variant separately.</Text>
+                    </View>
+                    <Switch
+                      value={useGlobalPrice}
+                      onValueChange={handleGlobalPriceToggle}
+                      trackColor={{ false: '#767577', true: '#111111' }}
+                      thumbColor="#FFFFFF"
+                    />
+                  </View>
+                  {useGlobalPrice ? (
+                    <View>
+                      <Text className={cn(fieldLabelClass, 'mb-1.5')} style={{ color: colors.text.secondary }}>Sale Price (All Variants)</Text>
+                      <View className={cn('flex-row items-center rounded-xl px-4 border', cardClass)} style={{ height: 52 }}>
+                        <View style={{ width: 18, alignItems: 'center' }}>
+                          <Text className="text-gray-500 text-sm">₦</Text>
+                        </View>
+                        <TextInput
+                          placeholder="Enter price for all variants"
+                          placeholderTextColor="#9CA3AF"
+                          value={globalPrice}
+                          onChangeText={setGlobalPrice}
+                          keyboardType="decimal-pad"
+                          className={cn('flex-1 text-sm ml-3', textPrimaryClass)}
+                          selectionColor="#111111"
+                        />
+                      </View>
+                    </View>
+                  ) : (
+                    <Text className={cn('text-xs mt-2', textMutedClass)}>
+                      Individual variant prices will be entered inside each variant card below.
+                    </Text>
+                  )}
+                </View>
+              ) : null}
+
+              <View className={cn(hasVariants ? 'border-t pt-4' : '', 'mb-3')} style={hasVariants ? { borderTopColor: colors.border.light, borderTopWidth: 1 } : undefined}>
                 <View className="flex-row items-center justify-between">
                   <View className="flex-1 mr-3">
-                    <Text className={cn('font-bold text-base', textPrimaryClass)}>Mark as New Design</Text>
+                    <Text className={cn(sectionTitleClass, textPrimaryClass)}>Mark as New Design</Text>
                     <Text className="text-gray-500 text-xs">Track this for yearly reviews</Text>
                   </View>
                   <Switch
@@ -609,8 +817,8 @@ export default function NewProductScreen() {
                 </View>
                 {isNewDesign && (
                   <View className="mt-3">
-                    <Text className="text-gray-500 text-xs font-medium mb-1.5 uppercase tracking-wider">Design Year</Text>
-                    <View className="rounded-xl px-4 flex-row items-center" style={{ height: 52, backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.input.border }}>
+                    <Text className={cn(fieldLabelClass, 'mb-1.5')} style={{ color: colors.text.secondary }}>Design Year</Text>
+                    <View className="rounded-xl px-4 flex-row items-center" style={{ height: 52, backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
                       <TextInput
                         placeholder={new Date().getFullYear().toString()}
                         placeholderTextColor={colors.text.muted}
@@ -628,131 +836,189 @@ export default function NewProductScreen() {
             </View>
           </View>
 
-            <View className="mt-4">
-              <View className={cn('rounded-2xl p-4 border', cardClass)}>
-                <View className="flex-row items-center justify-between mb-3">
-                  <View className="flex-1">
-                    <Text className={cn('font-bold text-base', textPrimaryClass)}>Global Pricing</Text>
-                    <Text className="text-gray-500 text-xs">Set one price for all variants</Text>
-                  </View>
-                  <Switch
-                    value={useGlobalPrice}
-                    onValueChange={handleGlobalPriceToggle}
-                    trackColor={{ false: '#767577', true: '#111111' }}
-                    thumbColor="#FFFFFF"
-                  />
-                </View>
-                {useGlobalPrice && (
-                  <View>
-                    <Text className="text-gray-500 text-xs font-medium mb-1.5 uppercase tracking-wider">Sale Price (All Variants)</Text>
-                    <View className={cn('flex-row items-center rounded-xl px-4 border', cardClass)} style={{ height: 52, justifyContent: 'center' }}>
-                      <Text className="text-gray-500 text-sm mr-2">₦</Text>
-                      <TextInput
-                        placeholder="Enter price for all variants"
-                        placeholderTextColor="#9CA3AF"
-                        value={globalPrice}
-                        onChangeText={setGlobalPrice}
-                        keyboardType="decimal-pad"
-                        className={cn('flex-1 text-sm', textPrimaryClass)}
-                        selectionColor="#111111"
-                      />
+          {hasVariants ? (
+            <>
+              <View className="mt-4" style={{ position: 'relative', zIndex: 10 }}>
+                <View className={cn('rounded-2xl p-4 border mb-4', cardClass)} style={{ zIndex: 20 }}>
+                  <View className="flex-row items-center justify-between mb-3">
+                    <View className="flex-1 pr-3">
+                      <Text className={cn(sectionTitleClass, textPrimaryClass)}>Variants</Text>
                     </View>
-                  </View>
-                )}
-                {!useGlobalPrice && (
-                  <Text className="text-gray-500 text-xs italic">Set individual prices per variant below</Text>
-                )}
-              </View>
-            </View>
-
-            {/* Variants Section */}
-            <View className="mt-4">
-                <View className="flex-row items-center justify-between mb-3">
-                  <View>
-                    <Text className={cn('font-bold text-base', textPrimaryClass)}>Product Variants</Text>
-                    <Text className="text-gray-500 text-xs">
-                      {hasVariants ? 'Add variants with pricing' : 'Single product (no variants)'}
-                    </Text>
-                  </View>
-                  <View className="flex-row items-center">
-                    <Text className="text-gray-500 text-xs mr-2">Has variants</Text>
-                    <Switch
-                      value={hasVariants}
-                      onValueChange={handleToggleVariants}
-                      trackColor={{ false: '#D1D5DB', true: '#111111' }}
-                      thumbColor="#FFFFFF"
-                    />
-                  </View>
-                </View>
-                {hasVariants && (
-                  <View className="flex-row justify-end mb-3">
                     <Pressable
                       onPress={handleAddVariant}
-                      className="rounded-xl overflow-hidden active:opacity-80 bg-[#111111] px-3 py-2 flex-row items-center"
+                      disabled={activeVariables.length === 0}
+                      className="flex-row items-center px-3 rounded-full active:opacity-80"
+                      style={{
+                        opacity: activeVariables.length === 0 ? 0.4 : 1,
+                        backgroundColor: colors.bg.secondary,
+                        borderWidth: 1,
+                        borderColor: colors.border.light,
+                        height: 34,
+                      }}
                     >
-                      <Plus size={16} color="#FFFFFF" strokeWidth={2.5} />
-                      <Text className="text-white font-semibold text-xs ml-1">Add</Text>
+                      <Plus size={14} color={colors.text.primary} strokeWidth={2.2} />
+                      <Text
+                        style={{ color: colors.text.primary }}
+                        className="text-xs font-semibold ml-1.5"
+                      >
+                        Add Variation
+                      </Text>
                     </Pressable>
                   </View>
-                )}
+                  <Text className={cn('text-sm mb-4', textMutedClass)}>
+                    Choose active variation types first, then add each product variation below.
+                  </Text>
 
-                {/* Variant image error toast */}
+                  <View
+                    style={{
+                      flexDirection: useSideBySideVariantSelector ? 'row' : 'column',
+                      alignItems: useSideBySideVariantSelector ? 'flex-start' : 'stretch',
+                      gap: 12,
+                    }}
+                  >
+                    <View style={{ flex: useSideBySideVariantSelector ? 0.5 : undefined, width: useSideBySideVariantSelector ? '50%' : '100%', zIndex: 10 }}>
+                      <Text className={cn(fieldLabelClass, 'mb-1.5')} style={{ color: colors.text.secondary }}>Active Variations *</Text>
+                      <Pressable
+                        onPress={() => setShowActiveVariableSelector((prev) => !prev)}
+                        className="rounded-xl px-4 flex-row items-center justify-between active:opacity-80"
+                        style={{ height: 52, backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light }}
+                      >
+                        <Text
+                          style={{ color: activeVariables.length > 0 ? colors.text.primary : colors.text.muted }}
+                          className="text-sm font-medium flex-1 pr-3"
+                          numberOfLines={1}
+                        >
+                          {activeVariables.length > 0
+                            ? activeVariables.map((variable) => variable.name).join(', ')
+                            : 'Choose variation types'}
+                        </Text>
+                        <ChevronDown size={18} color={colors.text.muted} strokeWidth={2} />
+                      </Pressable>
+
+                      {showActiveVariableSelector && (
+                        <View
+                          className="rounded-xl mt-2 overflow-hidden absolute left-0 right-0 top-[74px]"
+                          style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light, maxHeight: 260, zIndex: 30 }}
+                        >
+                          <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                            {productVariables.map((variable) => {
+                              const isSelected = activeVariableIds.includes(variable.id);
+                              return (
+                                <Pressable
+                                  key={variable.id}
+                                  onPress={() => handleToggleActiveVariable(variable.id)}
+                                  className="px-4 py-3 flex-row items-center justify-between active:opacity-70"
+                                  style={{ borderBottomWidth: 1, borderBottomColor: colors.border.light }}
+                                >
+                                  <View className="flex-1 pr-3">
+                                    <Text style={{ color: colors.text.primary }} className="text-sm font-medium">
+                                      {variable.name}
+                                    </Text>
+                                    <Text style={{ color: colors.text.muted }} className="text-xs mt-0.5">
+                                      {variable.values.length} option{variable.values.length === 1 ? '' : 's'}
+                                    </Text>
+                                  </View>
+                                  {isSelected ? (
+                                    <View className="w-6 h-6 rounded-full items-center justify-center" style={{ backgroundColor: '#111111' }}>
+                                      <Check size={14} color="#FFFFFF" strokeWidth={2.5} />
+                                    </View>
+                                  ) : (
+                                    <View className="w-6 h-6 rounded-full" style={{ borderWidth: 1, borderColor: colors.border.light }} />
+                                  )}
+                                </Pressable>
+                              );
+                            })}
+                            {productVariables.length === 0 ? (
+                              <View className="px-4 py-3">
+                                <Text style={{ color: colors.text.muted }} className="text-sm">
+                                  No variation types yet.
+                                </Text>
+                              </View>
+                            ) : null}
+                            <Pressable
+                              onPress={() => setShowActiveVariableSelector(false)}
+                              className="px-4 py-3 items-center active:opacity-70"
+                              style={{ backgroundColor: colors.bg.secondary }}
+                            >
+                              <Text style={{ color: colors.text.primary }} className="text-sm font-medium">Done</Text>
+                            </Pressable>
+                          </ScrollView>
+                        </View>
+                      )}
+                    </View>
+
+                    <View style={{ flex: useSideBySideVariantSelector ? 0.5 : undefined, width: useSideBySideVariantSelector ? '50%' : '100%' }}>
+                      <Text className={cn(fieldLabelClass, 'mb-1.5')} style={{ color: colors.text.secondary }}>Selected</Text>
+                      <View
+                        className="rounded-xl px-3 py-3"
+                        style={{
+                          minHeight: 52,
+                          backgroundColor: colors.bg.card,
+                          borderWidth: 1,
+                          borderColor: colors.border.light,
+                          justifyContent: 'center',
+                        }}
+                      >
+                        {activeVariables.length > 0 ? (
+                          <View className="flex-row flex-wrap" style={{ gap: 8 }}>
+                            {activeVariables.map((variable) => (
+                              <View
+                                key={variable.id}
+                                className="px-3 py-1.5 rounded-xl"
+                                style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}
+                              >
+                                <Text className={cn('text-xs font-semibold', textPrimaryClass)}>{variable.name}</Text>
+                              </View>
+                            ))}
+                          </View>
+                        ) : (
+                          <Text className={cn('text-sm', textMutedClass)}>No variations selected yet.</Text>
+                        )}
+                      </View>
+                    </View>
+                  </View>
+                </View>
+
                 {variantImageError && (
                   <View className="mb-3 p-3 rounded-xl" style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)' }}>
                     <Text className="text-red-500 text-sm text-center">{variantImageError}</Text>
                   </View>
                 )}
 
-                {hasVariants && variants.length === 0 && (
-                  <Pressable
-                    onPress={handleAddVariant}
-                    className="active:opacity-70"
-                  >
-                    <View className={cn('rounded-2xl p-4 border items-center py-8', cardClass)}>
-                      <View className="w-14 h-14 rounded-2xl items-center justify-center mb-3 bg-gray-100">
-                        <Package size={28} color="#9CA3AF" strokeWidth={1.5} />
-                      </View>
-                      <Text className="text-gray-500 text-sm mb-1">No variants yet</Text>
-                      <Text className="text-gray-400 text-xs">Tap to add your first variant</Text>
-                    </View>
-                  </Pressable>
-                )}
-                {(hasVariants ? variants : variants.slice(0, 1)).map((variant, index) => (
+                {variants.map((variant, index) => (
                   <View
                     key={variant.id}
                     className="mb-3"
+                    style={{
+                      position: 'relative',
+                      zIndex: showVariantSelector?.variantIndex === index ? 50 : 1,
+                    }}
                   >
-                    <View className={cn('rounded-2xl p-4 border', cardClass)}>
+                    <View className={cn('rounded-2xl p-4 border', softSurfaceClass)}>
                       <View className="flex-row items-center justify-between mb-4">
-                        <View className="flex-row items-center">
-                          <View className="w-8 h-8 rounded-lg items-center justify-center mr-2 bg-gray-100">
-                            <Text className="text-gray-700 font-bold text-sm">{index + 1}</Text>
-                          </View>
+                        <View>
                           <Text className={cn('font-semibold', textPrimaryClass)}>
-                            {hasVariants ? `Variant ${index + 1}` : 'Single Product'}
+                            {`Variant ${index + 1}`}
+                          </Text>
+                          <Text className={cn('text-xs mt-1', textMutedClass)}>
+                            Set the image, values, stock, and price for this variation.
                           </Text>
                         </View>
-                        {hasVariants && (
-                          <Pressable
-                            onPress={() => handleRemoveVariant(index)}
-                            className="w-8 h-8 rounded-lg items-center justify-center active:opacity-50 bg-red-50"
-                          >
-                            <Trash2 size={16} color="#EF4444" strokeWidth={2} />
-                          </Pressable>
-                        )}
+                        <Pressable
+                          onPress={() => handleRemoveVariant(index)}
+                          className="w-8 h-8 rounded-full items-center justify-center active:opacity-50"
+                          style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+                        >
+                          <Trash2 size={16} color="#EF4444" strokeWidth={2} />
+                        </Pressable>
                       </View>
 
-                      {/* Variant Image - Required */}
                       <View className="mb-3">
-                        <Text style={{ color: '#666666' }} className="text-xs font-medium mb-2 uppercase tracking-wider">Variant Image *</Text>
+                        <Text className={cn(fieldLabelClass, 'mb-2')} style={{ color: colors.text.secondary }}>Variant Image *</Text>
                         {variant.imageUrl ? (
                           <View className="flex-row items-start">
                             <View className="rounded-xl overflow-hidden" style={{ borderWidth: 1, borderColor: colors.border.light }}>
-                              <Image
-                                source={{ uri: variant.imageUrl }}
-                                style={{ width: 64, height: 64 }}
-                                resizeMode="cover"
-                              />
+                              <Image source={{ uri: variant.imageUrl }} style={{ width: 64, height: 64 }} resizeMode="cover" />
                             </View>
                             <View className="ml-3 flex-1">
                               <Pressable
@@ -786,7 +1052,7 @@ export default function NewProductScreen() {
                               borderWidth: 1,
                               borderColor: '#EF4444',
                               borderStyle: 'dashed',
-                              opacity: variantImageLoading === variant.id ? 0.5 : 1
+                              opacity: variantImageLoading === variant.id ? 0.5 : 1,
                             }}
                           >
                             {variantImageLoading === variant.id ? (
@@ -797,256 +1063,247 @@ export default function NewProductScreen() {
                                   <ImageIcon size={20} color="#EF4444" strokeWidth={1.5} />
                                 </View>
                                 <Text style={{ color: '#EF4444' }} className="text-sm font-medium">Add Variant Image</Text>
-                                <Text style={{ color: colors.text.muted }} className="text-[10px] mt-0.5">Required for this variant</Text>
+                                <Text style={{ color: colors.text.muted }} className="text-[10px] mt-0.5">Optional</Text>
                               </>
                             )}
                           </Pressable>
                         )}
-                        {/* Error message for missing variant image */}
-                        {!variant.imageUrl && (
-                          <Text className="text-red-500 text-xs mt-1">Variant image is required</Text>
-                        )}
                       </View>
 
-                      {/* Variable Values - Searchable Dropdown */}
-                      {hasVariants && productVariables.map((variable) => {
+                      {activeVariables.map((variable) => {
                         const selectedValue = variant.variableValues[variable.name];
+                        const isSelectorOpen = showVariantSelector?.variantIndex === index && showVariantSelector?.variableId === variable.id;
+                        const filteredValues = variantSearchQuery.trim()
+                          ? variable.values.filter((value) => value.toLowerCase().includes(variantSearchQuery.toLowerCase()))
+                          : variable.values;
                         return (
-                          <View key={variable.id} className="mb-3" style={{ zIndex: 5 }}>
-                            <Text style={{ color: '#666666' }} className="text-xs font-medium mb-2 uppercase tracking-wider">{variable.name}</Text>
-                            {/* Dropdown Trigger */}
+                          <View
+                            key={variable.id}
+                            className="mb-3"
+                            style={{ zIndex: isSelectorOpen ? 20 : 5 }}
+                          >
+                            <Text className={cn(fieldLabelClass, 'mb-2')} style={{ color: colors.text.secondary }}>{variable.name}</Text>
                             <Pressable
                               onPress={() => {
                                 Keyboard.dismiss();
-                                setShowVariantSelector({ variantIndex: index, variableId: variable.id });
-                                setVariantSearchQuery('');
+                                if (isSelectorOpen) {
+                                  setShowVariantSelector(null);
+                                  setVariantSearchQuery('');
+                                } else {
+                                  setShowVariantSelector({ variantIndex: index, variableId: variable.id });
+                                  setVariantSearchQuery('');
+                                }
                               }}
                               className="rounded-xl px-4 flex-row items-center justify-between"
-                              style={{ height: 52, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: selectedValue ? '#111111' : '#444444' }}
+                              style={{ height: 52, backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light }}
                             >
                               <View className="flex-row items-center flex-1">
-                                {selectedValue && (
-                                  <Check size={16} color="#111111" strokeWidth={2.5} style={{ marginRight: 8 }} />
-                                )}
-                                <Text style={{ color: selectedValue ? '#111111' : '#999999' }} className="text-sm font-medium">
+                                {selectedValue ? <Check size={16} color={colors.text.primary} strokeWidth={2.5} style={{ marginRight: 8 }} /> : null}
+                                <Text style={{ color: selectedValue ? colors.text.primary : colors.text.muted }} className="text-sm font-medium">
                                   {selectedValue || `Select ${variable.name}`}
                                 </Text>
                               </View>
-                              <ChevronDown size={18} color="#999999" strokeWidth={2} />
+                              <ChevronDown size={18} color={colors.text.muted} strokeWidth={2} />
                             </Pressable>
+                            {isSelectorOpen ? (
+                              <View
+                                className="rounded-xl overflow-hidden absolute left-0 right-0 top-[74px]"
+                                style={{
+                                  backgroundColor: colors.bg.card,
+                                  borderWidth: 1,
+                                  borderColor: colors.border.light,
+                                  zIndex: 40,
+                                  maxHeight: 280,
+                                  shadowColor: '#000000',
+                                  shadowOpacity: 0.12,
+                                  shadowRadius: 12,
+                                  shadowOffset: { width: 0, height: 6 },
+                                  elevation: 10,
+                                }}
+                              >
+                                <View style={{ padding: 12, borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
+                                  <View
+                                    className="flex-row items-center rounded-xl px-4"
+                                    style={{ height: 48, backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light }}
+                                  >
+                                    <Search size={16} color={colors.text.muted} strokeWidth={2} />
+                                    <TextInput
+                                      placeholder={`Search ${variable.name}...`}
+                                      placeholderTextColor={colors.text.muted}
+                                      value={variantSearchQuery}
+                                      onChangeText={setVariantSearchQuery}
+                                      style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 14 }}
+                                      selectionColor={colors.text.primary}
+                                    />
+                                  </View>
+                                </View>
+
+                                <ScrollView
+                                  nestedScrollEnabled
+                                  style={{ maxHeight: 220 }}
+                                  showsVerticalScrollIndicator={false}
+                                  keyboardShouldPersistTaps="handled"
+                                >
+                                  {filteredValues.map((value) => {
+                                    const isSelected = selectedValue === value;
+                                    return (
+                                      <Pressable
+                                        key={value}
+                                        onPress={() => handleSelectVariantValue(index, variable.name, value)}
+                                        className="px-4 py-3 flex-row items-center justify-between active:opacity-70"
+                                        style={{ borderBottomWidth: 1, borderBottomColor: colors.border.light }}
+                                      >
+                                        <Text style={{ color: colors.text.primary }} className={cn('text-sm', isSelected && 'font-semibold')}>
+                                          {value}
+                                        </Text>
+                                        {isSelected ? (
+                                          <Check size={18} color={colors.text.primary} strokeWidth={2.5} />
+                                        ) : null}
+                                      </Pressable>
+                                    );
+                                  })}
+                                  {filteredValues.length === 0 ? (
+                                    <View className="px-4 py-6 items-center">
+                                      <Text className={cn('text-sm', textMutedClass)}>No values found</Text>
+                                    </View>
+                                  ) : null}
+                                  {variantSearchQuery.trim() && !variable.values.includes(variantSearchQuery.trim()) ? (
+                                    <Pressable
+                                      onPress={() => {
+                                        updateProductVariable(variable.id, {
+                                          values: [...variable.values, variantSearchQuery.trim()],
+                                        });
+                                        handleSelectVariantValue(index, variable.name, variantSearchQuery.trim());
+                                      }}
+                                      className="px-4 py-3 flex-row items-center active:opacity-70"
+                                      style={{ backgroundColor: colors.bg.secondary }}
+                                    >
+                                      <Plus size={16} color="#10B981" strokeWidth={2} />
+                                      <Text className="text-emerald-500 text-sm ml-2">Add "{variantSearchQuery.trim()}"</Text>
+                                    </Pressable>
+                                  ) : null}
+                                </ScrollView>
+                              </View>
+                            ) : null}
                           </View>
                         );
                       })}
 
-                      {/* Stock and Price Row */}
                       <View className="flex-row gap-3 mt-1">
-                        <View className={useGlobalPrice ? 'flex-1' : 'flex-[0.5]'}>
-                          <Text className="text-gray-500 text-xs font-medium mb-1.5 uppercase tracking-wider">Stock</Text>
-                          <View className={cn('flex-row items-center rounded-xl px-3 border', cardClass)} style={{ height: 52, justifyContent: 'center' }}>
-                            <Hash size={14} color="#9CA3AF" strokeWidth={2} />
-                            <TextInput
-                              placeholder="0"
-                              placeholderTextColor="#9CA3AF"
-                              value={variant.stock}
-                              onChangeText={(text) => handleUpdateVariant(index, { stock: text })}
-                              keyboardType="number-pad"
-                              className={cn('flex-1 text-sm ml-2', textPrimaryClass)}
-                              selectionColor="#111111"
-                            />
-                          </View>
+                        <View className={useGlobalPrice && !useGlobalStock ? 'flex-[0.5]' : 'flex-1'}>
+                          <Text className={cn(fieldLabelClass, 'mb-1.5')} style={{ color: colors.text.secondary }}>Stock</Text>
+                          {!useGlobalStock ? (
+                            <View className={cn('flex-row items-center rounded-xl px-4 border', softSurfaceClass)} style={{ height: 52 }}>
+                              <View style={{ width: 18, alignItems: 'center' }}>
+                                <Hash size={14} color="#9CA3AF" strokeWidth={2} />
+                              </View>
+                              <TextInput
+                                placeholder="0"
+                                placeholderTextColor="#9CA3AF"
+                                value={variant.stock}
+                                onChangeText={(text) => handleUpdateVariant(index, { stock: text })}
+                                keyboardType="number-pad"
+                                className={cn('flex-1 text-sm ml-3', textPrimaryClass)}
+                                selectionColor="#111111"
+                              />
+                            </View>
+                          ) : (
+                            <View className="rounded-xl px-4 py-3" style={{ backgroundColor: colors.bg.secondary }}>
+                              <Text className={cn('text-xs', textMutedClass)}>
+                                Stock uses global value{globalStock ? ` (${globalStock} units)` : ''}.
+                              </Text>
+                            </View>
+                          )}
                         </View>
-                        {!useGlobalPrice && (
-                          <View className="flex-[0.5]">
-                            <Text className="text-gray-500 text-xs font-medium mb-1.5 uppercase tracking-wider">Sale Price</Text>
-                            <View className={cn('flex-row items-center rounded-xl px-3 border', cardClass)} style={{ height: 52, justifyContent: 'center' }}>
-                              <Text className="text-gray-500 text-sm">₦</Text>
+                        {!useGlobalPrice ? (
+                          <View className={useGlobalStock ? 'flex-1' : 'flex-[0.5]'}>
+                            <Text className={cn(fieldLabelClass, 'mb-1.5')} style={{ color: colors.text.secondary }}>Sale Price</Text>
+                            <View className={cn('flex-row items-center rounded-xl px-4 border', softSurfaceClass)} style={{ height: 52 }}>
+                              <View style={{ width: 18, alignItems: 'center' }}>
+                                <Text className="text-gray-500 text-sm">₦</Text>
+                              </View>
                               <TextInput
                                 placeholder="0"
                                 placeholderTextColor="#9CA3AF"
                                 value={variant.sellingPrice}
                                 onChangeText={(text) => handleUpdateVariant(index, { sellingPrice: text })}
                                 keyboardType="decimal-pad"
-                                className={cn('flex-1 text-sm ml-1', textPrimaryClass)}
+                                className={cn('flex-1 text-sm ml-3', textPrimaryClass)}
                                 selectionColor="#111111"
                               />
                             </View>
                           </View>
+                        ) : (
+                          <View className={useGlobalStock ? 'flex-1' : 'flex-[0.5]'}>
+                            <Text className={cn(fieldLabelClass, 'mb-1.5')} style={{ color: colors.text.secondary }}>Sale Price</Text>
+                            <View className="rounded-xl px-4 py-3" style={{ backgroundColor: colors.bg.secondary }}>
+                              <Text className={cn('text-xs', textMutedClass)}>
+                                Price uses global value{globalPrice ? ` (${formatCurrency(parseFloat(globalPrice) || 0)})` : ''}.
+                              </Text>
+                            </View>
+                          </View>
                         )}
                       </View>
-                      {useGlobalPrice && globalPrice && (
-                        <View className="mt-2 p-2 rounded-lg bg-gray-50">
-                          <Text className="text-gray-500 text-xs">
-                            Price: <Text className={cn('font-bold', textPrimaryClass)}>{formatCurrency(parseFloat(globalPrice) || 0)}</Text> (from Global Pricing)
-                          </Text>
-                        </View>
-                      )}
                     </View>
                   </View>
                 ))}
               </View>
 
-            {/* Summary */}
-            {variants.length > 0 && (
               <View className="mb-8 mt-2">
-                <View className={cn('rounded-2xl p-4 border', cardClass)}>
-                  <Text className="text-gray-500 text-xs font-medium mb-3 uppercase tracking-wider">Summary</Text>
+                <View className={cn('rounded-2xl p-4 border', cardClass)} style={{ position: 'relative', zIndex: 0 }}>
+                  <Text className={cn(sectionTitleClass, textPrimaryClass, 'mb-3')}>Summary</Text>
                   <View className="flex-row items-center justify-between mb-2">
                     <Text className="text-gray-600 text-sm">Total Variants</Text>
                     <Text className={cn('font-semibold', textPrimaryClass)}>{variants.length}</Text>
                   </View>
                   <View className="flex-row items-center justify-between mb-2">
+                    <Text className="text-gray-600 text-sm">Active Variation Types</Text>
+                    <Text className={cn('font-semibold', textPrimaryClass)}>{activeVariables.length}</Text>
+                  </View>
+                  <View className="flex-row items-center justify-between mb-2">
                     <Text className="text-gray-600 text-sm">Total Starting Stock</Text>
                     <Text className={cn('font-semibold', textPrimaryClass)}>
-                      {variants.reduce((sum, v) => sum + (parseInt(v.stock, 10) || 0), 0)} units
+                      {useGlobalStock
+                        ? `${(parseInt(globalStock, 10) || 0) * variants.length} units`
+                        : `${variants.reduce((sum, v) => sum + (parseInt(v.stock, 10) || 0), 0)} units`
+                      }
                     </Text>
                   </View>
                   <View className="flex-row items-center justify-between">
                     <Text className="text-gray-600 text-sm">Estimated Value</Text>
                     <Text className={cn('font-bold', textPrimaryClass)}>
                       {formatCurrency(variants.reduce((sum, v) => {
-                        const stock = parseInt(v.stock, 10) || 0;
-                        const price = parseFloat(v.sellingPrice) || 0;
+                        const stock = useGlobalStock ? (parseInt(globalStock, 10) || 0) : (parseInt(v.stock, 10) || 0);
+                        const price = useGlobalPrice ? (parseFloat(globalPrice) || 0) : (parseFloat(v.sellingPrice) || 0);
                         return sum + (stock * price);
                       }, 0))}
                     </Text>
                   </View>
                 </View>
               </View>
-            )}
-
-            {/* Extra space for sticky bottom CTA */}
-            <View className="h-32" />
-        </KeyboardAwareScrollView>
-
-        {/* Variant Value Selection Modal - Centered */}
-        <Modal
-          visible={showVariantSelector !== null}
-          animationType="fade"
-          transparent
-          onRequestClose={() => {
-            setShowVariantSelector(null);
-            setVariantSearchQuery('');
-          }}
-        >
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            className="flex-1"
-          >
-            <View
-              className="flex-1 items-center justify-center"
-              style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
-            >
-              <Pressable
-                className="absolute inset-0"
-                onPress={() => {
-                  setShowVariantSelector(null);
-                  setVariantSearchQuery('');
-                }}
-              />
-              <View
-                className="w-[90%] rounded-2xl overflow-hidden"
-                style={{ backgroundColor: '#FFFFFF', maxWidth: 400, maxHeight: '70%' }}
-              >
-                {(() => {
-                  if (!showVariantSelector) return null;
-                  const variable = productVariables.find(v => v.id === showVariantSelector.variableId);
-                  if (!variable) return null;
-
-                  const filteredValues = variantSearchQuery.trim()
-                    ? variable.values.filter(v => v.toLowerCase().includes(variantSearchQuery.toLowerCase()))
-                    : variable.values;
-
-                  return (
-                    <>
-                      {/* Header */}
-                      <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#E5E5E5' }}>
-                        <View className="flex-row items-center justify-between mb-3">
-                          <Text style={{ color: '#111111' }} className="text-lg font-bold">Select {variable.name}</Text>
-                          <Pressable
-                            onPress={() => {
-                              setShowVariantSelector(null);
-                              setVariantSearchQuery('');
-                            }}
-                            className="w-8 h-8 rounded-full items-center justify-center"
-                            style={{ backgroundColor: '#F9F9F9' }}
-                          >
-                            <X size={18} color="#666666" strokeWidth={2} />
-                          </Pressable>
-                        </View>
-                        {/* Search */}
-                        <View
-                          className="flex-row items-center rounded-xl px-4"
-                          style={{ height: 52, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#444444' }}
-                        >
-                          <Search size={18} color="#999999" strokeWidth={2} />
-                          <TextInput
-                            placeholder={`Search ${variable.name}...`}
-                            placeholderTextColor="#999999"
-                            value={variantSearchQuery}
-                            onChangeText={setVariantSearchQuery}
-                            style={{ flex: 1, marginLeft: 8, color: '#111111', fontSize: 14 }}
-                            selectionColor="#111111"
-                          />
-                        </View>
-                      </View>
-
-                      {/* Options List */}
-                      <ScrollView
-                        style={{ maxHeight: 300 }}
-                        showsVerticalScrollIndicator={false}
-                        keyboardShouldPersistTaps="handled"
-                        bounces={true}
-                      >
-                        {filteredValues.map((value) => {
-                          const isSelected = variants[showVariantSelector.variantIndex]?.variableValues[variable.name] === value;
-                          return (
-                            <Pressable
-                              key={value}
-                              onPress={() => handleSelectVariantValue(showVariantSelector.variantIndex, variable.name, value)}
-                              className="px-5 py-4 flex-row items-center justify-between active:opacity-70"
-                              style={{ borderBottomWidth: 1, borderBottomColor: '#E5E5E5' }}
-                            >
-                              <Text style={{ color: '#111111' }} className={cn('text-base', isSelected && 'font-semibold')}>
-                                {value}
-                              </Text>
-                              {isSelected && (
-                                <Check size={20} color="#111111" strokeWidth={2.5} />
-                              )}
-                            </Pressable>
-                          );
-                        })}
-                        {filteredValues.length === 0 && (
-                          <View className="px-5 py-8 items-center">
-                            <Text style={{ color: '#999999' }} className="text-sm">No values found</Text>
-                          </View>
-                        )}
-                        {/* Add New Value Option */}
-                        {variantSearchQuery.trim() && !variable.values.includes(variantSearchQuery.trim()) && (
-                          <Pressable
-                            onPress={() => {
-                              // Add the new value to the variable
-                              updateProductVariable(variable.id, {
-                                values: [...variable.values, variantSearchQuery.trim()],
-                              });
-                              // Select it
-                              handleSelectVariantValue(showVariantSelector.variantIndex, variable.name, variantSearchQuery.trim());
-                            }}
-                            className="px-5 py-4 flex-row items-center active:opacity-70"
-                            style={{ backgroundColor: '#F9F9F9' }}
-                          >
-                            <Plus size={18} color="#10B981" strokeWidth={2} />
-                            <Text style={{ color: '#10B981' }} className="text-base ml-2">Add "{variantSearchQuery.trim()}"</Text>
-                          </Pressable>
-                        )}
-                        <View className="h-4" />
-                      </ScrollView>
-                    </>
-                  );
-                })()}
+            </>
+          ) : (
+            <View className="mb-8 mt-4">
+              <View className={cn('rounded-2xl p-4 border', cardClass)}>
+                <Text className={cn(sectionTitleClass, textPrimaryClass, 'mb-3')}>Quick Summary</Text>
+                <View className="flex-row items-center justify-between mb-2">
+                  <Text className="text-gray-600 text-sm">Starting Stock</Text>
+                  <Text className={cn('font-semibold', textPrimaryClass)}>
+                    {parseInt(primaryVariant?.stock || '0', 10) || 0} units
+                  </Text>
+                </View>
+                <View className="flex-row items-center justify-between">
+                  <Text className="text-gray-600 text-sm">Price</Text>
+                  <Text className={cn('font-bold', textPrimaryClass)}>
+                    {formatCurrency(parseFloat(primaryVariant?.sellingPrice || '0') || 0)}
+                  </Text>
+                </View>
               </View>
             </View>
-          </KeyboardAvoidingView>
-        </Modal>
+          )}
+
+          <View className="h-32" />
+        </KeyboardAwareScrollView>
 
         {/* Image Picker Modal */}
         <Modal
@@ -1100,14 +1357,16 @@ export default function NewProductScreen() {
 
       {/* Sticky Bottom CTA */}
       <StickyButtonContainer bottomInset={insets.bottom}>
-        <Button
-          onPress={handleSubmit}
-          disabled={!isValid}
-          loading={isSubmitting}
-          loadingText="Creating..."
-        >
-          Create Product
-        </Button>
+        <View style={{ width: '100%', maxWidth: 1120, alignSelf: 'center' }}>
+          <Button
+            onPress={handleSubmit}
+            disabled={!isValid}
+            loading={isSubmitting}
+            loadingText="Creating..."
+          >
+            {hasVariants ? 'Create Product' : 'Create Single Product'}
+          </Button>
+        </View>
       </StickyButtonContainer>
 
       {/* Success Toast */}

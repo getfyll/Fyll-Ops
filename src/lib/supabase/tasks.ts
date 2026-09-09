@@ -1,18 +1,25 @@
-import { addDays, addMonths, addWeeks, addYears } from 'date-fns';
+import { addDays, addMonths, addWeeks, addYears, startOfToday } from 'date-fns';
 import { supabase } from '@/lib/supabase';
 
 export type TaskStatus = 'todo' | 'in_progress' | 'done';
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
-export type TaskRecurrenceFrequency = 'daily' | 'weekly' | 'bi_weekly' | 'monthly' | 'quarterly' | 'yearly';
+export type TaskRecurrenceFrequency = 'daily' | 'weekday' | 'weekend' | 'weekly' | 'bi_weekly' | 'monthly' | 'quarterly' | 'yearly';
+export type TaskItemType = 'task' | 'event';
 
 export interface Task {
   id: string;
   business_id: string;
+  item_type?: TaskItemType | null;
   title: string;
   description: string;
   status: TaskStatus;
   priority: TaskPriority;
   due_date?: string | null;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  event_timezone?: string | null;
+  location?: string | null;
+  meeting_link?: string | null;
   created_by: string;
   completed_at?: string | null;
   completed_by?: string | null;
@@ -29,20 +36,33 @@ export interface Task {
 
 export interface CreateTaskInput {
   businessId: string;
+  itemType?: TaskItemType;
   title: string;
   description?: string;
   priority: TaskPriority;
   dueDate?: string | null;
+  startsAt?: string | null;
+  endsAt?: string | null;
+  eventTimezone?: string | null;
+  location?: string | null;
+  meetingLink?: string | null;
   assigneeUserIds: string[];
   recurrenceFrequency?: TaskRecurrenceFrequency | null;
   recurrenceInterval?: number;
+  createdBy?: string | null;
 }
 
 export interface UpdateTaskInput {
+  itemType?: TaskItemType;
   title?: string;
   description?: string;
   priority?: TaskPriority;
   dueDate?: string | null;
+  startsAt?: string | null;
+  endsAt?: string | null;
+  eventTimezone?: string | null;
+  location?: string | null;
+  meetingLink?: string | null;
   status?: TaskStatus;
   recurrenceFrequency?: TaskRecurrenceFrequency | null;
   recurrenceInterval?: number;
@@ -52,6 +72,10 @@ export interface UpdateTaskInput {
 type TaskRow = Omit<Task, 'assignee_user_ids'>;
 
 const MAX_RECURRENCE_INTERVAL = 12;
+const normalizeTaskItemType = (value?: TaskItemType | string | null): TaskItemType => {
+  const normalized = String(value ?? 'task').trim().toLowerCase();
+  return normalized === 'event' ? 'event' : 'task';
+};
 
 const normalizeRecurrenceInterval = (value?: number | null) => {
   const parsed = Number.isFinite(value) ? Number(value) : 1;
@@ -75,6 +99,8 @@ const normalizeRecurrenceFrequency = (
   if (normalized === 'biweekly') return 'bi_weekly';
   if (normalized === 'quarterly' || normalized === 'quarter') return 'quarterly';
   if (normalized === 'daily') return 'daily';
+  if (normalized === 'weekday') return 'weekday';
+  if (normalized === 'weekend') return 'weekend';
   if (normalized === 'weekly') return 'weekly';
   if (normalized === 'bi_weekly') return 'bi_weekly';
   if (normalized === 'monthly') return 'monthly';
@@ -87,6 +113,45 @@ const hasExplicitRecurrenceValue = (value?: TaskRecurrenceFrequency | string | n
   if (value === null || value === undefined) return false;
   const normalized = String(value).trim().toLowerCase();
   return Boolean(normalized) && normalized !== 'none' && normalized !== 'no' && normalized !== 'null';
+};
+
+const resolveNextRecurringDueDate = (task: Task): Date | null => {
+  if (!task.recurrence_frequency) return null;
+  const normalized = normalizeRecurrenceFrequency(task.recurrence_frequency);
+  if (!normalized) return null;
+  const interval = normalizeRecurrenceInterval(task.recurrence_interval);
+  const today = startOfToday();
+  let next = task.due_date ? new Date(task.due_date) : new Date();
+  let guard = 0;
+  const advanceWeekday = (base: Date) => {
+    let candidate = addDays(base, 1);
+    while ([0, 6].includes(candidate.getDay())) {
+      candidate = addDays(candidate, 1);
+    }
+    return candidate;
+  };
+  const advanceWeekend = (base: Date) => {
+    let candidate = addDays(base, 1);
+    while (![0, 6].includes(candidate.getDay())) {
+      candidate = addDays(candidate, 1);
+    }
+    return candidate;
+  };
+  const advanceOnce = (base: Date) => {
+    if (normalized === 'daily') return addDays(base, interval);
+    if (normalized === 'weekday') return advanceWeekday(base);
+    if (normalized === 'weekend') return advanceWeekend(base);
+    if (normalized === 'weekly') return addWeeks(base, interval);
+    if (normalized === 'bi_weekly') return addDays(base, 14 * interval);
+    if (normalized === 'quarterly') return addMonths(base, 3 * interval);
+    if (normalized === 'yearly') return addYears(base, interval);
+    return addMonths(base, interval);
+  };
+  do {
+    next = advanceOnce(next);
+    guard += 1;
+  } while (next <= today && guard < 400);
+  return next;
 };
 
 const isRecurrenceConstraintError = (error: { code?: string | null; message?: string | null; details?: string | null; hint?: string | null } | null | undefined) => {
@@ -107,6 +172,17 @@ const tasksSetupError = () => new Error(
   'Tasks backend is not set up yet. Run supabase/tasks_mvp.sql in Supabase SQL Editor, then refresh.'
 );
 
+const taskEventTimezoneSetupError = () => new Error(
+  'Event timezone support is not set up yet. Run supabase/tasks_event_timezone_mvp.sql in Supabase SQL Editor, then refresh.'
+);
+
+const isMissingTaskEventTimezoneColumnError = (
+  error: { message?: string | null; details?: string | null; hint?: string | null } | null | undefined,
+) => {
+  const message = `${error?.message ?? ''} ${error?.details ?? ''} ${error?.hint ?? ''}`.toLowerCase();
+  return message.includes('event_timezone') && message.includes('column');
+};
+
 const normalizeAssigneeIds = (assigneeUserIds: string[]) => Array.from(
   new Set(
     assigneeUserIds
@@ -114,6 +190,15 @@ const normalizeAssigneeIds = (assigneeUserIds: string[]) => Array.from(
       .filter(Boolean)
   )
 );
+
+const shiftDatePortionOfIso = (value: string | null | undefined, nextDate: Date) => {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  const shifted = new Date(nextDate);
+  shifted.setHours(parsed.getHours(), parsed.getMinutes(), parsed.getSeconds(), parsed.getMilliseconds());
+  return shifted.toISOString();
+};
 
 const listTaskAssigneeIds = async (businessId: string, taskIds: string[]) => {
   if (taskIds.length === 0) return new Map<string, string[]>();
@@ -179,13 +264,20 @@ const getTask = async (businessId: string, taskId: string): Promise<Task | null>
 const createTask = async (input: CreateTaskInput): Promise<Task> => {
   const {
     businessId,
+    itemType = 'task',
     title,
     description = '',
     priority,
     dueDate = null,
+    startsAt = null,
+    endsAt = null,
+    eventTimezone = null,
+    location = null,
+    meetingLink = null,
     assigneeUserIds,
     recurrenceFrequency = null,
     recurrenceInterval = 1,
+    createdBy = null,
   } = input;
 
   const normalizedBusinessId = String(businessId ?? '').trim();
@@ -195,24 +287,32 @@ const createTask = async (input: CreateTaskInput): Promise<Task> => {
 
   const normalizedRecurrenceFrequency = normalizeRecurrenceFrequency(recurrenceFrequency);
   if (hasExplicitRecurrenceValue(recurrenceFrequency) && !normalizedRecurrenceFrequency) {
-    throw new Error('Invalid recurrence option. Use Daily, Weekly, Bi-weekly, Monthly, Quarterly, or Yearly.');
+    throw new Error('Invalid recurrence option. Use Daily, Weekdays, Weekends, Weekly, Bi-weekly, Monthly, Quarterly, or Yearly.');
   }
+  const normalizedItemType = normalizeTaskItemType(itemType);
   const normalizedRecurrenceInterval = normalizeRecurrenceInterval(recurrenceInterval);
   const normalizedAssigneeIds = normalizeAssigneeIds(assigneeUserIds);
   const { data: authData, error: authError } = await supabase.auth.getUser();
   if (authError) throw authError;
   const currentUserId = authData.user?.id;
-  if (!currentUserId) throw new Error('No authenticated user.');
+  const resolvedCreatorId = createdBy || currentUserId;
+  if (!resolvedCreatorId) throw new Error('No authenticated user.');
 
   const { data, error } = await supabase
     .from('tasks')
     .insert({
       business_id: normalizedBusinessId,
+      item_type: normalizedItemType,
       title: title.trim(),
       description: description.trim(),
       priority,
       due_date: dueDate,
-      created_by: currentUserId,
+      starts_at: startsAt,
+      ends_at: endsAt,
+      event_timezone: eventTimezone?.trim() || null,
+      location: location?.trim() || null,
+      meeting_link: meetingLink?.trim() || null,
+      created_by: resolvedCreatorId,
       recurrence_frequency: normalizedRecurrenceFrequency,
       recurrence_interval: normalizedRecurrenceInterval,
     })
@@ -221,6 +321,7 @@ const createTask = async (input: CreateTaskInput): Promise<Task> => {
 
   if (error) {
     if (isMissingTasksTableError(error)) throw tasksSetupError();
+    if (isMissingTaskEventTimezoneColumnError(error)) throw taskEventTimezoneSetupError();
     if (isRecurrenceConstraintError(error)) {
       throw new Error('Recurring tasks are blocked by an outdated database constraint. Re-run supabase/tasks_mvp.sql and try again.');
     }
@@ -257,13 +358,19 @@ const updateTask = async (businessId: string, taskId: string, input: UpdateTaskI
   const updates: Record<string, unknown> = {};
   if (input.title !== undefined) updates.title = input.title.trim();
   if (input.description !== undefined) updates.description = input.description.trim();
+  if (input.itemType !== undefined) updates.item_type = normalizeTaskItemType(input.itemType);
   if (input.priority !== undefined) updates.priority = input.priority;
   if (input.dueDate !== undefined) updates.due_date = input.dueDate;
+  if (input.startsAt !== undefined) updates.starts_at = input.startsAt;
+  if (input.endsAt !== undefined) updates.ends_at = input.endsAt;
+  if (input.eventTimezone !== undefined) updates.event_timezone = input.eventTimezone?.trim() || null;
+  if (input.location !== undefined) updates.location = input.location?.trim() || null;
+  if (input.meetingLink !== undefined) updates.meeting_link = input.meetingLink?.trim() || null;
   if (input.status !== undefined) updates.status = input.status;
   if (input.recurrenceFrequency !== undefined) {
     const normalizedRecurrenceFrequency = normalizeRecurrenceFrequency(input.recurrenceFrequency);
     if (hasExplicitRecurrenceValue(input.recurrenceFrequency) && !normalizedRecurrenceFrequency) {
-      throw new Error('Invalid recurrence option. Use Daily, Weekly, Bi-weekly, Monthly, Quarterly, or Yearly.');
+      throw new Error('Invalid recurrence option. Use Daily, Weekdays, Weekends, Weekly, Bi-weekly, Monthly, Quarterly, or Yearly.');
     }
     updates.recurrence_frequency = normalizedRecurrenceFrequency;
     if (!normalizedRecurrenceFrequency) {
@@ -283,7 +390,10 @@ const updateTask = async (businessId: string, taskId: string, input: UpdateTaskI
       .eq('business_id', normalizedBusinessId)
       .eq('id', taskId);
 
-    if (error) throw error;
+    if (error) {
+      if (isMissingTaskEventTimezoneColumnError(error)) throw taskEventTimezoneSetupError();
+      throw error;
+    }
   }
 
   if (input.assigneeUserIds !== undefined) {
@@ -325,13 +435,17 @@ export interface CompleteTaskResult {
 }
 
 const completeTask = async (businessId: string, task: Task): Promise<CompleteTaskResult> => {
-  const { error } = await supabase.rpc('complete_task_and_spawn_next', {
-    p_task_id: task.id,
-  });
+  if (task.item_type !== 'event') {
+    const { error } = await supabase.rpc('complete_task_and_spawn_next', {
+      p_task_id: task.id,
+    });
 
-  if (!error) return {};
+    if (!error) return {};
+    if (!error.message?.toLowerCase().includes('function')) {
+      throw error;
+    }
+  }
 
-  if (error.message?.toLowerCase().includes('function')) {
     const updates: Record<string, unknown> = {
       status: 'done',
       completed_at: new Date().toISOString(),
@@ -345,29 +459,26 @@ const completeTask = async (businessId: string, task: Task): Promise<CompleteTas
 
     if (!task.recurrence_frequency || task.recurrence_generated_at) return {};
 
-    const currentDueDate = task.due_date ? new Date(task.due_date) : new Date();
-    const normalizedFrequency = String(task.recurrence_frequency ?? '')
-      .toLowerCase()
-      .replace('-', '_') as TaskRecurrenceFrequency;
-    const nextDueDateObj = (() => {
-      if (normalizedFrequency === 'daily') return addDays(currentDueDate, task.recurrence_interval);
-      if (normalizedFrequency === 'weekly') return addWeeks(currentDueDate, task.recurrence_interval);
-      if (normalizedFrequency === 'bi_weekly') return addDays(currentDueDate, 14 * task.recurrence_interval);
-      if (normalizedFrequency === 'quarterly') return addMonths(currentDueDate, 3 * task.recurrence_interval);
-      if (normalizedFrequency === 'yearly') return addYears(currentDueDate, task.recurrence_interval);
-      return addMonths(currentDueDate, task.recurrence_interval);
-    })();
+    const nextDueDateObj = resolveNextRecurringDueDate(task);
+    if (!nextDueDateObj) return {};
     const nextDueDate = nextDueDateObj.toISOString().slice(0, 10);
 
     const nextTask = await createTask({
       businessId,
+      itemType: task.item_type === 'event' ? 'event' : 'task',
       title: task.title,
       description: task.description,
       priority: task.priority,
       dueDate: nextDueDate,
+      startsAt: shiftDatePortionOfIso(task.starts_at, nextDueDateObj),
+      endsAt: shiftDatePortionOfIso(task.ends_at, nextDueDateObj),
+      eventTimezone: task.event_timezone ?? null,
+      location: task.location ?? null,
+      meetingLink: task.meeting_link ?? null,
       assigneeUserIds: task.assignee_user_ids,
       recurrenceFrequency: task.recurrence_frequency,
       recurrenceInterval: task.recurrence_interval,
+      createdBy: task.created_by,
     });
 
     await supabase
@@ -383,9 +494,6 @@ const completeTask = async (businessId: string, task: Task): Promise<CompleteTas
       nextTaskId: nextTask?.id,
       nextAssigneeUserIds: task.assignee_user_ids ?? [],
     };
-  }
-
-  throw error;
 };
 
 const reopenTask = async (businessId: string, taskId: string): Promise<void> => {

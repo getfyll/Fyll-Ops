@@ -1,9 +1,9 @@
-import React, { useState, useMemo } from 'react';
-import { View, Text, ScrollView, Pressable, TextInput, Alert, Modal, Switch, KeyboardAvoidingView, Platform, Image, Linking } from 'react-native';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { View, Text, ScrollView, Pressable, TextInput, Alert, Modal, Switch, KeyboardAvoidingView, Platform, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Package, Plus, Minus, Trash2, Edit2, X, ChevronDown, Search, Printer, PackagePlus, Clock, Camera, ImageIcon, Save, DollarSign, TrendingUp } from 'lucide-react-native';
-import useFyllStore, { ProductVariant, formatCurrency } from '@/lib/state/fyll-store';
+import { ArrowLeft, Package, Plus, Minus, Trash2, Edit2, X, ChevronDown, Search, Printer, PackagePlus, Clock, Camera, ImageIcon, Save, DollarSign, TrendingUp, MoreVertical, ClipboardCheck } from 'lucide-react-native';
+import useFyllStore, { type Procurement, ProductVariant, formatCurrency } from '@/lib/state/fyll-store';
 import { useResolvedThemeMode, useThemeColors } from '@/lib/theme';
 import { cn } from '@/lib/cn';
 import * as Haptics from 'expo-haptics';
@@ -11,6 +11,23 @@ import { useImagePicker } from '@/hooks/useImagePicker';
 import { Button } from '@/components/Button';
 import useAuthStore from '@/lib/state/auth-store';
 import { useBreakpoint } from '@/lib/useBreakpoint';
+import { ResolvedAttachmentImage } from '@/components/ResolvedAttachmentImage';
+import { openAttachmentPath } from '@/lib/storage-attachments';
+import { prepareProductMediaForPersistence, uploadProductMediaIfNeeded } from '@/lib/product-media';
+
+const buildProcurementVariantImageMap = (procurements: Procurement[]) => {
+  const imageByProductVariant = new Map<string, string>();
+  procurements.forEach((procurement) => {
+    procurement.items.forEach((item) => {
+      const productId = item.inventoryProductId || item.productId;
+      const variantId = item.variantId;
+      const imageUrl = item.imageUrl?.trim();
+      if (!productId || !variantId || !imageUrl || variantId.startsWith('charge-')) return;
+      imageByProductVariant.set(`${productId}:${variantId}`, imageUrl);
+    });
+  });
+  return imageByProductVariant;
+};
 
 export default function ProductDetailScreen() {
   const router = useRouter();
@@ -18,30 +35,53 @@ export default function ProductDetailScreen() {
   const themeColors = useThemeColors();
   const isDark = useResolvedThemeMode() === 'dark';
   const colors = themeColors;
+  const modalFieldBorder = isDark ? '#343434' : '#E5E7EB';
+  const modalFieldBg = isDark ? '#181818' : '#FAFAFA';
+  const modalDropdownBg = isDark ? '#1C1C1C' : '#FFFFFF';
+  const modalSectionTitleClass = 'font-semibold text-[15px]';
+  const modalFieldLabelClass = 'text-xs font-semibold uppercase tracking-wider';
   const { isDesktop, width } = useBreakpoint();
   const isWebDesktop = Platform.OS === 'web' && isDesktop;
+  const useFullscreenEditModal = Platform.OS !== 'web' || width < 768;
   const isNarrowWeb = Platform.OS === 'web' && width < 1280;
   const isCompactWeb = Platform.OS === 'web' && width < 1100;
   const webMaxWidth = 1456;
   const rightColumnWidth = isWebDesktop ? (isNarrowWeb ? Math.max(320, Math.round(width * 0.3)) : 420) : undefined;
+  const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
   const products = useFyllStore((s) => s.products);
+  const procurements = useFyllStore((s) => s.procurements);
   const productVariables = useFyllStore((s) => s.productVariables);
   const globalCategories = useFyllStore((s) => s.categories);
   const addCategory = useFyllStore((s) => s.addCategory);
   const updateProduct = useFyllStore((s) => s.updateProduct);
   const deleteProduct = useFyllStore((s) => s.deleteProduct);
-  const updateVariantStock = useFyllStore((s) => s.updateVariantStock);
-  const addProductVariant = useFyllStore((s) => s.addProductVariant);
-  const updateProductVariant = useFyllStore((s) => s.updateProductVariant);
-  const deleteProductVariant = useFyllStore((s) => s.deleteProductVariant);
   const userRole = useFyllStore((s) => s.userRole);
   const restockLogs = useFyllStore((s) => s.restockLogs);
+  const auditLogs = useFyllStore((s) => s.auditLogs);
   const orders = useFyllStore((s) => s.orders);
   const businessId = useAuthStore((s) => s.businessId);
+  const currentUserRole = useAuthStore((s) => s.currentUser?.role ?? null);
 
   const product = useMemo(() => products.find((p) => p.id === id), [products, id]);
   const isOwner = userRole === 'owner';
+  const canManageStatus = userRole === 'owner' || currentUserRole === 'admin' || currentUserRole === 'manager';
+  const canManageVariants = userRole === 'owner' || currentUserRole === 'admin' || currentUserRole === 'manager';
+
+  useEffect(() => {
+    if (!product || !procurements.length) return;
+    const imageByProductVariant = buildProcurementVariantImageMap(procurements);
+    let changed = false;
+    const nextVariants = product.variants.map((variant) => {
+      if (variant.imageUrl) return variant;
+      const imageUrl = imageByProductVariant.get(`${product.id}:${variant.id}`);
+      if (!imageUrl) return variant;
+      changed = true;
+      return { ...variant, imageUrl };
+    });
+    if (!changed) return;
+    void updateProduct(product.id, { variants: nextVariants }, businessId);
+  }, [businessId, procurements, product, updateProduct]);
 
   // Get recent restock logs for this product (last 3)
   const recentRestocks = useMemo(() => {
@@ -62,8 +102,53 @@ export default function ProductDetailScreen() {
   const [editImageUrl, setEditImageUrl] = useState<string | undefined>(product?.imageUrl);
   const [showImagePicker, setShowImagePicker] = useState(false);
   const [isSavingProduct, setIsSavingProduct] = useState(false);
+  const [isStatusSaving, setIsStatusSaving] = useState(false);
+  const [isDeletingProduct, setIsDeletingProduct] = useState(false);
+  const [pendingDeleteProduct, setPendingDeleteProduct] = useState(false);
   const [saveNotice, setSaveNotice] = useState('');
+  const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [webCategoryQuery, setWebCategoryQuery] = useState('');
+  const [showMobileHeaderMenu, setShowMobileHeaderMenu] = useState(false);
+  const [isGalleryOpen, setIsGalleryOpen] = useState(false);
+  const [galleryIndex, setGalleryIndex] = useState(0);
+  const galleryScrollRef = useRef<ScrollView>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const galleryImages = useMemo(() => {
+    if (!product) return [];
+    const urls = [
+      product.imageUrl,
+      ...product.variants.map((variant) => variant.imageUrl),
+    ].filter((value): value is string => Boolean(value));
+    return Array.from(new Set(urls));
+  }, [product]);
+
+  const primaryDisplayImage = useMemo(() => {
+    if (!product) return undefined;
+    return product.imageUrl ?? product.variants.find((variant) => variant.imageUrl?.trim())?.imageUrl;
+  }, [product]);
+
+  const handleOpenGallery = (targetUrl?: string) => {
+    if (!galleryImages.length) return;
+    const nextIndex = targetUrl ? Math.max(0, galleryImages.indexOf(targetUrl)) : 0;
+    setGalleryIndex(nextIndex === -1 ? 0 : nextIndex);
+    setIsGalleryOpen(true);
+  };
+
+  useEffect(() => {
+    if (!isGalleryOpen) return;
+    requestAnimationFrame(() => {
+      galleryScrollRef.current?.scrollTo({ x: galleryIndex * screenWidth, animated: false });
+    });
+  }, [galleryIndex, isGalleryOpen, screenWidth]);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimer.current) {
+        clearTimeout(toastTimer.current);
+      }
+    };
+  }, []);
 
   // New Design edit state
   const [editIsNewDesign, setEditIsNewDesign] = useState(product?.isNewDesign || false);
@@ -75,6 +160,8 @@ export default function ProductDetailScreen() {
   // Global pricing state
   const [useGlobalPrice, setUseGlobalPrice] = useState(true);
   const [globalPrice, setGlobalPrice] = useState('');
+  const [useGlobalStock, setUseGlobalStock] = useState(false);
+  const [globalStock, setGlobalStock] = useState('');
 
   // Add variant modal state
   const [showAddVariant, setShowAddVariant] = useState(false);
@@ -83,6 +170,8 @@ export default function ProductDetailScreen() {
   const [newVariantSku, setNewVariantSku] = useState('');
   const [newVariantStock, setNewVariantStock] = useState('0');
   const [newVariantPrice, setNewVariantPrice] = useState('');
+  const [overrideVariantStock, setOverrideVariantStock] = useState(true);
+  const [overrideVariantPrice, setOverrideVariantPrice] = useState(true);
   const [showVariableTypeDropdown, setShowVariableTypeDropdown] = useState(false);
 
   // Edit variant modal state
@@ -91,6 +180,9 @@ export default function ProductDetailScreen() {
   const [editVariantPrice, setEditVariantPrice] = useState('');
   const [editVariantName, setEditVariantName] = useState('');
   const [editVariantImageUrl, setEditVariantImageUrl] = useState<string | undefined>(undefined);
+  const [editVariantStock, setEditVariantStock] = useState('');
+  const [editOverrideVariantPrice, setEditOverrideVariantPrice] = useState(false);
+  const [editOverrideVariantStock, setEditOverrideVariantStock] = useState(false);
 
   // Use the web-safe image picker hook
   const imagePicker = useImagePicker();
@@ -136,6 +228,84 @@ export default function ProductDetailScreen() {
     return { totalSold, bestVariantId, bestVariantSold, variantSales };
   }, [orders, product]);
 
+  const inventoryActivity = useMemo(() => {
+    if (!product) return [] as Array<{
+      id: string;
+      type: 'sold' | 'restock' | 'audit_adjustment';
+      variantName: string;
+      quantity: number;
+      delta: number;
+      at: string;
+      subtitle: string;
+      actor?: string;
+    }>;
+
+    const variantNameById = new Map(
+      product.variants.map((variant) => [
+        variant.id,
+        Object.values(variant.variableValues ?? {}).join(' / ') || variant.sku || 'Variant',
+      ])
+    );
+
+    const saleEvents = orders.flatMap((order) => {
+      const status = (order.status ?? '').toLowerCase();
+      const isCancelled = status.includes('cancel');
+      const isRefunded = status.includes('refund');
+      if (isCancelled || isRefunded) return [];
+
+      return (order.items ?? [])
+        .filter((item) => item.productId === product.id && item.quantity > 0)
+        .map((item, index) => {
+          const orderRef = order.orderNumber ? `ORD-${order.orderNumber.replace(/^ORD[-\s]*/i, '')}` : 'Order';
+          return {
+            id: `sale-${order.id}-${item.variantId}-${index}`,
+            type: 'sold' as const,
+            variantName: variantNameById.get(item.variantId) ?? 'Unknown variant',
+            quantity: item.quantity,
+            delta: -Math.abs(item.quantity),
+            at: order.orderDate ?? order.createdAt ?? order.updatedAt ?? new Date().toISOString(),
+            subtitle: `${orderRef} · ${order.customerName || 'Unknown customer'}`,
+            actor: order.createdBy,
+          };
+        });
+    });
+
+    const restockEvents = restockLogs
+      .filter((log) => log.productId === product.id)
+      .map((log) => ({
+        id: `restock-${log.id}`,
+        type: 'restock' as const,
+        variantName: variantNameById.get(log.variantId) ?? 'Unknown variant',
+        quantity: Math.abs(log.quantityAdded),
+        delta: log.quantityAdded,
+        at: log.timestamp,
+        sourceType: log.sourceType,
+        subtitle: log.note?.trim()
+          ? `${log.note.trim()} · ${log.previousStock} → ${log.newStock}`
+          : `${log.previousStock} → ${log.newStock}`,
+        actor: log.performedBy,
+      }));
+
+    const auditAdjustmentEvents = auditLogs.flatMap((audit) => (
+      (audit.items ?? [])
+        .filter((item) => item.productId === product.id && item.discrepancy !== 0)
+        .map((item, index) => ({
+          id: `audit-${audit.id}-${item.variantId}-${index}`,
+          type: 'audit_adjustment' as const,
+          variantName: variantNameById.get(item.variantId) ?? item.variantName ?? 'Unknown variant',
+          quantity: Math.abs(item.discrepancy),
+          delta: item.discrepancy,
+          at: audit.completedAt ?? new Date().toISOString(),
+          subtitle: `Audit count · ${item.expectedStock} → ${item.actualStock}`,
+          actor: audit.performedBy,
+        }))
+    ));
+
+    return [...saleEvents, ...restockEvents, ...auditAdjustmentEvents]
+      .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+      .slice(0, 30);
+  }, [orders, product, restockLogs, auditLogs]);
+
   const selectedCategories = useMemo(() => product?.categories ?? [], [product?.categories]);
   const webCategorySuggestions = useMemo(() => {
     const query = webCategoryQuery.trim().toLowerCase();
@@ -144,6 +314,22 @@ export default function ProductDetailScreen() {
       .filter((cat) => (query ? cat.toLowerCase().includes(query) : true))
       .slice(0, 8);
   }, [globalCategories, selectedCategories, webCategoryQuery]);
+
+  const effectiveGlobalPrice = useMemo(() => {
+    if (globalPrice.trim() !== '') {
+      return parseFloat(globalPrice) || 0;
+    }
+    const fallback = product?.variants[0]?.sellingPrice ?? 0;
+    return Number.isFinite(fallback) ? fallback : 0;
+  }, [globalPrice, product?.variants]);
+
+  const effectiveGlobalStock = useMemo(() => {
+    if (globalStock.trim() !== '') {
+      return parseInt(globalStock, 10) || 0;
+    }
+    const fallback = product?.globalStock ?? product?.variants[0]?.stock ?? 0;
+    return Number.isFinite(fallback) ? fallback : 0;
+  }, [globalStock, product?.globalStock, product?.variants]);
 
   if (!product) {
     return (
@@ -177,6 +363,11 @@ export default function ProductDetailScreen() {
     const allSamePrice = prices.every(p => p === prices[0]);
     setUseGlobalPrice(allSamePrice);
     setGlobalPrice(allSamePrice ? String(prices[0]) : '');
+    const stocks = product.variants.map((v) => v.stock);
+    const allSameStock = stocks.every((s) => s === stocks[0]);
+    const storedUseGlobalStock = product.useGlobalStock ?? false;
+    setUseGlobalStock(storedUseGlobalStock);
+    setGlobalStock(storedUseGlobalStock ? String(product.globalStock ?? (allSameStock ? stocks[0] : 0)) : '');
     setIsEditing(true);
   };
 
@@ -229,22 +420,52 @@ export default function ProductDetailScreen() {
     const nowDiscontinued = editIsDiscontinued;
     const firstTimeDiscontinued = !wasDiscontinued && nowDiscontinued;
 
-    // FIRST: If using global price, update all variants BEFORE saving product
-    // This ensures the prices are updated in the same transaction
+    let nextVariants = product.variants;
     if (useGlobalPrice && globalPrice) {
       const newPrice = parseFloat(globalPrice) || 0;
-      product.variants.forEach(variant => {
-        updateProductVariant(product.id, variant.id, { sellingPrice: newPrice });
-      });
+      nextVariants = product.variants.map((variant) => ({
+        ...variant,
+        sellingPrice: newPrice,
+      }));
+    }
+    if (useGlobalStock) {
+      const newStock = parseInt(globalStock, 10) || 0;
+      nextVariants = nextVariants.map((variant) => ({
+        ...variant,
+        stock: newStock,
+      }));
     }
 
-    // THEN: Update product basic info (this will trigger sync with all the updated variants)
+    const nextProductName = editName.trim();
+
+    const preparedMedia = await prepareProductMediaForPersistence({
+      businessId,
+      productId: product.id,
+      imageUrl: editImageUrl,
+      variants: nextVariants,
+    });
+
+    const renamedVariants = preparedMedia.variants.map((variant) => {
+      const variantValue = Object.values(variant.variableValues ?? {})
+        .map((value) => String(value ?? '').trim())
+        .filter(Boolean)
+        .join(' / ');
+
+      return {
+        ...variant,
+        sku: variantValue ? `${nextProductName || 'Product'} - ${variantValue}` : variant.sku,
+      };
+    });
+
     await updateProduct(product.id, {
-      name: editName.trim(),
+      name: nextProductName,
       description: editDescription.trim(),
       lowStockThreshold: parseInt(editThreshold, 10) || 5,
       categories: editCategories,
-      imageUrl: editImageUrl,
+      imageUrl: preparedMedia.imageUrl,
+      variants: renamedVariants,
+      useGlobalStock: useGlobalStock,
+      globalStock: useGlobalStock ? (parseInt(globalStock, 10) || 0) : undefined,
       // New Design fields
       isNewDesign: editIsNewDesign,
       designYear: editIsNewDesign ? parseInt(editDesignYear, 10) || new Date().getFullYear() : undefined,
@@ -258,6 +479,7 @@ export default function ProductDetailScreen() {
         : (editIsDiscontinued ? product.discontinuedAt : undefined),
     }, businessId);
 
+    setEditImageUrl(preparedMedia.imageUrl);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setIsEditing(false);
   };
@@ -275,27 +497,65 @@ export default function ProductDetailScreen() {
     setIsSavingProduct(false);
   };
 
-  const handleDelete = () => {
-    Alert.alert(
-      'Delete Product',
-      `Are you sure you want to delete "${product.name}"? This action cannot be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            await deleteProduct(product.id, businessId);
-            router.back();
-          },
-        },
-      ]
-    );
+  const showToast = (type: 'success' | 'error', message: string) => {
+    setToast({ type, message });
+    if (toastTimer.current) {
+      clearTimeout(toastTimer.current);
+    }
+    toastTimer.current = setTimeout(() => setToast(null), 2200);
   };
 
-  const handleAdjustStock = (variantId: string, delta: number) => {
+  const handleDelete = () => {
+    setPendingDeleteProduct(true);
+  };
+
+  const confirmDeleteProduct = async () => {
+    if (isDeletingProduct) return;
+    setIsDeletingProduct(true);
+    try {
+      await deleteProduct(product.id, businessId);
+      if (Platform.OS !== 'web') {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+      showToast('success', 'Product moved to Recycle Bin.');
+      setPendingDeleteProduct(false);
+      router.back();
+    } catch (error) {
+      console.warn('Product delete failed:', error);
+      if (Platform.OS !== 'web') {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
+      showToast('error', 'Could not move product to Recycle Bin.');
+    } finally {
+      setIsDeletingProduct(false);
+    }
+  };
+
+  const handleToggleProductActive = async (nextActive: boolean) => {
+    if (!product || isStatusSaving) return;
+    setIsStatusSaving(true);
+    try {
+      await updateProduct(product.id, {
+        isDiscontinued: !nextActive,
+        discontinuedAt: nextActive
+          ? undefined
+          : (product.discontinuedAt ?? new Date().toISOString()),
+      }, businessId);
+    } catch (error) {
+      console.warn('Product status update failed:', error);
+    } finally {
+      setIsStatusSaving(false);
+    }
+  };
+
+  const handleAdjustStock = async (variantId: string, delta: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    updateVariantStock(product.id, variantId, delta);
+    const nextVariants = product.variants.map((variant) => (
+      variant.id === variantId
+        ? { ...variant, stock: Math.max(0, variant.stock + delta) }
+        : variant
+    ));
+    await updateProduct(product.id, { variants: nextVariants }, businessId);
   };
 
   const handleOpenAddVariant = () => {
@@ -307,6 +567,8 @@ export default function ProductDetailScreen() {
     setNewVariantSku('');
     setNewVariantStock('0');
     setNewVariantPrice('');
+    setOverrideVariantStock(!useGlobalStock);
+    setOverrideVariantPrice(!useGlobalPrice);
     setShowVariableTypeDropdown(false);
     setShowAddVariant(true);
   };
@@ -315,15 +577,19 @@ export default function ProductDetailScreen() {
     return Array.from({ length: 12 }, () => Math.floor(Math.random() * 10)).join('');
   };
 
+  const buildVariantSku = (productName: string, variantValue: string, fallback = 'Variant') => {
+    const productPart = productName.trim() || 'Product';
+    const valuePart = variantValue.trim() || fallback;
+    return `${productPart} - ${valuePart}`;
+  };
+
   // Auto-generate SKU when product name or variant value changes
   const getAutoSku = () => {
     if (!product || !newVariantValue.trim()) return '';
-    const productPart = product.name.toUpperCase().replace(/[^A-Z0-9]/g, '').substring(0, 10);
-    const valuePart = newVariantValue.toUpperCase().replace(/[^A-Z0-9]/g, '').substring(0, 10);
-    return `${productPart}-${valuePart}`;
+    return buildVariantSku(product.name, newVariantValue);
   };
 
-  const handleAddVariant = () => {
+  const handleAddVariant = async () => {
     const selectedVariable = productVariables.find(v => v.id === selectedVariableId);
 
     if (!selectedVariable) {
@@ -336,8 +602,24 @@ export default function ProductDetailScreen() {
       return;
     }
 
-    if (!newVariantPrice) {
+    if (useGlobalPrice && !overrideVariantPrice && effectiveGlobalPrice <= 0) {
+      Alert.alert('Missing Price', 'Set a global price first or turn off global pricing.');
+      return;
+    }
+    if (!useGlobalPrice && !newVariantPrice) {
       Alert.alert('Missing Price', 'Please enter a selling price.');
+      return;
+    }
+    if (!useGlobalStock && !newVariantStock) {
+      Alert.alert('Missing Stock', 'Please enter a stock value.');
+      return;
+    }
+    if (useGlobalPrice && overrideVariantPrice && !newVariantPrice) {
+      Alert.alert('Missing Price', 'Please enter a selling price.');
+      return;
+    }
+    if (useGlobalStock && overrideVariantStock && !newVariantStock) {
+      Alert.alert('Missing Stock', 'Please enter a stock value.');
       return;
     }
 
@@ -350,41 +632,82 @@ export default function ProductDetailScreen() {
       sku,
       barcode: generateBarcode(),
       variableValues: { [selectedVariable.name]: newVariantValue.trim() },
-      stock: parseInt(newVariantStock, 10) || 0,
-      sellingPrice: parseFloat(newVariantPrice) || 0,
+      stock: (useGlobalStock && !overrideVariantStock)
+        ? effectiveGlobalStock
+        : (parseInt(newVariantStock, 10) || 0),
+      sellingPrice: (useGlobalPrice && !overrideVariantPrice)
+        ? effectiveGlobalPrice
+        : (parseFloat(newVariantPrice) || 0),
     };
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    addProductVariant(product.id, newVariant);
+    await updateProduct(product.id, {
+      variants: [...product.variants, newVariant],
+    }, businessId);
     setShowAddVariant(false);
   };
 
   const handleOpenEditVariant = (variant: ProductVariant) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const variantName = Object.values(variant.variableValues).join(' / ');
     setEditingVariant(variant);
-    setEditVariantSku(variant.sku);
+    setEditVariantSku((variant.sku?.trim() || buildVariantSku(product.name, variantName)).toUpperCase());
     setEditVariantPrice(variant.sellingPrice.toString());
-    setEditVariantName(Object.values(variant.variableValues).join(' / '));
+    setEditVariantStock(variant.stock.toString());
+    setEditVariantName(variantName.toUpperCase());
     setEditVariantImageUrl(variant.imageUrl);
+    setEditOverrideVariantPrice(useGlobalPrice ? variant.sellingPrice !== effectiveGlobalPrice : true);
+    setEditOverrideVariantStock(useGlobalStock ? variant.stock !== effectiveGlobalStock : true);
   };
 
-  const handleSaveVariant = () => {
+  const handleSaveVariant = async () => {
     if (!editingVariant) return;
+
+    if (useGlobalPrice && editOverrideVariantPrice && !editVariantPrice) {
+      Alert.alert('Missing Price', 'Please enter a selling price.');
+      return;
+    }
+    if (useGlobalStock && editOverrideVariantStock && !editVariantStock) {
+      Alert.alert('Missing Stock', 'Please enter a stock value.');
+      return;
+    }
 
     // Update variant name/value
     const variableKey = Object.keys(editingVariant.variableValues)[0];
+    const nextVariantName = (editVariantName.trim() || Object.values(editingVariant.variableValues)[0] || 'Variant').toUpperCase();
+    const nextSku = (editVariantSku.trim() || buildVariantSku(product.name, nextVariantName)).toUpperCase();
     const newVariableValues = variableKey
-      ? { [variableKey]: editVariantName.trim() || Object.values(editingVariant.variableValues)[0] }
+      ? { [variableKey]: nextVariantName }
       : editingVariant.variableValues;
 
-    updateProductVariant(product.id, editingVariant.id, {
-      sku: editVariantSku.trim() || editingVariant.sku,
-      sellingPrice: parseFloat(editVariantPrice) || editingVariant.sellingPrice,
-      variableValues: newVariableValues,
-      imageUrl: editVariantImageUrl,
+    const nextVariantImageUrl = await uploadProductMediaIfNeeded({
+      businessId,
+      productId: product.id,
+      uri: editVariantImageUrl,
+      fileName: `variant-${editingVariant.id}.jpg`,
     });
 
+    const nextVariants = product.variants.map((variant) => (
+      variant.id === editingVariant.id
+        ? {
+          ...variant,
+          sku: nextSku,
+          sellingPrice: useGlobalPrice
+            ? (editOverrideVariantPrice ? (parseFloat(editVariantPrice) || editingVariant.sellingPrice) : effectiveGlobalPrice)
+            : (parseFloat(editVariantPrice) || editingVariant.sellingPrice),
+          stock: useGlobalStock
+            ? (editOverrideVariantStock ? (parseInt(editVariantStock, 10) || editingVariant.stock) : effectiveGlobalStock)
+            : (parseInt(editVariantStock, 10) || editingVariant.stock),
+          variableValues: newVariableValues,
+          imageUrl: nextVariantImageUrl,
+        }
+        : variant
+    ));
+
+    await updateProduct(product.id, { variants: nextVariants }, businessId);
+
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setEditVariantImageUrl(nextVariantImageUrl);
     setEditingVariant(null);
   };
 
@@ -404,7 +727,9 @@ export default function ProductDetailScreen() {
           style: 'destructive',
           onPress: () => {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            deleteProductVariant(product.id, variantId);
+            void updateProduct(product.id, {
+              variants: product.variants.filter((variant) => variant.id !== variantId),
+            }, businessId);
           },
         },
       ]
@@ -485,14 +810,16 @@ export default function ProductDetailScreen() {
           <Printer size={14} color={colors.text.primary} strokeWidth={2.2} />
           <Text style={{ color: colors.text.primary }} className="font-semibold text-xs ml-1">Bulk Print</Text>
         </Pressable>
-        <Pressable
-          onPress={handleOpenAddVariant}
-          className="flex-row items-center px-3 py-2 rounded-full active:opacity-80"
-          style={{ backgroundColor: '#111111' }}
-        >
-          <Plus size={16} color="#FFFFFF" strokeWidth={2.5} />
-          <Text className="text-white font-semibold text-sm ml-1">Add Variant</Text>
-        </Pressable>
+        {canManageVariants ? (
+          <Pressable
+            onPress={handleOpenAddVariant}
+            className="flex-row items-center px-3 py-2 rounded-full active:opacity-80"
+            style={{ backgroundColor: '#111111' }}
+          >
+            <Plus size={16} color="#FFFFFF" strokeWidth={2.5} />
+            <Text className="text-white font-semibold text-sm ml-1">Add Variant</Text>
+          </Pressable>
+        ) : null}
       </View>
     </View>
   );
@@ -500,7 +827,12 @@ export default function ProductDetailScreen() {
   const variantsListSection = (
     <View className={cn('mt-3', !isWebDesktop && 'mx-5')}>
       {product.variants.map((variant, index) => {
-        const variantName = Object.values(variant.variableValues).join(' / ');
+        const rawVariantValues = Object.entries(variant.variableValues ?? {})
+          .filter(([key, value]) => key.toLowerCase() !== 'source' && value.toLowerCase() !== 'woocommerce')
+          .map(([, value]) => value);
+        const variantName = rawVariantValues.join(' / ');
+        const displayVariantName = (variantName || product.name || variant.sku || 'Variant').toUpperCase();
+        const displaySku = variant.sku.toUpperCase();
         const isLowStock = variant.stock <= product.lowStockThreshold;
         // Use variant image if set, otherwise fallback to product image
         const displayImage = variant.imageUrl ?? product.imageUrl;
@@ -515,20 +847,24 @@ export default function ProductDetailScreen() {
             <View className="flex-row items-center">
               {/* Image thumbnail */}
               {displayImage && (
-                <View className="mr-3 overflow-hidden" style={{ borderWidth: 1, borderColor: colors.border.light, borderRadius: 10 }}>
-                  <Image
-                    source={{ uri: displayImage }}
+                <Pressable
+                  onPress={() => handleOpenGallery(displayImage)}
+                  className="mr-3 overflow-hidden active:opacity-80"
+                  style={{ borderWidth: 1, borderColor: colors.border.light, borderRadius: 10 }}
+                >
+                  <ResolvedAttachmentImage
+                    imageUrl={displayImage}
                     style={{ width: 40, height: 40 }}
                     resizeMode="cover"
                   />
                   {variant.imageUrl && (
                     <View className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 border border-white" />
                   )}
-                </View>
+                </Pressable>
               )}
               <View className="flex-1">
-                <Text style={{ color: colors.text.primary }} className="font-semibold text-sm">{variantName}</Text>
-                <Text style={{ color: colors.text.muted }} className="text-xs">SKU: {variant.sku}</Text>
+                <Text style={{ color: colors.text.primary }} className="font-semibold text-sm">{displayVariantName}</Text>
+                <Text style={{ color: colors.text.muted }} className="text-xs">SKU: {displaySku}</Text>
               </View>
               {/* Stock Badge */}
               <View
@@ -555,7 +891,7 @@ export default function ProductDetailScreen() {
                 </Text>
               </View>
               {/* Action buttons */}
-              {isOwner && (
+              {canManageVariants && (
                 <View className="flex-row items-center">
                   <Pressable
                     onPress={() => {
@@ -588,7 +924,7 @@ export default function ProductDetailScreen() {
             {/* Bottom Row - Price, Restock, Stock Adjustment */}
             <View className="flex-row items-center justify-between mt-2 pt-2" style={{ borderTopWidth: 1, borderTopColor: colors.border.light }}>
               {/* Price */}
-              {isOwner && (
+              {canManageVariants && (
                 <Text style={{ color: colors.text.primary }} className="font-bold text-sm">{formatCurrency(variant.sellingPrice)}</Text>
               )}
 
@@ -641,6 +977,94 @@ export default function ProductDetailScreen() {
     </View>
   );
 
+  const inventoryActivitySection = (
+    <View className={cn('mt-4', !isWebDesktop && 'mx-5')}>
+      <Text style={{ color: colors.text.primary }} className="font-bold text-base mb-3">Inventory Activity</Text>
+      <View className="rounded-2xl overflow-hidden" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
+        {inventoryActivity.length === 0 ? (
+          <View className="p-4">
+            <Text style={{ color: colors.text.muted }} className="text-sm">
+              No stock movement yet.
+            </Text>
+          </View>
+        ) : (
+          <ScrollView
+            style={{ maxHeight: isWebDesktop ? 320 : 260 }}
+            nestedScrollEnabled
+            showsVerticalScrollIndicator
+          >
+            {inventoryActivity.map((entry, index) => {
+              const date = new Date(entry.at);
+              const formattedDate = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+              const formattedTime = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+              const isRestock = entry.type === 'restock';
+              const isAuditAdjustment = entry.type === 'audit_adjustment';
+              const isPositiveDelta = entry.delta >= 0;
+              const isProcurementReceipt = isRestock && 'sourceType' in entry && entry.sourceType === 'procurement_receipt';
+              const accentColor = isAuditAdjustment
+                ? (isPositiveDelta ? '#10B981' : '#EF4444')
+                : (isRestock ? (isPositiveDelta ? '#10B981' : '#EF4444') : '#EF4444');
+              const activityLabel = isAuditAdjustment
+                ? `${isPositiveDelta ? '+' : '-'}${entry.quantity} unit${entry.quantity === 1 ? '' : 's'} adjusted`
+                : isRestock
+                  ? `${isPositiveDelta ? '+' : '-'}${entry.quantity} unit${entry.quantity === 1 ? '' : 's'} ${isProcurementReceipt && isPositiveDelta ? 'received' : isPositiveDelta ? 'restocked' : 'adjusted'}`
+                  : `-${entry.quantity} unit${entry.quantity === 1 ? '' : 's'} sold`;
+
+              return (
+                <View
+                  key={entry.id}
+                  className="flex-row items-center p-4"
+                  style={{ borderBottomWidth: index < inventoryActivity.length - 1 ? 1 : 0, borderBottomColor: colors.border.light }}
+                >
+                  <View
+                    className="w-10 h-10 rounded-full items-center justify-center mr-3"
+                    style={{
+                      backgroundColor: isAuditAdjustment
+                        ? (isPositiveDelta ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)')
+                        : (isRestock
+                          ? (isPositiveDelta ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)')
+                          : 'rgba(239, 68, 68, 0.15)'),
+                    }}
+                  >
+                    {isAuditAdjustment ? (
+                      <ClipboardCheck size={16} color={accentColor} strokeWidth={2} />
+                    ) : isRestock ? (
+                      isPositiveDelta
+                        ? <PackagePlus size={18} color={accentColor} strokeWidth={2} />
+                        : <Minus size={16} color={accentColor} strokeWidth={2.4} />
+                    ) : (
+                      <Minus size={16} color={accentColor} strokeWidth={2.4} />
+                    )}
+                  </View>
+                  <View className="flex-1">
+                    <Text style={{ color: colors.text.primary }} className="font-medium text-sm">
+                      {activityLabel}
+                    </Text>
+                    <Text style={{ color: colors.text.tertiary }} className="text-xs">
+                      {entry.variantName} · {entry.subtitle}
+                    </Text>
+                    {entry.actor ? (
+                      <Text style={{ color: colors.text.muted }} className="text-[11px] mt-0.5">
+                        by {entry.actor}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <View className="items-end">
+                    <View className="flex-row items-center">
+                      <Clock size={12} color={colors.text.muted} strokeWidth={2} />
+                      <Text style={{ color: colors.text.muted }} className="text-xs ml-1">{formattedDate}</Text>
+                    </View>
+                    <Text style={{ color: colors.text.muted }} className="text-xs">{formattedTime}</Text>
+                  </View>
+                </View>
+              );
+            })}
+          </ScrollView>
+        )}
+      </View>
+    </View>
+  );
+
   const recentRestocksSection = recentRestocks.length > 0 ? (
     <View className={cn('mt-4', !isWebDesktop && 'mx-5')}>
       <Text style={{ color: colors.text.primary }} className="font-bold text-base mb-3">Recent Restocks</Text>
@@ -651,6 +1075,8 @@ export default function ProductDetailScreen() {
           const date = new Date(log.timestamp);
           const formattedDate = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
           const formattedTime = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+          const isPositiveRestock = log.quantityAdded >= 0;
+          const restockAccentColor = isPositiveRestock ? '#10B981' : '#EF4444';
 
           return (
             <View
@@ -660,16 +1086,20 @@ export default function ProductDetailScreen() {
             >
               <View
                 className="w-10 h-10 rounded-full items-center justify-center mr-3"
-                style={{ backgroundColor: 'rgba(16, 185, 129, 0.15)' }}
+                style={{ backgroundColor: isPositiveRestock ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)' }}
               >
-                <PackagePlus size={18} color="#10B981" strokeWidth={2} />
+                {isPositiveRestock ? (
+                  <PackagePlus size={18} color={restockAccentColor} strokeWidth={2} />
+                ) : (
+                  <Minus size={16} color={restockAccentColor} strokeWidth={2.4} />
+                )}
               </View>
               <View className="flex-1">
                 <Text style={{ color: colors.text.primary }} className="font-medium text-sm">
-                  +{log.quantityAdded} units
+                  {log.quantityAdded >= 0 ? '+' : '-'}{Math.abs(log.quantityAdded)} units
                 </Text>
                 <Text style={{ color: colors.text.tertiary }} className="text-xs">
-                  {variantName} · {log.previousStock} → {log.newStock}
+                  {variantName} · {log.note?.trim() ? `${log.note.trim()} · ` : ''}{log.previousStock} → {log.newStock}
                 </Text>
               </View>
               <View className="items-end">
@@ -686,15 +1116,21 @@ export default function ProductDetailScreen() {
     </View>
   ) : null;
 
-  const productStatusLabel = product.isDiscontinued ? 'Discontinued' : 'Active';
-  const productStatusBg = product.isDiscontinued ? 'rgba(239, 68, 68, 0.15)' : 'rgba(34, 197, 94, 0.15)';
-  const productStatusText = product.isDiscontinued ? '#EF4444' : '#22C55E';
+  const productStatusLabel = product.isDiscontinued ? 'Inactive' : 'Active';
+  const productStatusBg = product.isDiscontinued ? 'rgba(156, 163, 175, 0.18)' : 'rgba(34, 197, 94, 0.15)';
+  const productStatusText = product.isDiscontinued ? '#9CA3AF' : '#22C55E';
 
   const handlePickProductImageInline = async () => {
     const uri = await imagePicker.pickImage();
     if (!uri) return;
-    setEditImageUrl(uri);
-    await updateProduct(product.id, { imageUrl: uri });
+    const nextImageUrl = await uploadProductMediaIfNeeded({
+      businessId,
+      productId: product.id,
+      uri,
+      fileName: 'main.jpg',
+    });
+    setEditImageUrl(nextImageUrl);
+    await updateProduct(product.id, { imageUrl: nextImageUrl }, businessId);
   };
 
   const handleDownloadMedia = () => {
@@ -704,25 +1140,22 @@ export default function ProductDetailScreen() {
     ].filter(Boolean) as string[];
 
     if (!urls.length) return;
-    const url = urls[0];
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      window.open(url, '_blank', 'noopener,noreferrer');
-      return;
-    }
-    Linking.openURL(url);
+    void openAttachmentPath(urls[0]).catch((error) => {
+      console.warn('Media open failed:', error);
+    });
   };
 
-  const hasMedia = !!product.imageUrl || product.variants.some((v) => !!v.imageUrl);
+  const hasMedia = !!primaryDisplayImage || product.variants.some((v) => !!v.imageUrl);
 
   const handleAddCategoryChip = (category: string) => {
     const next = [...new Set([...(product.categories ?? []), category])];
-    updateProduct(product.id, { categories: next });
+    void updateProduct(product.id, { categories: next }, businessId);
     setWebCategoryQuery('');
   };
 
   const handleRemoveCategoryChip = (category: string) => {
     const next = (product.categories ?? []).filter((c) => c !== category);
-    updateProduct(product.id, { categories: next });
+    void updateProduct(product.id, { categories: next }, businessId);
   };
 
   const handleCreateCategoryChip = () => {
@@ -788,7 +1221,10 @@ export default function ProductDetailScreen() {
           </Text>
         </Pressable>
 
-        <View
+        <Pressable
+          disabled={!primaryDisplayImage}
+          onPress={() => handleOpenGallery(primaryDisplayImage)}
+          className="active:opacity-80"
           style={{
             width: 156,
             aspectRatio: 1,
@@ -801,12 +1237,12 @@ export default function ProductDetailScreen() {
             overflow: 'hidden',
           }}
         >
-          {product.imageUrl ? (
-            <Image source={{ uri: product.imageUrl }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+          {primaryDisplayImage ? (
+            <ResolvedAttachmentImage imageUrl={primaryDisplayImage} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
           ) : (
             <Package size={34} color={colors.text.muted} strokeWidth={1.8} />
           )}
-        </View>
+        </Pressable>
       </View>
     </View>
   );
@@ -1024,8 +1460,17 @@ export default function ProductDetailScreen() {
         <Text style={{ color: colors.text.muted, fontSize: 12, fontWeight: '600' }}>
           Status
         </Text>
-        <View style={{ marginTop: 8, alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: productStatusBg }}>
-          <Text style={{ color: productStatusText, fontSize: 12, fontWeight: '700' }}>{productStatusLabel}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, gap: 12 }}>
+          <View style={{ alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: productStatusBg }}>
+            <Text style={{ color: productStatusText, fontSize: 12, fontWeight: '700' }}>{productStatusLabel}</Text>
+          </View>
+          {canManageStatus ? (
+            <Switch
+              value={!product.isDiscontinued}
+              onValueChange={handleToggleProductActive}
+              disabled={isStatusSaving}
+            />
+          ) : null}
         </View>
       </View>
     </View>
@@ -1182,29 +1627,36 @@ export default function ProductDetailScreen() {
             Manage stock levels and pricing for each option.
           </Text>
         </View>
-        <Pressable
-          onPress={handleOpenAddVariant}
-          className="active:opacity-80"
-          style={{
-            height: 44,
-            paddingHorizontal: 14,
-            borderRadius: 999,
-            borderWidth: 1,
-            borderColor: colors.border.light,
-            backgroundColor: colors.bg.primary,
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 8,
-          }}
-        >
-          <Plus size={16} color={colors.text.primary} strokeWidth={2.5} />
-          <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '700' }}>Add Variant</Text>
-        </Pressable>
+        {canManageVariants ? (
+          <Pressable
+            onPress={handleOpenAddVariant}
+            className="active:opacity-80"
+            style={{
+              height: 44,
+              paddingHorizontal: 14,
+              borderRadius: 999,
+              borderWidth: 1,
+              borderColor: colors.border.light,
+              backgroundColor: isDark ? '#FFFFFF' : colors.bg.primary,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+            }}
+          >
+            <Plus size={16} color={isDark ? '#111111' : colors.text.primary} strokeWidth={2.5} />
+            <Text style={{ color: isDark ? '#111111' : colors.text.primary, fontSize: 14, fontWeight: '700' }}>Add Variant</Text>
+          </Pressable>
+        ) : null}
       </View>
 
       <View style={{ borderTopWidth: 1, borderTopColor: colors.border.light }}>
         {product.variants.map((variant, index) => {
-          const variantName = Object.values(variant.variableValues).join(' / ');
+          const rawVariantValues = Object.entries(variant.variableValues ?? {})
+            .filter(([key, value]) => key.toLowerCase() !== 'source' && value.toLowerCase() !== 'woocommerce')
+            .map(([, value]) => value);
+          const variantName = rawVariantValues.join(' / ');
+          const displayVariantName = (variantName || product.name || variant.sku || 'Variant').toUpperCase();
+          const displaySku = variant.sku.toUpperCase();
           const displayImage = variant.imageUrl ?? product.imageUrl;
           const isLowStock = variant.stock <= product.lowStockThreshold;
           const stockText = isLowStock ? (variant.stock === 0 ? '#EF4444' : '#F59E0B') : colors.text.primary;
@@ -1224,7 +1676,10 @@ export default function ProductDetailScreen() {
               }}
             >
               <View style={{ flex: 1, minWidth: 220, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                <View
+                <Pressable
+                  disabled={!displayImage}
+                  onPress={() => handleOpenGallery(displayImage)}
+                  className="active:opacity-80"
                   style={{
                     width: 52,
                     height: 52,
@@ -1238,16 +1693,16 @@ export default function ProductDetailScreen() {
                   }}
                 >
                   {displayImage ? (
-                    <Image source={{ uri: displayImage }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                    <ResolvedAttachmentImage imageUrl={displayImage} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
                   ) : (
                     <Package size={20} color={colors.text.muted} strokeWidth={1.8} />
                   )}
-                </View>
+                </Pressable>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={{ color: colors.text.primary, fontSize: 15, fontWeight: '700' }} numberOfLines={1}>
-                    {variantName}
+                    {displayVariantName}
                   </Text>
-                  {isOwner ? (
+                  {canManageVariants ? (
                     <Text style={{ color: colors.text.tertiary, fontSize: 13, marginTop: 4 }} numberOfLines={1}>
                       {formatCurrency(variant.sellingPrice)}
                     </Text>
@@ -1270,7 +1725,7 @@ export default function ProductDetailScreen() {
                       }}
                     >
                       <Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>
-                        {variant.sku}
+                        {displaySku}
                       </Text>
                     </View>
                   </View>
@@ -1339,7 +1794,7 @@ export default function ProductDetailScreen() {
                         <PackagePlus size={16} color="#10B981" strokeWidth={2} />
                       </Pressable>
 
-                      {isOwner ? (
+                      {canManageVariants ? (
                         <>
                           <Pressable
                             onPress={() => {
@@ -1414,7 +1869,7 @@ export default function ProductDetailScreen() {
                     }}
                   >
                     <Text style={{ color: colors.text.secondary, fontSize: 11, fontWeight: '600' }} numberOfLines={1}>
-                      {variant.sku}
+                      {displaySku}
                     </Text>
                   </View>
 
@@ -1473,7 +1928,7 @@ export default function ProductDetailScreen() {
                     <PackagePlus size={16} color="#10B981" strokeWidth={2} />
                   </Pressable>
 
-                  {isOwner ? (
+                  {canManageVariants ? (
                     <>
                       <Pressable
                         onPress={() => {
@@ -1630,13 +2085,23 @@ export default function ProductDetailScreen() {
             </View>
           </View>
         ) : (
-          <View style={{ borderBottomWidth: 1, borderBottomColor: colors.border.light, backgroundColor: colors.bg.primary }}>
+          <View
+            style={{
+              borderBottomWidth: 1,
+              borderBottomColor: colors.border.light,
+              backgroundColor: colors.bg.primary,
+              position: 'relative',
+              zIndex: 80,
+            }}
+          >
             <View
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
                 paddingHorizontal: 20,
                 paddingVertical: 16,
+                position: 'relative',
+                zIndex: 81,
               }}
             >
               <Pressable onPress={() => router.back()} className="mr-4 active:opacity-50">
@@ -1648,20 +2113,68 @@ export default function ProductDetailScreen() {
                     {product.name}
                   </Text>
                   {product.isDiscontinued && (
-                    <View className="ml-2 px-2 py-0.5 rounded" style={{ backgroundColor: 'rgba(248, 113, 113, 0.2)' }}>
-                      <Text style={{ color: '#F87171' }} className="text-[10px] font-bold">DISCONTINUED</Text>
+                    <View className="ml-2 px-2 py-0.5 rounded" style={{ backgroundColor: 'rgba(156, 163, 175, 0.18)' }}>
+                      <Text style={{ color: '#9CA3AF' }} className="text-[10px] font-bold">INACTIVE</Text>
                     </View>
                   )}
                 </View>
                 <Text style={{ color: colors.text.tertiary }} className="text-xs">{product.categories?.join(', ') || 'Uncategorized'}</Text>
               </View>
-              <Pressable
-                onPress={handleOpenEdit}
-                className="w-10 h-10 rounded-full items-center justify-center active:opacity-70"
-                style={{ backgroundColor: colors.bg.secondary }}
-              >
-                <Edit2 size={18} color={colors.text.primary} strokeWidth={2} />
-              </Pressable>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Pressable
+                  onPress={handleOpenEdit}
+                  className="w-10 h-10 rounded-full items-center justify-center active:opacity-70"
+                  style={{ backgroundColor: colors.bg.secondary }}
+                >
+                  <Edit2 size={18} color={colors.text.primary} strokeWidth={2} />
+                </Pressable>
+                <View style={{ position: 'relative', zIndex: 90 }}>
+                  <Pressable
+                    onPress={() => setShowMobileHeaderMenu((prev) => !prev)}
+                    className="w-10 h-10 rounded-full items-center justify-center active:opacity-70"
+                    style={{ backgroundColor: colors.bg.secondary }}
+                  >
+                    <MoreVertical size={18} color={colors.text.primary} strokeWidth={2} />
+                  </Pressable>
+                  {showMobileHeaderMenu ? (
+                    <>
+                      <Pressable
+                        className="absolute"
+                        style={{ top: -100, right: -20, width: 220, height: 180, zIndex: 59 }}
+                        onPress={() => setShowMobileHeaderMenu(false)}
+                      />
+                      <View
+                        className="absolute rounded-2xl overflow-hidden"
+                        style={{
+                          top: 48,
+                          right: 0,
+                          width: 180,
+                          backgroundColor: colors.bg.card,
+                          borderWidth: 1,
+                          borderColor: colors.border.light,
+                          zIndex: 120,
+                          elevation: 20,
+                          shadowColor: '#000000',
+                          shadowOpacity: 0.2,
+                          shadowRadius: 16,
+                          shadowOffset: { width: 0, height: 8 },
+                        }}
+                      >
+                        <Pressable
+                          onPress={() => {
+                            setShowMobileHeaderMenu(false);
+                            handleDelete();
+                          }}
+                          className="px-4 py-3 flex-row items-center active:opacity-70"
+                        >
+                          <Trash2 size={16} color="#EF4444" strokeWidth={2} />
+                          <Text className="text-red-500 font-semibold ml-2">Delete Product</Text>
+                        </Pressable>
+                      </View>
+                    </>
+                  ) : null}
+                </View>
+              </View>
             </View>
           </View>
         )}
@@ -1680,9 +2193,10 @@ export default function ProductDetailScreen() {
           {isWebDesktop ? (
             <View style={{ flexDirection: 'row', gap: 24, paddingTop: 6 }}>
               <View style={{ flex: 1, minWidth: 0 }}>
-                {webMediaCard}
-                {descriptionSection}
-                {webVariantsCard}
+              {webMediaCard}
+              {descriptionSection}
+              {webVariantsCard}
+              {inventoryActivitySection}
               </View>
               <View style={{ width: rightColumnWidth ?? 420 }}>
                 {webMetaCards}
@@ -1699,10 +2213,38 @@ export default function ProductDetailScreen() {
               {variantsHeaderSection}
               {variantsListSection}
               {recentRestocksSection}
+              {inventoryActivitySection}
+
+              {canManageStatus ? (
+                <View className="mx-5 mt-4 rounded-2xl p-4" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
+                  <View className="flex-row items-center justify-between">
+                    <View className="flex-1 pr-4">
+                      <Text style={{ color: colors.text.primary }} className="font-semibold text-[15px]">
+                        {product.isDiscontinued ? 'Mark as Active' : 'Mark as Inactive'}
+                      </Text>
+                      <Text style={{ color: colors.text.muted }} className="text-xs mt-1">
+                        {product.isDiscontinued ? 'Restore this product to new order pickers.' : 'Hide this product from new order pickers.'}
+                      </Text>
+                    </View>
+                    <Switch
+                      value={!product.isDiscontinued}
+                      disabled={isStatusSaving}
+                      onValueChange={(nextActive) => handleToggleProductActive(nextActive)}
+                      trackColor={{ false: '#9CA3AF', true: '#D1D5DB' }}
+                      thumbColor={!product.isDiscontinued ? '#374151' : '#FFFFFF'}
+                    />
+                  </View>
+                </View>
+              ) : null}
 
               {/* Save Product */}
               <View className={cn('mt-4', !isWebDesktop && 'mx-5')}>
-                <Button onPress={handleSaveProduct} loading={isSavingProduct} loadingText="Saving...">
+                <Button
+                  onPress={handleSaveProduct}
+                  loading={isSavingProduct}
+                  loadingText="Saving..."
+                  variant={isDark ? 'secondary' : 'primary'}
+                >
                   Save Product
                 </Button>
                 {saveNotice ? (
@@ -1710,18 +2252,6 @@ export default function ProductDetailScreen() {
                     {saveNotice}
                   </Text>
                 ) : null}
-              </View>
-
-              {/* Delete */}
-              <View className={cn('mt-4 mb-8', !isWebDesktop && 'mx-5')}>
-                <Pressable
-                  onPress={handleDelete}
-                  className="rounded-2xl p-4 flex-row items-center justify-center active:opacity-70"
-                  style={{ backgroundColor: 'rgba(239, 68, 68, 0.15)' }}
-                >
-                  <Trash2 size={18} color="#EF4444" strokeWidth={2} />
-                  <Text className="text-red-500 font-semibold ml-2">Delete Product</Text>
-                </Pressable>
               </View>
             </>
           )}
@@ -1739,7 +2269,7 @@ export default function ProductDetailScreen() {
             className="flex-1"
           >
             <View
-              className="flex-1 items-center justify-center"
+              className={cn('flex-1', useFullscreenEditModal ? 'items-stretch justify-start' : 'items-center justify-center')}
               style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)' }}
             >
               <Pressable
@@ -1747,18 +2277,24 @@ export default function ProductDetailScreen() {
                 onPress={() => setIsEditing(false)}
               />
               <View
-                className="w-[90%] rounded-2xl overflow-hidden"
-                style={{ backgroundColor: '#111111', maxHeight: '85%', maxWidth: 400 }}
+                className={cn('overflow-hidden', useFullscreenEditModal ? 'flex-1 w-full self-stretch' : 'w-[92%] rounded-2xl')}
+                style={{
+                  backgroundColor: colors.bg.card,
+                  height: useFullscreenEditModal ? '100%' : undefined,
+                  maxHeight: useFullscreenEditModal ? undefined : '90%',
+                  maxWidth: useFullscreenEditModal ? undefined : 720,
+                  borderRadius: useFullscreenEditModal ? 0 : 16,
+                }}
               >
                 {/* Header */}
-                <View className="flex-row items-center justify-between px-5 py-4 border-b" style={{ borderBottomColor: '#333333' }}>
-                  <Text className="text-white font-bold text-lg">Edit Product</Text>
+                <View className="flex-row items-center justify-between px-5 py-4 border-b" style={{ borderBottomColor: colors.border.light }}>
+                  <Text style={{ color: colors.text.primary }} className="font-bold text-lg">Edit Product</Text>
                   <Pressable
                     onPress={() => setIsEditing(false)}
                     className="w-8 h-8 rounded-full items-center justify-center active:opacity-50"
-                    style={{ backgroundColor: '#222222' }}
+                    style={{ backgroundColor: colors.bg.secondary }}
                   >
-                    <X size={18} color="#888888" strokeWidth={2} />
+                    <X size={18} color={colors.text.muted} strokeWidth={2} />
                   </Pressable>
                 </View>
 
@@ -1771,292 +2307,318 @@ export default function ProductDetailScreen() {
                 >
                   {/* Error Toast */}
                   {imagePicker.error && (
-                    <View className="mb-4 p-3 rounded-xl" style={{ backgroundColor: 'rgba(239, 68, 68, 0.2)' }}>
-                      <Text className="text-red-400 text-sm text-center">{imagePicker.error}</Text>
+                    <View className="mb-4 p-3 rounded-xl" style={{ backgroundColor: 'rgba(239, 68, 68, 0.12)' }}>
+                      <Text className="text-red-500 text-sm text-center">{imagePicker.error}</Text>
                     </View>
                   )}
 
-                  {/* Product Image */}
-                  <View className="mb-4">
-                    <Text className="text-white text-sm font-medium mb-2">Product Image</Text>
-                    {editImageUrl ? (
-                      <View className="flex-row items-start">
-                        <View className="rounded-xl overflow-hidden" style={{ borderWidth: 1, borderColor: '#444444' }}>
-                          <Image
-                            source={{ uri: editImageUrl }}
-                            style={{ width: 72, height: 72 }}
-                            resizeMode="cover"
-                          />
-                        </View>
-                        <View className="ml-3 flex-1">
-                          <Pressable
-                            onPress={handlePickImage}
-                            disabled={imagePicker.isLoading}
-                            className="flex-row items-center px-3 py-2 rounded-full mb-2 active:opacity-70"
-                            style={{ backgroundColor: '#222222', opacity: imagePicker.isLoading ? 0.5 : 1 }}
-                          >
-                            <Camera size={14} color="#FFFFFF" strokeWidth={2} />
-                            <Text className="text-white text-xs font-medium ml-2">Change</Text>
-                          </Pressable>
-                          <Pressable
-                            onPress={handleRemoveImage}
-                            className="flex-row items-center px-3 py-2 rounded-full active:opacity-70"
-                            style={{ backgroundColor: 'rgba(239, 68, 68, 0.2)' }}
-                          >
-                            <Trash2 size={14} color="#EF4444" strokeWidth={2} />
-                            <Text className="text-red-400 text-xs font-medium ml-2">Remove</Text>
-                          </Pressable>
-                        </View>
-                      </View>
-                    ) : (
-                      <Pressable
-                        onPress={handlePickImage}
-                        disabled={imagePicker.isLoading}
-                        className="rounded-xl p-4 items-center active:opacity-70"
-                        style={{ backgroundColor: '#1A1A1A', borderWidth: 1, borderColor: '#333333', borderStyle: 'dashed', opacity: imagePicker.isLoading ? 0.5 : 1 }}
-                      >
-                        {imagePicker.isLoading ? (
-                          <>
-                            <View className="w-6 h-6 items-center justify-center">
-                              <Text className="text-gray-400 text-xs">...</Text>
-                            </View>
-                            <Text className="text-gray-400 text-sm font-medium mt-2">Opening...</Text>
-                          </>
-                        ) : (
-                          <>
-                            <ImageIcon size={24} color="#666666" strokeWidth={1.5} />
-                            <Text className="text-gray-400 text-sm font-medium mt-2">Add Image</Text>
-                          </>
-                        )}
-                      </Pressable>
-                    )}
-                  </View>
-
-                  {/* Product Name */}
-                  <View className="mb-4">
-                    <Text className="text-white text-sm font-medium mb-2">Product Name</Text>
-                    <View className="rounded-xl px-4" style={{ backgroundColor: '#000000', borderWidth: 1, borderColor: '#444444', height: 52, justifyContent: 'center' }}>
-                      <TextInput
-                        placeholder="Product Name"
-                        placeholderTextColor="#888888"
-                        value={editName}
-                        onChangeText={setEditName}
-                        style={{ color: '#FFFFFF', fontSize: 14 }}
-                        selectionColor="#FFFFFF"
-                      />
+                  <View className="rounded-2xl p-4 border mb-4" style={{ backgroundColor: colors.bg.card, borderColor: colors.border.light }}>
+                    <View className="mb-4">
+                      <Text style={{ color: colors.text.primary }} className={modalSectionTitleClass}>Core Details</Text>
+                      <Text style={{ color: colors.text.muted }} className="text-xs mt-1">
+                        Update the shared product information here.
+                      </Text>
                     </View>
-                  </View>
 
-                  {/* Description */}
-                  <View className="mb-4">
-                    <Text className="text-white text-sm font-medium mb-2">Description</Text>
-                    <View className="rounded-xl px-4 py-3" style={{ backgroundColor: '#000000', borderWidth: 1, borderColor: '#444444', minHeight: 80 }}>
-                      <TextInput
-                        placeholder="Description"
-                        placeholderTextColor="#888888"
-                        value={editDescription}
-                        onChangeText={setEditDescription}
-                        multiline
-                        numberOfLines={3}
-                        style={{ color: '#FFFFFF', fontSize: 14, textAlignVertical: 'top' }}
-                        selectionColor="#FFFFFF"
-                      />
-                    </View>
-                  </View>
-
-                  {/* Categories */}
-                  <View className="mb-4">
-                    <Text className="text-white text-sm font-medium mb-2">Categories</Text>
-                    {/* Selected Categories Chips */}
-                    {editCategories.length > 0 && (
-                      <View className="flex-row flex-wrap gap-2 mb-3">
-                        {editCategories.map((cat) => (
-                          <View key={cat} className="flex-row items-center px-3 py-1.5 rounded-full" style={{ backgroundColor: '#222222' }}>
-                            <Text className="text-white text-sm mr-2">{cat}</Text>
-                            <Pressable onPress={() => handleRemoveCategory(cat)}>
-                              <X size={14} color="#888888" strokeWidth={2} />
+                    <View className="mb-4">
+                      <Text style={{ color: colors.text.secondary }} className={cn(modalFieldLabelClass, 'mb-1.5')}>Product Image</Text>
+                      {editImageUrl ? (
+                        <View className="flex-row items-start">
+                          <View className="rounded-xl overflow-hidden" style={{ borderWidth: 1, borderColor: colors.border.light }}>
+                            <ResolvedAttachmentImage
+                              imageUrl={editImageUrl}
+                              style={{ width: 72, height: 72 }}
+                              resizeMode="cover"
+                            />
+                          </View>
+                          <View className="ml-3 flex-1">
+                            <Pressable
+                              onPress={handlePickImage}
+                              disabled={imagePicker.isLoading}
+                              className="flex-row items-center px-3 py-2 rounded-lg mb-2 active:opacity-70"
+                              style={{ backgroundColor: colors.bg.secondary, opacity: imagePicker.isLoading ? 0.5 : 1 }}
+                            >
+                              <Camera size={14} color={colors.text.primary} strokeWidth={2} />
+                              <Text style={{ color: colors.text.primary }} className="text-xs font-medium ml-2">Change</Text>
+                            </Pressable>
+                            <Pressable
+                              onPress={handleRemoveImage}
+                              className="flex-row items-center px-3 py-2 rounded-lg active:opacity-70"
+                              style={{ backgroundColor: 'rgba(239, 68, 68, 0.12)' }}
+                            >
+                              <Trash2 size={14} color="#EF4444" strokeWidth={2} />
+                              <Text className="text-red-500 text-xs font-medium ml-2">Remove</Text>
                             </Pressable>
                           </View>
-                        ))}
-                      </View>
-                    )}
-                    {/* Category Search/Add Input */}
-                    <View className="flex-row gap-2">
-                      <View className="flex-1">
-                        <Pressable
-                          onPress={() => setShowCategoryDropdown(!showCategoryDropdown)}
-                          className="rounded-xl px-4 flex-row items-center"
-                          style={{ backgroundColor: '#000000', borderWidth: 1, borderColor: '#444444', height: 52 }}
-                        >
-                          <TextInput
-                            placeholder="Search or add category"
-                            placeholderTextColor="#888888"
-                            value={newCategory}
-                            onChangeText={(text) => {
-                              setNewCategory(text);
-                              setShowCategoryDropdown(true);
-                            }}
-                            onFocus={() => setShowCategoryDropdown(true)}
-                            onSubmitEditing={handleAddCategory}
-                            style={{ color: '#FFFFFF', fontSize: 14, flex: 1 }}
-                            selectionColor="#FFFFFF"
-                          />
-                          <ChevronDown size={18} color="#888888" strokeWidth={2} />
-                        </Pressable>
-                        {/* Dropdown with existing categories */}
-                        {showCategoryDropdown && (
-                          <View className="rounded-xl mt-2 overflow-hidden" style={{ backgroundColor: '#1A1A1A', borderWidth: 1, borderColor: '#333333', maxHeight: 200 }}>
-                            <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
-                              {/* Filter categories based on search and show unselected ones */}
-                              {globalCategories
-                                .filter(cat =>
-                                  !editCategories.includes(cat) &&
-                                  cat.toLowerCase().includes(newCategory.toLowerCase())
-                                )
-                                .map((cat) => (
-                                  <Pressable
-                                    key={cat}
-                                    onPress={() => handleSelectCategory(cat)}
-                                    className="px-4 py-3 border-b active:opacity-70"
-                                    style={{ borderBottomColor: '#333333' }}
-                                  >
-                                    <Text className="text-gray-300 text-sm">{cat}</Text>
-                                  </Pressable>
-                                ))}
-                              {/* Option to add new category if not exists */}
-                              {newCategory.trim() && !globalCategories.includes(newCategory.trim()) && (
-                                <Pressable
-                                  onPress={handleAddCategory}
-                                  className="px-4 py-3 flex-row items-center active:opacity-70"
-                                  style={{ backgroundColor: '#222222' }}
-                                >
-                                  <Plus size={16} color="#10B981" strokeWidth={2} />
-                                  <Text className="text-green-400 text-sm ml-2">Add "{newCategory.trim()}"</Text>
-                                </Pressable>
-                              )}
-                              {globalCategories.filter(cat => !editCategories.includes(cat) && cat.toLowerCase().includes(newCategory.toLowerCase())).length === 0 && !newCategory.trim() && (
-                                <View className="px-4 py-3">
-                                  <Text className="text-gray-500 text-sm">No categories available. Type to add new.</Text>
-                                </View>
-                              )}
-                            </ScrollView>
-                          </View>
-                        )}
-                      </View>
-                      <Pressable
-                        onPress={handleAddCategory}
-                        disabled={!newCategory.trim()}
-                        className="rounded-xl items-center justify-center active:opacity-80"
-                        style={{ backgroundColor: newCategory.trim() ? '#222222' : '#1A1A1A', width: 52, height: 52 }}
-                      >
-                        <Plus size={20} color={newCategory.trim() ? '#FFFFFF' : '#444444'} strokeWidth={2} />
-                      </Pressable>
-                    </View>
-                  </View>
-
-                  {/* Low Stock Threshold */}
-                  <View className="mb-4">
-                    <Text className="text-white text-sm font-medium mb-2">Low Stock Alert Threshold</Text>
-                    <View className="rounded-xl px-4" style={{ backgroundColor: '#000000', borderWidth: 1, borderColor: '#444444', height: 52, justifyContent: 'center' }}>
-                      <TextInput
-                        placeholder="5"
-                        placeholderTextColor="#888888"
-                        value={editThreshold}
-                        onChangeText={setEditThreshold}
-                        keyboardType="number-pad"
-                        style={{ color: '#FFFFFF', fontSize: 14 }}
-                        selectionColor="#FFFFFF"
-                      />
-                    </View>
-                  </View>
-
-                  {/* New Design Toggle */}
-                  <View className="mb-4 rounded-xl p-4" style={{ backgroundColor: '#1A1A1A', borderWidth: 1, borderColor: '#333333' }}>
-                    <View className="flex-row items-center justify-between">
-                      <View className="flex-1 mr-3">
-                        <Text className="text-white text-base font-bold">Mark as New Design</Text>
-                        <Text className="text-gray-500 text-xs">Track this for yearly reviews</Text>
-                      </View>
-                      <Switch
-                        value={editIsNewDesign}
-                        onValueChange={setEditIsNewDesign}
-                        trackColor={{ false: '#555555', true: '#FFFFFF' }}
-                        thumbColor={editIsNewDesign ? '#111111' : '#FFFFFF'}
-                      />
-                    </View>
-                    {editIsNewDesign && (
-                      <View className="mt-3">
-                        <Text className="text-gray-400 text-xs font-medium mb-2">Design Year</Text>
-                        <View className="rounded-xl px-4" style={{ backgroundColor: '#000000', borderWidth: 1, borderColor: '#444444', height: 48, justifyContent: 'center' }}>
-                          <TextInput
-                            placeholder={new Date().getFullYear().toString()}
-                            placeholderTextColor="#888888"
-                            value={editDesignYear}
-                            onChangeText={setEditDesignYear}
-                            keyboardType="number-pad"
-                            maxLength={4}
-                            style={{ color: '#FFFFFF', fontSize: 14 }}
-                            selectionColor="#FFFFFF"
-                          />
                         </View>
-                      </View>
-                    )}
-                  </View>
-
-                  {/* Mark as Discontinued Toggle */}
-                  <View className="mb-4 rounded-xl p-4" style={{ backgroundColor: '#1A1A1A', borderWidth: 1, borderColor: editIsDiscontinued ? '#F87171' : '#333333' }}>
-                    <View className="flex-row items-center justify-between">
-                      <View className="flex-1 mr-3">
-                        <Text className="text-white text-sm font-medium">Mark as Discontinued</Text>
-                        <Text className="text-gray-500 text-xs">Hide from new order product picker</Text>
-                      </View>
-                      <Switch
-                        value={editIsDiscontinued}
-                        onValueChange={setEditIsDiscontinued}
-                        trackColor={{ false: '#333333', true: '#F87171' }}
-                        thumbColor={editIsDiscontinued ? '#FFFFFF' : '#888888'}
-                      />
+                      ) : (
+                        <Pressable
+                          onPress={handlePickImage}
+                          disabled={imagePicker.isLoading}
+                          className="rounded-xl p-4 items-center active:opacity-70"
+                          style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light, borderStyle: 'dashed', opacity: imagePicker.isLoading ? 0.5 : 1 }}
+                        >
+                          {imagePicker.isLoading ? (
+                            <>
+                              <View className="w-6 h-6 items-center justify-center">
+                                <Text style={{ color: colors.text.muted }} className="text-xs">...</Text>
+                              </View>
+                              <Text style={{ color: colors.text.muted }} className="text-sm font-medium mt-2">Opening...</Text>
+                            </>
+                          ) : (
+                            <>
+                              <ImageIcon size={24} color={colors.text.muted} strokeWidth={1.5} />
+                              <Text style={{ color: colors.text.muted }} className="text-sm font-medium mt-2">Add Image</Text>
+                            </>
+                          )}
+                        </Pressable>
+                      )}
                     </View>
-                    {editIsDiscontinued && (
-                      <View className="mt-3 p-3 rounded-lg" style={{ backgroundColor: 'rgba(248, 113, 113, 0.15)' }}>
-                        <Text className="text-red-400 text-xs">
-                          This product won't appear in the product picker when creating new orders. Existing orders are not affected.
-                        </Text>
-                      </View>
-                    )}
-                  </View>
 
-                  {/* Global Pricing Section */}
-                  <View className="mb-4 rounded-xl p-4" style={{ backgroundColor: '#1A1A1A', borderWidth: 1, borderColor: '#333333' }}>
-                    <View className="flex-row items-center justify-between mb-3">
-                      <View className="flex-1">
-                        <Text className="text-white text-sm font-medium">Global Pricing</Text>
-                        <Text className="text-gray-500 text-xs">Update all variant prices at once</Text>
-                      </View>
-                      <Switch
-                        value={useGlobalPrice}
-                        onValueChange={setUseGlobalPrice}
-                        trackColor={{ false: '#333333', true: '#FFFFFF' }}
-                        thumbColor={useGlobalPrice ? '#111111' : '#666666'}
-                      />
-                    </View>
-                    {useGlobalPrice && (
-                      <View className="rounded-xl px-4 flex-row items-center" style={{ backgroundColor: '#000000', borderWidth: 1, borderColor: '#444444', height: 52 }}>
-                        <Text style={{ color: '#888888', fontSize: 14, marginRight: 4 }}>₦</Text>
+                    <View className="mb-4">
+                      <Text style={{ color: colors.text.secondary }} className={cn(modalFieldLabelClass, 'mb-1.5')}>Product Name</Text>
+                      <View className="rounded-xl px-4" style={{ backgroundColor: modalFieldBg, borderWidth: 1, borderColor: modalFieldBorder, height: 52, justifyContent: 'center' }}>
                         <TextInput
-                          placeholder="Enter price for all variants"
-                          placeholderTextColor="#888888"
-                          value={globalPrice}
-                          onChangeText={setGlobalPrice}
-                          keyboardType="numeric"
-                          style={{ color: '#FFFFFF', fontSize: 14, flex: 1 }}
-                          selectionColor="#FFFFFF"
+                          placeholder="Product Name"
+                          placeholderTextColor={colors.input.placeholder}
+                          value={editName}
+                          onChangeText={setEditName}
+                          style={{ color: colors.input.text, fontSize: 14 }}
+                          selectionColor={colors.text.primary}
                         />
                       </View>
-                    )}
-                    {!useGlobalPrice && (
-                      <Text className="text-gray-500 text-xs italic">Edit individual variant prices from the variant list</Text>
-                    )}
+                    </View>
+
+                    <View className="mb-4" style={{ zIndex: 40 }}>
+                      <Text style={{ color: colors.text.secondary }} className={cn(modalFieldLabelClass, 'mb-1.5')}>Categories</Text>
+                      {editCategories.length > 0 && (
+                        <View className="flex-row flex-wrap gap-2 mb-3">
+                          {editCategories.map((cat) => (
+                            <View key={cat} className="flex-row items-center px-3 py-1.5 rounded-xl" style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}>
+                              <Text style={{ color: colors.text.primary }} className="text-xs font-medium mr-2">{cat}</Text>
+                              <Pressable onPress={() => handleRemoveCategory(cat)}>
+                                <X size={14} color={colors.text.muted} strokeWidth={2} />
+                              </Pressable>
+                            </View>
+                          ))}
+                        </View>
+                      )}
+                      <View style={{ zIndex: 10 }}>
+                        <View style={{ zIndex: 20, position: 'relative' }}>
+                          <Pressable
+                            onPress={() => setShowCategoryDropdown(!showCategoryDropdown)}
+                            className="rounded-xl px-4 flex-row items-center"
+                            style={{ backgroundColor: modalFieldBg, borderWidth: 1, borderColor: modalFieldBorder, height: 52 }}
+                          >
+                            <TextInput
+                              placeholder="Search or add category"
+                              placeholderTextColor={colors.input.placeholder}
+                              value={newCategory}
+                              onChangeText={(text) => {
+                                setNewCategory(text);
+                                setShowCategoryDropdown(true);
+                              }}
+                              onFocus={() => setShowCategoryDropdown(true)}
+                              onSubmitEditing={handleAddCategory}
+                              style={{ color: colors.input.text, fontSize: 14, flex: 1 }}
+                              selectionColor={colors.text.primary}
+                            />
+                            <ChevronDown size={18} color={colors.text.muted} strokeWidth={2} />
+                          </Pressable>
+                          {showCategoryDropdown && (
+                            <View className="rounded-xl mt-2 overflow-hidden absolute left-0 right-0 top-14" style={{ backgroundColor: modalDropdownBg, borderWidth: 1, borderColor: colors.border.light, maxHeight: 200 }}>
+                              <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                                {globalCategories
+                                  .filter(cat =>
+                                    !editCategories.includes(cat) &&
+                                    cat.toLowerCase().includes(newCategory.toLowerCase())
+                                  )
+                                  .map((cat) => (
+                                    <Pressable
+                                      key={cat}
+                                      onPress={() => handleSelectCategory(cat)}
+                                      className="px-4 py-3 active:opacity-70"
+                                      style={{ borderBottomWidth: 1, borderBottomColor: colors.border.light }}
+                                    >
+                                      <Text style={{ color: colors.text.secondary }} className="text-sm">{cat}</Text>
+                                    </Pressable>
+                                  ))}
+                                {newCategory.trim() && !globalCategories.includes(newCategory.trim()) && (
+                                  <Pressable
+                                    onPress={handleAddCategory}
+                                    className="px-4 py-3 flex-row items-center active:opacity-70"
+                                    style={{ backgroundColor: colors.bg.secondary }}
+                                  >
+                                    <Plus size={16} color="#10B981" strokeWidth={2} />
+                                    <Text className="text-emerald-500 text-sm ml-2">Add "{newCategory.trim()}"</Text>
+                                  </Pressable>
+                                )}
+                                {globalCategories.filter(cat => !editCategories.includes(cat) && cat.toLowerCase().includes(newCategory.toLowerCase())).length === 0 && !newCategory.trim() && (
+                                  <View className="px-4 py-3">
+                                    <Text style={{ color: colors.text.muted }} className="text-sm">No categories available. Type to add new.</Text>
+                                  </View>
+                                )}
+                              </ScrollView>
+                            </View>
+                          )}
+                        </View>
+                      </View>
+                    </View>
+
+                    <View className="mb-4">
+                      <Text style={{ color: colors.text.secondary }} className={cn(modalFieldLabelClass, 'mb-1.5')}>Description</Text>
+                      <View className="rounded-xl px-4 py-3" style={{ backgroundColor: modalFieldBg, borderWidth: 1, borderColor: modalFieldBorder, minHeight: 80 }}>
+                        <TextInput
+                          placeholder="Description"
+                          placeholderTextColor={colors.input.placeholder}
+                          value={editDescription}
+                          onChangeText={setEditDescription}
+                          multiline
+                          numberOfLines={3}
+                          style={{ color: colors.input.text, fontSize: 14, textAlignVertical: 'top' }}
+                          selectionColor={colors.text.primary}
+                        />
+                      </View>
+                    </View>
+
+                    <View className="mb-4">
+                      <Text style={{ color: colors.text.secondary }} className={cn(modalFieldLabelClass, 'mb-1.5')}>Low Stock Alert Threshold</Text>
+                      <View className="rounded-xl px-4" style={{ backgroundColor: modalFieldBg, borderWidth: 1, borderColor: modalFieldBorder, height: 52, justifyContent: 'center' }}>
+                        <TextInput
+                          placeholder="5"
+                          placeholderTextColor={colors.input.placeholder}
+                          value={editThreshold}
+                          onChangeText={setEditThreshold}
+                          keyboardType="number-pad"
+                          style={{ color: colors.input.text, fontSize: 14 }}
+                          selectionColor={colors.text.primary}
+                        />
+                      </View>
+                    </View>
+
+                    <View className="border-t pt-4 mb-4" style={{ borderTopColor: colors.border.light, borderTopWidth: 1 }}>
+                      <View className="flex-row items-center justify-between mb-3">
+                        <View className="flex-1">
+                          <Text style={{ color: colors.text.primary }} className={modalSectionTitleClass}>Global Stock</Text>
+                          <Text style={{ color: colors.text.muted }} className="text-xs mt-1">Update all variant stock at once.</Text>
+                        </View>
+                        <Switch
+                          value={useGlobalStock}
+                          onValueChange={setUseGlobalStock}
+                          trackColor={{ false: '#767577', true: '#D1D5DB' }}
+                          thumbColor={useGlobalStock ? '#374151' : '#FFFFFF'}
+                        />
+                      </View>
+                      {useGlobalStock ? (
+                        <View className="rounded-xl px-4 flex-row items-center" style={{ backgroundColor: modalFieldBg, borderWidth: 1, borderColor: modalFieldBorder, height: 52 }}>
+                          <Text style={{ color: colors.text.muted, fontSize: 14, marginRight: 8 }}>#</Text>
+                          <TextInput
+                            placeholder="0"
+                            placeholderTextColor={colors.input.placeholder}
+                            value={globalStock}
+                            onChangeText={setGlobalStock}
+                            keyboardType="number-pad"
+                            style={{ color: colors.input.text, fontSize: 14, flex: 1 }}
+                            selectionColor={colors.text.primary}
+                          />
+                        </View>
+                      ) : (
+                        <View className="rounded-xl px-4 py-3" style={{ backgroundColor: colors.bg.secondary }}>
+                          <Text style={{ color: colors.text.muted }} className="text-xs">
+                            Edit individual variant stock from the variant list below.
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+
+                    <View className="border-t pt-4 mb-4" style={{ borderTopColor: colors.border.light, borderTopWidth: 1 }}>
+                      <View className="flex-row items-center justify-between mb-3">
+                        <View className="flex-1">
+                          <Text style={{ color: colors.text.primary }} className={modalSectionTitleClass}>Global Pricing</Text>
+                          <Text style={{ color: colors.text.muted }} className="text-xs mt-1">Update all variant prices at once.</Text>
+                        </View>
+                        <Switch
+                          value={useGlobalPrice}
+                          onValueChange={setUseGlobalPrice}
+                          trackColor={{ false: '#767577', true: '#D1D5DB' }}
+                          thumbColor={useGlobalPrice ? '#374151' : '#FFFFFF'}
+                        />
+                      </View>
+                      {useGlobalPrice ? (
+                        <View className="rounded-xl px-4 flex-row items-center" style={{ backgroundColor: modalFieldBg, borderWidth: 1, borderColor: modalFieldBorder, height: 52 }}>
+                          <Text style={{ color: colors.text.muted, fontSize: 14, marginRight: 8 }}>₦</Text>
+                          <TextInput
+                            placeholder="Enter price for all variants"
+                            placeholderTextColor={colors.input.placeholder}
+                            value={globalPrice}
+                            onChangeText={setGlobalPrice}
+                            keyboardType="numeric"
+                            style={{ color: colors.input.text, fontSize: 14, flex: 1 }}
+                            selectionColor={colors.text.primary}
+                          />
+                        </View>
+                      ) : (
+                        <View className="rounded-xl px-4 py-3" style={{ backgroundColor: colors.bg.secondary }}>
+                          <Text style={{ color: colors.text.muted }} className="text-xs">
+                            Edit individual variant prices from the variant list below.
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+
+                    <View className="border-t pt-4 mb-4" style={{ borderTopColor: colors.border.light, borderTopWidth: 1 }}>
+                      <View className="flex-row items-center justify-between">
+                        <View className="flex-1 mr-3">
+                          <Text style={{ color: colors.text.primary }} className={modalSectionTitleClass}>Mark as New Design</Text>
+                          <Text style={{ color: colors.text.muted }} className="text-xs mt-1">Track this for yearly reviews.</Text>
+                        </View>
+                        <Switch
+                          value={editIsNewDesign}
+                          onValueChange={setEditIsNewDesign}
+                          trackColor={{ false: '#767577', true: '#D1D5DB' }}
+                          thumbColor={editIsNewDesign ? '#374151' : '#FFFFFF'}
+                        />
+                      </View>
+                      {editIsNewDesign && (
+                        <View className="mt-3">
+                          <Text style={{ color: colors.text.secondary }} className={cn(modalFieldLabelClass, 'mb-1.5')}>Design Year</Text>
+                          <View className="rounded-xl px-4" style={{ backgroundColor: modalFieldBg, borderWidth: 1, borderColor: modalFieldBorder, height: 48, justifyContent: 'center' }}>
+                            <TextInput
+                              placeholder={new Date().getFullYear().toString()}
+                              placeholderTextColor={colors.input.placeholder}
+                              value={editDesignYear}
+                              onChangeText={setEditDesignYear}
+                              keyboardType="number-pad"
+                              maxLength={4}
+                              style={{ color: colors.input.text, fontSize: 14 }}
+                              selectionColor={colors.text.primary}
+                            />
+                          </View>
+                        </View>
+                      )}
+                    </View>
+
+                    <View className="border-t pt-4" style={{ borderTopColor: colors.border.light, borderTopWidth: 1 }}>
+                      <View className="flex-row items-center justify-between">
+                        <View className="flex-1 mr-3">
+                          <Text style={{ color: colors.text.primary }} className={modalSectionTitleClass}>Mark as Inactive</Text>
+                          <Text style={{ color: colors.text.muted }} className="text-xs mt-1">Hide from new order product picker.</Text>
+                        </View>
+                        <Switch
+                          value={editIsDiscontinued}
+                          onValueChange={setEditIsDiscontinued}
+                          trackColor={{ false: '#767577', true: '#9CA3AF' }}
+                          thumbColor="#FFFFFF"
+                        />
+                      </View>
+                      {editIsDiscontinued && (
+                        <View className="mt-3 p-3 rounded-lg" style={{ backgroundColor: 'rgba(248, 113, 113, 0.12)' }}>
+                          <Text className="text-red-500 text-xs">
+                            This product will not appear in the picker for new orders. Existing orders are not affected.
+                          </Text>
+                        </View>
+                      )}
+                    </View>
                   </View>
 
                   {/* Save Button */}
@@ -2126,11 +2688,11 @@ export default function ProductDetailScreen() {
                 >
                   {/* Variable Type Selector */}
                   <View className="mb-4">
-                    <Text style={{ color: themeColors.text.primary }} className="text-sm font-medium mb-2">Variable Type</Text>
+                    <Text style={{ color: themeColors.text.secondary }} className={cn(modalFieldLabelClass, 'mb-2')}>Variable Type</Text>
                     <Pressable
                       onPress={() => setShowVariableTypeDropdown(!showVariableTypeDropdown)}
                       className="rounded-xl px-4 flex-row items-center justify-between"
-                      style={{ backgroundColor: themeColors.input.bg, borderWidth: 1, borderColor: themeColors.input.border, height: 52 }}
+                      style={{ backgroundColor: modalFieldBg, borderWidth: 1, borderColor: modalFieldBorder, height: 52 }}
                     >
                       <Text style={{ color: selectedVariableId ? themeColors.text.primary : themeColors.text.muted }}>
                         {productVariables.find(v => v.id === selectedVariableId)?.name || 'Select Variable Type'}
@@ -2138,7 +2700,7 @@ export default function ProductDetailScreen() {
                       <ChevronDown size={18} color={themeColors.text.muted} strokeWidth={2} />
                     </Pressable>
                     {showVariableTypeDropdown && (
-                      <View className="rounded-xl mt-2 overflow-hidden" style={{ backgroundColor: themeColors.bg.secondary, borderWidth: 1, borderColor: themeColors.border.light }}>
+                      <View className="rounded-xl mt-2 overflow-hidden" style={{ backgroundColor: modalDropdownBg, borderWidth: 1, borderColor: themeColors.border.light }}>
                         {productVariables.map((variable) => (
                           <Pressable
                             key={variable.id}
@@ -2166,8 +2728,8 @@ export default function ProductDetailScreen() {
 
                   {/* Variant Value - Editable Text Input */}
                   <View className="mb-4">
-                    <Text style={{ color: themeColors.text.primary }} className="text-sm font-medium mb-2">Value</Text>
-                    <View className="rounded-xl px-4" style={{ backgroundColor: themeColors.input.bg, borderWidth: 1, borderColor: themeColors.input.border, height: 52, justifyContent: 'center' }}>
+                    <Text style={{ color: themeColors.text.secondary }} className={cn(modalFieldLabelClass, 'mb-2')}>Value</Text>
+                    <View className="rounded-xl px-4" style={{ backgroundColor: modalFieldBg, borderWidth: 1, borderColor: modalFieldBorder, height: 52, justifyContent: 'center' }}>
                       <TextInput
                         placeholder={selectedVariableId ? `Enter ${productVariables.find(v => v.id === selectedVariableId)?.name || 'value'} (e.g., Pink, Large)` : 'Select a variable type first'}
                         placeholderTextColor={themeColors.input.placeholder}
@@ -2182,8 +2744,8 @@ export default function ProductDetailScreen() {
 
                   {/* SKU - Auto-generated but editable */}
                   <View className="mb-4">
-                    <Text style={{ color: themeColors.text.primary }} className="text-sm font-medium mb-2">SKU</Text>
-                    <View className="rounded-xl px-4" style={{ backgroundColor: themeColors.input.bg, borderWidth: 1, borderColor: themeColors.input.border, height: 52, justifyContent: 'center' }}>
+                    <Text style={{ color: themeColors.text.secondary }} className={cn(modalFieldLabelClass, 'mb-2')}>SKU</Text>
+                    <View className="rounded-xl px-4" style={{ backgroundColor: modalFieldBg, borderWidth: 1, borderColor: modalFieldBorder, height: 52, justifyContent: 'center' }}>
                       <TextInput
                         placeholder={getAutoSku() || 'Auto-generated from Product-Value'}
                         placeholderTextColor={themeColors.text.muted}
@@ -2199,38 +2761,80 @@ export default function ProductDetailScreen() {
                     </Text>
                   </View>
 
-                  {/* Initial Stock */}
-                  <View className="mb-4">
-                    <Text style={{ color: themeColors.text.primary }} className="text-sm font-medium mb-2">Initial Stock</Text>
-                    <View className="rounded-xl px-4" style={{ backgroundColor: themeColors.input.bg, borderWidth: 1, borderColor: themeColors.input.border, height: 52, justifyContent: 'center' }}>
-                      <TextInput
-                        placeholder="0"
-                        placeholderTextColor={themeColors.input.placeholder}
-                        value={newVariantStock}
-                        onChangeText={setNewVariantStock}
-                        keyboardType="number-pad"
-                        style={{ color: themeColors.input.text, fontSize: 14 }}
-                        selectionColor={themeColors.text.primary}
+                  {/* Stock */}
+                  {useGlobalStock ? (
+                    <View className="mb-3 flex-row items-center justify-between">
+                      <View className="flex-1 pr-3">
+                        <Text style={{ color: themeColors.text.primary }} className="text-sm font-semibold">Custom Stock</Text>
+                        <Text style={{ color: themeColors.text.muted }} className="text-xs mt-1">Use a different stock for this variant.</Text>
+                        {!overrideVariantStock ? (
+                          <Text style={{ color: themeColors.text.muted }} className="text-xs mt-2">
+                            Stock uses the global value ({effectiveGlobalStock} units).
+                          </Text>
+                        ) : null}
+                      </View>
+                      <Switch
+                        value={overrideVariantStock}
+                        onValueChange={setOverrideVariantStock}
+                        trackColor={{ false: '#767577', true: '#D1D5DB' }}
+                        thumbColor={overrideVariantStock ? '#374151' : '#FFFFFF'}
                       />
                     </View>
-                  </View>
+                  ) : null}
+                  {(!useGlobalStock || overrideVariantStock) ? (
+                    <View className="mb-4">
+                      <Text style={{ color: themeColors.text.secondary }} className={cn(modalFieldLabelClass, 'mb-2')}>Initial Stock</Text>
+                      <View className="rounded-xl px-4" style={{ backgroundColor: modalFieldBg, borderWidth: 1, borderColor: modalFieldBorder, height: 52, justifyContent: 'center' }}>
+                        <TextInput
+                          placeholder="0"
+                          placeholderTextColor={themeColors.input.placeholder}
+                          value={newVariantStock}
+                          onChangeText={setNewVariantStock}
+                          keyboardType="number-pad"
+                          style={{ color: themeColors.input.text, fontSize: 14 }}
+                          selectionColor={themeColors.text.primary}
+                        />
+                      </View>
+                    </View>
+                  ) : null}
 
                   {/* Sale Price */}
-                  <View className="mb-4">
-                    <Text style={{ color: themeColors.text.primary }} className="text-sm font-medium mb-2">Sale Price</Text>
-                    <View className="rounded-xl px-4 flex-row items-center" style={{ backgroundColor: themeColors.input.bg, borderWidth: 1, borderColor: themeColors.input.border, height: 52 }}>
-                      <Text style={{ color: themeColors.text.muted, fontSize: 14, marginRight: 4 }}>₦</Text>
-                      <TextInput
-                        placeholder="0"
-                        placeholderTextColor={themeColors.input.placeholder}
-                        value={newVariantPrice}
-                        onChangeText={setNewVariantPrice}
-                        keyboardType="numeric"
-                        style={{ color: themeColors.input.text, fontSize: 14, flex: 1 }}
-                        selectionColor={themeColors.text.primary}
+                  {useGlobalPrice ? (
+                    <View className="mb-3 flex-row items-center justify-between">
+                      <View className="flex-1 pr-3">
+                        <Text style={{ color: themeColors.text.primary }} className="text-sm font-semibold">Custom Price</Text>
+                        <Text style={{ color: themeColors.text.muted }} className="text-xs mt-1">Use a different price for this variant.</Text>
+                        {!overrideVariantPrice ? (
+                          <Text style={{ color: themeColors.text.muted }} className="text-xs mt-2">
+                            Price uses the global value ({effectiveGlobalPrice}).
+                          </Text>
+                        ) : null}
+                      </View>
+                      <Switch
+                        value={overrideVariantPrice}
+                        onValueChange={setOverrideVariantPrice}
+                        trackColor={{ false: '#767577', true: '#D1D5DB' }}
+                        thumbColor={overrideVariantPrice ? '#374151' : '#FFFFFF'}
                       />
                     </View>
-                  </View>
+                  ) : null}
+                  {(!useGlobalPrice || overrideVariantPrice) ? (
+                    <View className="mb-4">
+                      <Text style={{ color: themeColors.text.secondary }} className={cn(modalFieldLabelClass, 'mb-2')}>Sale Price</Text>
+                      <View className="rounded-xl px-4 flex-row items-center" style={{ backgroundColor: modalFieldBg, borderWidth: 1, borderColor: modalFieldBorder, height: 52 }}>
+                        <Text style={{ color: themeColors.text.muted, fontSize: 14, marginRight: 4 }}>₦</Text>
+                        <TextInput
+                          placeholder="0"
+                          placeholderTextColor={themeColors.input.placeholder}
+                          value={newVariantPrice}
+                          onChangeText={setNewVariantPrice}
+                          keyboardType="numeric"
+                          style={{ color: themeColors.input.text, fontSize: 14, flex: 1 }}
+                          selectionColor={themeColors.text.primary}
+                        />
+                      </View>
+                    </View>
+                  ) : null}
 
                   {/* Add Button */}
                   <Pressable
@@ -2297,15 +2901,15 @@ export default function ProductDetailScreen() {
 
                   {/* Variant Image */}
                   <View className="mb-4">
-                    <Text style={{ color: themeColors.text.primary }} className="text-sm font-medium mb-2">Variant Image</Text>
+                    <Text style={{ color: themeColors.text.secondary }} className={cn(modalFieldLabelClass, 'mb-2')}>Variant Image</Text>
                     <Text style={{ color: themeColors.text.muted }} className="text-xs mb-3">
                       Optional. If not set, will use the main product image.
                     </Text>
                     {editVariantImageUrl ? (
                       <View className="flex-row items-start">
                         <View className="overflow-hidden" style={{ borderWidth: 1, borderColor: themeColors.border.light, borderRadius: 10 }}>
-                          <Image
-                            source={{ uri: editVariantImageUrl }}
+                          <ResolvedAttachmentImage
+                            imageUrl={editVariantImageUrl}
                             style={{ width: 72, height: 72 }}
                             resizeMode="cover"
                           />
@@ -2375,13 +2979,17 @@ export default function ProductDetailScreen() {
 
                   {/* Variant Name/Value - Editable */}
                   <View className="mb-4">
-                    <Text style={{ color: themeColors.text.primary }} className="text-sm font-medium mb-2">Variant Name/Value</Text>
-                    <View className="rounded-xl px-4" style={{ backgroundColor: themeColors.input.bg, borderWidth: 1, borderColor: themeColors.input.border, height: 52, justifyContent: 'center' }}>
+                    <Text style={{ color: themeColors.text.secondary }} className={cn(modalFieldLabelClass, 'mb-2')}>Variant Name/Value</Text>
+                    <View className="rounded-xl px-4" style={{ backgroundColor: modalFieldBg, borderWidth: 1, borderColor: modalFieldBorder, height: 52, justifyContent: 'center' }}>
                       <TextInput
                         placeholder="e.g., Pink, Soft Pink"
                         placeholderTextColor={themeColors.input.placeholder}
                         value={editVariantName}
-                        onChangeText={setEditVariantName}
+                        onChangeText={(text) => {
+                          const nextText = text.toUpperCase();
+                          setEditVariantName(nextText);
+                          setEditVariantSku(buildVariantSku(product.name, nextText).toUpperCase());
+                        }}
                         style={{ color: themeColors.input.text, fontSize: 14 }}
                         selectionColor={themeColors.text.primary}
                       />
@@ -2391,35 +2999,96 @@ export default function ProductDetailScreen() {
 
                   {/* SKU */}
                   <View className="mb-4">
-                    <Text style={{ color: themeColors.text.primary }} className="text-sm font-medium mb-2">SKU</Text>
-                    <View className="rounded-xl px-4" style={{ backgroundColor: themeColors.input.bg, borderWidth: 1, borderColor: themeColors.input.border, height: 52, justifyContent: 'center' }}>
+                    <Text style={{ color: themeColors.text.secondary }} className={cn(modalFieldLabelClass, 'mb-2')}>SKU</Text>
+                    <View className="rounded-xl px-4" style={{ backgroundColor: modalFieldBg, borderWidth: 1, borderColor: modalFieldBorder, height: 52, justifyContent: 'center' }}>
                       <TextInput
-                        placeholder="SKU"
+                        placeholder={buildVariantSku(product.name, editVariantName).toUpperCase()}
                         placeholderTextColor={themeColors.input.placeholder}
-                        value={editVariantSku}
-                        onChangeText={setEditVariantSku}
+                        value={editVariantSku || buildVariantSku(product.name, editVariantName).toUpperCase()}
+                        onChangeText={(text) => setEditVariantSku(text.toUpperCase())}
                         style={{ color: themeColors.input.text, fontSize: 14 }}
                         selectionColor={themeColors.text.primary}
                       />
                     </View>
+                    <Text style={{ color: themeColors.text.muted }} className="text-xs mt-1">
+                      Auto-updates from product name and variant value.
+                    </Text>
                   </View>
 
-                  {/* Sale Price */}
-                  <View className="mb-4">
-                    <Text style={{ color: themeColors.text.primary }} className="text-sm font-medium mb-2">Sale Price</Text>
-                    <View className="rounded-xl px-4 flex-row items-center" style={{ backgroundColor: themeColors.input.bg, borderWidth: 1, borderColor: themeColors.input.border, height: 52 }}>
-                      <Text style={{ color: themeColors.text.muted, fontSize: 14, marginRight: 4 }}>₦</Text>
-                      <TextInput
-                        placeholder="0"
-                        placeholderTextColor={themeColors.input.placeholder}
-                        value={editVariantPrice}
-                        onChangeText={setEditVariantPrice}
-                        keyboardType="numeric"
-                        style={{ color: themeColors.input.text, fontSize: 14, flex: 1 }}
-                        selectionColor={themeColors.text.primary}
+                  {/* Stock */}
+                  {useGlobalStock ? (
+                    <View className="mb-3 flex-row items-center justify-between">
+                      <View className="flex-1 pr-3">
+                        <Text style={{ color: themeColors.text.primary }} className="text-sm font-semibold">Custom Stock</Text>
+                        <Text style={{ color: themeColors.text.muted }} className="text-xs mt-1">Use a different stock for this variant.</Text>
+                        {!editOverrideVariantStock ? (
+                          <Text style={{ color: themeColors.text.muted }} className="text-xs mt-2">
+                            Stock uses the global value ({effectiveGlobalStock} units).
+                          </Text>
+                        ) : null}
+                      </View>
+                      <Switch
+                        value={editOverrideVariantStock}
+                        onValueChange={setEditOverrideVariantStock}
+                        trackColor={{ false: '#767577', true: '#D1D5DB' }}
+                        thumbColor={editOverrideVariantStock ? '#374151' : '#FFFFFF'}
                       />
                     </View>
-                  </View>
+                  ) : null}
+                  {(!useGlobalStock || editOverrideVariantStock) ? (
+                    <View className="mb-4">
+                      <Text style={{ color: themeColors.text.secondary }} className={cn(modalFieldLabelClass, 'mb-2')}>Stock</Text>
+                      <View className="rounded-xl px-4" style={{ backgroundColor: modalFieldBg, borderWidth: 1, borderColor: modalFieldBorder, height: 52, justifyContent: 'center' }}>
+                        <TextInput
+                          placeholder="0"
+                          placeholderTextColor={themeColors.input.placeholder}
+                          value={editVariantStock}
+                          onChangeText={setEditVariantStock}
+                          keyboardType="number-pad"
+                          style={{ color: themeColors.input.text, fontSize: 14 }}
+                          selectionColor={themeColors.text.primary}
+                        />
+                      </View>
+                    </View>
+                  ) : null}
+
+                  {/* Sale Price */}
+                  {useGlobalPrice ? (
+                    <View className="mb-3 flex-row items-center justify-between">
+                      <View className="flex-1 pr-3">
+                        <Text style={{ color: themeColors.text.primary }} className="text-sm font-semibold">Custom Price</Text>
+                        <Text style={{ color: themeColors.text.muted }} className="text-xs mt-1">Use a different price for this variant.</Text>
+                        {!editOverrideVariantPrice ? (
+                          <Text style={{ color: themeColors.text.muted }} className="text-xs mt-2">
+                            Price uses the global value ({effectiveGlobalPrice}).
+                          </Text>
+                        ) : null}
+                      </View>
+                      <Switch
+                        value={editOverrideVariantPrice}
+                        onValueChange={setEditOverrideVariantPrice}
+                        trackColor={{ false: '#767577', true: '#D1D5DB' }}
+                        thumbColor={editOverrideVariantPrice ? '#374151' : '#FFFFFF'}
+                      />
+                    </View>
+                  ) : null}
+                  {(!useGlobalPrice || editOverrideVariantPrice) ? (
+                    <View className="mb-4">
+                      <Text style={{ color: themeColors.text.secondary }} className={cn(modalFieldLabelClass, 'mb-2')}>Sale Price</Text>
+                      <View className="rounded-xl px-4 flex-row items-center" style={{ backgroundColor: modalFieldBg, borderWidth: 1, borderColor: modalFieldBorder, height: 52 }}>
+                        <Text style={{ color: themeColors.text.muted, fontSize: 14, marginRight: 4 }}>₦</Text>
+                        <TextInput
+                          placeholder="0"
+                          placeholderTextColor={themeColors.input.placeholder}
+                          value={editVariantPrice}
+                          onChangeText={setEditVariantPrice}
+                          keyboardType="numeric"
+                          style={{ color: themeColors.input.text, fontSize: 14, flex: 1 }}
+                          selectionColor={themeColors.text.primary}
+                        />
+                      </View>
+                    </View>
+                  ) : null}
 
                   {/* Save Button */}
                   <Pressable
@@ -2433,6 +3102,76 @@ export default function ProductDetailScreen() {
               </View>
             </View>
           </KeyboardAvoidingView>
+        </Modal>
+
+        <Modal
+          visible={pendingDeleteProduct}
+          animationType="fade"
+          transparent
+          onRequestClose={() => {
+            if (!isDeletingProduct) {
+              setPendingDeleteProduct(false);
+            }
+          }}
+        >
+          <Pressable
+            className="flex-1 items-center justify-center"
+            style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)' }}
+            onPress={() => {
+              if (!isDeletingProduct) {
+                setPendingDeleteProduct(false);
+              }
+            }}
+          >
+            <Pressable
+              onPress={(e) => e.stopPropagation()}
+              className="w-[90%] rounded-2xl overflow-hidden"
+              style={{ backgroundColor: colors.bg.primary, maxWidth: 360 }}
+            >
+              <View className="px-5 py-4" style={{ borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
+                <Text style={{ color: colors.text.primary }} className="font-bold text-lg">Move to Recycle Bin</Text>
+                <Text style={{ color: colors.text.tertiary }} className="text-sm mt-1">
+                  {product.name
+                    ? `Move ${product.name} out of active inventory and keep it recoverable from Recycle Bin?`
+                    : 'Move this product out of active inventory and keep it recoverable from Recycle Bin?'}
+                </Text>
+              </View>
+              <View className="px-5 py-4 flex-row gap-3">
+                <Pressable
+                  onPress={() => {
+                    if (!isDeletingProduct) {
+                      setPendingDeleteProduct(false);
+                    }
+                  }}
+                  className="flex-1 rounded-full items-center"
+                  style={{
+                    backgroundColor: colors.bg.secondary,
+                    height: 48,
+                    justifyContent: 'center',
+                    opacity: isDeletingProduct ? 0.5 : 1,
+                  }}
+                  disabled={isDeletingProduct}
+                >
+                  <Text style={{ color: colors.text.tertiary }} className="font-medium">Cancel</Text>
+                </Pressable>
+                <Pressable
+                  onPress={confirmDeleteProduct}
+                  className="flex-1 rounded-full items-center"
+                  style={{
+                    backgroundColor: '#EF4444',
+                    height: 48,
+                    justifyContent: 'center',
+                    opacity: isDeletingProduct ? 0.7 : 1,
+                  }}
+                  disabled={isDeletingProduct}
+                >
+                  <Text className="text-white font-semibold">
+                    {isDeletingProduct ? 'Moving...' : 'Move'}
+                  </Text>
+                </Pressable>
+              </View>
+            </Pressable>
+          </Pressable>
         </Modal>
 
         {/* Image Picker Modal - Simplified for web compatibility */}
@@ -2482,6 +3221,86 @@ export default function ProductDetailScreen() {
             </Pressable>
           </Pressable>
         </Modal>
+
+        {/* Product Gallery Preview */}
+        <Modal
+          visible={isGalleryOpen}
+          animationType="fade"
+          transparent
+          onRequestClose={() => setIsGalleryOpen(false)}
+        >
+          <SafeAreaView style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.95)' }}>
+            <View className="flex-row items-center justify-between px-4 py-3">
+              <Text className="text-white text-sm font-semibold">
+                {galleryImages.length > 0 ? `${galleryIndex + 1} of ${galleryImages.length}` : 'Preview'}
+              </Text>
+              <Pressable
+                onPress={() => setIsGalleryOpen(false)}
+                className="w-9 h-9 rounded-full items-center justify-center"
+                style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}
+              >
+                <X size={18} color="#FFFFFF" strokeWidth={2.5} />
+              </Pressable>
+            </View>
+            <ScrollView
+              ref={galleryScrollRef}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              onMomentumScrollEnd={(event) => {
+                const nextIndex = Math.round(event.nativeEvent.contentOffset.x / screenWidth);
+                setGalleryIndex(nextIndex);
+              }}
+              contentOffset={{ x: galleryIndex * screenWidth, y: 0 }}
+            >
+              {galleryImages.map((imageUrl) => (
+                <View
+                  key={imageUrl}
+                  style={{
+                    width: screenWidth,
+                    height: screenHeight - 88,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <ResolvedAttachmentImage
+                    imageUrl={imageUrl}
+                    style={{ width: screenWidth, height: screenHeight - 140 }}
+                    resizeMode="contain"
+                  />
+                </View>
+              ))}
+            </ScrollView>
+          </SafeAreaView>
+        </Modal>
+
+        {toast ? (
+          <View
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              left: 20,
+              right: 20,
+              bottom: 24,
+              alignItems: 'center',
+            }}
+          >
+            <View
+              style={{
+                backgroundColor: toast.type === 'success' ? '#111111' : '#7F1D1D',
+                borderRadius: 999,
+                paddingHorizontal: 16,
+                paddingVertical: 12,
+                minHeight: 44,
+                justifyContent: 'center',
+              }}
+            >
+              <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '600' }}>
+                {toast.message}
+              </Text>
+            </View>
+          </View>
+        ) : null}
       </SafeAreaView>
     </View>
   );

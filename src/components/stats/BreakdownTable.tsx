@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, ScrollView } from 'react-native';
+import { View, Text, ScrollView, type StyleProp, type ViewStyle } from 'react-native';
 import { useStatsColors } from '@/lib/theme';
 
 interface BreakdownRow {
@@ -21,6 +21,7 @@ interface BreakdownTableProps {
   };
   showIndex?: boolean;
   emptyMessage?: string;
+  containerStyle?: StyleProp<ViewStyle>;
 }
 
 export function BreakdownTable({
@@ -33,6 +34,7 @@ export function BreakdownTable({
   },
   showIndex = false,
   emptyMessage = 'No data available',
+  containerStyle,
 }: BreakdownTableProps) {
   const colors = useStatsColors();
 
@@ -40,7 +42,7 @@ export function BreakdownTable({
     return (
       <View
         className="rounded-2xl p-5"
-        style={colors.getCardStyle()}
+        style={[colors.getCardStyle(), containerStyle]}
       >
         {title && (
           <Text
@@ -63,7 +65,7 @@ export function BreakdownTable({
   return (
     <View
       className="rounded-2xl p-5"
-      style={colors.getCardStyle()}
+      style={[colors.getCardStyle(), containerStyle]}
     >
       {title && (
         <Text

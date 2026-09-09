@@ -20,7 +20,18 @@ export default function Root({ children }: { children: React.ReactNode }) {
         <link rel="shortcut icon" href="/favicon-32.png" />
         <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon-180.png" />
 
-        {/* 
+        {/*
+          Runs synchronously during HTML parsing, before the SPA bundle
+          loads/hydrates. iOS reads the <link> tags and page title the
+          instant "Add to Home Screen" is tapped, so a React useEffect
+          (which only fires after hydration) can lose that race and leave
+          the default Fyll icon/name showing. This inline script rewrites
+          them for the partner portal domain as early as physically
+          possible on the page.
+        */}
+        <script dangerouslySetInnerHTML={{ __html: partnerBrandingScript }} />
+
+        {/*
           Disable body scrolling on web. This makes ScrollView components work closer to how they do on native. 
           However, body scrolling is often nice to have for mobile web. If you want to enable it, remove this line.
         */}
@@ -38,6 +49,37 @@ export default function Root({ children }: { children: React.ReactNode }) {
     </html>
   );
 }
+
+const partnerBrandingScript = `
+(function () {
+  try {
+    var hostname = window.location.hostname.replace(/^www\\./, '');
+    if (hostname !== 'partner.fyll.app') return;
+
+    document.title = 'Fyll Partner';
+
+    var setMeta = function (name, content) {
+      var el = document.querySelector('meta[name="' + name + '"]');
+      if (!el) {
+        el = document.createElement('meta');
+        el.setAttribute('name', name);
+        document.head.appendChild(el);
+      }
+      el.setAttribute('content', content);
+    };
+    setMeta('apple-mobile-web-app-title', 'Fyll Partner');
+
+    var setLinkHref = function (selector, href) {
+      var el = document.querySelector(selector);
+      if (el) el.setAttribute('href', href);
+    };
+    setLinkHref('link[rel="icon"]', '/favicon-partner-32.png');
+    setLinkHref('link[rel="shortcut icon"]', '/favicon-partner-32.png');
+    setLinkHref('link[rel="apple-touch-icon"]', '/icons/apple-touch-icon-partner-180.png');
+    setLinkHref('link[rel="manifest"]', '/manifest-partner.json');
+  } catch (e) {}
+})();
+`;
 
 const responsiveBackground = `
 body {

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { View, Text, Pressable, TextInput, FlatList, Modal, Platform, ScrollView } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
+import { useNavigation } from '@react-navigation/native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Clipboard from 'expo-clipboard';
 import { Archive, ArrowLeft, Check, CheckCheck, ChevronDown, ChevronUp, Copy, Filter, Hash, MessageSquare, MoreHorizontal, Pin, Plus, Search, X } from 'lucide-react-native';
@@ -15,6 +16,7 @@ import { collaborationData, type CollaborationThreadSummary } from '@/lib/supaba
 import { storage } from '@/lib/storage';
 import { createOrderStatusColorMap, getOrderStatusChipColors } from '@/lib/order-status-colors';
 import { CollaborationThreadPanel } from '@/components/CollaborationThreadPanel';
+import { getTabBarStyle } from '@/lib/tab-bar-style';
 import { OrderDetailPanel } from '@/components/OrderDetailPanel';
 import {
   buildCustomTeamThreadEntityId,
@@ -56,9 +58,51 @@ interface WebThreadMenuState {
   y: number;
 }
 
+let lastThreadListOffset = 0;
+
 const formatOrderReference = (orderNumber: string) => {
   const normalized = orderNumber.trim().replace(/^ORD[-\s]*/i, '').replace(/^#/, '').trim();
   return normalized.length > 0 ? `#${normalized}` : '#';
+};
+
+const normalizeSystemOrderStatus = (value?: string | null) => (
+  String(value ?? '').trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ')
+);
+const toSystemOrderStatusLabel = (value?: string | null) => {
+  const normalized = normalizeSystemOrderStatus(value);
+  if (!normalized) return 'Status';
+  return normalized.split(' ').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
+};
+const SYSTEM_ORDER_STATUS_MAP: Record<string, { label: string; color: string; bg: string; border: string }> = {
+  'awaiting payment': { label: 'Awaiting Payment', color: '#D97706', bg: 'rgba(217,119,6,0.14)', border: 'rgba(217,119,6,0.25)' },
+  'payment approval': { label: 'Payment Approval', color: '#D97706', bg: 'rgba(217,119,6,0.14)', border: 'rgba(217,119,6,0.25)' },
+  verified: { label: 'Payment Confirmed', color: '#059669', bg: 'rgba(5,150,105,0.14)', border: 'rgba(5,150,105,0.25)' },
+  paid: { label: 'Payment Confirmed', color: '#059669', bg: 'rgba(5,150,105,0.14)', border: 'rgba(5,150,105,0.25)' },
+  confirmed: { label: 'Payment Confirmed', color: '#059669', bg: 'rgba(5,150,105,0.14)', border: 'rgba(5,150,105,0.25)' },
+  'payment confirmed': { label: 'Payment Confirmed', color: '#059669', bg: 'rgba(5,150,105,0.14)', border: 'rgba(5,150,105,0.25)' },
+  processing: { label: 'Processing', color: '#D97706', bg: 'rgba(217,119,6,0.14)', border: 'rgba(217,119,6,0.25)' },
+  preparing: { label: 'Preparing', color: '#2563EB', bg: 'rgba(37,99,235,0.14)', border: 'rgba(37,99,235,0.25)' },
+  packed: { label: 'Packed', color: '#7C3AED', bg: 'rgba(124,58,237,0.14)', border: 'rgba(124,58,237,0.25)' },
+  dispatched: { label: 'Dispatched', color: '#2563EB', bg: 'rgba(37,99,235,0.14)', border: 'rgba(37,99,235,0.25)' },
+  dispatch: { label: 'Dispatch', color: '#2563EB', bg: 'rgba(37,99,235,0.14)', border: 'rgba(37,99,235,0.25)' },
+  shipped: { label: 'Shipped', color: '#2563EB', bg: 'rgba(37,99,235,0.14)', border: 'rgba(37,99,235,0.25)' },
+  delivered: { label: 'Delivered', color: '#059669', bg: 'rgba(5,150,105,0.14)', border: 'rgba(5,150,105,0.25)' },
+  completed: { label: 'Completed', color: '#059669', bg: 'rgba(5,150,105,0.14)', border: 'rgba(5,150,105,0.25)' },
+  cancelled: { label: 'Cancelled', color: '#DC2626', bg: 'rgba(220,38,38,0.14)', border: 'rgba(220,38,38,0.25)' },
+  canceled: { label: 'Cancelled', color: '#DC2626', bg: 'rgba(220,38,38,0.14)', border: 'rgba(220,38,38,0.25)' },
+  failed: { label: 'Failed', color: '#DC2626', bg: 'rgba(220,38,38,0.14)', border: 'rgba(220,38,38,0.25)' },
+  refunded: { label: 'Refunded', color: '#DC2626', bg: 'rgba(220,38,38,0.14)', border: 'rgba(220,38,38,0.25)' },
+};
+const getThreadOrderStatusDisplay = (
+  status: string,
+  fallbackColors: { text: string; bg: string; border: string }
+) => {
+  const normalized = normalizeSystemOrderStatus(status);
+  const known = SYSTEM_ORDER_STATUS_MAP[normalized];
+  if (known) {
+    return { label: known.label, text: known.color, bg: known.bg, border: known.border };
+  }
+  return { label: toSystemOrderStatusLabel(status), ...fallbackColors };
 };
 
 const formatThreadTitle = (customerName: string, orderNumber: string) => {
@@ -160,6 +204,7 @@ const getStatusChipColors = (status: string, isDark: boolean) => {
 export default function ThreadsScreen() {
   const colors = useThemeColors();
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation();
   const { isMobile, isDesktop } = useBreakpoint();
   const pageHeadingStyle = getStandardPageHeadingStyle(isMobile);
   const desktopHeaderMinHeight = DESKTOP_PAGE_HEADER_MIN_HEIGHT;
@@ -195,6 +240,26 @@ export default function ThreadsScreen() {
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [selectedTeamThreadEntityId, setSelectedTeamThreadEntityId] = useState<string | null>(null);
   const [selectedCaseThreadEntityId, setSelectedCaseThreadEntityId] = useState<string | null>(null);
+
+  // On mobile, an open thread takes over the full screen — hide the floating
+  // bottom tab bar while one is open so it doesn't sit over the message
+  // composer (same approach as threads/team.tsx, which is always "open").
+  // Restoring must use the app's actual tab bar style, not `undefined` —
+  // React Navigation's options merge treats an explicit `undefined` as an
+  // override, which falls back to its plain default bar instead of the
+  // screenOptions-level floating pill style.
+  const isThreadOpen = Boolean(selectedOrderId || selectedTeamThreadEntityId || selectedCaseThreadEntityId);
+  useEffect(() => {
+    if (!isMobile) return;
+    const parent = navigation.getParent();
+    if (!parent) return;
+    const restoredStyle = getTabBarStyle(colors, isDesktop, isMobile);
+    parent.setOptions({ tabBarStyle: isThreadOpen ? { display: 'none' } : restoredStyle });
+    return () => {
+      parent.setOptions({ tabBarStyle: restoredStyle });
+    };
+  }, [navigation, colors, isDesktop, isMobile, isThreadOpen]);
+
   const [hoveredOrderId, setHoveredOrderId] = useState<string | null>(null);
   const [showCreateThreadPicker, setShowCreateThreadPicker] = useState(false);
   const [createThreadQuery, setCreateThreadQuery] = useState('');
@@ -218,6 +283,7 @@ export default function ThreadsScreen() {
   const [showTeamInfo, setShowTeamInfo] = useState(false);
   const [showTeamSearch, setShowTeamSearch] = useState(false);
   const hasMobileChatHistoryEntryRef = useRef(false);
+  const threadListRef = useRef<FlatList<ThreadListItem>>(null);
 
   const params = useLocalSearchParams<{ orderId?: string | string[]; teamEntityId?: string | string[]; caseEntityId?: string | string[] }>();
   const requestedOrderId = Array.isArray(params.orderId) ? params.orderId[0] : params.orderId;
@@ -282,6 +348,7 @@ export default function ThreadsScreen() {
     () => teamUnreadCountsQuery.data ?? {},
     [teamUnreadCountsQuery.data]
   );
+
   const closedThreadsStorageKey = useMemo(
     () => (businessId ? `threads:closed:${businessId}:order` : null),
     [businessId]
@@ -373,6 +440,17 @@ export default function ThreadsScreen() {
     }
     return statusFiltered.filter((item) => !isThreadClosed(item));
   }, [allThreadItems, isThreadClosed, searchQuery, statusFilter, threadVisibilityFilter]);
+
+  useEffect(() => {
+    if (showSplitView && showCreateThreadPicker) return;
+    if (!threadListRef.current) return;
+    requestAnimationFrame(() => {
+      threadListRef.current?.scrollToOffset({
+        offset: lastThreadListOffset,
+        animated: false,
+      });
+    });
+  }, [filteredThreadItems.length, showCreateThreadPicker, showSplitView]);
 
   const openThreadCount = useMemo(
     () => allThreadItems.filter((item) => !isThreadClosed(item)).length,
@@ -945,8 +1023,9 @@ export default function ThreadsScreen() {
     () => createOrderStatusColorMap(orderStatuses),
     [orderStatuses]
   );
-  const selectedThreadStatus = selectedThreadOrder?.status ?? 'Pending';
-  const selectedThreadStatusColors = getOrderStatusChipColors(selectedThreadStatus, orderStatusColorMap, isDark);
+  const selectedThreadStatusRaw = selectedThreadOrder?.status ?? 'Pending';
+  const selectedThreadStatusColors = getOrderStatusChipColors(selectedThreadStatusRaw, orderStatusColorMap, isDark);
+  const selectedThreadStatusDisplay = getThreadOrderStatusDisplay(selectedThreadStatusRaw, selectedThreadStatusColors);
   const selectedCaseStatusColors = getStatusChipColors(selectedCaseThread?.status ?? 'Open', isDark);
 
   const openOrderDetails = (_orderId: string) => {
@@ -963,19 +1042,27 @@ export default function ThreadsScreen() {
     const standardTextSize = 14;
     const standardTextWeight = '600' as const;
     const orderTextSize = standardTextSize;
-    const customerTextSize = 13;
+    const customerTextSize = isMobile ? 12 : 13;
     const previewTextWeight = '500' as const;
-    const dateTextSize = 12;
+    const dateTextSize = isMobile ? 10 : 12;
     const unreadSize = showSplitView ? 24 : 22;
     const showDesktopHoverMenu = showSplitView && Platform.OS === 'web';
     const showTabletInlineMenu = showSplitView && Platform.OS !== 'web';
     const orderReference = formatOrderReference(item.orderNumber);
-    const rowStatusColors = getOrderStatusChipColors(item.orderStatus, orderStatusColorMap, isDark);
+    const rowStatusColorsRaw = getOrderStatusChipColors(item.orderStatus, orderStatusColorMap, isDark);
+    const rowStatusColors = getThreadOrderStatusDisplay(item.orderStatus, rowStatusColorsRaw);
     const customerInitial = getCustomerInitials(item.customerName);
     const avatarBackground = isDark ? '#D1D5DB' : '#0B0B0B';
     const avatarTextColor = isDark ? '#0B0B0B' : '#FFFFFF';
     return (
-      <View style={{ marginHorizontal: 12, marginBottom: 4 }}>
+      <View
+        style={{
+          marginHorizontal: 12,
+          marginBottom: 4,
+          borderBottomWidth: isDark ? 0 : 0.5,
+          borderBottomColor: isDark ? 'transparent' : 'rgba(15,23,42,0.08)',
+        }}
+      >
         <Pressable
           onPress={() => openThread(item)}
           onLongPress={() => {
@@ -1078,11 +1165,10 @@ export default function ThreadsScreen() {
                         color: rowStatusColors.text,
                         fontSize: 10,
                         fontWeight: '700',
-                        textTransform: 'capitalize',
                       }}
                       numberOfLines={1}
                     >
-                      {item.orderStatus}
+                      {rowStatusColors.label}
                     </Text>
                   </View>
                   <Text style={{ color: colors.text.tertiary, fontSize: dateTextSize, fontWeight: standardTextWeight, marginLeft: 8 }}>
@@ -1108,7 +1194,7 @@ export default function ThreadsScreen() {
               <Text
                 style={{
                   color: colors.text.tertiary,
-                  fontSize: 13,
+                  fontSize: isMobile ? 12 : 13,
                   fontWeight: '600',
                   marginTop: 2,
                 }}
@@ -1452,49 +1538,77 @@ export default function ThreadsScreen() {
 
   const threadListHeader = (
     <View>
-      <View style={{ paddingHorizontal: 22, paddingTop: isWebDesktop ? 0 : 20, paddingBottom: 14 }}>
+      <View
+        style={{
+          backgroundColor: isWebDesktop ? colors.bg.card : colors.bg.primary,
+          borderBottomWidth: isWebDesktop ? 0 : 0.5,
+          borderBottomColor: colors.border.light,
+        }}
+      >
         <View
-          className="flex-row items-center justify-between"
-          style={isWebDesktop ? {
-            minHeight: desktopHeaderMinHeight,
-            borderBottomWidth: 1,
-            borderBottomColor: colors.border.light,
-            marginBottom: 12,
-            marginHorizontal: -22,
-            paddingHorizontal: 22,
-          } : undefined}
+          style={[
+            {
+              paddingHorizontal: isWebDesktop ? 22 : 20,
+              paddingTop: isWebDesktop ? 0 : 16,
+              paddingBottom: isWebDesktop ? 12 : 8,
+            },
+            isWebDesktop ? { maxWidth: 1456, width: '100%', alignSelf: 'flex-start' } : undefined,
+          ]}
         >
-          <View className="flex-1 mr-3">
-            <Text style={{ color: colors.text.primary, ...pageHeadingStyle }}>Threads</Text>
-            <Text style={{ color: colors.text.tertiary, fontSize: 14, fontWeight: '500', marginTop: 6 }}>
-              {openThreadCount} active order thread{openThreadCount === 1 ? '' : 's'}
-            </Text>
-          </View>
-          <Pressable
-            onPress={() => setShowCreateThreadPicker(true)}
-            disabled={!businessId || isOfflineMode}
-            className="active:opacity-80"
-            style={{
-              height: 44,
-              paddingHorizontal: 16,
-              borderRadius: 999,
+          <View
+            className={isWebDesktop ? 'flex-row items-center justify-between' : undefined}
+            style={isWebDesktop ? {
+              minHeight: desktopHeaderMinHeight,
+              borderBottomWidth: 1,
+              borderBottomColor: colors.border.light,
+              marginBottom: 12,
+              marginHorizontal: -22,
+              paddingHorizontal: 22,
+            } : {
               flexDirection: 'row',
               alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: '#FFFFFF',
-              borderWidth: 1,
-              borderColor: colors.border.light,
-              opacity: !businessId || isOfflineMode ? 0.5 : 1,
+              justifyContent: 'space-between',
             }}
           >
-            <Plus size={18} color="#111111" strokeWidth={2.5} />
-            <Text style={{ color: '#111111', fontSize: 15, fontWeight: '700', marginLeft: 8 }}>
-              New thread
-            </Text>
-          </Pressable>
+            <View className="flex-1 mr-3">
+              <Text style={{ color: colors.text.primary, ...pageHeadingStyle }}>Threads</Text>
+            </View>
+            <Pressable
+              onPress={() => setShowCreateThreadPicker(true)}
+              disabled={!businessId || isOfflineMode}
+              className="active:opacity-80"
+              style={{
+                height: 44,
+                paddingHorizontal: 16,
+                borderRadius: 999,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: '#FFFFFF',
+                borderWidth: 1,
+                borderColor: colors.border.light,
+                opacity: !businessId || isOfflineMode ? 0.5 : 1,
+              }}
+            >
+              <Plus size={18} color="#111111" strokeWidth={2.5} />
+              <Text style={{ color: '#111111', fontSize: 12, fontWeight: '600', marginLeft: 8 }}>
+                New thread
+              </Text>
+            </Pressable>
+          </View>
         </View>
+      </View>
 
-        <View className="flex-row items-center mt-3">
+      <View
+        style={[
+          {
+            paddingHorizontal: isWebDesktop ? 22 : 20,
+            paddingTop: 12,
+          },
+          isWebDesktop ? { maxWidth: 1456, width: '100%', alignSelf: 'flex-start' } : undefined,
+        ]}
+      >
+        <View className="flex-row items-center">
           <View
             className="flex-row items-center rounded-full px-4"
             style={{ flex: 1, height: 46, backgroundColor: searchBackground, borderWidth: 1, borderColor: colors.border.light }}
@@ -1798,6 +1912,7 @@ export default function ThreadsScreen() {
   ) : (
     <View style={{ flex: 1, backgroundColor: leftPaneBackground }}>
       <FlatList
+        ref={threadListRef}
         data={filteredThreadItems}
         keyExtractor={(item) => item.threadId}
         ListHeaderComponent={threadListHeader}
@@ -1806,6 +1921,10 @@ export default function ThreadsScreen() {
         style={{ flex: 1 }}
         contentContainerStyle={{ flexGrow: 1, paddingBottom: 8 }}
         keyboardShouldPersistTaps="handled"
+        onScroll={(event) => {
+          lastThreadListOffset = event.nativeEvent.contentOffset.y;
+        }}
+        scrollEventThrottle={16}
       />
     </View>
   );
@@ -1859,20 +1978,19 @@ export default function ThreadsScreen() {
                 paddingHorizontal: 8,
                 paddingVertical: 5,
                 borderWidth: 1,
-                borderColor: selectedThreadStatusColors.border,
-                backgroundColor: selectedThreadStatusColors.bg,
+                borderColor: selectedThreadStatusDisplay.border,
+                backgroundColor: selectedThreadStatusDisplay.bg,
               }}
             >
               <Text
                 style={{
-                  color: selectedThreadStatusColors.text,
+                  color: selectedThreadStatusDisplay.text,
                   fontSize: 11,
                   fontWeight: '700',
-                  textTransform: 'capitalize',
                 }}
                 numberOfLines={1}
               >
-                {selectedThreadStatus}
+                {selectedThreadStatusDisplay.label}
               </Text>
             </View>
           </Pressable>
@@ -2392,7 +2510,7 @@ export default function ThreadsScreen() {
       <Modal
         visible={threadActionsTarget !== null}
         transparent
-        animationType={showSplitView ? 'fade' : 'slide'}
+        animationType={showSplitView ? 'fade' : 'none'}
         onRequestClose={() => setThreadActionsTarget(null)}
       >
         <Pressable
@@ -2678,7 +2796,12 @@ export default function ThreadsScreen() {
               onPress={(event) => event.stopPropagation()}
               style={{
                 position: 'absolute',
-                top: webThreadMenu.y + 10,
+                top: (() => {
+                  const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 900;
+                  const estimatedMenuHeight = 224;
+                  const preferredTop = webThreadMenu.y - estimatedMenuHeight - 8;
+                  return Math.max(8, Math.min(viewportHeight - estimatedMenuHeight - 8, preferredTop));
+                })(),
                 left: (() => {
                   const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1280;
                   return Math.max(8, Math.min(viewportWidth - 244, webThreadMenu.x - 210));

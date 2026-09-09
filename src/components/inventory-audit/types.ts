@@ -8,6 +8,8 @@ export interface AuditItem {
   expectedStock: number;
   physicalCount: string;
   sku: string;
+  sourceType?: 'product' | 'warehouse';
+  unit?: string;
 }
 
 export type AuditStatusFilter = 'all' | 'uncounted' | 'discrepancies';

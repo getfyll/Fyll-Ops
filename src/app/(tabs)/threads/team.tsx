@@ -1,16 +1,21 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useNavigation } from '@react-navigation/native';
 import { ArrowLeft, ChevronDown, Hash, Info, MoreVertical, Pencil, Search, Trash2 } from 'lucide-react-native';
 import useAuthStore from '@/lib/state/auth-store';
 import { useResolvedThemeMode, useThemeColors } from '@/lib/theme';
+import { useBreakpoint } from '@/lib/useBreakpoint';
 import { CollaborationThreadPanel } from '@/components/CollaborationThreadPanel';
 import { getTeamThreadChannelById, TEAM_THREAD_CHANNELS } from '@/lib/team-threads';
+import { getTabBarStyle } from '@/lib/tab-bar-style';
 
 export default function TeamThreadScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
   const colors = useThemeColors();
+  const { isMobile, isDesktop } = useBreakpoint();
   const isDark = useResolvedThemeMode() === 'dark';
   const businessId = useAuthStore((state) => state.businessId ?? state.currentUser?.businessId ?? null);
   const isOfflineMode = useAuthStore((state) => state.isOfflineMode);
@@ -24,6 +29,22 @@ export default function TeamThreadScreen() {
     () => getTeamThreadChannelById(channelId) ?? TEAM_THREAD_CHANNELS[0],
     [channelId]
   );
+
+  // This screen always shows an open conversation — hide the floating
+  // bottom tab bar so it doesn't sit over the message composer. Restoring
+  // must use the app's actual tab bar style, not `undefined` — React
+  // Navigation's options merge treats an explicit `undefined` as an
+  // override, which falls back to its plain default bar instead of the
+  // screenOptions-level floating pill style.
+  useEffect(() => {
+    const parent = navigation.getParent();
+    if (!parent) return;
+    const restoredStyle = getTabBarStyle(colors, isDesktop, isMobile);
+    parent.setOptions({ tabBarStyle: { display: 'none' } });
+    return () => {
+      parent.setOptions({ tabBarStyle: restoredStyle });
+    };
+  }, [navigation, colors, isDesktop, isMobile]);
 
   return (
     <SafeAreaView className="flex-1" edges={['top']} style={{ backgroundColor: colors.bg.primary }}>

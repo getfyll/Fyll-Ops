@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, Pressable, TextInput, Alert, Modal, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
-import { ChevronLeft, Pencil, Tag, Trash2 } from 'lucide-react-native';
+import { ArrowLeft, Pencil, Tag, Trash2 } from 'lucide-react-native';
 import useFyllStore from '@/lib/state/fyll-store';
 import useAuthStore from '@/lib/state/auth-store';
 import { useThemeColors } from '@/lib/theme';
@@ -120,23 +120,22 @@ export default function CategoryManagerScreen() {
       <View style={panelStyles.inner}>
       <SafeAreaView className="flex-1" edges={['top']}>
         {/* Header */}
-        <View className="flex-row items-center justify-between px-5 py-4" style={{ borderBottomWidth: 0.5, borderBottomColor: separatorColor }}>
+        <View className="flex-row items-center px-5 py-4" style={{ borderBottomWidth: 0.5, borderBottomColor: separatorColor }}>
           <Pressable
             onPress={goBack}
-            className="w-10 h-10 rounded-xl items-center justify-center active:opacity-50"
-            style={{ backgroundColor: colors.bg.secondary }}
+            className="w-10 h-10 items-center justify-center mr-3 active:opacity-50"
+            style={{ backgroundColor: 'transparent' }}
           >
-            <ChevronLeft size={20} color={colors.text.primary} strokeWidth={2} />
+            <ArrowLeft size={20} color={colors.text.primary} strokeWidth={2} />
           </Pressable>
-          <Text style={{ color: colors.text.primary }} className="text-lg font-bold">Categories</Text>
-          <View className="w-10" />
+          <Text style={{ color: colors.text.primary, fontSize: 14, lineHeight: 18, fontWeight: '600' }}>Categories</Text>
         </View>
 
         <KeyboardAwareScrollView className="flex-1 px-5" showsVerticalScrollIndicator={false} enableOnAndroid extraScrollHeight={100}>
           {/* Add New Category */}
           <View className="rounded-xl p-4 mt-4" style={{ backgroundColor: colors.bg.card, borderWidth: 0.5, borderColor: separatorColor }}>
             <Text style={{ color: colors.text.primary }} className="font-bold text-sm mb-3">Add New Category</Text>
-            <View className="rounded-xl px-4" style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.input.border, height: 52, justifyContent: 'center' }}>
+            <View className="rounded-xl px-4" style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light, height: 52, justifyContent: 'center' }}>
               <TextInput
                 placeholder="Category name"
                 placeholderTextColor={colors.input.placeholder}
@@ -245,7 +244,7 @@ export default function CategoryManagerScreen() {
             className="w-[90%] rounded-2xl p-5"
             style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light, maxWidth: 420 }}
           >
-            <Text style={{ color: colors.text.primary }} className="text-lg font-bold mb-2">Delete category?</Text>
+            <Text style={{ color: colors.text.primary, fontSize: 14, lineHeight: 18, fontWeight: '600', marginBottom: 8 }}>Delete category?</Text>
             <Text style={{ color: colors.text.tertiary }} className="text-sm mb-4">
               This will remove "{pendingDeleteCategory}" from all products.
             </Text>
@@ -285,14 +284,14 @@ export default function CategoryManagerScreen() {
             className="w-[90%] rounded-2xl p-5"
             style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light, maxWidth: 420 }}
           >
-            <Text style={{ color: colors.text.primary }} className="text-lg font-bold mb-2">Edit category</Text>
+            <Text style={{ color: colors.text.primary, fontSize: 14, lineHeight: 18, fontWeight: '600', marginBottom: 8 }}>Edit category</Text>
             <TextInput
               placeholder="Category name"
               placeholderTextColor={colors.input.placeholder}
               value={editedCategoryName}
               onChangeText={setEditedCategoryName}
               className="rounded-xl px-4 py-3 text-base mb-4"
-              style={{ backgroundColor: colors.input.bg, color: colors.input.text, borderWidth: 1, borderColor: colors.input.border }}
+              style={{ backgroundColor: colors.input.bg, color: colors.input.text, borderWidth: 1, borderColor: colors.border.light }}
             />
             <View className="flex-row gap-3">
               <Pressable

@@ -296,27 +296,34 @@ export default function CasesScreen() {
         <ScrollView
           style={{ flex: 1 }}
           contentContainerStyle={{
-            paddingHorizontal: 28,
+            paddingHorizontal: 0,
             paddingTop: isWebDesktop ? 0 : settingsHeaderTopPadding,
             paddingBottom: 40,
             width: '100%',
-            maxWidth: 1456,
-            alignSelf: 'flex-start',
+            alignSelf: 'stretch',
           }}
           showsVerticalScrollIndicator={false}
         >
             <View
               style={{
-                minHeight: desktopHeaderMinHeight,
+                width: '100%',
                 borderBottomWidth: 1,
                 borderBottomColor: separatorColor,
-                marginBottom: 12,
-                justifyContent: 'center',
-                marginHorizontal: -28,
-                paddingHorizontal: 28,
               }}
             >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <View style={{
+                width: '100%',
+                maxWidth: 1400,
+                alignSelf: 'flex-start',
+                minHeight: desktopHeaderMinHeight,
+                paddingLeft: 20,
+                paddingRight: 20,
+                paddingTop: 20,
+                paddingBottom: 16,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 12,
+              }}>
                 {openedFromSettings ? (
                   <Pressable
                     onPress={handleBackToSettings}
@@ -360,6 +367,7 @@ export default function CasesScreen() {
               </View>
             </View>
 
+            <View style={{ width: '100%', maxWidth: 1400, alignSelf: 'flex-start', paddingLeft: 20, paddingRight: 20, paddingTop: 12 }}>
             {/* Search + Tabs (Web) */}
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <View
@@ -523,6 +531,7 @@ export default function CasesScreen() {
                   );
                 })
               )}
+            </View>
             </View>
           </ScrollView>
       ) : (

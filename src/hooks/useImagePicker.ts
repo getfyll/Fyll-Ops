@@ -125,12 +125,18 @@ export function useImagePicker(): UseImagePickerResult {
           allowsEditing: shouldEdit,
           aspect: shouldEdit ? (options?.aspect ?? [1, 1]) : undefined,
           quality: options?.quality ?? 0.8,
+          base64: true,
         });
 
         setIsLoading(false);
 
         if (!result.canceled && result.assets[0]) {
-          return await compressImage(result.assets[0].uri);
+          const asset = result.assets[0];
+          if (asset.base64) {
+            const mimeType = asset.mimeType || 'image/jpeg';
+            return `data:${mimeType};base64,${asset.base64}`;
+          }
+          return await compressImage(asset.uri);
         }
 
         return null;
@@ -149,6 +155,66 @@ export function useImagePicker(): UseImagePickerResult {
     error,
     clearError,
   };
+}
+
+/**
+ * Pick multiple images at once from the gallery, compressing each one.
+ * Returns an array of URIs/data-URLs (empty array if cancelled).
+ */
+export async function pickMultipleImagesSimple(): Promise<string[]> {
+  if (Platform.OS === 'web') {
+    return new Promise((resolve) => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.multiple = true;
+      input.style.display = 'none';
+
+      input.addEventListener('change', async (event) => {
+        const target = event.target as HTMLInputElement;
+        const files = Array.from(target.files ?? []);
+        document.body.removeChild(input);
+        if (files.length === 0) { resolve([]); return; }
+        const results = await Promise.all(
+          files.map((file) => new Promise<string | null>((res) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              compressImage(reader.result as string)
+                .then((compressed) => res(compressed))
+                .catch(() => res(reader.result as string));
+            };
+            reader.onerror = () => res(null);
+            reader.readAsDataURL(file);
+          }))
+        );
+        resolve(results.filter((r): r is string => r !== null));
+      });
+
+      input.addEventListener('cancel', () => {
+        document.body.removeChild(input);
+        resolve([]);
+      });
+
+      document.body.appendChild(input);
+      input.click();
+    });
+  } else {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') return [];
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsMultipleSelection: true,
+        allowsEditing: false,
+        quality: 0.8,
+      });
+      if (result.canceled || !result.assets.length) return [];
+      return await Promise.all(result.assets.map((asset) => compressImage(asset.uri)));
+    } catch (err) {
+      console.error('Image picker error:', err);
+      return [];
+    }
+  }
 }
 
 /**

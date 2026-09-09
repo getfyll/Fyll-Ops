@@ -1,33 +1,50 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { addDays, addMonths, addWeeks, addYears, format, isPast, isToday, isTomorrow, isYesterday, parseISO, startOfToday } from 'date-fns';
+import { addDays, addMonths, addWeeks, addYears, eachDayOfInterval, endOfMonth, endOfWeek, format, isPast, isSameDay, isSameMonth, isToday, isTomorrow, isYesterday, parseISO, startOfMonth, startOfToday, startOfWeek, subMonths } from 'date-fns';
 import { useRouter } from 'expo-router';
 import type { RealtimeChannel } from '@supabase/supabase-js';
-import { ArrowLeft, ArrowUpDown, Calendar, Check, CheckCircle2, ChevronDown, Circle, Clock3, Flag, Funnel, MessageSquare, MoreHorizontal, MoreVertical, Pencil, Plus, Repeat, Search, Send, X } from 'lucide-react-native';
+import { ArrowLeft, ArrowUpDown, Calendar, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, Clock3, Flag, Funnel, Layers, MessageSquare, MoreHorizontal, MoreVertical, Pencil, Plus, Repeat, Search, Send, Share2, X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
-import { collaborationData, type CollaborationComment } from '@/lib/supabase/collaboration';
+import { collaborationData, type CollaborationComment, type CollaborationThreadSummary } from '@/lib/supabase/collaboration';
 import { useResolvedThemeMode, useThemeColors } from '@/lib/theme';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { DESKTOP_PAGE_HEADER_GUTTER, DESKTOP_PAGE_HEADER_MIN_HEIGHT, getStandardPageHeadingStyle } from '@/lib/page-heading';
-import useAuthStore, { type TeamMember } from '@/lib/state/auth-store';
+import useAuthStore, { type TeamMember, type TeamRole } from '@/lib/state/auth-store';
 import { supabase } from '@/lib/supabase';
-import { taskData, type CreateTaskInput, type Task, type TaskPriority, type TaskRecurrenceFrequency, type UpdateTaskInput, type CompleteTaskResult } from '@/lib/supabase/tasks';
-import { sendTaskAssignmentNotification, sendTaskCompletionNotification, triggerTaskDueReminders } from '@/hooks/useWebPushNotifications';
+import { taskData, type CreateTaskInput, type Task, type TaskItemType, type TaskPriority, type TaskRecurrenceFrequency, type UpdateTaskInput, type CompleteTaskResult } from '@/lib/supabase/tasks';
+import { sendTaskAssignmentNotification, sendTaskCompletionNotification, triggerTaskDueReminders, triggerTaskEventReminders } from '@/hooks/useWebPushNotifications';
+import { getTeamThreadDisplayNameFromEntityId, getTeamThreadSubtitleFromEntityId, isTeamThreadEntityId } from '@/lib/team-threads';
 
 type TaskFilter = 'all' | 'pending' | 'done';
 type TaskKpiScope = 'all' | 'due_today' | 'overdue' | 'completed_today';
+type TaskScope = 'all' | 'mine' | 'team';
+type TaskViewMode = 'list' | 'calendar';
 
 interface TaskFormState {
+  itemType: TaskItemType;
   title: string;
   description: string;
   priority: TaskPriority;
   dueDate: Date | null;
+  startTime: string;
+  endTime: string;
+  eventTimezone: string;
+  location: string;
+  meetingLink: string;
   assigneeUserIds: string[];
   recurrenceFrequency: TaskRecurrenceFrequency | null;
   recurrenceInterval: number;
+  shareToThread: boolean;
+  shareThreadEntityId: string | null;
+}
+
+interface TaskShareThreadOption {
+  entityId: string;
+  name: string;
+  subtitle: string;
 }
 
 interface TaskActivityFeedProps {
@@ -36,11 +53,28 @@ interface TaskActivityFeedProps {
   task: Task;
   teamMembers: TeamMember[];
   compact?: boolean;
+  scrollable?: boolean;
 }
 
 interface TaskWorkspaceProps {
   mode: 'list' | 'detail';
   taskId?: string;
+}
+
+interface TaskCalendarViewProps {
+  tasks: Task[];
+  selectedDate: Date;
+  displayedMonth: Date;
+  selectedTaskId: string | null;
+  teamMap: Map<string, TeamMember>;
+  unreadCounts: Record<string, number>;
+  commentCounts: Record<string, number>;
+  isDesktopLayout: boolean;
+  onSelectDate: (date: Date) => void;
+  onChangeMonth: (direction: -1 | 1) => void;
+  onJumpToToday: () => void;
+  onOpenTask: (task: Task) => void;
+  onToggleDone: (task: Task) => void;
 }
 
 interface TaskPeopleBadgesProps {
@@ -73,14 +107,33 @@ const FILTERS: Array<{ id: TaskFilter; label: string }> = [
 ];
 
 const RECURRENCE_OPTIONS: Array<{ id: TaskRecurrenceFrequency | null; label: string }> = [
-  { id: null, label: 'No' },
+  { id: null, label: 'One-off' },
   { id: 'daily', label: 'Daily' },
+  { id: 'weekday', label: 'Weekdays' },
+  { id: 'weekend', label: 'Weekends' },
   { id: 'weekly', label: 'Weekly' },
   { id: 'bi_weekly', label: 'Bi-weekly' },
   { id: 'monthly', label: 'Monthly' },
   { id: 'quarterly', label: 'Quarterly' },
   { id: 'yearly', label: 'Yearly' },
 ];
+
+const DEFAULT_EVENT_TIMEZONE = 'UTC';
+const COMMON_EVENT_TIMEZONES = [
+  'Africa/Lagos',
+  'Europe/London',
+  'UTC',
+  'Africa/Accra',
+  'Africa/Johannesburg',
+  'Europe/Paris',
+  'America/New_York',
+  'America/Chicago',
+  'America/Los_Angeles',
+  'Asia/Dubai',
+  'Asia/Kolkata',
+] as const;
+
+const CALENDAR_WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
 
 const PRIORITY_META: Record<TaskPriority, { label: string; color: string; soft: string }> = {
   low: { label: 'Low', color: '#64748B', soft: 'rgba(100,116,139,0.08)' },
@@ -102,6 +155,10 @@ const TASK_MODAL_BODY_GAP = 14;
 const TASK_MODAL_FOOTER_HORIZONTAL_PADDING = 18;
 const TASK_MODAL_FOOTER_BOTTOM_PADDING = 18;
 const TASK_MODAL_FOOTER_GAP = 8;
+const MOBILE_TASK_SECTION_GAP = 16;
+const EVERYONE_ASSIGNEE_ID = '__everyone__';
+const DEFAULT_TASK_SHARE_THREAD_ENTITY_ID = null;
+const EVERYONE_ASSIGNEE_ROLE: TeamRole = 'staff';
 const TASK_TOAST_CONFETTI_PIECES: TaskToastConfettiPieceDefinition[] = [
   { x: -22, y: -18, rotate: -32, width: 5, height: 11, color: '#F97316' },
   { x: -11, y: -26, rotate: -14, width: 4, height: 10, color: '#2563EB' },
@@ -121,6 +178,8 @@ const recurrenceLabel = (frequency?: string | null) => {
   if (!frequency) return 'One-off';
   const normalized = frequency.trim().toLowerCase().replace('-', '_');
   if (normalized === 'daily') return 'Daily';
+  if (normalized === 'weekday') return 'Weekdays';
+  if (normalized === 'weekend') return 'Weekends';
   if (normalized === 'weekly') return 'Weekly';
   if (normalized === 'bi_weekly') return 'Bi-weekly';
   if (normalized === 'monthly') return 'Monthly';
@@ -129,10 +188,324 @@ const recurrenceLabel = (frequency?: string | null) => {
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 };
 
+const itemTypeLabel = (value?: TaskItemType | null) => (
+  value === 'event' ? 'Event' : 'Task'
+);
+
+const isEventItem = (task: Pick<Task, 'item_type'>) => task.item_type === 'event';
+
+const timeInputPattern = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+const getDeviceTimeZone = () => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || DEFAULT_EVENT_TIMEZONE;
+  } catch {
+    return DEFAULT_EVENT_TIMEZONE;
+  }
+};
+
+const getTimeZoneParts = (date: Date, timeZone: string) => {
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(date);
+
+    const getPart = (type: Intl.DateTimeFormatPartTypes) => Number.parseInt(parts.find((part) => part.type === type)?.value ?? '', 10);
+    const year = getPart('year');
+    const month = getPart('month');
+    const day = getPart('day');
+    const hour = getPart('hour');
+    const minute = getPart('minute');
+    const second = getPart('second');
+
+    if ([year, month, day, hour, minute, second].some((value) => !Number.isFinite(value))) return null;
+    return { year, month, day, hour, minute, second };
+  } catch {
+    return null;
+  }
+};
+
+const formatTimeZoneOptionLabel = (timeZone?: string | null) => {
+  const normalized = String(timeZone ?? '').trim();
+  if (!normalized) return 'Local time';
+  if (normalized === 'UTC') return 'UTC';
+
+  const city = normalized.split('/').slice(-1)[0]?.replace(/_/g, ' ') || normalized;
+  try {
+    const shortName = new Intl.DateTimeFormat('en-US', {
+      timeZone: normalized,
+      timeZoneName: 'short',
+    }).formatToParts(new Date()).find((part) => part.type === 'timeZoneName')?.value;
+    return shortName ? `${city} (${shortName})` : city;
+  } catch {
+    return city;
+  }
+};
+
+const EVENT_TIMEZONE_OPTIONS = Array.from(
+  new Set([getDeviceTimeZone(), ...COMMON_EVENT_TIMEZONES])
+).map((timeZone) => ({
+  id: timeZone,
+  label: formatTimeZoneOptionLabel(timeZone),
+}));
+
+const formatIsoTimeForEventTimeZone = (value?: string | null, timeZone?: string | null) => {
+  if (!value) return '';
+  const parsed = parseISO(value);
+  if (Number.isNaN(parsed.getTime())) return '';
+  const normalizedTimeZone = String(timeZone ?? '').trim();
+  if (!normalizedTimeZone) return format(parsed, 'HH:mm');
+  try {
+    return new Intl.DateTimeFormat('en-GB', {
+      timeZone: normalizedTimeZone,
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).format(parsed);
+  } catch {
+    return format(parsed, 'HH:mm');
+  }
+};
+
+const addOneHourToTimeValue = (timeValue: string) => {
+  const match = timeValue.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return timeValue;
+  const hours = Number.parseInt(match[1] ?? '0', 10);
+  const minutes = Number.parseInt(match[2] ?? '0', 10);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return timeValue;
+  return `${String((hours + 1) % 24).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+};
+
+const resolveNextEndTime = (nextStartTime: string, currentStartTime: string, currentEndTime: string) => {
+  if (!nextStartTime) return currentEndTime;
+  const previousAutoEndTime = currentStartTime ? addOneHourToTimeValue(currentStartTime) : '';
+  if (!currentEndTime || currentEndTime === previousAutoEndTime) {
+    return addOneHourToTimeValue(nextStartTime);
+  }
+  return currentEndTime;
+};
+
+const combineDateAndTime = (date: Date | null, timeValue: string, timeZone?: string | null) => {
+  if (!date || !timeInputPattern.test(timeValue)) return null;
+  const [hoursRaw, minutesRaw] = timeValue.split(':');
+  const hours = Number(hoursRaw);
+  const minutes = Number(minutesRaw);
+  const normalizedTimeZone = String(timeZone ?? '').trim();
+
+  if (!normalizedTimeZone) {
+    const combined = new Date(date);
+    combined.setHours(hours, minutes, 0, 0);
+    return combined.toISOString();
+  }
+
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  const desiredWallTime = Date.UTC(year, month - 1, day, hours, minutes, 0, 0);
+  let utcGuess = desiredWallTime;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const zonedParts = getTimeZoneParts(new Date(utcGuess), normalizedTimeZone);
+    if (!zonedParts) break;
+    const actualWallTime = Date.UTC(
+      zonedParts.year,
+      zonedParts.month - 1,
+      zonedParts.day,
+      zonedParts.hour,
+      zonedParts.minute,
+      zonedParts.second,
+      0,
+    );
+    const diff = desiredWallTime - actualWallTime;
+    if (diff === 0) break;
+    utcGuess += diff;
+  }
+
+  return new Date(utcGuess).toISOString();
+};
+
+const normalizeExternalUrl = (value?: string | null) => {
+  const trimmed = String(value ?? '').trim();
+  if (!trimmed) return null;
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+};
+
+const getTaskCalendarAnchorDate = (task: Pick<Task, 'due_date' | 'starts_at'>) => {
+  if (task.due_date) {
+    const parsedDueDate = parseISO(`${task.due_date}T00:00:00`);
+    if (!Number.isNaN(parsedDueDate.getTime())) return parsedDueDate;
+  }
+  if (task.starts_at) {
+    const parsedStart = parseISO(task.starts_at);
+    if (!Number.isNaN(parsedStart.getTime())) return parsedStart;
+  }
+  return null;
+};
+
+const formatCalendarAgendaTime = (task: Pick<Task, 'item_type' | 'starts_at' | 'status' | 'event_timezone'>) => {
+  if (task.item_type === 'event') {
+    if (!task.starts_at) return 'All day';
+    const parsedStart = parseISO(task.starts_at);
+    if (Number.isNaN(parsedStart.getTime())) return 'All day';
+    const normalizedTimeZone = String(task.event_timezone ?? '').trim();
+    if (normalizedTimeZone) {
+      try {
+        return new Intl.DateTimeFormat('en-US', {
+          timeZone: normalizedTimeZone,
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true,
+        }).format(parsedStart);
+      } catch {
+        return format(parsedStart, 'h:mm a');
+      }
+    }
+    return format(parsedStart, 'h:mm a');
+  }
+  return null;
+};
+
+const getCalendarDayIndicators = (tasks: Task[]) => {
+  const hasOverdue = tasks.some((task) => task.status !== 'done' && isTaskOverdue(task));
+  const hasCompleted = tasks.some((task) => task.status === 'done');
+  const hasEvent = tasks.some((task) => task.item_type === 'event' && task.status !== 'done');
+  const hasTask = tasks.some((task) => task.item_type !== 'event' && task.status !== 'done' && !isTaskOverdue(task));
+
+  return [
+    hasOverdue ? '#DC2626' : null,
+    hasCompleted ? '#16A34A' : null,
+    hasEvent ? '#2563EB' : null,
+    hasTask ? '#D97706' : null,
+  ].filter((value): value is string => Boolean(value));
+};
+
+const getCalendarStatusChip = (task: Task) => {
+  if (task.status === 'done') {
+    return {
+      label: 'Completed',
+      text: '#16A34A',
+      background: 'rgba(22,163,74,0.12)',
+    };
+  }
+  if (isTaskOverdue(task)) {
+    return {
+      label: 'Overdue',
+      text: '#DC2626',
+      background: 'rgba(220,38,38,0.12)',
+    };
+  }
+  return null;
+};
+
+const compareCalendarTasks = (left: Task, right: Task) => {
+  if (left.item_type !== right.item_type) {
+    return left.item_type === 'event' ? -1 : 1;
+  }
+
+  const leftTime = left.starts_at ? parseISO(left.starts_at).getTime() : Number.MAX_SAFE_INTEGER;
+  const rightTime = right.starts_at ? parseISO(right.starts_at).getTime() : Number.MAX_SAFE_INTEGER;
+  if (leftTime !== rightTime) return leftTime - rightTime;
+
+  if (left.status !== right.status) {
+    if (left.status === 'done') return 1;
+    if (right.status === 'done') return -1;
+  }
+
+  return left.title.localeCompare(right.title);
+};
+
+const formatTaskScheduleLabel = (
+  task: Pick<Task, 'item_type' | 'due_date' | 'starts_at' | 'ends_at' | 'event_timezone' | 'recurrence_frequency' | 'recurrence_interval'>
+) => {
+  if (task.item_type === 'event') {
+    const dateLabel = task.due_date ? format(parseISO(`${task.due_date}T00:00:00`), 'MMM d') : 'No date';
+    const startLabel = task.starts_at ? formatIsoTimeForEventTimeZone(task.starts_at, task.event_timezone) : '';
+    const endLabel = task.ends_at ? formatIsoTimeForEventTimeZone(task.ends_at, task.event_timezone) : '';
+    if (startLabel && endLabel) return `${dateLabel} • ${startLabel} - ${endLabel}`;
+    if (startLabel) return `${dateLabel} • ${startLabel}`;
+    return dateLabel;
+  }
+  const effectiveDueDate = getEffectiveTaskDueDate(task);
+  return effectiveDueDate ? format(effectiveDueDate, 'MMM d') : 'No due date';
+};
+
+const expandAssigneeSelection = (selectedUserIds: string[], teamMembers: TeamMember[]) => {
+  if (!selectedUserIds.includes(EVERYONE_ASSIGNEE_ID)) {
+    return Array.from(new Set(selectedUserIds.map((value) => value.trim()).filter(Boolean)));
+  }
+  return Array.from(new Set(teamMembers.map((member) => member.id).filter(Boolean)));
+};
+
+const isEveryoneAssignment = (selectedUserIds: string[], teamMembers: TeamMember[]) => {
+  const normalizedSelectedIds = Array.from(new Set(selectedUserIds.map((value) => value.trim()).filter(Boolean)));
+  const teamMemberIds = Array.from(new Set(teamMembers.map((member) => member.id).filter(Boolean)));
+  if (teamMemberIds.length === 0) return false;
+  return normalizedSelectedIds.length === teamMemberIds.length
+    && teamMemberIds.every((memberId) => normalizedSelectedIds.includes(memberId));
+};
+
+const buildTaskShareMessage = (
+  task: Task,
+  assigneeNames: string[],
+  threadName: string,
+  verb: 'New' | 'Updated' | 'Shared' = 'New',
+) => {
+  const lines = [
+    `${verb} ${itemTypeLabel(task.item_type ?? 'task').toLowerCase()}: ${task.title.trim() || 'Untitled'}`,
+  ];
+
+  if (task.item_type === 'event') {
+    if (task.due_date) {
+      lines.push(`Date: ${format(parseISO(`${task.due_date}T00:00:00`), 'EEE, MMM d, yyyy')}`);
+    }
+    const startLabel = task.starts_at ? formatIsoTimeForEventTimeZone(task.starts_at, task.event_timezone) : '';
+    const endLabel = task.ends_at ? formatIsoTimeForEventTimeZone(task.ends_at, task.event_timezone) : '';
+    if (startLabel && endLabel) {
+      lines.push(`Time: ${startLabel} - ${endLabel}`);
+    } else if (startLabel) {
+      lines.push(`Time: ${startLabel}`);
+    }
+    if (task.event_timezone?.trim()) {
+      lines.push(`Time zone: ${formatTimeZoneOptionLabel(task.event_timezone)}`);
+    }
+  } else if (task.due_date) {
+    lines.push(`Due: ${format(parseISO(`${task.due_date}T00:00:00`), 'EEE, MMM d, yyyy')}`);
+  }
+
+  if (assigneeNames.length > 0) {
+    lines.push(`${task.item_type === 'event' ? 'Attendees' : 'Assigned to'}: ${assigneeNames.join(', ')}`);
+  }
+  if (task.location?.trim()) {
+    lines.push(`Location: ${task.location.trim()}`);
+  }
+  if (task.meeting_link?.trim()) {
+    lines.push(`Link: ${task.meeting_link.trim()}`);
+  }
+  if (task.description?.trim()) {
+    lines.push(task.description.trim());
+  }
+  lines.push(`Shared to ${threadName}`);
+  return lines.join('\n');
+};
+
 const recurrenceTone = (frequency?: string | null) => {
   const normalized = frequency?.trim().toLowerCase().replace('-', '_') ?? '';
   if (normalized === 'daily') {
     return { text: '#1D4ED8', background: 'rgba(29,78,216,0.10)' };
+  }
+  if (normalized === 'weekday') {
+    return { text: '#0891B2', background: 'rgba(8,145,178,0.10)' };
+  }
+  if (normalized === 'weekend') {
+    return { text: '#D97706', background: 'rgba(217,119,6,0.10)' };
   }
   if (normalized === 'weekly') {
     return { text: '#7C3AED', background: 'rgba(124,58,237,0.10)' };
@@ -159,21 +532,83 @@ const formatDueDate = (value?: string | null) => {
   return format(parsed, 'EEE, MMM d');
 };
 
-const formatDueDateLong = (value?: string | null) => {
-  if (!value) return 'No due date';
-  const parsed = parseISO(value);
-  if (Number.isNaN(parsed.getTime())) return 'No due date';
-  return format(parsed, 'EEEE, MMM d');
+const normalizeRecurrenceFrequency = (value?: string | null) => {
+  if (!value) return null;
+  return String(value)
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_')
+    .replace(/^every_/, '');
 };
 
-const formatDueDateRelative = (value?: string | null) => {
-  if (!value) return 'No date';
-  const parsed = parseISO(value);
-  if (Number.isNaN(parsed.getTime())) return 'No date';
-  if (isYesterday(parsed)) return 'Yesterday';
-  if (isToday(parsed)) return 'Today';
-  if (isTomorrow(parsed)) return 'Tomorrow';
-  return format(parsed, 'EEEE');
+const getNextRecurringDueDate = (
+  task: Pick<Task, 'due_date' | 'recurrence_frequency' | 'recurrence_interval'>
+) => {
+  if (!task.due_date || !task.recurrence_frequency) return null;
+  const parsed = parseISO(task.due_date);
+  if (Number.isNaN(parsed.getTime())) return null;
+  const normalized = normalizeRecurrenceFrequency(task.recurrence_frequency);
+  if (!normalized) return null;
+  const interval = task.recurrence_interval ?? 1;
+  const today = startOfToday();
+  let next = parsed;
+  let guard = 0;
+  const advanceDaily = () => addDays(next, Math.max(1, interval));
+  while (next <= today && guard < 400) {
+    if (normalized === 'daily') {
+      next = advanceDaily();
+    } else if (normalized === 'weekly') {
+      next = addWeeks(next, interval);
+    } else if (normalized === 'bi_weekly') {
+      next = addDays(next, 14 * interval);
+    } else if (normalized === 'monthly') {
+      next = addMonths(next, interval);
+    } else if (normalized === 'quarterly') {
+      next = addMonths(next, 3 * interval);
+    } else if (normalized === 'yearly') {
+      next = addYears(next, interval);
+    } else if (normalized === 'weekday') {
+      next = addDays(next, 1);
+      while (next < today || [0, 6].includes(next.getDay())) {
+        next = addDays(next, 1);
+      }
+    } else if (normalized === 'weekend') {
+      next = addDays(next, 1);
+      while (next < today || ![0, 6].includes(next.getDay())) {
+        next = addDays(next, 1);
+      }
+    } else {
+      next = addMonths(next, interval);
+    }
+    guard += 1;
+  }
+  return next;
+};
+
+const getEffectiveTaskDueDate = (
+  task: Pick<Task, 'due_date' | 'recurrence_frequency' | 'recurrence_interval'>
+) => {
+  if (!task.due_date) return null;
+  const parsed = parseISO(`${task.due_date}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return null;
+  if (task.recurrence_frequency && parsed < startOfToday()) {
+    return getNextRecurringDueDate(task) ?? parsed;
+  }
+  return parsed;
+};
+
+const formatDueDateLong = (task: Pick<Task, 'due_date' | 'recurrence_frequency' | 'recurrence_interval'>) => {
+  const effectiveDueDate = getEffectiveTaskDueDate(task);
+  return effectiveDueDate ? format(effectiveDueDate, 'EEEE, MMM d') : 'No due date';
+};
+
+const formatTaskDueDateRelative = (task: Pick<Task, 'due_date' | 'recurrence_frequency' | 'recurrence_interval'>) => {
+  const effectiveDueDate = getEffectiveTaskDueDate(task);
+  if (!effectiveDueDate) return 'No date';
+  if (isYesterday(effectiveDueDate)) return 'Yesterday';
+  if (isToday(effectiveDueDate)) return 'Today';
+  if (isTomorrow(effectiveDueDate)) return 'Tomorrow';
+  return format(effectiveDueDate, 'EEEE');
 };
 
 const toSentenceCase = (value?: string | null) => {
@@ -189,6 +624,37 @@ const mentionHandleFromMember = (member: TeamMember) => {
   const emailLocalPart = member.email.split('@')[0] ?? '';
   const base = emailLocalPart || member.name || member.id;
   return normalizeMentionToken(base.replace(/\s+/g, '')) || normalizeMentionToken(member.id);
+};
+
+const getCommentTextSegments = (
+  body: string,
+  mentionAliasMap: Map<string, string>,
+) => {
+  const segments: Array<{ text: string; isMention: boolean }> = [];
+  const mentionRegex = /@([A-Za-z0-9_.-]+)/g;
+  let cursor = 0;
+
+  for (const match of body.matchAll(mentionRegex)) {
+    const matchText = match[0];
+    const mentionToken = normalizeMentionToken(match[1] ?? '');
+    const matchIndex = match.index ?? 0;
+
+    if (matchIndex > cursor) {
+      segments.push({ text: body.slice(cursor, matchIndex), isMention: false });
+    }
+
+    segments.push({
+      text: matchText,
+      isMention: mentionToken === 'everyone' || mentionAliasMap.has(mentionToken),
+    });
+    cursor = matchIndex + matchText.length;
+  }
+
+  if (cursor < body.length) {
+    segments.push({ text: body.slice(cursor), isMention: false });
+  }
+
+  return segments.length > 0 ? segments : [{ text: body, isMention: false }];
 };
 
 const formatBadgeCount = (count: number) => (count > 99 ? '99+' : String(count));
@@ -333,8 +799,17 @@ const buildMentionAliasMap = (teamMembers: TeamMember[]) => {
 
 const isTaskOverdue = (task: Task) => {
   if (!task.due_date || task.status === 'done') return false;
-  const due = parseISO(`${task.due_date}T23:59:59`);
+  const effectiveDueDate = getEffectiveTaskDueDate(task);
+  if (!effectiveDueDate) return false;
+  const due = new Date(effectiveDueDate);
+  due.setHours(23, 59, 59, 999);
   return isPast(due) && !isToday(due);
+};
+
+const isTaskDueToday = (task: Task) => {
+  if (!task.due_date || task.status === 'done') return false;
+  const effectiveDueDate = getEffectiveTaskDueDate(task);
+  return Boolean(effectiveDueDate && isToday(effectiveDueDate));
 };
 
 const isTaskCompletedToday = (task: Task) => {
@@ -350,24 +825,49 @@ const formatMessageTime = (value: string) => {
   return date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 };
 
-const toTaskFormState = (task: Task): TaskFormState => ({
-  title: task.title,
-  description: task.description ?? '',
-  priority: task.priority,
-  dueDate: task.due_date ? parseISO(task.due_date) : null,
-  assigneeUserIds: task.assignee_user_ids ?? [],
-  recurrenceFrequency: task.recurrence_frequency ?? null,
-  recurrenceInterval: task.recurrence_interval ?? 1,
-});
+const toTaskFormState = (
+  task: Task,
+  teamMembers: TeamMember[] = [],
+  allowEveryone = false,
+): TaskFormState => {
+  const normalizedAssigneeIds = task.assignee_user_ids ?? [];
+  const everyoneSelected = allowEveryone && isEveryoneAssignment(normalizedAssigneeIds, teamMembers);
+
+  return {
+    itemType: task.item_type === 'event' ? 'event' : 'task',
+    title: task.title,
+    description: task.description ?? '',
+    priority: task.priority,
+    dueDate: task.due_date ? parseISO(`${task.due_date}T00:00:00`) : (task.starts_at ? parseISO(task.starts_at) : null),
+    startTime: formatIsoTimeForEventTimeZone(task.starts_at, task.event_timezone ?? getDeviceTimeZone()),
+    endTime: formatIsoTimeForEventTimeZone(task.ends_at, task.event_timezone ?? getDeviceTimeZone()),
+    eventTimezone: task.event_timezone?.trim() || getDeviceTimeZone(),
+    location: task.location ?? '',
+    meetingLink: task.meeting_link ?? '',
+    assigneeUserIds: everyoneSelected ? [EVERYONE_ASSIGNEE_ID] : normalizedAssigneeIds,
+    recurrenceFrequency: task.recurrence_frequency ?? null,
+    recurrenceInterval: task.recurrence_interval ?? 1,
+    shareToThread: false,
+    shareThreadEntityId: DEFAULT_TASK_SHARE_THREAD_ENTITY_ID,
+  };
+};
 
 const blankTaskForm = (): TaskFormState => ({
+  itemType: 'task',
   title: '',
   description: '',
   priority: 'medium',
   dueDate: startOfToday(),
+  startTime: '09:00',
+  endTime: '10:00',
+  eventTimezone: getDeviceTimeZone(),
+  location: '',
+  meetingLink: '',
   assigneeUserIds: [],
   recurrenceFrequency: null,
   recurrenceInterval: 1,
+  shareToThread: false,
+  shareThreadEntityId: DEFAULT_TASK_SHARE_THREAD_ENTITY_ID,
 });
 
 function UserAvatar({ member, name, size = 26 }: { member?: TeamMember; name?: string; size?: number }) {
@@ -403,12 +903,14 @@ function AssigneePicker({
   selectedUserIds,
   currentUserId,
   onToggleAssignee,
+  allowEveryone = false,
   placeholder,
 }: {
   teamMembers: TeamMember[];
   selectedUserIds: string[];
   currentUserId?: string | null;
   onToggleAssignee: (userId: string) => void;
+  allowEveryone?: boolean;
   placeholder: string;
 }) {
   const colors = useThemeColors();
@@ -423,27 +925,44 @@ function AssigneePicker({
     if (!isOpen) setSearchQuery('');
   }, [isOpen]);
 
+  const everyoneSelected = selectedUserIds.includes(EVERYONE_ASSIGNEE_ID);
   const selectedMembers = useMemo(
-    () => teamMembers.filter((member) => selectedUserIds.includes(member.id)),
-    [selectedUserIds, teamMembers]
+    () => everyoneSelected
+      ? teamMembers
+      : teamMembers.filter((member) => selectedUserIds.includes(member.id)),
+    [everyoneSelected, selectedUserIds, teamMembers]
   );
 
   const summaryLabel = useMemo(() => {
+    if (everyoneSelected) return 'Everyone';
     if (selectedMembers.length === 0) return placeholder;
     const first = selectedMembers[0];
     const firstLabel = first?.id === currentUserId ? 'Myself' : first?.name ?? 'Assignee';
     if (selectedMembers.length === 1) return firstLabel;
     return `${firstLabel} +${selectedMembers.length - 1}`;
-  }, [currentUserId, placeholder, selectedMembers]);
+  }, [currentUserId, everyoneSelected, placeholder, selectedMembers]);
 
   const filteredMembers = useMemo(() => {
     const normalized = searchQuery.trim().toLowerCase();
-    if (!normalized) return teamMembers;
-    return teamMembers.filter((member) => {
+    const memberResults = !normalized ? teamMembers : teamMembers.filter((member) => {
       const label = member.id === currentUserId ? 'myself' : member.name.toLowerCase();
       return label.includes(normalized) || member.email.toLowerCase().includes(normalized);
     });
-  }, [currentUserId, searchQuery, teamMembers]);
+    if (!allowEveryone) return memberResults;
+    if (!normalized || 'everyone'.includes(normalized)) {
+      return [
+        {
+          id: EVERYONE_ASSIGNEE_ID,
+          email: 'All active team members',
+          name: 'Everyone',
+          role: EVERYONE_ASSIGNEE_ROLE,
+          createdAt: '',
+        },
+        ...memberResults,
+      ];
+    }
+    return memberResults;
+  }, [allowEveryone, currentUserId, searchQuery, teamMembers]);
 
   return (
     <View style={{ zIndex: isOpen ? 40 : 1 }}>
@@ -489,7 +1008,11 @@ function AssigneePicker({
           <ScrollView showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
             {filteredMembers.map((member) => {
               const selected = selectedUserIds.includes(member.id);
-              const assigneeLabel = member.id === currentUserId ? 'Myself' : member.name;
+              const assigneeLabel = member.id === EVERYONE_ASSIGNEE_ID
+                ? 'Everyone'
+                : member.id === currentUserId
+                  ? 'Myself'
+                  : member.name;
               return (
                 <Pressable
                   key={member.id}
@@ -506,10 +1029,18 @@ function AssigneePicker({
                   }}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
-                    <UserAvatar member={member} size={22} />
+                    {member.id === EVERYONE_ASSIGNEE_ID ? (
+                      <View style={{ width: 22, height: 22, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.text.primary }}>
+                        <Text style={{ color: colors.bg.primary, fontSize: 9, fontWeight: '700' }}>All</Text>
+                      </View>
+                    ) : (
+                      <UserAvatar member={member} size={22} />
+                    )}
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '500' }} numberOfLines={1}>{assigneeLabel}</Text>
-                      <Text style={{ color: colors.text.tertiary, fontSize: 11 }} numberOfLines={1}>{member.email}</Text>
+                      <Text style={{ color: colors.text.tertiary, fontSize: 11 }} numberOfLines={1}>
+                        {member.id === EVERYONE_ASSIGNEE_ID ? 'Assign this to the whole team' : member.email}
+                      </Text>
                     </View>
                   </View>
                   {selected ? <Check size={14} color="#2563EB" strokeWidth={2.6} /> : null}
@@ -633,7 +1164,7 @@ function RecurrenceDropdown({
           justifyContent: 'space-between',
         }}
       >
-        <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '500' }}>
+        <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '400' }}>
           {selectedOption.label}
         </Text>
         <ArrowUpDown size={14} color={isOpen ? fieldActiveBorder : colors.text.tertiary} strokeWidth={2.2} />
@@ -660,7 +1191,7 @@ function RecurrenceDropdown({
                   justifyContent: 'space-between',
                 }}
               >
-                <Text style={{ color: selected ? '#1D4ED8' : colors.text.secondary, fontSize: 13, fontWeight: '500' }}>
+                <Text style={{ color: selected ? '#1D4ED8' : colors.text.secondary, fontSize: 13, fontWeight: '400' }}>
                   {option.label}
                 </Text>
                 {selected ? <Check size={14} color="#1D4ED8" strokeWidth={2.6} /> : null}
@@ -669,6 +1200,133 @@ function RecurrenceDropdown({
           })}
         </View>
       ) : null}
+    </View>
+  );
+}
+
+function EventTimezoneDropdown({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (timeZone: string) => void;
+}) {
+  const colors = useThemeColors();
+  const themeMode = useResolvedThemeMode();
+  const [isOpen, setIsOpen] = useState(false);
+  const fieldBorder = colors.border.light;
+  const fieldActiveBorder = themeMode === 'light' ? '#94A3B8' : colors.border.medium;
+  const normalizedValue = value.trim() || getDeviceTimeZone();
+  const options = useMemo(() => {
+    if (EVENT_TIMEZONE_OPTIONS.some((option) => option.id === normalizedValue)) return EVENT_TIMEZONE_OPTIONS;
+    return [
+      { id: normalizedValue, label: formatTimeZoneOptionLabel(normalizedValue) },
+      ...EVENT_TIMEZONE_OPTIONS,
+    ];
+  }, [normalizedValue]);
+  const selectedOption = options.find((option) => option.id === normalizedValue) ?? options[0];
+
+  return (
+    <View style={{ zIndex: isOpen ? 33 : 1 }}>
+      <Pressable
+        onPress={() => setIsOpen((current) => !current)}
+        style={{
+          height: 46,
+          borderTopLeftRadius: 12,
+          borderTopRightRadius: 12,
+          borderBottomLeftRadius: isOpen ? 0 : 12,
+          borderBottomRightRadius: isOpen ? 0 : 12,
+          borderWidth: 1,
+          borderColor: isOpen ? fieldActiveBorder : fieldBorder,
+          backgroundColor: colors.bg.card,
+          paddingHorizontal: 12,
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}
+      >
+        <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '400' }} numberOfLines={1}>
+          {selectedOption?.label ?? formatTimeZoneOptionLabel(normalizedValue)}
+        </Text>
+        <ArrowUpDown size={14} color={isOpen ? fieldActiveBorder : colors.text.tertiary} strokeWidth={2.2} />
+      </Pressable>
+      {isOpen ? (
+        <View style={{ borderWidth: 1, borderTopWidth: 0, borderColor: fieldActiveBorder, borderBottomLeftRadius: 12, borderBottomRightRadius: 12, backgroundColor: colors.bg.card, overflow: 'hidden' }}>
+          {options.map((option) => {
+            const selected = option.id === normalizedValue;
+            return (
+              <Pressable
+                key={option.id}
+                onPress={() => {
+                  onChange(option.id);
+                  setIsOpen(false);
+                }}
+                style={{
+                  minHeight: 42,
+                  paddingHorizontal: 12,
+                  borderBottomWidth: 1,
+                  borderBottomColor: fieldBorder,
+                  backgroundColor: selected ? 'rgba(37,99,235,0.10)' : colors.bg.card,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <Text style={{ color: selected ? '#1D4ED8' : colors.text.secondary, fontSize: 13, fontWeight: '400' }}>
+                  {option.label}
+                </Text>
+                {selected ? <Check size={14} color="#1D4ED8" strokeWidth={2.6} /> : null}
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function TaskViewToggle({
+  value,
+  onChange,
+}: {
+  value: TaskViewMode;
+  onChange: (next: TaskViewMode) => void;
+}) {
+  const colors = useThemeColors();
+
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      {([
+        { id: 'list' as TaskViewMode, label: 'List', icon: ArrowUpDown },
+        { id: 'calendar' as TaskViewMode, label: 'Calendar', icon: Calendar },
+      ]).map((option) => {
+        const active = value === option.id;
+        const Icon = option.icon;
+        return (
+          <Pressable
+            key={option.id}
+            onPress={() => onChange(option.id)}
+            style={{
+              borderRadius: 999,
+              backgroundColor: active ? colors.text.primary : colors.bg.card,
+              borderWidth: 1,
+              borderColor: active ? colors.text.primary : colors.border.light,
+              paddingHorizontal: 14,
+              minWidth: 110,
+              height: 38,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+            }}
+          >
+            <Icon size={14} color={active ? colors.bg.primary : colors.text.secondary} strokeWidth={2.2} />
+            <Text style={{ color: active ? colors.bg.primary : colors.text.secondary, fontSize: 13, fontWeight: '600' }}>
+              {option.label}
+            </Text>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -720,6 +1378,8 @@ function TaskCreateModal({
   form,
   teamMembers,
   currentUserId,
+  allowEveryone = false,
+  shareThreadOptions,
   onChange,
   onToggleAssignee,
   onClose,
@@ -730,6 +1390,8 @@ function TaskCreateModal({
   form: TaskFormState;
   teamMembers: TeamMember[];
   currentUserId?: string | null;
+  allowEveryone?: boolean;
+  shareThreadOptions: TaskShareThreadOption[];
   onChange: (patch: Partial<TaskFormState>) => void;
   onToggleAssignee: (userId: string) => void;
   onClose: () => void;
@@ -743,6 +1405,7 @@ function TaskCreateModal({
   const [showDatePicker, setShowDatePicker] = useState(false);
   const fieldBorder = colors.border.light;
   const fieldBg = colors.bg.card;
+  const isEventForm = form.itemType === 'event';
 
   return (
     <Modal
@@ -784,7 +1447,7 @@ function TaskCreateModal({
               justifyContent: 'space-between',
             }}
           >
-            <Text style={{ color: colors.text.primary, fontSize: 20, fontWeight: '600' }}>Create Task</Text>
+            <Text style={{ color: colors.text.primary, fontSize: 20, fontWeight: '600' }}>Create {itemTypeLabel(form.itemType)}</Text>
             <Pressable onPress={onClose} style={{ width: 36, height: 36, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg.secondary }}>
               <X size={18} color={colors.text.secondary} strokeWidth={2.2} />
             </Pressable>
@@ -796,11 +1459,50 @@ function TaskCreateModal({
             showsVerticalScrollIndicator={false}
           >
             <View>
-              <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '500', marginBottom: 6 }}>Task title</Text>
+              <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '500', marginBottom: 6 }}>Type</Text>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                {([
+                  { id: 'task' as TaskItemType, label: 'Task' },
+                  { id: 'event' as TaskItemType, label: 'Event' },
+                ]).map((option) => {
+                  const active = form.itemType === option.id;
+                  return (
+                    <Pressable
+                      key={option.id}
+                      onPress={() => onChange({
+                        itemType: option.id,
+                        eventTimezone: option.id === 'event'
+                          ? (form.eventTimezone.trim() || getDeviceTimeZone())
+                          : form.eventTimezone,
+                      })}
+                      style={{
+                        flex: 1,
+                        minHeight: 40,
+                        borderRadius: 999,
+                        borderWidth: 1,
+                        borderColor: active ? colors.text.primary : fieldBorder,
+                        backgroundColor: active ? colors.text.primary : fieldBg,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Text style={{ color: active ? colors.bg.primary : colors.text.secondary, fontSize: 13, fontWeight: '600' }}>
+                        {option.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+
+            <View>
+              <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '500', marginBottom: 6 }}>
+                {isEventForm ? 'Event title' : 'Task title'}
+              </Text>
               <TextInput
                 value={form.title}
                 onChangeText={(value) => onChange({ title: value })}
-                placeholder="What needs to be done?"
+                placeholder={isEventForm ? 'What is happening?' : 'What needs to be done?'}
                 placeholderTextColor={colors.input.placeholder}
                 style={{
                   backgroundColor: fieldBg,
@@ -819,7 +1521,9 @@ function TaskCreateModal({
 
             {isMobileModal ? (
               <View>
-                <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '500', marginBottom: 6 }}>Due date</Text>
+                <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '500', marginBottom: 6 }}>
+                  {isEventForm ? 'Event date' : 'Due date'}
+                </Text>
                 {Platform.OS === 'web' ? (
                   <View
                     style={{
@@ -887,7 +1591,9 @@ function TaskCreateModal({
             ) : (
               <View style={{ flexDirection: 'row', gap: 10 }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '500', marginBottom: 6 }}>Due date</Text>
+                  <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '500', marginBottom: 6 }}>
+                    {isEventForm ? 'Event date' : 'Due date'}
+                  </Text>
                   {Platform.OS === 'web' ? (
                     <View
                       style={{
@@ -959,6 +1665,117 @@ function TaskCreateModal({
               </View>
             )}
 
+            {isEventForm ? (
+              <>
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '500', marginBottom: 6 }}>Start time</Text>
+                    {Platform.OS === 'web' ? (
+                      <View style={{ minHeight: 46, borderRadius: 12, borderWidth: 1, borderColor: fieldBorder, backgroundColor: fieldBg, paddingHorizontal: 12, alignItems: 'center', flexDirection: 'row' }}>
+                        <Clock3 size={15} color={colors.text.tertiary} strokeWidth={2} />
+                        <input
+                          type="time"
+                          value={form.startTime}
+                          onChange={(event: any) => {
+                            const nextStartTime = String(event?.target?.value ?? '');
+                            onChange({
+                              startTime: nextStartTime,
+                              endTime: resolveNextEndTime(nextStartTime, form.startTime, form.endTime),
+                            });
+                          }}
+                          style={{
+                            flex: 1,
+                            border: 'none',
+                            outline: 'none',
+                            background: 'transparent',
+                            color: colors.input.text,
+                            marginLeft: 10,
+                            fontSize: 13,
+                            fontWeight: 400,
+                            fontFamily: 'inherit',
+                            colorScheme: themeMode === 'dark' ? 'dark' : 'light',
+                          }}
+                        />
+                      </View>
+                    ) : (
+                      <TextInput
+                        value={form.startTime}
+                        onChangeText={(value) => onChange({
+                          startTime: value,
+                          endTime: resolveNextEndTime(value, form.startTime, form.endTime),
+                        })}
+                        placeholder="09:00"
+                        placeholderTextColor={colors.input.placeholder}
+                        style={{
+                          minHeight: 46,
+                          borderRadius: 12,
+                          borderWidth: 1,
+                          borderColor: fieldBorder,
+                          backgroundColor: fieldBg,
+                          color: colors.input.text,
+                          paddingHorizontal: 12,
+                          fontSize: 13,
+                          fontWeight: '400',
+                        }}
+                        selectionColor={colors.text.primary}
+                      />
+                    )}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '500', marginBottom: 6 }}>End time</Text>
+                    {Platform.OS === 'web' ? (
+                      <View style={{ minHeight: 46, borderRadius: 12, borderWidth: 1, borderColor: fieldBorder, backgroundColor: fieldBg, paddingHorizontal: 12, alignItems: 'center', flexDirection: 'row' }}>
+                        <Clock3 size={15} color={colors.text.tertiary} strokeWidth={2} />
+                        <input
+                          type="time"
+                          value={form.endTime}
+                          onChange={(event: any) => onChange({ endTime: String(event?.target?.value ?? '') })}
+                          style={{
+                            flex: 1,
+                            border: 'none',
+                            outline: 'none',
+                            background: 'transparent',
+                            color: colors.input.text,
+                            marginLeft: 10,
+                            fontSize: 13,
+                            fontWeight: 400,
+                            fontFamily: 'inherit',
+                            colorScheme: themeMode === 'dark' ? 'dark' : 'light',
+                          }}
+                        />
+                      </View>
+                    ) : (
+                      <TextInput
+                        value={form.endTime}
+                        onChangeText={(value) => onChange({ endTime: value })}
+                        placeholder="10:00"
+                        placeholderTextColor={colors.input.placeholder}
+                        style={{
+                          minHeight: 46,
+                          borderRadius: 12,
+                          borderWidth: 1,
+                          borderColor: fieldBorder,
+                          backgroundColor: fieldBg,
+                          color: colors.input.text,
+                          paddingHorizontal: 12,
+                          fontSize: 13,
+                          fontWeight: '400',
+                        }}
+                        selectionColor={colors.text.primary}
+                      />
+                    )}
+                  </View>
+                </View>
+                <View>
+                  <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '500', marginBottom: 6 }}>Time zone</Text>
+                  <EventTimezoneDropdown
+                    value={form.eventTimezone}
+                    onChange={(eventTimezone) => onChange({ eventTimezone })}
+                  />
+                </View>
+              </>
+            ) : null}
+
             {showDatePicker && Platform.OS !== 'web' ? (
               <DateTimePicker
                 value={form.dueDate ?? startOfToday()}
@@ -974,19 +1791,24 @@ function TaskCreateModal({
             ) : null}
 
             <View>
-              <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '500', marginBottom: 6 }}>Assignee</Text>
+              <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '500', marginBottom: 6 }}>
+                {isEventForm ? 'Attendees' : 'Assignee'}
+              </Text>
               <AssigneePicker
                 teamMembers={teamMembers}
                 selectedUserIds={form.assigneeUserIds}
                 currentUserId={currentUserId}
                 onToggleAssignee={onToggleAssignee}
-                placeholder="Select assignees"
+                allowEveryone={allowEveryone}
+                placeholder={isEventForm ? 'Select attendees' : 'Select assignees'}
               />
             </View>
 
             {isMobileModal ? (
               <View>
-                <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '500', marginBottom: 6 }}>Recurring</Text>
+                <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '500', marginBottom: 6 }}>
+                  {isEventForm ? 'Schedule' : 'Recurring'}
+                </Text>
                 <RecurrenceDropdown
                   value={form.recurrenceFrequency}
                   onChange={(recurrenceFrequency) => onChange({ recurrenceFrequency })}
@@ -994,7 +1816,9 @@ function TaskCreateModal({
               </View>
             ) : (
               <View>
-                <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '500', marginBottom: 6 }}>Recurring</Text>
+                <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '500', marginBottom: 6 }}>
+                  {isEventForm ? 'Schedule' : 'Recurring'}
+                </Text>
                 <RecurrenceDropdown
                   value={form.recurrenceFrequency}
                   onChange={(recurrenceFrequency) => onChange({ recurrenceFrequency })}
@@ -1009,13 +1833,135 @@ function TaskCreateModal({
               </View>
             ) : null}
 
+            {isEventForm ? (
+              <>
+                <View>
+                  <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '500', marginBottom: 6 }}>Location (optional)</Text>
+                  <TextInput
+                    value={form.location}
+                    onChangeText={(value) => onChange({ location: value })}
+                    placeholder="Office, showroom, or meeting room"
+                    placeholderTextColor={colors.input.placeholder}
+                    style={{
+                      minHeight: 46,
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: fieldBorder,
+                      backgroundColor: fieldBg,
+                      color: colors.input.text,
+                      paddingHorizontal: 12,
+                      fontSize: 13,
+                      fontWeight: '400',
+                    }}
+                    selectionColor={colors.text.primary}
+                  />
+                </View>
+                <View>
+                  <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '500', marginBottom: 6 }}>Meeting link (optional)</Text>
+                  <TextInput
+                    value={form.meetingLink}
+                    onChangeText={(value) => onChange({ meetingLink: value })}
+                    placeholder="https://meet.google.com/..."
+                    placeholderTextColor={colors.input.placeholder}
+                    autoCapitalize="none"
+                    style={{
+                      minHeight: 46,
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: fieldBorder,
+                      backgroundColor: fieldBg,
+                      color: colors.input.text,
+                      paddingHorizontal: 12,
+                      fontSize: 13,
+                      fontWeight: '400',
+                    }}
+                    selectionColor={colors.text.primary}
+                  />
+                </View>
+              </>
+            ) : null}
+
+            <View style={{ borderRadius: 14, borderWidth: 1, borderColor: fieldBorder, backgroundColor: fieldBg, padding: 12, gap: 10 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }}>Share to thread</Text>
+                  <Text style={{ color: colors.text.tertiary, fontSize: 11, marginTop: 2 }}>
+                    Post this {itemTypeLabel(form.itemType).toLowerCase()} to an existing team thread after saving.
+                  </Text>
+                </View>
+                <Pressable
+                  onPress={() => onChange({ shareToThread: !form.shareToThread })}
+                  style={{
+                    minWidth: 58,
+                    height: 32,
+                    borderRadius: 999,
+                    backgroundColor: form.shareToThread
+                      ? colors.text.primary
+                      : (themeMode === 'dark' ? 'rgba(148,163,184,0.24)' : '#D7DCE3'),
+                    borderWidth: 1,
+                    borderColor: form.shareToThread ? colors.text.primary : colors.border.light,
+                    paddingHorizontal: 4,
+                    justifyContent: 'center',
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 24,
+                      height: 24,
+                      borderRadius: 12,
+                      backgroundColor: form.shareToThread
+                        ? colors.bg.primary
+                        : (themeMode === 'dark' ? '#F8FAFC' : '#111827'),
+                      borderWidth: themeMode === 'dark' && !form.shareToThread ? 1 : 0,
+                      borderColor: themeMode === 'dark' ? 'rgba(15,23,42,0.14)' : 'transparent',
+                      alignSelf: form.shareToThread ? 'flex-end' : 'flex-start',
+                    }}
+                  />
+                </Pressable>
+              </View>
+
+              {form.shareToThread ? (
+                shareThreadOptions.length > 0 ? (
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    {shareThreadOptions.map((threadOption) => {
+                      const active = form.shareThreadEntityId === threadOption.entityId;
+                      return (
+                        <Pressable
+                          key={threadOption.entityId}
+                          onPress={() => onChange({ shareThreadEntityId: threadOption.entityId })}
+                          style={{
+                            borderRadius: 999,
+                            borderWidth: 1,
+                            borderColor: active ? colors.text.primary : fieldBorder,
+                            backgroundColor: active ? colors.text.primary : colors.bg.secondary,
+                            paddingHorizontal: 12,
+                            height: 34,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <Text style={{ color: active ? colors.bg.primary : colors.text.secondary, fontSize: 12, fontWeight: '600' }}>
+                            {threadOption.name}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                ) : (
+                  <Text style={{ color: colors.text.tertiary, fontSize: 12 }}>
+                    No team threads found yet. Create a team thread first, then come back and share this item there.
+                  </Text>
+                )
+              ) : null}
+            </View>
+
             <View>
               <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '500', marginBottom: 6 }}>Details (optional)</Text>
               <TextInput
                 value={form.description}
                 onChangeText={(value) => onChange({ description: value })}
                 multiline
-                placeholder="Add any instructions for the assignee"
+                placeholder={isEventForm ? 'Add notes or agenda' : 'Add any instructions for the assignee'}
                 placeholderTextColor={colors.input.placeholder}
                 style={{
                   minHeight: 92,
@@ -1063,7 +2009,7 @@ function TaskCreateModal({
               {isSubmitting ? (
                 <ActivityIndicator color={colors.bg.primary} />
               ) : (
-                <Text style={{ color: colors.bg.primary, fontWeight: '500' }}>Create Task</Text>
+                <Text style={{ color: colors.bg.primary, fontWeight: '500' }}>Create {itemTypeLabel(form.itemType)}</Text>
               )}
             </Pressable>
           </View>
@@ -1073,7 +2019,7 @@ function TaskCreateModal({
   );
 }
 
-function TaskActivityFeed({ businessId, taskId, task, teamMembers, compact = false }: TaskActivityFeedProps) {
+function TaskActivityFeed({ businessId, taskId, task, teamMembers, compact = false, scrollable = true }: TaskActivityFeedProps) {
   const colors = useThemeColors();
   const themeMode = useResolvedThemeMode();
   const queryClient = useQueryClient();
@@ -1083,6 +2029,7 @@ function TaskActivityFeed({ businessId, taskId, task, teamMembers, compact = fal
   const [messageText, setMessageText] = useState('');
   const [replyTarget, setReplyTarget] = useState<CollaborationComment | null>(null);
   const [activeTab, setActiveTab] = useState<'comments' | 'activity'>('comments');
+  const lastTapTimeRef = useRef<Record<string, number>>({});
   const uiLabelTextStyle = { fontSize: 12, fontWeight: '600' as const };
   const metaTextStyle = { fontSize: 12, fontWeight: '500' as const };
   const bodyTextStyle = { fontSize: 14, fontWeight: '500' as const, lineHeight: 20 };
@@ -1124,6 +2071,21 @@ function TaskActivityFeed({ businessId, taskId, task, teamMembers, compact = fal
     staleTime: 15_000,
   });
 
+  const commentIds = useMemo(
+    () => (commentsQuery.data ?? []).map((comment) => comment.id),
+    [commentsQuery.data]
+  );
+
+  const reactionsQuery = useQuery({
+    queryKey: ['task-thread-comment-reactions', businessId, threadId, commentIds],
+    enabled: Boolean(businessId) && Boolean(threadId) && commentIds.length > 0,
+    queryFn: () => collaborationData.listCommentReactions(businessId, commentIds),
+    retry: 0,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    staleTime: 15_000,
+  });
+
   useEffect(() => {
     if (!businessId || !threadId) return;
 
@@ -1140,6 +2102,18 @@ function TaskActivityFeed({ businessId, taskId, task, teamMembers, compact = fal
         () => {
           void queryClient.invalidateQueries({ queryKey: ['task-thread-comments', businessId, threadId] });
           void queryClient.invalidateQueries({ queryKey: ['collaboration-thread-counts', businessId, 'task'] });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'collaboration_comment_reactions',
+          filter: `business_id=eq.${businessId}`,
+        },
+        () => {
+          void queryClient.invalidateQueries({ queryKey: ['task-thread-comment-reactions', businessId, threadId] });
         }
       )
       .subscribe();
@@ -1159,11 +2133,12 @@ function TaskActivityFeed({ businessId, taskId, task, teamMembers, compact = fal
       await queryClient.invalidateQueries({ queryKey: ['collaboration-notifications-unread', businessId] });
     },
   });
+  const markThreadSeen = markSeenMutation.mutate;
 
   useEffect(() => {
     if (!threadId) return;
-    markSeenMutation.mutate();
-  }, [threadId]);
+    markThreadSeen();
+  }, [markThreadSeen, threadId]);
 
   const createCommentMutation = useMutation({
     mutationFn: async ({ body, parentCommentId }: { body: string; parentCommentId?: string | null }) => {
@@ -1192,6 +2167,43 @@ function TaskActivityFeed({ businessId, taskId, task, teamMembers, compact = fal
       markSeenMutation.mutate();
     },
   });
+
+  const reactionState = useMemo(() => {
+    const counts: Record<string, number> = {};
+    const mine: Record<string, boolean> = {};
+    (reactionsQuery.data ?? []).forEach((row) => {
+      if (row.reaction !== 'thumbs_up') return;
+      counts[row.comment_id] = (counts[row.comment_id] ?? 0) + 1;
+      if (row.user_id === currentUserId) {
+        mine[row.comment_id] = true;
+      }
+    });
+    return { counts, mine };
+  }, [currentUserId, reactionsQuery.data]);
+
+  const reactionMutation = useMutation({
+    mutationFn: async ({ commentId, liked }: { commentId: string; liked: boolean }) => {
+      if (liked) {
+        await collaborationData.removeCommentReaction(businessId, commentId);
+      } else {
+        await collaborationData.addCommentReaction(businessId, commentId);
+      }
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['task-thread-comment-reactions', businessId, threadId] });
+    },
+  });
+
+  const handleCommentTap = (commentId: string, liked: boolean) => {
+    const now = Date.now();
+    const lastTap = lastTapTimeRef.current[commentId] ?? 0;
+    if (now - lastTap < 300) {
+      lastTapTimeRef.current[commentId] = 0;
+      reactionMutation.mutate({ commentId, liked });
+    } else {
+      lastTapTimeRef.current[commentId] = now;
+    }
+  };
 
   const comments = commentsQuery.data ?? [];
   const activityEntries = useMemo(() => {
@@ -1253,19 +2265,41 @@ function TaskActivityFeed({ businessId, taskId, task, teamMembers, compact = fal
   ]);
 
   const activitySurface = themeMode === 'light' ? '#FFFFFF' : colors.bg.secondary;
-  const commentBubbleBg = themeMode === 'light' ? '#EEF0F3' : 'rgba(148,163,184,0.14)';
   const composerBorderColor = themeMode === 'light' ? '#D1D5DB' : colors.input.border;
   const sectionHorizontalPadding = compact ? 18 : 0;
   const contentColumnHorizontalPadding = compact ? 0 : 14;
   const hasMessage = messageText.trim().length > 0;
+  const hasComments = comments.length > 0;
   const activeSendButtonBg = themeMode === 'dark' ? '#FFFFFF' : '#111827';
   const activeSendIconColor = themeMode === 'dark' ? '#111827' : '#FFFFFF';
   const disabledSendIconColor = themeMode === 'dark' ? '#0F172A' : '#FFFFFF';
   const sendIconColor = hasMessage ? activeSendIconColor : disabledSendIconColor;
   const sendSpinnerColor = sendIconColor;
+  const mentionBg = themeMode === 'light' ? 'rgba(37, 99, 235, 0.10)' : 'rgba(37, 99, 235, 0.18)';
+  const mentionText = themeMode === 'light' ? '#1D4ED8' : '#93C5FD';
+  const shouldScrollFeed = scrollable || activeTab === 'activity' || (activeTab === 'comments' && hasComments);
+  const feedContentStyle = {
+    paddingHorizontal: sectionHorizontalPadding,
+    paddingTop: 22,
+    paddingBottom: activeTab === 'comments' && !hasComments ? 0 : 16,
+    gap: 14,
+  };
 
   return (
-    <View style={{ flex: 1, minHeight: compact ? 360 : undefined, borderTopWidth: 0.5, borderTopColor: colors.border.light, backgroundColor: activitySurface }}>
+    <View
+      style={shouldScrollFeed ? {
+        flex: 1,
+        flexShrink: 1,
+        minHeight: compact ? 0 : 180,
+        borderTopWidth: 0.5,
+        borderTopColor: colors.border.light,
+        backgroundColor: activitySurface,
+      } : {
+        borderTopWidth: 0.5,
+        borderTopColor: colors.border.light,
+        backgroundColor: activitySurface,
+      }}
+    >
       <View style={{ paddingHorizontal: sectionHorizontalPadding, paddingTop: 12, backgroundColor: activitySurface }}>
         <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: colors.border.light, paddingHorizontal: contentColumnHorizontalPadding }}>
           <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 18 }}>
@@ -1296,104 +2330,189 @@ function TaskActivityFeed({ businessId, taskId, task, teamMembers, compact = fal
         </View>
       </View>
 
-      <ScrollView style={{ flex: 1, backgroundColor: activitySurface }} contentContainerStyle={{ paddingHorizontal: sectionHorizontalPadding, paddingTop: 22, paddingBottom: 16, gap: 14 }}>
-        {activeTab === 'comments' && (threadQuery.isPending || commentsQuery.isPending) ? (
-          <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '600', textAlign: 'center', paddingVertical: 24, paddingHorizontal: contentColumnHorizontalPadding }}>
-            Loading activity...
-          </Text>
-        ) : null}
-        {activeTab === 'comments' && (threadQuery.isError || commentsQuery.isError) ? (
-          <Text style={{ color: '#B91C1C', fontSize: 12, fontWeight: '600', textAlign: 'center', paddingVertical: 12, paddingHorizontal: contentColumnHorizontalPadding }}>
-            Could not load activity right now.
-          </Text>
-        ) : null}
-        {activeTab === 'comments' && comments.length === 0 ? (
-          <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 44, paddingHorizontal: contentColumnHorizontalPadding }}>
-            <Text style={{ color: colors.text.secondary, fontSize: 14, fontWeight: '600' }}>No updates yet</Text>
-            <Text style={{ color: colors.text.tertiary, marginTop: 4, ...metaTextStyle }}>
-              Add an update, ask for status, or mention someone.
+      {shouldScrollFeed ? (
+        <ScrollView
+          scrollEnabled
+          style={{ flex: 1, backgroundColor: activitySurface }}
+          contentContainerStyle={{ ...feedContentStyle, flexGrow: 1 }}
+        >
+          {activeTab === 'comments' && (threadQuery.isPending || commentsQuery.isPending) ? (
+            <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '600', textAlign: 'center', paddingVertical: 24, paddingHorizontal: contentColumnHorizontalPadding }}>
+              Loading activity...
             </Text>
-          </View>
-        ) : null}
-        {activeTab === 'comments' ? (
-          comments.map((comment) => {
-            const author = teamMap.get(comment.author_user_id);
-            const replyTo = comment.parent_comment_id
-              ? comments.find((item) => item.id === comment.parent_comment_id)
-              : null;
-            const isOwn = comment.author_user_id === currentUserId;
-            const ownBubbleBg = themeMode === 'light' ? '#1C1C1E' : 'rgba(255,255,255,0.12)';
+          ) : null}
+          {activeTab === 'comments' && (threadQuery.isError || commentsQuery.isError) ? (
+            <Text style={{ color: '#B91C1C', fontSize: 12, fontWeight: '600', textAlign: 'center', paddingVertical: 12, paddingHorizontal: contentColumnHorizontalPadding }}>
+              Could not load activity right now.
+            </Text>
+          ) : null}
+          {activeTab === 'comments' && comments.length === 0 ? (
+            <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 44, paddingHorizontal: contentColumnHorizontalPadding }}>
+              <Text style={{ color: colors.text.secondary, fontSize: 14, fontWeight: '600' }}>No updates yet</Text>
+              <Text style={{ color: colors.text.tertiary, marginTop: 4, ...metaTextStyle }}>
+                Add an update, ask for status, or mention someone.
+              </Text>
+            </View>
+          ) : null}
+          {activeTab === 'comments' ? (
+            comments.map((comment, index) => {
+              const author = teamMap.get(comment.author_user_id);
+              const replyTo = comment.parent_comment_id
+                ? comments.find((item) => item.id === comment.parent_comment_id)
+                : null;
+              const isOwn = comment.author_user_id === currentUserId;
+              const showDivider = index < comments.length - 1;
+              const commentSegments = getCommentTextSegments(comment.body, mentionAliasMap);
+              const likeCount = reactionState.counts[comment.id] ?? 0;
+              const liked = Boolean(reactionState.mine[comment.id]);
 
-            return (
-              <View key={comment.id} style={{ flexDirection: isOwn ? 'row-reverse' : 'row', alignItems: 'flex-start', gap: 10, paddingHorizontal: contentColumnHorizontalPadding }}>
-                {!isOwn && (
-                  <View style={{ paddingTop: 2 }}>
-                    <UserAvatar member={author} size={26} />
-                  </View>
-                )}
-                <View style={{ flex: 1, gap: 4, alignItems: isOwn ? 'flex-end' : 'flex-start' }}>
-                  <View style={{ flexDirection: isOwn ? 'row-reverse' : 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                    {!isOwn && (
-                      <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600' }}>
-                        {author?.name ?? 'Member'}
-                      </Text>
-                    )}
-                    <Text style={{ color: colors.text.tertiary, ...metaTextStyle }}>
-                      {formatMessageTime(comment.created_at)}
-                    </Text>
-                  </View>
-
-                  {replyTo ? (
-                    <Text style={{ color: colors.text.tertiary, ...metaTextStyle }} numberOfLines={1}>
-                      Replying to {teamMap.get(replyTo.author_user_id)?.name ?? 'member'}: {replyTo.body}
-                    </Text>
-                  ) : null}
-
-                  <View style={{ alignSelf: isOwn ? 'flex-end' : 'flex-start', maxWidth: '86%', borderRadius: 12, backgroundColor: isOwn ? ownBubbleBg : commentBubbleBg, paddingHorizontal: 10, paddingVertical: 8 }}>
-                    <Text style={{ color: isOwn ? (themeMode === 'light' ? '#FFFFFF' : colors.text.primary) : colors.text.secondary, ...bodyTextStyle }}>
-                      {comment.body}
-                    </Text>
-                  </View>
-
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                    <Pressable onPress={() => setReplyTarget(comment)}>
-                      <Text style={{ color: colors.text.tertiary, ...uiLabelTextStyle }}>Reply</Text>
-                    </Pressable>
-                  </View>
-                </View>
-              </View>
-            );
-          })
-        ) : null}
-
-        {activeTab === 'activity' ? (
-          activityEntries.length > 0 ? (
-            activityEntries.map((entry) => {
-              const isSuccess = entry.tone === 'success';
               return (
-                <View key={entry.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: colors.border.light, paddingBottom: 10, paddingHorizontal: contentColumnHorizontalPadding }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
-                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: isSuccess ? '#10B981' : colors.text.muted }} />
-                    <Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '500' }} numberOfLines={1}>
-                      {entry.label}
-                    </Text>
+                <View
+                  key={comment.id}
+                  style={{
+                    paddingHorizontal: contentColumnHorizontalPadding,
+                    paddingBottom: showDivider ? 14 : 0,
+                    marginBottom: showDivider ? 2 : 0,
+                    borderBottomWidth: showDivider ? 1 : 0,
+                    borderBottomColor: colors.border.light,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+                    <View style={{ paddingTop: 2 }}>
+                      <UserAvatar member={author} size={26} />
+                    </View>
+                    <View style={{ flex: 1, gap: 4 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600' }}>
+                          {author?.name ?? 'Member'}
+                        </Text>
+                        <Text style={{ color: colors.text.tertiary, ...metaTextStyle }}>
+                          {isOwn ? 'You' : null}
+                        </Text>
+                        <Text style={{ color: colors.text.tertiary, ...metaTextStyle }}>
+                          {formatMessageTime(comment.created_at)}
+                        </Text>
+                      </View>
+
+                      {replyTo ? (
+                        <Text style={{ color: colors.text.tertiary, ...metaTextStyle }} numberOfLines={1}>
+                          Replying to {teamMap.get(replyTo.author_user_id)?.name ?? 'member'}: {replyTo.body}
+                        </Text>
+                      ) : null}
+
+                      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+                        <Pressable
+                          onPress={() => handleCommentTap(comment.id, liked)}
+                          style={{ flex: 1 }}
+                        >
+                          <Text style={{ color: colors.text.secondary, ...bodyTextStyle }}>
+                            {commentSegments.map((segment, segmentIndex) => (
+                              <Text
+                                key={`${comment.id}-segment-${segmentIndex}`}
+                                style={segment.isMention ? {
+                                  color: mentionText,
+                                  backgroundColor: mentionBg,
+                                  fontWeight: '600',
+                                } : undefined}
+                              >
+                                {segment.text}
+                              </Text>
+                            ))}
+                          </Text>
+                        </Pressable>
+
+                        <Pressable
+                          onPress={() => reactionMutation.mutate({ commentId: comment.id, liked })}
+                          style={{
+                            minWidth: 34,
+                            alignItems: 'center',
+                            paddingTop: 2,
+                          }}
+                        >
+                          <View
+                            style={{
+                              minWidth: 30,
+                              height: 30,
+                              borderRadius: 15,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              backgroundColor: liked || likeCount > 0 ? 'rgba(245, 158, 11, 0.16)' : colors.bg.secondary,
+                              borderWidth: 1,
+                              borderColor: liked || likeCount > 0 ? 'rgba(245, 158, 11, 0.32)' : colors.border.light,
+                            }}
+                          >
+                            <Text style={{ fontSize: 14, opacity: liked || likeCount > 0 ? 1 : 0.7 }}>👍</Text>
+                          </View>
+                          {likeCount > 0 ? (
+                            <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '700', marginTop: 4 }}>
+                              {likeCount}
+                            </Text>
+                          ) : null}
+                        </Pressable>
+                      </View>
+
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4 }}>
+                        <Pressable onPress={() => setReplyTarget(comment)}>
+                          <Text style={{ color: colors.text.tertiary, ...uiLabelTextStyle }}>Reply</Text>
+                        </Pressable>
+                      </View>
+                    </View>
                   </View>
-                  <Text style={{ color: colors.text.muted, ...metaTextStyle }}>
-                    {formatMessageTime(entry.at)}
-                  </Text>
                 </View>
               );
             })
-          ) : (
+          ) : null}
+
+          {activeTab === 'activity' ? (
+            activityEntries.length > 0 ? (
+              activityEntries.map((entry) => {
+                const isSuccess = entry.tone === 'success';
+                return (
+                  <View key={entry.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: colors.border.light, paddingBottom: 10, paddingHorizontal: contentColumnHorizontalPadding }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: isSuccess ? '#10B981' : colors.text.muted }} />
+                      <Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '500' }} numberOfLines={1}>
+                        {entry.label}
+                      </Text>
+                    </View>
+                    <Text style={{ color: colors.text.muted, ...metaTextStyle }}>
+                      {formatMessageTime(entry.at)}
+                    </Text>
+                  </View>
+                );
+              })
+            ) : (
+              <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 44, paddingHorizontal: contentColumnHorizontalPadding }}>
+                <Text style={{ color: colors.text.secondary, fontSize: 14, fontWeight: '600' }}>No activity yet</Text>
+              </View>
+            )
+          ) : null}
+        </ScrollView>
+      ) : (
+        <View style={feedContentStyle}>
+          {activeTab === 'comments' && (threadQuery.isPending || commentsQuery.isPending) ? (
+            <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '600', textAlign: 'center', paddingVertical: 24, paddingHorizontal: contentColumnHorizontalPadding }}>
+              Loading activity...
+            </Text>
+          ) : null}
+          {activeTab === 'comments' && (threadQuery.isError || commentsQuery.isError) ? (
+            <Text style={{ color: '#B91C1C', fontSize: 12, fontWeight: '600', textAlign: 'center', paddingVertical: 12, paddingHorizontal: contentColumnHorizontalPadding }}>
+              Could not load activity right now.
+            </Text>
+          ) : null}
+          {activeTab === 'comments' && comments.length === 0 ? (
             <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 44, paddingHorizontal: contentColumnHorizontalPadding }}>
-              <Text style={{ color: colors.text.secondary, fontSize: 14, fontWeight: '600' }}>No activity yet</Text>
+              <Text style={{ color: colors.text.secondary, fontSize: 14, fontWeight: '600' }}>No updates yet</Text>
+              <Text style={{ color: colors.text.tertiary, marginTop: 4, ...metaTextStyle }}>
+                Add an update, ask for status, or mention someone.
+              </Text>
             </View>
-          )
-        ) : null}
-      </ScrollView>
+          ) : null}
+        </View>
+      )}
 
       {activeTab === 'comments' ? (
-      <View style={{ borderTopWidth: 1, borderTopColor: colors.border.light, paddingHorizontal: sectionHorizontalPadding, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 20 : 12, backgroundColor: activitySurface }}>
+      <View style={{ borderTopWidth: 1, borderTopColor: colors.border.light, paddingHorizontal: sectionHorizontalPadding, paddingTop: 8, paddingBottom: 8, backgroundColor: activitySurface }}>
         <View style={{ paddingHorizontal: contentColumnHorizontalPadding }}>
           {activeMentionQuery !== null ? (
             <View
@@ -1542,7 +2661,8 @@ function TaskCard({
   const assigneeLine = assignees.length > 0
     ? visibleAssignees.map((member) => member.name.split(' ')[0] ?? member.name).join(', ')
     : 'Unassigned';
-  const dueText = task.due_date ? format(parseISO(task.due_date), 'MMM d') : 'No due date';
+  const dueText = formatTaskScheduleLabel(task);
+  const itemTypeText = itemTypeLabel(task.item_type ?? 'task');
   const cardBackgroundColor = isCompleted ? colors.bg.secondary : colors.bg.card;
   const cardBorderColor = isCompleted ? 'rgba(148,163,184,0.18)' : colors.border.light;
   const cardBorderWidth = isCompleted ? 0.6 : 1;
@@ -1654,15 +2774,25 @@ function TaskCard({
               borderRadius: 999,
               paddingHorizontal: 8,
               paddingVertical: 4,
-              backgroundColor: recurrenceChipTone.background,
+              backgroundColor: task.item_type === 'event' ? 'rgba(37,99,235,0.10)' : recurrenceChipTone.background,
             }}
           >
-            <Text style={{ color: recurrenceChipTone.text, fontSize: 11, fontWeight: '600' }}>
-              {recurrenceText}
+            <Text style={{ color: task.item_type === 'event' ? '#2563EB' : recurrenceChipTone.text, fontSize: 11, fontWeight: '600' }}>
+              {task.item_type === 'event' && recurrenceText !== 'One-off' ? recurrenceText : itemTypeText}
             </Text>
           </View>
-          <View style={{ width: 18, height: 18, alignItems: 'center', justifyContent: 'center' }}>
-            <Flag size={13} color={priorityFlagColor} strokeWidth={2.3} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            {commentCount > 0 ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                <MessageSquare size={11} color={colors.text.muted} strokeWidth={2.1} />
+                <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600' }}>
+                  {commentCount > 99 ? '99+' : commentCount}
+                </Text>
+              </View>
+            ) : null}
+            <View style={{ width: 18, height: 18, alignItems: 'center', justifyContent: 'center' }}>
+              <Flag size={13} color={priorityFlagColor} strokeWidth={2.3} />
+            </View>
           </View>
         </View>
       </View>
@@ -1702,22 +2832,16 @@ function TaskTableRow({
   const isCompleted = task.status === 'done';
   const priority = PRIORITY_META[task.priority];
   const overdue = isTaskOverdue(task);
-  const dueLabel = task.due_date ? format(parseISO(task.due_date), 'MMM d, yyyy') : 'No due date';
+  const effectiveDueDate = getEffectiveTaskDueDate(task);
+  const dueLabel = task.item_type === 'event'
+    ? formatTaskScheduleLabel(task)
+    : (effectiveDueDate ? format(effectiveDueDate, 'MMM d, yyyy') : 'No due date');
   const displayTitle = task.title.length > 0
     ? `${task.title.charAt(0).toUpperCase()}${task.title.slice(1)}`
     : task.title;
   const frequencyText = recurrenceLabel(task.recurrence_frequency as unknown as string | null);
   const frequencyTone = recurrenceTone(task.recurrence_frequency as unknown as string | null);
 
-  const statusTone = (() => {
-    if (task.status === 'done') {
-      return { text: '#10B981', background: 'rgba(16,185,129,0.10)' };
-    }
-    if (task.status === 'in_progress') {
-      return { text: '#2563EB', background: 'rgba(37,99,235,0.11)' };
-    }
-    return { text: '#F59E0B', background: 'rgba(245,158,11,0.11)' };
-  })();
   const rowBackgroundColor = isCompleted
     ? (selected ? 'rgba(148,163,184,0.20)' : colors.bg.secondary)
     : (selected ? 'rgba(59,130,246,0.08)' : colors.bg.card);
@@ -1726,12 +2850,11 @@ function TaskTableRow({
   const firstAssignee = assignees[0];
   const additionalAssigneeCount = assignees.length > 1 ? assignees.length - 1 : 0;
   const isCompactTable = !showActivityColumn;
-  const nameColumnFlex = isCompactTable ? 3.2 : 1.9;
+  const nameColumnFlex = isCompactTable ? 5 : 1.9;
   const priorityColumnWidth = isCompactTable ? 82 : 110;
-  const assigneeColumnWidth = isCompactTable ? 136 : 170;
-  const dueColumnWidth = isCompactTable ? 108 : 126;
-  const frequencyColumnWidth = isCompactTable ? 92 : 108;
-  const statusColumnWidth = isCompactTable ? 94 : 118;
+  const assigneeColumnWidth = isCompactTable ? 116 : 170;
+  const dueColumnWidth = isCompactTable ? 92 : 126;
+  const frequencyColumnWidth = isCompactTable ? 96 : 126;
   const assigneeDisplayName = firstAssignee
     ? (isCompactTable ? (firstAssignee.name.split(' ')[0] ?? firstAssignee.name) : firstAssignee.name)
     : '';
@@ -1813,19 +2936,19 @@ function TaskTableRow({
       </View>
 
       <View style={{ width: frequencyColumnWidth, paddingRight: 8 }}>
-        <View style={{ borderRadius: 999, backgroundColor: frequencyTone.background, alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4 }}>
-          <Text style={{ color: frequencyTone.text, fontSize: 11, fontWeight: '500' }}>
-            {frequencyText}
-          </Text>
-        </View>
-      </View>
-
-      <View style={{ width: statusColumnWidth, paddingRight: 8 }}>
-        <View style={{ borderRadius: 999, backgroundColor: statusTone.background, alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4 }}>
-          <Text style={{ color: statusTone.text, fontSize: 11, fontWeight: '500' }}>
-            {statusLabel(task.status)}
-          </Text>
-        </View>
+        {task.item_type === 'event' ? (
+          <View style={{ borderRadius: 999, backgroundColor: 'rgba(37,99,235,0.10)', alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4 }}>
+            <Text style={{ color: '#2563EB', fontSize: 11, fontWeight: '500' }}>
+              {frequencyText === 'One-off' ? 'Event' : frequencyText}
+            </Text>
+          </View>
+        ) : (
+          <View style={{ borderRadius: 999, backgroundColor: frequencyTone.background, alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4 }}>
+            <Text style={{ color: frequencyTone.text, fontSize: 11, fontWeight: '500' }}>
+              {frequencyText}
+            </Text>
+          </View>
+        )}
       </View>
 
       {showActivityColumn ? (
@@ -1847,10 +2970,365 @@ function TaskTableRow({
   );
 }
 
+function TaskCalendarView({
+  tasks,
+  selectedDate,
+  displayedMonth,
+  selectedTaskId,
+  teamMap,
+  unreadCounts,
+  commentCounts,
+  isDesktopLayout,
+  onSelectDate,
+  onChangeMonth,
+  onJumpToToday,
+  onOpenTask,
+  onToggleDone,
+}: TaskCalendarViewProps) {
+  const colors = useThemeColors();
+  const monthStart = startOfMonth(displayedMonth);
+  const monthEnd = endOfMonth(displayedMonth);
+  const calendarDays = eachDayOfInterval({
+    start: startOfWeek(monthStart, { weekStartsOn: 1 }),
+    end: endOfWeek(monthEnd, { weekStartsOn: 1 }),
+  });
+
+  const tasksByDateKey = useMemo(() => {
+    const nextMap = new Map<string, Task[]>();
+    tasks.forEach((task) => {
+      const anchorDate = getTaskCalendarAnchorDate(task);
+      if (!anchorDate) return;
+      const key = format(anchorDate, 'yyyy-MM-dd');
+      nextMap.set(key, [...(nextMap.get(key) ?? []), task]);
+    });
+    nextMap.forEach((value, key) => {
+      nextMap.set(key, [...value].sort(compareCalendarTasks));
+    });
+    return nextMap;
+  }, [tasks]);
+
+  const selectedDateKey = format(selectedDate, 'yyyy-MM-dd');
+  const selectedDateTasks = tasksByDateKey.get(selectedDateKey) ?? [];
+
+  return (
+    <View
+      style={{
+        borderRadius: 18,
+        borderWidth: 1,
+        borderColor: colors.border.light,
+        backgroundColor: colors.bg.card,
+        overflow: 'hidden',
+        flexDirection: isDesktopLayout ? 'row' : 'column',
+      }}
+    >
+      <View
+        style={{
+          flex: isDesktopLayout ? 1.1 : undefined,
+          borderRightWidth: isDesktopLayout ? 1 : 0,
+          borderBottomWidth: isDesktopLayout ? 0 : 1,
+          borderColor: colors.border.light,
+          padding: 16,
+        }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 14 }}>
+          <View>
+            <Text style={{ color: colors.text.primary, fontSize: isDesktopLayout ? 18 : 16, fontWeight: '700' }}>
+              {format(displayedMonth, 'MMMM yyyy')}
+            </Text>
+            <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 2 }}>
+              {tasks.length} scheduled item{tasks.length === 1 ? '' : 's'}
+            </Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Pressable
+              onPress={() => onChangeMonth(-1)}
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 17,
+                borderWidth: 1,
+                borderColor: colors.border.light,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: colors.bg.secondary,
+              }}
+            >
+              <ChevronLeft size={16} color={colors.text.secondary} strokeWidth={2.4} />
+            </Pressable>
+            <Pressable
+              onPress={onJumpToToday}
+              style={{
+                height: 34,
+                borderRadius: 999,
+                borderWidth: 1,
+                borderColor: colors.border.light,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: colors.bg.secondary,
+                paddingHorizontal: 12,
+              }}
+            >
+              <Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '600' }}>Today</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => onChangeMonth(1)}
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 17,
+                borderWidth: 1,
+                borderColor: colors.border.light,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: colors.bg.secondary,
+              }}
+            >
+              <ChevronRight size={16} color={colors.text.secondary} strokeWidth={2.4} />
+            </Pressable>
+          </View>
+        </View>
+
+        <View style={{ flexDirection: 'row', marginBottom: 8 }}>
+          {CALENDAR_WEEKDAY_LABELS.map((label) => (
+            <View key={label} style={{ flex: 1, alignItems: 'center', paddingVertical: 6 }}>
+              <Text style={{ color: colors.text.muted, fontSize: 11, fontWeight: '600' }}>{label}</Text>
+            </View>
+          ))}
+        </View>
+
+        <View style={{ gap: 8 }}>
+          {Array.from({ length: Math.ceil(calendarDays.length / 7) }, (_, rowIndex) => {
+            const rowDays = calendarDays.slice(rowIndex * 7, rowIndex * 7 + 7);
+            return (
+              <View key={`calendar-row-${rowIndex}`} style={{ flexDirection: 'row', gap: 8 }}>
+                {rowDays.map((day) => {
+                  const dayKey = format(day, 'yyyy-MM-dd');
+                  const dayTasks = tasksByDateKey.get(dayKey) ?? [];
+                  const totalCount = dayTasks.length;
+                  const dayIndicators = getCalendarDayIndicators(dayTasks);
+                  const isSelected = isSameDay(day, selectedDate);
+                  const isCurrentMonth = isSameMonth(day, displayedMonth);
+                  const isTodayDate = isToday(day);
+
+                  return (
+                    <Pressable
+                      key={dayKey}
+                      onPress={() => onSelectDate(day)}
+                      style={{
+                        flex: 1,
+                        minHeight: isDesktopLayout ? 82 : 64,
+                        borderRadius: 14,
+                        borderWidth: 1,
+                        borderColor: isSelected ? colors.text.primary : colors.border.light,
+                        backgroundColor: isSelected ? colors.bg.secondary : colors.bg.card,
+                        paddingHorizontal: 8,
+                        paddingTop: 8,
+                        paddingBottom: 7,
+                        opacity: isCurrentMonth ? 1 : 0.42,
+                        justifyContent: 'space-between',
+                        overflow: 'visible',
+                      }}
+                    >
+                      {totalCount > 0 ? (
+                        <View style={{
+                          position: 'absolute',
+                          top: -7,
+                          right: -7,
+                          minWidth: isDesktopLayout ? 18 : 16,
+                          height: isDesktopLayout ? 18 : 16,
+                          borderRadius: 999,
+                          backgroundColor: isSelected ? colors.text.primary : colors.text.secondary,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          paddingHorizontal: 3,
+                          zIndex: 10,
+                        }}>
+                          <Text style={{ color: isSelected ? colors.bg.primary : colors.bg.card, fontSize: isDesktopLayout ? 10 : 9, fontWeight: '700' }}>
+                            {totalCount > 9 ? '9+' : totalCount}
+                          </Text>
+                        </View>
+                      ) : null}
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Text
+                          style={{
+                            color: isSelected ? colors.text.primary : (isTodayDate ? '#2563EB' : colors.text.secondary),
+                            fontSize: 13,
+                            fontWeight: isSelected || isTodayDate ? '700' : '500',
+                          }}
+                        >
+                          {format(day, 'd')}
+                        </Text>
+                      </View>
+
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: 10, flexWrap: 'wrap' }}>
+                        {dayIndicators.map((indicatorColor, indicatorIndex) => (
+                          <View
+                            key={`${dayKey}-indicator-${indicatorIndex}`}
+                            style={{ width: 7, height: 7, borderRadius: 999, backgroundColor: indicatorColor }}
+                          />
+                        ))}
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            );
+          })}
+        </View>
+      </View>
+
+      <View style={{ flex: 1, padding: 16 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 14 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: colors.text.primary, fontSize: isDesktopLayout ? 18 : 16, fontWeight: '700' }}>
+              {format(selectedDate, 'EEEE, MMMM d')}
+            </Text>
+            <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 2 }}>
+              {selectedDateTasks.length === 0
+                ? 'No items scheduled'
+                : `${selectedDateTasks.length} item${selectedDateTasks.length === 1 ? '' : 's'} scheduled`}
+            </Text>
+          </View>
+        </View>
+
+        {selectedDateTasks.length === 0 ? (
+          <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.secondary, paddingHorizontal: 16, paddingVertical: 18 }}>
+            <Text style={{ color: colors.text.secondary, fontSize: 13, fontWeight: '500' }}>
+              Nothing is scheduled for this day yet.
+            </Text>
+          </View>
+        ) : (
+          <View style={{ gap: 10 }}>
+            {selectedDateTasks.map((task) => {
+              const assignees = (task.assignee_user_ids ?? []).map((id) => teamMap.get(id)).filter(Boolean) as TeamMember[];
+              const firstAssignee = assignees[0]?.name ?? (task.item_type === 'event' ? 'No attendees' : 'Unassigned');
+              const additionalAssigneeCount = assignees.length > 1 ? assignees.length - 1 : 0;
+              const isSelectedTask = task.id === selectedTaskId;
+              const isCompletedTask = task.status === 'done';
+              const isOverdueTask = task.status !== 'done' && isTaskOverdue(task);
+              const statusChip = getCalendarStatusChip(task);
+              const visibleAssignees = assignees.slice(0, 2);
+              const agendaTimeLabel = isOverdueTask ? null : formatCalendarAgendaTime(task);
+
+              return (
+                <Pressable
+                  key={task.id}
+                  onPress={() => onOpenTask(task)}
+                  style={{
+                    borderRadius: 16,
+                    borderWidth: 1,
+                    borderColor: isSelectedTask ? '#BFDBFE' : colors.border.light,
+                    backgroundColor: isSelectedTask ? colors.bg.secondary : colors.bg.card,
+                    paddingHorizontal: 14,
+                    paddingVertical: 12,
+                    gap: 10,
+                    opacity: isCompletedTask ? 0.72 : 1,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, flex: 1, minWidth: 0 }}>
+                      <Pressable
+                        onPress={(event) => {
+                          event.stopPropagation();
+                          onToggleDone(task);
+                        }}
+                        hitSlop={8}
+                        style={{ paddingTop: 1 }}
+                      >
+                        {isCompletedTask ? (
+                          <CheckCircle2 size={19} color={colors.text.muted} strokeWidth={2.1} />
+                        ) : (
+                          <Circle size={19} color={colors.text.muted} strokeWidth={2} />
+                        )}
+                      </Pressable>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 5 }}>
+                          <View style={{ borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: task.item_type === 'event' ? 'rgba(37,99,235,0.10)' : 'rgba(217,119,6,0.12)' }}>
+                            <Text style={{ color: task.item_type === 'event' ? '#2563EB' : '#D97706', fontSize: 11, fontWeight: '600' }}>
+                              {task.item_type === 'event' ? 'Event' : 'Task'}
+                            </Text>
+                          </View>
+                          {statusChip ? (
+                            <View style={{ borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: statusChip.background }}>
+                              <Text style={{ color: statusChip.text, fontSize: 11, fontWeight: '600' }}>
+                                {statusChip.label}
+                              </Text>
+                            </View>
+                          ) : null}
+                          {agendaTimeLabel ? (
+                            <Text style={{ color: isOverdueTask ? '#DC2626' : colors.text.tertiary, fontSize: 12, fontWeight: '500' }}>
+                              {agendaTimeLabel}
+                            </Text>
+                          ) : null}
+                        </View>
+                        <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600' }} numberOfLines={2}>
+                          {toSentenceCase(task.title)}
+                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, minWidth: 0 }}>
+                          {visibleAssignees.length > 0 ? (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', paddingRight: 2 }}>
+                              {visibleAssignees.map((member, index) => (
+                                <View
+                                  key={`${task.id}-calendar-assignee-${member.id}`}
+                                  style={{
+                                    marginLeft: index === 0 ? 0 : -6,
+                                    borderWidth: 1,
+                                    borderColor: colors.bg.card,
+                                    borderRadius: 999,
+                                  }}
+                                >
+                                  <UserAvatar member={member} size={18} />
+                                </View>
+                              ))}
+                            </View>
+                          ) : (
+                            <UserAvatar name={task.item_type === 'event' ? 'Attendees' : 'Unassigned'} size={18} />
+                          )}
+                          <Text style={{ color: colors.text.tertiary, fontSize: 12, flex: 1 }} numberOfLines={1}>
+                            {firstAssignee}{additionalAssigneeCount > 0 ? ` +${additionalAssigneeCount}` : ''}
+                          </Text>
+                        </View>
+                        {task.item_type === 'event' && task.location?.trim() ? (
+                          <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 3 }} numberOfLines={1}>
+                            {task.location.trim()}
+                          </Text>
+                        ) : null}
+                      </View>
+                    </View>
+
+                    <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                      {commentCounts[task.id] ? (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          <MessageSquare size={12} color={colors.text.muted} strokeWidth={2} />
+                          <Text style={{ color: colors.text.muted, fontSize: 11, fontWeight: '500' }}>
+                            {commentCounts[task.id] > 99 ? '99+' : commentCounts[task.id]}
+                          </Text>
+                        </View>
+                      ) : null}
+                      {unreadCounts[task.id] ? (
+                        <View style={{ minWidth: 20, height: 20, borderRadius: 999, backgroundColor: '#DC2626', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 }}>
+                          <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '700' }}>
+                            {unreadCounts[task.id] > 99 ? '99+' : unreadCounts[task.id]}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+      </View>
+    </View>
+  );
+}
+
 function TaskDetailPanel({
   task,
   businessId,
   teamMembers,
+  shareThreadOptions,
   currentUserId,
   commentCount = 0,
   onSaved,
@@ -1861,6 +3339,7 @@ function TaskDetailPanel({
   task: Task;
   businessId: string;
   teamMembers: TeamMember[];
+  shareThreadOptions: TaskShareThreadOption[];
   currentUserId?: string | null;
   commentCount?: number;
   onSaved: () => Promise<void>;
@@ -1871,46 +3350,87 @@ function TaskDetailPanel({
   const colors = useThemeColors();
   const themeMode = useResolvedThemeMode();
   const { isDesktop } = useBreakpoint();
+  const canUseEveryone = useAuthStore((s) => (s.currentUser?.role === 'admin' || s.currentUser?.role === 'manager'));
   const isMobileDetail = !isDesktop;
   const showBackButton = isMobileDetail && Boolean(onClose);
   const showCloseButton = isDesktop && Boolean(onClose);
+  const handleToggleDone = async () => {
+    await onStatusChange(task.status === 'done' ? 'todo' : 'done');
+  };
   const [isEditing, setIsEditing] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showEditDatePicker, setShowEditDatePicker] = useState(false);
   const [showDetailActionMenu, setShowDetailActionMenu] = useState(false);
-  const [form, setForm] = useState<TaskFormState>(toTaskFormState(task));
+  const [showShareMenu, setShowShareMenu] = useState(false);
+  const [form, setForm] = useState<TaskFormState>(toTaskFormState(task, teamMembers, canUseEveryone));
   const formFieldBorder = colors.border.light;
   const formFieldBg = colors.bg.card;
 
   useEffect(() => {
-    setForm(toTaskFormState(task));
+    setForm(toTaskFormState(task, teamMembers, canUseEveryone));
     setIsEditing(false);
     setShowEditModal(false);
     setShowEditDatePicker(false);
     setShowDetailActionMenu(false);
-  }, [task.id, task.updated_at]);
+    setShowShareMenu(false);
+  }, [canUseEveryone, task, teamMembers]);
+
+  useEffect(() => {
+    if (!showEditModal || !form.shareToThread || shareThreadOptions.length === 0) return;
+    if (form.shareThreadEntityId && shareThreadOptions.some((option) => option.entityId === form.shareThreadEntityId)) return;
+    setForm((current) => ({ ...current, shareThreadEntityId: shareThreadOptions[0]?.entityId ?? null }));
+  }, [form.shareThreadEntityId, form.shareToThread, shareThreadOptions, showEditModal]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
       const previousAssignees = new Set((task.assignee_user_ids ?? []).map((value) => value.trim()).filter(Boolean));
-      const normalizedNextAssignees = Array.from(
-        new Set(form.assigneeUserIds.map((value) => value.trim()).filter(Boolean))
-      );
+      const normalizedNextAssignees = expandAssigneeSelection(form.assigneeUserIds, teamMembers);
       const newlyAssignedUserIds = normalizedNextAssignees.filter((userId) => !previousAssignees.has(userId));
       const payload: UpdateTaskInput = {
+        itemType: form.itemType,
         title: form.title,
         description: form.description,
         priority: form.priority,
         dueDate: form.dueDate ? format(form.dueDate, 'yyyy-MM-dd') : null,
-        assigneeUserIds: form.assigneeUserIds,
+        startsAt: form.itemType === 'event' ? combineDateAndTime(form.dueDate, form.startTime, form.eventTimezone) : null,
+        endsAt: form.itemType === 'event' ? combineDateAndTime(form.dueDate, form.endTime, form.eventTimezone) : null,
+        eventTimezone: form.itemType === 'event' ? form.eventTimezone : null,
+        location: form.itemType === 'event' ? form.location : null,
+        meetingLink: form.itemType === 'event' ? form.meetingLink : null,
+        assigneeUserIds: normalizedNextAssignees,
         recurrenceFrequency: form.recurrenceFrequency,
         recurrenceInterval: form.recurrenceInterval,
       };
       await taskData.updateTask(businessId, task.id, payload);
+      const updatedTaskForShare: Task = {
+        ...task,
+        item_type: form.itemType,
+        title: form.title,
+        description: form.description,
+        priority: form.priority,
+        due_date: form.dueDate ? format(form.dueDate, 'yyyy-MM-dd') : null,
+        starts_at: form.itemType === 'event' ? combineDateAndTime(form.dueDate, form.startTime, form.eventTimezone) : null,
+        ends_at: form.itemType === 'event' ? combineDateAndTime(form.dueDate, form.endTime, form.eventTimezone) : null,
+        event_timezone: form.itemType === 'event' ? form.eventTimezone : null,
+        location: form.itemType === 'event' ? form.location : null,
+        meeting_link: form.itemType === 'event' ? form.meetingLink : null,
+        assignee_user_ids: normalizedNextAssignees,
+        recurrence_frequency: form.recurrenceFrequency,
+        recurrence_interval: form.recurrenceInterval,
+      };
+      const assigneeNames = isEveryoneAssignment(normalizedNextAssignees, teamMembers)
+        ? ['Everybody']
+        : normalizedNextAssignees
+          .map((userId) => teamMembers.find((member) => member.id === userId)?.name)
+          .filter((value): value is string => Boolean(value?.trim()));
       return {
         newlyAssignedUserIds,
         updatedTitle: form.title.trim(),
         updatedDueDate: form.dueDate ? format(form.dueDate, 'yyyy-MM-dd') : null,
+        updatedTaskForShare,
+        shareToThread: form.shareToThread && shareThreadOptions.length > 0,
+        shareThreadEntityId: form.shareThreadEntityId ?? shareThreadOptions[0]?.entityId ?? null,
+        assigneeNames,
       };
     },
     onSuccess: async (result) => {
@@ -1926,9 +3446,33 @@ function TaskDetailPanel({
           isReassignment: true,
         });
       }
+      if (result.shareToThread && result.shareThreadEntityId) {
+        try {
+          const thread = await collaborationData.getOrCreateThread(businessId, 'case', result.shareThreadEntityId);
+          await collaborationData.createComment({
+            businessId,
+            threadId: thread.id,
+            body: buildTaskShareMessage(
+              result.updatedTaskForShare,
+              result.assigneeNames.length > 0 ? result.assigneeNames : ['Unassigned'],
+              getTeamThreadDisplayNameFromEntityId(result.shareThreadEntityId),
+              'Updated'
+            ),
+          });
+        } catch (shareError) {
+          console.warn('Could not share updated task item to thread:', shareError);
+        }
+      }
       setIsEditing(false);
       setShowEditModal(false);
       await onSaved();
+    },
+    onError: (error) => {
+      console.warn('Task update failed:', error);
+      const message = error instanceof Error && error.message
+        ? error.message
+        : 'Please try again.';
+      Alert.alert('Could not save task', message);
     },
   });
 
@@ -1945,6 +3489,31 @@ function TaskDetailPanel({
   const taskAssignees = (task.assignee_user_ids ?? [])
     .map((id) => assigneeMap.get(id))
     .filter(Boolean) as TeamMember[];
+  const everybodyAssigned = isEveryoneAssignment(task.assignee_user_ids ?? [], teamMembers);
+  const taskShareAssigneeNames = everybodyAssigned
+    ? ['Everybody']
+    : taskAssignees.map((member) => member.name);
+  const shareMutation = useMutation({
+    mutationFn: async (threadEntityId: string) => {
+      const thread = await collaborationData.getOrCreateThread(businessId, 'case', threadEntityId);
+      await collaborationData.createComment({
+        businessId,
+        threadId: thread.id,
+        body: buildTaskShareMessage(
+          task,
+          taskShareAssigneeNames.length > 0 ? taskShareAssigneeNames : ['Unassigned'],
+          getTeamThreadDisplayNameFromEntityId(threadEntityId),
+          'Shared'
+        ),
+      });
+    },
+    onSuccess: () => {
+      setShowShareMenu(false);
+    },
+    onError: (error) => {
+      console.warn('Could not share task item to thread:', error);
+    },
+  });
   const taskPriorityMeta = PRIORITY_META[task.priority];
   const taskStatusTone = (() => {
     if (task.status === 'done') {
@@ -1957,6 +3526,7 @@ function TaskDetailPanel({
   })();
   const taskFrequencyTone = recurrenceTone(task.recurrence_frequency as unknown as string | null);
   const taskFrequencyLabel = recurrenceLabel(task.recurrence_frequency as unknown as string | null);
+  const taskItemType = task.item_type === 'event' ? 'event' : 'task';
   const displayTaskTitle = task.title.length > 0
     ? `${task.title.charAt(0).toUpperCase()}${task.title.slice(1)}`
     : task.title;
@@ -1998,6 +3568,8 @@ function TaskDetailPanel({
     fontSize: isMobileDetail ? 13 : 11,
     fontWeight: isMobileDetail ? '500' as const : '400' as const,
   };
+  const taskTitlePendingOutlineColor = themeMode === 'light' ? 'rgba(100,116,139,0.46)' : 'rgba(148,163,184,0.56)';
+  const taskTitleCheckColor = task.status === 'done' ? colors.text.primary : taskTitlePendingOutlineColor;
   const detailHeaderHorizontalPadding = isMobileDetail ? 16 : 0;
   const detailBodyHorizontalPadding = isMobileDetail ? 20 : 0;
   const renderEditForm = (onCancel: () => void, options?: { stretch?: boolean }) => (
@@ -2008,11 +3580,51 @@ function TaskDetailPanel({
         showsVerticalScrollIndicator={false}
       >
         <View>
-          <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '500', marginBottom: 6 }}>Task title</Text>
+          <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '500', marginBottom: 6 }}>Type</Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {([
+              { id: 'task' as TaskItemType, label: 'Task' },
+              { id: 'event' as TaskItemType, label: 'Event' },
+            ]).map((option) => {
+              const active = form.itemType === option.id;
+              return (
+                <Pressable
+                  key={option.id}
+                  onPress={() => setForm((current) => ({
+                    ...current,
+                    itemType: option.id,
+                    eventTimezone: option.id === 'event'
+                      ? (current.eventTimezone.trim() || getDeviceTimeZone())
+                      : current.eventTimezone,
+                  }))}
+                  style={{
+                    flex: 1,
+                    minHeight: 40,
+                    borderRadius: 999,
+                    borderWidth: 1,
+                    borderColor: active ? colors.text.primary : formFieldBorder,
+                    backgroundColor: active ? colors.text.primary : formFieldBg,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Text style={{ color: active ? colors.bg.primary : colors.text.secondary, fontSize: 13, fontWeight: '600' }}>
+                    {option.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
+        <View>
+          <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '500', marginBottom: 6 }}>
+            {form.itemType === 'event' ? 'Event title' : 'Task title'}
+          </Text>
           <TextInput
             value={form.title}
             onChangeText={(value) => setForm((current) => ({ ...current, title: value }))}
-            placeholder="What needs to be done?"
+            placeholder={form.itemType === 'event' ? 'What is happening?' : 'What needs to be done?'}
             placeholderTextColor={colors.input.placeholder}
             style={{
               backgroundColor: formFieldBg,
@@ -2031,7 +3643,9 @@ function TaskDetailPanel({
 
         {isMobileDetail ? (
           <View>
-            <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '500', marginBottom: 6 }}>Due date</Text>
+            <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '500', marginBottom: 6 }}>
+              {form.itemType === 'event' ? 'Event date' : 'Due date'}
+            </Text>
             {Platform.OS === 'web' ? (
               <View
                 style={{
@@ -2099,7 +3713,9 @@ function TaskDetailPanel({
         ) : (
           <View style={{ flexDirection: 'row', gap: 10 }}>
             <View style={{ flex: 1 }}>
-              <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '500', marginBottom: 6 }}>Due date</Text>
+              <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '500', marginBottom: 6 }}>
+                {form.itemType === 'event' ? 'Event date' : 'Due date'}
+              </Text>
               {Platform.OS === 'web' ? (
                 <View
                   style={{
@@ -2171,6 +3787,119 @@ function TaskDetailPanel({
           </View>
         )}
 
+        {form.itemType === 'event' ? (
+          <>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '500', marginBottom: 6 }}>Start time</Text>
+                {Platform.OS === 'web' ? (
+                  <View style={{ minHeight: 46, borderRadius: 12, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, paddingHorizontal: 12, alignItems: 'center', flexDirection: 'row' }}>
+                    <Clock3 size={15} color={colors.text.tertiary} strokeWidth={2} />
+                    <input
+                      type="time"
+                      value={form.startTime}
+                      onChange={(event: any) => {
+                        const nextStartTime = String(event?.target?.value ?? '');
+                        setForm((current) => ({
+                          ...current,
+                          startTime: nextStartTime,
+                          endTime: resolveNextEndTime(nextStartTime, current.startTime, current.endTime),
+                        }));
+                      }}
+                      style={{
+                        flex: 1,
+                        border: 'none',
+                        outline: 'none',
+                        background: 'transparent',
+                        color: colors.input.text,
+                        marginLeft: 10,
+                        fontSize: 13,
+                        fontWeight: 400,
+                        fontFamily: 'inherit',
+                        colorScheme: themeMode === 'dark' ? 'dark' : 'light',
+                      }}
+                    />
+                  </View>
+                ) : (
+                  <TextInput
+                    value={form.startTime}
+                    onChangeText={(value) => setForm((current) => ({
+                      ...current,
+                      startTime: value,
+                      endTime: resolveNextEndTime(value, current.startTime, current.endTime),
+                    }))}
+                    placeholder="09:00"
+                    placeholderTextColor={colors.input.placeholder}
+                    style={{
+                      minHeight: 46,
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: formFieldBorder,
+                      backgroundColor: formFieldBg,
+                      color: colors.input.text,
+                      paddingHorizontal: 12,
+                      fontSize: 13,
+                      fontWeight: '400',
+                    }}
+                    selectionColor={colors.text.primary}
+                  />
+                )}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '500', marginBottom: 6 }}>End time</Text>
+                {Platform.OS === 'web' ? (
+                  <View style={{ minHeight: 46, borderRadius: 12, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, paddingHorizontal: 12, alignItems: 'center', flexDirection: 'row' }}>
+                    <Clock3 size={15} color={colors.text.tertiary} strokeWidth={2} />
+                    <input
+                      type="time"
+                      value={form.endTime}
+                      onChange={(event: any) => setForm((current) => ({ ...current, endTime: String(event?.target?.value ?? '') }))}
+                      style={{
+                        flex: 1,
+                        border: 'none',
+                        outline: 'none',
+                        background: 'transparent',
+                        color: colors.input.text,
+                        marginLeft: 10,
+                        fontSize: 13,
+                        fontWeight: 400,
+                        fontFamily: 'inherit',
+                        colorScheme: themeMode === 'dark' ? 'dark' : 'light',
+                      }}
+                    />
+                  </View>
+                ) : (
+                  <TextInput
+                    value={form.endTime}
+                    onChangeText={(value) => setForm((current) => ({ ...current, endTime: value }))}
+                    placeholder="10:00"
+                    placeholderTextColor={colors.input.placeholder}
+                    style={{
+                      minHeight: 46,
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: formFieldBorder,
+                      backgroundColor: formFieldBg,
+                      color: colors.input.text,
+                      paddingHorizontal: 12,
+                      fontSize: 13,
+                      fontWeight: '400',
+                    }}
+                    selectionColor={colors.text.primary}
+                  />
+                )}
+              </View>
+            </View>
+            <View>
+              <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '500', marginBottom: 6 }}>Time zone</Text>
+              <EventTimezoneDropdown
+                value={form.eventTimezone}
+                onChange={(eventTimezone) => setForm((current) => ({ ...current, eventTimezone }))}
+              />
+            </View>
+          </>
+        ) : null}
+
         {showEditDatePicker && Platform.OS !== 'web' ? (
           <DateTimePicker
             value={form.dueDate ?? startOfToday()}
@@ -2186,26 +3915,36 @@ function TaskDetailPanel({
         ) : null}
 
         <View>
-          <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '500', marginBottom: 6 }}>Assignee</Text>
+          <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '500', marginBottom: 6 }}>
+            {form.itemType === 'event' ? 'Attendees' : 'Assignee'}
+          </Text>
           <AssigneePicker
             teamMembers={teamMembers}
             selectedUserIds={form.assigneeUserIds}
             currentUserId={currentUserId}
+            allowEveryone={canUseEveryone}
             onToggleAssignee={(userId) =>
               setForm((current) => ({
                 ...current,
-                assigneeUserIds: current.assigneeUserIds.includes(userId)
-                  ? current.assigneeUserIds.filter((id) => id !== userId)
-                  : [...current.assigneeUserIds, userId],
+                assigneeUserIds: userId === EVERYONE_ASSIGNEE_ID
+                  ? (current.assigneeUserIds.includes(EVERYONE_ASSIGNEE_ID) ? [] : [EVERYONE_ASSIGNEE_ID])
+                  : (() => {
+                    const withoutEveryone = current.assigneeUserIds.filter((id) => id !== EVERYONE_ASSIGNEE_ID);
+                    return withoutEveryone.includes(userId)
+                      ? withoutEveryone.filter((id) => id !== userId)
+                      : [...withoutEveryone, userId];
+                  })(),
               }))
             }
-            placeholder="Select assignees"
+            placeholder={form.itemType === 'event' ? 'Select attendees' : 'Select assignees'}
           />
         </View>
 
         {isMobileDetail ? (
           <View>
-            <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '500', marginBottom: 6 }}>Recurring</Text>
+            <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '500', marginBottom: 6 }}>
+              {form.itemType === 'event' ? 'Schedule' : 'Recurring'}
+            </Text>
             <RecurrenceDropdown
               value={form.recurrenceFrequency}
               onChange={(recurrenceFrequency) => setForm((current) => ({ ...current, recurrenceFrequency }))}
@@ -2213,7 +3952,9 @@ function TaskDetailPanel({
           </View>
         ) : (
           <View>
-            <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '500', marginBottom: 6 }}>Recurring</Text>
+            <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '500', marginBottom: 6 }}>
+              {form.itemType === 'event' ? 'Schedule' : 'Recurring'}
+            </Text>
             <RecurrenceDropdown
               value={form.recurrenceFrequency}
               onChange={(recurrenceFrequency) => setForm((current) => ({ ...current, recurrenceFrequency }))}
@@ -2231,13 +3972,135 @@ function TaskDetailPanel({
           </View>
         ) : null}
 
+        {form.itemType === 'event' ? (
+          <>
+            <View>
+              <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '500', marginBottom: 6 }}>Location (optional)</Text>
+              <TextInput
+                value={form.location}
+                onChangeText={(value) => setForm((current) => ({ ...current, location: value }))}
+                placeholder="Office, showroom, or meeting room"
+                placeholderTextColor={colors.input.placeholder}
+                style={{
+                  minHeight: 46,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: formFieldBorder,
+                  backgroundColor: formFieldBg,
+                  color: colors.input.text,
+                  paddingHorizontal: 12,
+                  fontSize: 13,
+                  fontWeight: '400',
+                }}
+                selectionColor={colors.text.primary}
+              />
+            </View>
+            <View>
+              <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '500', marginBottom: 6 }}>Meeting link (optional)</Text>
+              <TextInput
+                value={form.meetingLink}
+                onChangeText={(value) => setForm((current) => ({ ...current, meetingLink: value }))}
+                placeholder="https://meet.google.com/..."
+                placeholderTextColor={colors.input.placeholder}
+                autoCapitalize="none"
+                style={{
+                  minHeight: 46,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: formFieldBorder,
+                  backgroundColor: formFieldBg,
+                  color: colors.input.text,
+                  paddingHorizontal: 12,
+                  fontSize: 13,
+                  fontWeight: '400',
+                }}
+                selectionColor={colors.text.primary}
+              />
+            </View>
+          </>
+        ) : null}
+
+        <View style={{ borderRadius: 14, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, padding: 12, gap: 10 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }}>Share to thread</Text>
+              <Text style={{ color: colors.text.tertiary, fontSize: 11, marginTop: 2 }}>
+                Post this {itemTypeLabel(form.itemType).toLowerCase()} to an existing team thread after saving.
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => setForm((current) => ({ ...current, shareToThread: !current.shareToThread }))}
+              style={{
+                minWidth: 58,
+                height: 32,
+                borderRadius: 999,
+                backgroundColor: form.shareToThread
+                  ? colors.text.primary
+                  : (themeMode === 'dark' ? 'rgba(148,163,184,0.24)' : '#D7DCE3'),
+                borderWidth: 1,
+                borderColor: form.shareToThread ? colors.text.primary : colors.border.light,
+                paddingHorizontal: 4,
+                justifyContent: 'center',
+              }}
+            >
+              <View
+                style={{
+                  width: 24,
+                  height: 24,
+                  borderRadius: 12,
+                  backgroundColor: form.shareToThread
+                    ? colors.bg.primary
+                    : (themeMode === 'dark' ? '#F8FAFC' : '#111827'),
+                  borderWidth: themeMode === 'dark' && !form.shareToThread ? 1 : 0,
+                  borderColor: themeMode === 'dark' ? 'rgba(15,23,42,0.14)' : 'transparent',
+                  alignSelf: form.shareToThread ? 'flex-end' : 'flex-start',
+                }}
+              />
+            </Pressable>
+          </View>
+
+          {form.shareToThread ? (
+            shareThreadOptions.length > 0 ? (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {shareThreadOptions.map((threadOption) => {
+                  const active = form.shareThreadEntityId === threadOption.entityId;
+                  return (
+                    <Pressable
+                      key={threadOption.entityId}
+                      onPress={() => setForm((current) => ({ ...current, shareThreadEntityId: threadOption.entityId }))}
+                      style={{
+                        borderRadius: 999,
+                        borderWidth: 1,
+                        borderColor: active ? colors.text.primary : formFieldBorder,
+                        backgroundColor: active ? colors.text.primary : colors.bg.secondary,
+                        paddingHorizontal: 12,
+                        height: 34,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Text style={{ color: active ? colors.bg.primary : colors.text.secondary, fontSize: 12, fontWeight: '600' }}>
+                        {threadOption.name}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : (
+              <Text style={{ color: colors.text.tertiary, fontSize: 12 }}>
+                No team threads found yet. Create a team thread first, then come back and share this item there.
+              </Text>
+            )
+          ) : null}
+        </View>
+
         <View>
           <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '500', marginBottom: 6 }}>Details (optional)</Text>
           <TextInput
             value={form.description}
             onChangeText={(value) => setForm((current) => ({ ...current, description: value }))}
             multiline
-            placeholder="Add any instructions for the assignee"
+            placeholder={form.itemType === 'event' ? 'Add notes or agenda' : 'Add any instructions for the assignee'}
             placeholderTextColor={colors.input.placeholder}
             style={{
               minHeight: 92,
@@ -2301,8 +4164,18 @@ function TaskDetailPanel({
     setIsEditing(true);
   };
 
+  const OuterContainer = isMobileDetail ? ScrollView : View;
+  const outerContainerProps = isMobileDetail
+    ? { style: { flex: 1, backgroundColor: colors.bg.card }, keyboardShouldPersistTaps: 'handled' as const, contentContainerStyle: { flexGrow: 1, paddingBottom: 0 } }
+    : { style: { flex: 1, backgroundColor: colors.bg.card, overflow: 'hidden' as const, position: 'relative' as const } };
+
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg.card, overflow: 'hidden', position: 'relative' }}>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      enabled={isMobileDetail}
+    >
+    <OuterContainer {...outerContainerProps}>
       <View
         style={{
           paddingHorizontal: isMobileDetail ? 0 : 18,
@@ -2321,14 +4194,14 @@ function TaskDetailPanel({
                 flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                gap: 10,
+                gap: 12,
                 paddingHorizontal: detailHeaderHorizontalPadding,
                 paddingBottom: 12,
                 borderBottomWidth: 0.5,
                 borderBottomColor: colors.border.light,
               }}
             >
-              <View style={{ flex: 1, minWidth: 0, paddingTop: 2, paddingRight: 8 }}>
+              <View style={{ flex: 1, minWidth: 0, paddingTop: 2, paddingRight: 16 }}>
                 {showBackButton ? (
                   <Pressable
                     onPress={() => {
@@ -2343,9 +4216,18 @@ function TaskDetailPanel({
                     </Text>
                   </Pressable>
                 ) : (
-                  <Text style={{ color: colors.text.primary, fontSize: 16, fontWeight: '500', lineHeight: 22, flex: 1 }}>
-                    {displayTaskTitle}
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+                    <Pressable onPress={handleToggleDone} hitSlop={8}>
+                      {task.status === 'done' ? (
+                        <CheckCircle2 size={18} color={taskTitleCheckColor} strokeWidth={2.2} />
+                      ) : (
+                        <Circle size={18} color={taskTitleCheckColor} strokeWidth={2.1} />
+                      )}
+                    </Pressable>
+                    <Text style={{ color: colors.text.primary, fontSize: 16, fontWeight: '500', lineHeight: 22, flex: 1 }} numberOfLines={1}>
+                      {displayTaskTitle}
+                    </Text>
+                  </View>
                 )}
               </View>
 
@@ -2377,7 +4259,32 @@ function TaskDetailPanel({
                 ) : null}
                 <View style={{ position: 'relative', zIndex: 140 }}>
                   <Pressable
-                    onPress={() => setShowDetailActionMenu((current) => !current)}
+                    onPress={() => {
+                      setShowDetailActionMenu(false);
+                      setShowShareMenu((current) => !current);
+                    }}
+                    disabled={shareThreadOptions.length === 0 || shareMutation.isPending}
+                    style={{
+                      width: 38,
+                      height: 38,
+                      borderRadius: 19,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderWidth: 1,
+                      borderColor: colors.border.light,
+                      backgroundColor: colors.bg.card,
+                      opacity: shareThreadOptions.length === 0 ? 0.45 : 1,
+                    }}
+                  >
+                    <Share2 size={16} color={colors.text.secondary} strokeWidth={2} />
+                  </Pressable>
+                </View>
+                <View style={{ position: 'relative', zIndex: 140 }}>
+                  <Pressable
+                    onPress={() => {
+                      setShowShareMenu(false);
+                      setShowDetailActionMenu((current) => !current);
+                    }}
                     style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card }}
                   >
                     <MoreVertical size={18} color={colors.text.secondary} strokeWidth={2} />
@@ -2399,9 +4306,18 @@ function TaskDetailPanel({
 
             <View style={{ paddingHorizontal: detailBodyHorizontalPadding, paddingTop: 12, paddingBottom: 10, gap: 8 }}>
               {isMobileDetail ? (
-                <Text style={{ color: colors.text.primary, fontSize: 20, lineHeight: 25, fontWeight: '600' }}>
-                  {displayTaskTitle}
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <Pressable onPress={handleToggleDone} hitSlop={8}>
+                    {task.status === 'done' ? (
+                      <CheckCircle2 size={20} color={taskTitleCheckColor} strokeWidth={2.2} />
+                    ) : (
+                      <Circle size={20} color={taskTitleCheckColor} strokeWidth={2.1} />
+                    )}
+                  </Pressable>
+                  <Text style={{ color: colors.text.primary, fontSize: 20, lineHeight: 25, fontWeight: '600', flex: 1 }}>
+                    {displayTaskTitle}
+                  </Text>
+                </View>
               ) : null}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -2419,10 +4335,37 @@ function TaskDetailPanel({
             </View>
 
             <View style={{ marginTop: isMobileDetail ? 6 : 2, marginHorizontal: detailBodyHorizontalPadding, borderRadius: 8, borderWidth: 1, borderColor: colors.border.light, backgroundColor: infoSurface, overflow: 'hidden', position: 'relative', zIndex: 1 }}>
-              <View style={{ minHeight: 50, paddingHorizontal: 14, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
-                <Text style={[detailLabelStyle, { width: 92 }]}>Assignee</Text>
+              <View style={{ minHeight: isMobileDetail ? 44 : 50, paddingHorizontal: 14, paddingVertical: isMobileDetail ? 8 : 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
+                <Text style={[detailLabelStyle, { width: 92 }]}>Type</Text>
+                <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                  <View style={{ borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3, backgroundColor: taskItemType === 'event' ? 'rgba(37,99,235,0.10)' : colors.bg.secondary }}>
+                    <Text style={{ color: taskItemType === 'event' ? '#2563EB' : colors.text.secondary, ...detailChipTextStyle }}>
+                      {itemTypeLabel(taskItemType)}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+              <View style={{ minHeight: isMobileDetail ? 44 : 50, paddingHorizontal: 14, paddingVertical: isMobileDetail ? 8 : 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
+                <Text style={[detailLabelStyle, { width: 92 }]}>{taskItemType === 'event' ? 'Attendees' : 'Assignee'}</Text>
                 <View style={{ flex: 1, alignItems: 'flex-end', minWidth: 0 }}>
-                  {taskAssignees.length > 0 ? (
+                  {everybodyAssigned ? (
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 5,
+                        borderRadius: 999,
+                        backgroundColor: colors.bg.secondary,
+                        paddingHorizontal: 7,
+                        paddingVertical: 4,
+                      }}
+                    >
+                      <UserAvatar name="Everybody" size={16} />
+                      <Text style={{ color: colors.text.primary, fontSize: isMobileDetail ? 13 : 11, fontWeight: '500' }}>
+                        Everybody
+                      </Text>
+                    </View>
+                  ) : taskAssignees.length > 0 ? (
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 6 }}>
                       {taskAssignees.map((member) => (
                         <View
@@ -2450,16 +4393,42 @@ function TaskDetailPanel({
                 </View>
               </View>
 
-              <View style={{ minHeight: 50, paddingHorizontal: 14, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
-                <Text style={[detailLabelStyle, { width: 92 }]}>Due date</Text>
+              <View style={{ minHeight: isMobileDetail ? 44 : 50, paddingHorizontal: 14, paddingVertical: isMobileDetail ? 8 : 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
+                <Text style={[detailLabelStyle, { width: 92 }]}>{taskItemType === 'event' ? 'Date' : 'Due date'}</Text>
                 <View style={{ flex: 1, alignItems: 'flex-end' }}>
                   <Text style={detailValuePrimaryStyle}>
-                    {formatDueDateLong(task.due_date)}
+                    {formatDueDateLong(task)}
                   </Text>
                 </View>
               </View>
 
-              <View style={{ minHeight: 50, paddingHorizontal: 14, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
+              {taskItemType === 'event' ? (
+                <View style={{ minHeight: isMobileDetail ? 44 : 50, paddingHorizontal: 14, paddingVertical: isMobileDetail ? 8 : 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
+                  <Text style={[detailLabelStyle, { width: 92 }]}>Time</Text>
+                  <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                    <Text style={detailValuePrimaryStyle}>
+                      {task.starts_at && task.ends_at
+                        ? `${formatIsoTimeForEventTimeZone(task.starts_at, task.event_timezone)} - ${formatIsoTimeForEventTimeZone(task.ends_at, task.event_timezone)}`
+                        : task.starts_at
+                          ? formatIsoTimeForEventTimeZone(task.starts_at, task.event_timezone)
+                          : 'Not set'}
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
+
+              {taskItemType === 'event' ? (
+                <View style={{ minHeight: isMobileDetail ? 44 : 50, paddingHorizontal: 14, paddingVertical: isMobileDetail ? 8 : 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
+                  <Text style={[detailLabelStyle, { width: 92 }]}>Time zone</Text>
+                  <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                    <Text style={detailValuePrimaryStyle}>
+                      {formatTimeZoneOptionLabel(task.event_timezone)}
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
+
+              <View style={{ minHeight: isMobileDetail ? 44 : 50, paddingHorizontal: 14, paddingVertical: isMobileDetail ? 8 : 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
                 <Text style={[detailLabelStyle, { width: 92 }]}>Status</Text>
                 <View style={{ flex: 1, alignItems: 'flex-end' }}>
                   <Pressable
@@ -2473,7 +4442,7 @@ function TaskDetailPanel({
                 </View>
               </View>
 
-              <View style={{ minHeight: 50, paddingHorizontal: 14, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
+              <View style={{ minHeight: isMobileDetail ? 44 : 50, paddingHorizontal: 14, paddingVertical: isMobileDetail ? 8 : 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
                 <Text style={[detailLabelStyle, { width: 92 }]}>Priority</Text>
                 <View style={{ flex: 1, alignItems: 'flex-end' }}>
                   <View style={{ borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3, backgroundColor: taskPriorityMeta.soft }}>
@@ -2484,14 +4453,73 @@ function TaskDetailPanel({
                 </View>
               </View>
 
-              <View style={{ minHeight: 50, paddingHorizontal: 14, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
-                <Text style={[detailLabelStyle, { width: 92 }]}>Frequency</Text>
+              <View style={{ minHeight: isMobileDetail ? 44 : 50, paddingHorizontal: 14, paddingVertical: isMobileDetail ? 8 : 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
+                <Text style={[detailLabelStyle, { width: 92 }]}>{taskItemType === 'event' ? 'Schedule' : 'Frequency'}</Text>
                 <View style={{ flex: 1, alignItems: 'flex-end' }}>
                   <View style={{ borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3, backgroundColor: taskFrequencyTone.background }}>
                     <Text style={{ color: taskFrequencyTone.text, ...detailChipTextStyle }}>
                       {taskFrequencyLabel}
                     </Text>
                   </View>
+                </View>
+              </View>
+
+              {taskItemType === 'event' && task.location?.trim() ? (
+                <View style={{ minHeight: isMobileDetail ? 44 : 50, paddingHorizontal: 14, paddingVertical: isMobileDetail ? 8 : 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
+                  <Text style={[detailLabelStyle, { width: 92 }]}>Location</Text>
+                  <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                    <Text style={detailValuePrimaryStyle}>{task.location.trim()}</Text>
+                  </View>
+                </View>
+              ) : null}
+
+              {taskItemType === 'event' && task.meeting_link?.trim() ? (
+                <View style={{ minHeight: isMobileDetail ? 44 : 50, paddingHorizontal: 14, paddingVertical: isMobileDetail ? 8 : 10, flexDirection: 'row', alignItems: isMobileDetail ? 'flex-start' : 'center', justifyContent: 'space-between', gap: 16, borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
+                  <Text style={[detailLabelStyle, { width: 92, flexShrink: 0 }]}>Meeting link</Text>
+                  <View style={{ flex: 1, alignItems: 'flex-end', minWidth: 0 }}>
+                    <Pressable
+                      onPress={() => { void Linking.openURL(normalizeExternalUrl(task.meeting_link) ?? task.meeting_link!.trim()); }}
+                      style={{ maxWidth: '100%' }}
+                    >
+                      <Text
+                        style={[
+                          detailValuePrimaryStyle,
+                          {
+                            color: '#2563EB',
+                            textAlign: 'right',
+                            flexShrink: 1,
+                            maxWidth: '100%',
+                          },
+                        ]}
+                        numberOfLines={isMobileDetail ? undefined : 2}
+                      >
+                        {task.meeting_link.trim()}
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : null}
+
+              <View style={{ minHeight: isMobileDetail ? 44 : 50, paddingHorizontal: 14, paddingVertical: isMobileDetail ? 8 : 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
+                <Text style={[detailLabelStyle, { width: 92 }]}>Created by</Text>
+                <View style={{ flex: 1, alignItems: 'flex-end', minWidth: 0 }}>
+                  {(() => {
+                    const creator = teamMembers.find((m) => m.id === task.created_by);
+                    return (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        {creator ? (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 999, backgroundColor: colors.bg.secondary, paddingHorizontal: 7, paddingVertical: 4 }}>
+                            <UserAvatar member={creator} size={16} />
+                            <Text style={{ color: colors.text.primary, fontSize: isMobileDetail ? 13 : 11, fontWeight: '500' }}>
+                              {creator.name}
+                            </Text>
+                          </View>
+                        ) : (
+                          <Text style={detailValuePrimaryStyle}>Unknown</Text>
+                        )}
+                      </View>
+                    );
+                  })()}
                 </View>
               </View>
 
@@ -2507,6 +4535,75 @@ function TaskDetailPanel({
           renderEditForm(() => setIsEditing(false))
         )}
       </View>
+
+      <Modal
+        visible={showShareMenu}
+        transparent
+        animationType="none"
+        onRequestClose={() => setShowShareMenu(false)}
+      >
+        <View style={{ flex: 1 }}>
+          <Pressable
+            onPress={() => setShowShareMenu(false)}
+            style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              top: Platform.OS === 'web' ? 76 : 64,
+              right: showCloseButton ? 104 : 62,
+              minWidth: 212,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: colors.border.light,
+              backgroundColor: colors.bg.card,
+              overflow: 'hidden',
+              shadowColor: '#000000',
+              shadowOpacity: 0.14,
+              shadowRadius: 12,
+              shadowOffset: { width: 0, height: 6 },
+              elevation: 30,
+            }}
+          >
+            {shareThreadOptions.length > 0 ? (
+              <>
+                <View style={{ paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
+                  <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '600' }}>Share to thread</Text>
+                </View>
+                {shareThreadOptions.map((threadOption, index) => (
+                  <Pressable
+                    key={threadOption.entityId}
+                    onPress={() => shareMutation.mutate(threadOption.entityId)}
+                    disabled={shareMutation.isPending}
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 10,
+                      borderBottomWidth: index === shareThreadOptions.length - 1 ? 0 : 1,
+                      borderBottomColor: colors.border.light,
+                      opacity: shareMutation.isPending ? 0.6 : 1,
+                    }}
+                  >
+                    <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '500' }}>
+                      {threadOption.name}
+                    </Text>
+                    {threadOption.subtitle ? (
+                      <Text style={{ color: colors.text.tertiary, fontSize: 11, marginTop: 2 }}>
+                        {threadOption.subtitle}
+                      </Text>
+                    ) : null}
+                  </Pressable>
+                ))}
+              </>
+            ) : (
+              <View style={{ paddingHorizontal: 12, paddingVertical: 12 }}>
+                <Text style={{ color: colors.text.tertiary, fontSize: 12 }}>
+                  No team threads available yet.
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         visible={showDetailActionMenu}
@@ -2630,9 +4727,10 @@ function TaskDetailPanel({
         )}
       </Modal>
 
-      <View style={{ height: isDesktop ? 28 : 60 }} />
-      <TaskActivityFeed businessId={businessId} taskId={task.id} task={task} teamMembers={teamMembers} compact={isDesktop} />
-    </View>
+      <View style={{ height: isDesktop ? 28 : 4 }} />
+      <TaskActivityFeed businessId={businessId} taskId={task.id} task={task} teamMembers={teamMembers} compact={isDesktop} scrollable={!isMobileDetail} />
+    </OuterContainer>
+  </KeyboardAvoidingView>
   );
 }
 
@@ -2640,6 +4738,9 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
   const colors = useThemeColors();
   const themeMode = useResolvedThemeMode();
   const router = useRouter();
+  const goToTasksHome = () => {
+    router.replace('/(tabs)/tasks' as any);
+  };
   const queryClient = useQueryClient();
   const { isDesktop, isMobile, width } = useBreakpoint();
   const pageHeadingStyle = getStandardPageHeadingStyle(isMobile);
@@ -2654,13 +4755,23 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showMobileFilterModal, setShowMobileFilterModal] = useState(false);
-  const [isMobileCompletedCollapsed, setIsMobileCompletedCollapsed] = useState(false);
+  const [showMobileScopeModal, setShowMobileScopeModal] = useState(false);
+  const [showMobileViewModal, setShowMobileViewModal] = useState(false);
+  const [showMobileSearch, setShowMobileSearch] = useState(false);
+  const [isMobileCompletedCollapsed, setIsMobileCompletedCollapsed] = useState(true);
   const [isDesktopCompletedCollapsed, setIsDesktopCompletedCollapsed] = useState(true);
+  const [taskScope, setTaskScope] = useState<TaskScope>('all');
+  const [showDesktopScopeMenu, setShowDesktopScopeMenu] = useState(false);
+  const [showTabletSearch, setShowTabletSearch] = useState(false);
+  const [taskViewMode, setTaskViewMode] = useState<TaskViewMode>('list');
+  const [calendarMonthDate, setCalendarMonthDate] = useState<Date>(startOfToday());
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState<Date>(startOfToday());
   const [openCardMenu, setOpenCardMenu] = useState<'people' | 'assigned' | null>(null);
   const [createForm, setCreateForm] = useState<TaskFormState>(blankTaskForm());
   const [searchQuery, setSearchQuery] = useState('');
   const [taskToast, setTaskToast] = useState<TaskToastState | null>(null);
   const dueReminderTriggerKeyRef = useRef<string | null>(null);
+  const eventReminderTriggerKeyRef = useRef<string | null>(null);
   const taskToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -2678,6 +4789,16 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
     dueReminderTriggerKeyRef.current = reminderKey;
     void triggerTaskDueReminders({ businessId }).catch((error) => {
       console.warn('Could not trigger task due reminders:', error);
+    });
+  }, [businessId, isOfflineMode]);
+
+  useEffect(() => {
+    if (!businessId || isOfflineMode) return;
+    const reminderKey = `${businessId}:${Math.floor(Date.now() / (5 * 60 * 1000))}`;
+    if (eventReminderTriggerKeyRef.current === reminderKey) return;
+    eventReminderTriggerKeyRef.current = reminderKey;
+    void triggerTaskEventReminders({ businessId, reminderIso: new Date().toISOString() }).catch((error) => {
+      console.warn('Could not trigger task event reminders:', error);
     });
   }, [businessId, isOfflineMode]);
 
@@ -2711,9 +4832,35 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
     staleTime: 20_000,
   });
 
+  const teamThreadsQuery = useQuery({
+    queryKey: ['collaboration-team-threads', businessId],
+    enabled: Boolean(businessId) && !isOfflineMode,
+    queryFn: () => collaborationData.listThreadsByEntityType(businessId as string, 'case'),
+    retry: 0,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    staleTime: 20_000,
+  });
+
   const tasks = tasksQuery.data ?? [];
   const unreadCounts = unreadQuery.data ?? {};
   const commentCounts = commentCountsQuery.data ?? {};
+  const shareThreadOptions = useMemo<TaskShareThreadOption[]>(() => {
+    const seen = new Set<string>();
+    return (teamThreadsQuery.data ?? [])
+      .filter((summary: CollaborationThreadSummary) => isTeamThreadEntityId(summary.thread.entity_id))
+      .map((summary: CollaborationThreadSummary) => ({
+        entityId: summary.thread.entity_id,
+        name: getTeamThreadDisplayNameFromEntityId(summary.thread.entity_id),
+        subtitle: getTeamThreadSubtitleFromEntityId(summary.thread.entity_id),
+      }))
+      .filter((option) => {
+        if (seen.has(option.entityId)) return false;
+        seen.add(option.entityId);
+        return true;
+      });
+  }, [teamThreadsQuery.data]);
+  const canViewTeamTasks = currentUser?.role === 'admin' || currentUser?.role === 'manager';
   const membersWithCurrentUser = useMemo(() => {
     if (!currentUser?.id) return teamMembers;
     if (teamMembers.some((member) => member.id === currentUser.id)) return teamMembers;
@@ -2728,6 +4875,21 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
       ...teamMembers,
     ];
   }, [currentUser, teamMembers]);
+  useEffect(() => {
+    if (!canViewTeamTasks && taskScope !== 'mine') {
+      setTaskScope('mine');
+    }
+  }, [canViewTeamTasks, taskScope]);
+  useEffect(() => {
+    if (!canViewTeamTasks) {
+      setShowDesktopScopeMenu(false);
+    }
+  }, [canViewTeamTasks]);
+  useEffect(() => {
+    if (!showCreateModal || shareThreadOptions.length === 0) return;
+    if (createForm.shareThreadEntityId && shareThreadOptions.some((option) => option.entityId === createForm.shareThreadEntityId)) return;
+    setCreateForm((current) => ({ ...current, shareThreadEntityId: shareThreadOptions[0]?.entityId ?? null }));
+  }, [createForm.shareThreadEntityId, shareThreadOptions, showCreateModal]);
   const teamMap = useMemo(
     () => new Map(membersWithCurrentUser.map((member) => [member.id, member])),
     [membersWithCurrentUser]
@@ -2738,21 +4900,28 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
     if (value instanceof Error && value.message) return value.message;
     return 'Could not load tasks right now.';
   }, [tasksQuery.error]);
-  const todayDateKey = format(startOfToday(), 'yyyy-MM-dd');
+  const visibleTasks = useMemo(() => {
+    if (canViewTeamTasks && (taskScope === 'team' || taskScope === 'all')) return tasks;
+    if (!currentUserId) return [];
+    return tasks.filter((task) => (
+      task.created_by === currentUserId
+      || (task.assignee_user_ids ?? []).includes(currentUserId)
+    ));
+  }, [canViewTeamTasks, currentUserId, taskScope, tasks]);
   const filteredTasks = useMemo(() => {
     const normalizedSearch = searchQuery.trim().toLowerCase();
-    const nextTasks = tasks.filter((task) => {
+    const nextTasks = visibleTasks.filter((task) => {
       const matchesSearch = normalizedSearch.length === 0
         ? true
         : (() => {
           const assigneeNames = (task.assignee_user_ids ?? [])
             .map((id) => teamMap.get(id)?.name?.toLowerCase() ?? '')
             .join(' ');
-          const haystack = `${task.title} ${task.description ?? ''} ${statusLabel(task.status)} ${PRIORITY_META[task.priority].label} ${assigneeNames}`.toLowerCase();
+          const haystack = `${task.title} ${task.description ?? ''} ${statusLabel(task.status)} ${itemTypeLabel(task.item_type ?? 'task')} ${PRIORITY_META[task.priority].label} ${task.location ?? ''} ${task.meeting_link ?? ''} ${task.event_timezone ?? ''} ${assigneeNames}`.toLowerCase();
           return haystack.includes(normalizedSearch);
         })();
       if (!matchesSearch) return false;
-      if (kpiScope === 'due_today' && !(task.status !== 'done' && task.due_date === todayDateKey)) return false;
+      if (kpiScope === 'due_today' && !isTaskDueToday(task)) return false;
       if (kpiScope === 'overdue' && !isTaskOverdue(task)) return false;
       if (kpiScope === 'completed_today' && !isTaskCompletedToday(task)) return false;
       if (filter === 'pending') return task.status !== 'done';
@@ -2764,12 +4933,12 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
         if (left.status === 'done') return 1;
         if (right.status === 'done') return -1;
       }
-      const leftDue = left.due_date ? parseISO(left.due_date).getTime() : Number.MAX_SAFE_INTEGER;
-      const rightDue = right.due_date ? parseISO(right.due_date).getTime() : Number.MAX_SAFE_INTEGER;
+      const leftDue = getEffectiveTaskDueDate(left)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+      const rightDue = getEffectiveTaskDueDate(right)?.getTime() ?? Number.MAX_SAFE_INTEGER;
       if (leftDue !== rightDue) return leftDue - rightDue;
       return new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime();
     });
-  }, [filter, kpiScope, searchQuery, tasks, teamMap, todayDateKey]);
+  }, [filter, kpiScope, searchQuery, teamMap, visibleTasks]);
 
   useEffect(() => {
     if (mode === 'detail') return;
@@ -2807,8 +4976,21 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
   };
 
   const createMutation = useMutation({
-    mutationFn: async (input: CreateTaskInput) => taskData.createTask(input),
-    onSuccess: async (createdTask) => {
+    mutationFn: async (payload: {
+      input: CreateTaskInput;
+      shareToThread: boolean;
+      shareThreadEntityId: string | null;
+      assigneeNames: string[];
+    }) => {
+      const createdTask = await taskData.createTask(payload.input);
+      return {
+        createdTask,
+        shareToThread: payload.shareToThread,
+        shareThreadEntityId: payload.shareThreadEntityId,
+        assigneeNames: payload.assigneeNames,
+      };
+    },
+    onSuccess: async ({ createdTask, shareToThread, shareThreadEntityId, assigneeNames }) => {
       if ((createdTask.assignee_user_ids ?? []).length > 0) {
         void sendTaskAssignmentNotification({
           businessId: createdTask.business_id,
@@ -2821,13 +5003,29 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
           isReassignment: false,
         });
       }
+      if (shareToThread && shareThreadEntityId) {
+        try {
+          const thread = await collaborationData.getOrCreateThread(createdTask.business_id, 'case', shareThreadEntityId);
+          await collaborationData.createComment({
+            businessId: createdTask.business_id,
+            threadId: thread.id,
+            body: buildTaskShareMessage(
+              createdTask,
+              assigneeNames.length > 0 ? assigneeNames : ['Unassigned'],
+              getTeamThreadDisplayNameFromEntityId(shareThreadEntityId)
+            ),
+          });
+        } catch (shareError) {
+          console.warn('Could not share task item to thread:', shareError);
+        }
+      }
       setShowCreateModal(false);
       setCreateForm(blankTaskForm());
       await invalidateTaskQueries();
       if (isDesktop) {
         setSelectedTaskId(createdTask.id);
       } else {
-        router.push(`/task/${createdTask.id}` as any);
+        router.push(`/(tabs)/task/${createdTask.id}` as any);
       }
       if (Platform.OS !== 'web') {
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -2877,17 +5075,12 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
         const recurringFreq = variables.task.recurrence_frequency;
         const notAlreadyGenerated = !variables.task.recurrence_generated_at;
         if (recurringFreq && notAlreadyGenerated) {
-          const currentDue = variables.task.due_date ? new Date(variables.task.due_date) : new Date();
-          const freq = String(recurringFreq).toLowerCase().replace('-', '_');
-          const interval = variables.task.recurrence_interval ?? 1;
-          const nextDueDateObj: Date = (() => {
-            if (freq === 'daily') return addDays(currentDue, interval);
-            if (freq === 'weekly') return addWeeks(currentDue, interval);
-            if (freq === 'bi_weekly') return addDays(currentDue, 14 * interval);
-            if (freq === 'quarterly') return addMonths(currentDue, 3 * interval);
-            if (freq === 'yearly') return addYears(currentDue, interval);
-            return addMonths(currentDue, interval);
-          })();
+          const nextDueDateObj = getNextRecurringDueDate({
+            due_date: variables.task.due_date ?? null,
+            recurrence_frequency: recurringFreq,
+            recurrence_interval: variables.task.recurrence_interval ?? 1,
+          });
+          if (!nextDueDateObj) return;
           const nextDueDate = nextDueDateObj.toISOString().slice(0, 10);
           const formatted = nextDueDateObj.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
           showTaskToast({
@@ -2926,11 +5119,11 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
     },
   });
 
-  const dueTodayCount = tasks.filter((task) => task.status !== 'done' && task.due_date === todayDateKey).length;
-  const completedTodayCount = tasks.filter(isTaskCompletedToday).length;
-  const pendingCount = tasks.filter((task) => task.status !== 'done').length;
-  const completedCount = tasks.filter((task) => task.status === 'done').length;
-  const overdueCount = tasks.filter((task) => task.status !== 'done' && isTaskOverdue(task)).length;
+  const dueTodayCount = visibleTasks.filter(isTaskDueToday).length;
+  const completedTodayCount = visibleTasks.filter(isTaskCompletedToday).length;
+  const pendingCount = visibleTasks.filter((task) => task.status !== 'done').length;
+  const completedCount = visibleTasks.filter((task) => task.status === 'done').length;
+  const overdueCount = visibleTasks.filter((task) => task.status !== 'done' && isTaskOverdue(task)).length;
   const activeKpiScopeLabel = kpiScope === 'due_today'
     ? 'Due today'
     : kpiScope === 'overdue'
@@ -2952,7 +5145,14 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
     [filteredTasks]
   );
   const mobileCompletedTasks = useMemo(
-    () => filteredTasks.filter((task) => task.status === 'done'),
+    () => filteredTasks
+      .filter((task) => task.status === 'done')
+      .sort((left, right) => {
+        const leftCompleted = left.completed_at ? parseISO(left.completed_at).getTime() : 0;
+        const rightCompleted = right.completed_at ? parseISO(right.completed_at).getTime() : 0;
+        if (leftCompleted !== rightCompleted) return rightCompleted - leftCompleted;
+        return new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime();
+      }),
     [filteredTasks]
   );
   const desktopOpenTasks = useMemo(
@@ -2960,7 +5160,14 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
     [filteredTasks]
   );
   const desktopCompletedTasks = useMemo(
-    () => filteredTasks.filter((task) => task.status === 'done'),
+    () => filteredTasks
+      .filter((task) => task.status === 'done')
+      .sort((left, right) => {
+        const leftCompleted = left.completed_at ? parseISO(left.completed_at).getTime() : 0;
+        const rightCompleted = right.completed_at ? parseISO(right.completed_at).getTime() : 0;
+        if (leftCompleted !== rightCompleted) return rightCompleted - leftCompleted;
+        return new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime();
+      }),
     [filteredTasks]
   );
   const peopleRows = useMemo(() => {
@@ -2971,7 +5178,7 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
         let completed = 0;
         let upcoming = 0;
 
-        tasks.forEach((task) => {
+        visibleTasks.forEach((task) => {
           if (!(task.assignee_user_ids ?? []).includes(member.id)) return;
           if (task.status === 'done') {
             completed += 1;
@@ -2991,14 +5198,15 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
           upcoming,
         };
       });
-  }, [tasks, teamMembers]);
+  }, [teamMembers, visibleTasks]);
   const assignedTaskRows = useMemo(() => {
     if (!currentUserId) return [];
-    return [...tasks]
-      .filter((task) => (
-        task.created_by === currentUserId
-        && !(task.assignee_user_ids ?? []).includes(currentUserId)
-      ))
+    return [...visibleTasks]
+      .filter((task) => {
+        if (task.created_by !== currentUserId) return false;
+        const assigneeIds = task.assignee_user_ids ?? [];
+        return assigneeIds.some((id) => id !== currentUserId);
+      })
       .sort((left, right) => {
         if (left.status !== right.status) {
           if (left.status === 'done') return 1;
@@ -3013,7 +5221,7 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
         task,
         primaryAssignee: (task.assignee_user_ids?.[0] ? teamMap.get(task.assignee_user_ids[0]) : undefined),
       }));
-  }, [currentUserId, tasks, teamMap]);
+  }, [currentUserId, teamMap, visibleTasks]);
   const isDetailOpen = isDesktop && Boolean(selectedTask);
   const isWebDesktop = Platform.OS === 'web' && isDesktop;
   const desktopHeaderMinHeight = DESKTOP_PAGE_HEADER_MIN_HEIGHT;
@@ -3025,31 +5233,77 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
   const taskDetailPanelWidth = useMemo(() => {
     if (!isDesktop) return 0;
     if (isIpadProView) {
-      return Math.min(430, Math.max(340, Math.round(width * 0.34)));
+      return Math.min(390, Math.max(320, Math.round(width * 0.305)));
     }
     return Math.min(520, Math.max(360, Math.round(width * 0.32)));
   }, [isDesktop, isIpadProView, width]);
-  const taskDetailPanelMinWidth = isIpadProView ? 340 : 360;
-  const taskDetailPanelMaxWidth = isIpadProView ? 430 : 520;
+  const taskDetailPanelMinWidth = isIpadProView ? 320 : 360;
+  const taskDetailPanelMaxWidth = isIpadProView ? 390 : 520;
   const peopleCardSubtitle = isIpadProView
     ? 'Track who is on track and who needs support.'
     : 'See who is on track and who needs support at a glance.';
   const assignedCardSubtitle = isIpadProView
     ? 'Track delegated work that needs prioritizing.'
     : 'Track work you\'ve delegated so you can see what needs prioritizing.';
+  const assignedTaskCardRows = useMemo(
+    () => (isIpadProView ? assignedTaskRows.slice(0, OVERVIEW_CARD_VISIBLE_ROWS) : assignedTaskRows),
+    [assignedTaskRows, isIpadProView]
+  );
   const splitDividerColor = themeMode === 'light' ? 'rgba(15,23,42,0.10)' : colors.border.light;
   const splitDividerWidth = Platform.OS === 'web' ? 0.5 : 1;
   const forceDesktopCompletedOpen = filter === 'done' || kpiScope === 'completed_today';
   const desktopCompletedCollapsed = forceDesktopCompletedOpen ? false : isDesktopCompletedCollapsed;
+  const activeTaskScopeLabel = taskScope === 'all'
+    ? 'All tasks'
+    : taskScope === 'team'
+      ? 'Team tasks'
+      : 'My tasks';
+  const isTabletSplitView = isIpadProView && isDetailOpen;
+  const mobileScopeOptions = [
+    { id: 'all' as TaskScope, label: 'All tasks', icon: Layers },
+    { id: 'mine' as TaskScope, label: 'My tasks', icon: CheckCircle2 },
+    { id: 'team' as TaskScope, label: 'Team tasks', icon: Funnel },
+  ];
+  const mobileViewOptions = [
+    { id: 'list' as TaskViewMode, label: 'List', icon: ArrowUpDown },
+    { id: 'calendar' as TaskViewMode, label: 'Calendar', icon: Calendar },
+  ];
+  const activeTaskStatusLabel = filter === 'all'
+    ? 'All statuses'
+    : filter === 'pending'
+      ? 'Pending only'
+      : 'Completed only';
+  const openTaskFromCalendar = (task: Task) => {
+    if (!isDesktop) {
+      router.push(`/(tabs)/task/${task.id}` as any);
+      return;
+    }
+    setSelectedTaskId((current) => (current === task.id ? null : task.id));
+  };
+  const handleCalendarDateSelect = (date: Date) => {
+    setSelectedCalendarDate(date);
+    if (!isSameMonth(date, calendarMonthDate)) {
+      setCalendarMonthDate(startOfMonth(date));
+    }
+  };
+  const handleCalendarMonthChange = (direction: -1 | 1) => {
+    const nextSelectedDate = direction === 1 ? addMonths(selectedCalendarDate, 1) : subMonths(selectedCalendarDate, 1);
+    setSelectedCalendarDate(nextSelectedDate);
+    setCalendarMonthDate(startOfMonth(nextSelectedDate));
+  };
+  const handleCalendarJumpToToday = () => {
+    const today = startOfToday();
+    setSelectedCalendarDate(today);
+    setCalendarMonthDate(today);
+  };
   const renderTaskTable = (rows: Task[], emptyMessage: string) => (
     <View style={{ borderWidth: 1, borderColor: colors.border.light, borderRadius: 14, overflow: 'hidden', backgroundColor: colors.bg.card }}>
       <View style={{ minHeight: 40, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
-        <Text style={{ flex: showActivityColumn ? 1.9 : 3.2, paddingLeft: 16, paddingRight: 10, color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase' }}>Name</Text>
+        <Text style={{ flex: showActivityColumn ? 1.9 : 5, paddingLeft: 12, paddingRight: 10, color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase' }}>Name</Text>
         <Text style={{ width: showActivityColumn ? 110 : 82, paddingRight: 8, color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase' }}>Priority</Text>
-        <Text style={{ width: showActivityColumn ? 170 : 136, paddingRight: 8, color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase' }}>Assignee</Text>
-        <Text style={{ width: showActivityColumn ? 126 : 108, paddingRight: 8, color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase' }}>Due</Text>
-        <Text style={{ width: showActivityColumn ? 108 : 92, paddingRight: 8, color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase' }}>Frequency</Text>
-        <Text style={{ width: showActivityColumn ? 118 : 94, paddingRight: 8, color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase' }}>Status</Text>
+        <Text style={{ width: showActivityColumn ? 170 : 116, paddingRight: 8, color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase' }}>Assignee</Text>
+        <Text style={{ width: showActivityColumn ? 126 : 92, paddingRight: 8, color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase' }}>Due</Text>
+        <Text style={{ width: showActivityColumn ? 126 : 96, paddingRight: 8, color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase' }}>Frequency</Text>
         {showActivityColumn ? (
           <Text style={{ width: 104, paddingRight: 10, color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase' }}>Activity</Text>
         ) : null}
@@ -3081,7 +5335,7 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
             showActivityColumn={showActivityColumn}
             onSelect={() => {
               if (!isDesktop) {
-                router.push(`/task/${task.id}` as any);
+                router.push(`/(tabs)/task/${task.id}` as any);
                 return;
               }
               setSelectedTaskId((current) => (current === task.id ? null : task.id));
@@ -3206,13 +5460,14 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
             task={selectedTask}
             businessId={businessId}
             teamMembers={membersWithCurrentUser}
+            shareThreadOptions={shareThreadOptions}
             currentUserId={currentUserId}
             commentCount={commentCounts[selectedTask.id] ?? 0}
-            onClose={() => router.back()}
+            onClose={goToTasksHome}
             onSaved={invalidateTaskQueries}
             onDeleted={async () => {
               await invalidateTaskQueries();
-              router.back();
+              goToTasksHome();
             }}
             onStatusChange={async (next) => {
               await quickStatusMutation.mutateAsync({ task: selectedTask, next });
@@ -3248,7 +5503,7 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
           style={{
             width: isDesktop ? undefined : '100%',
             flex: 1,
-            minWidth: shouldUseDesktopCardsAndTable && isDesktop ? (isDetailOpen ? undefined : 680) : undefined,
+            minWidth: shouldUseDesktopCardsAndTable && isDesktop ? (isTabletSplitView ? 560 : (isDetailOpen ? undefined : 680)) : undefined,
             borderRightWidth: 0,
             borderRightColor: splitDividerColor,
             backgroundColor: colors.bg.primary,
@@ -3265,34 +5520,45 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
                   paddingRight: 20,
                   paddingTop: isWebDesktop ? 20 : 18,
                   paddingBottom: 16,
-                  minHeight: isWebDesktop ? desktopHeaderMinHeight : undefined,
+                  minHeight: isTabletSplitView ? undefined : (isWebDesktop ? desktopHeaderMinHeight : undefined),
                   flexDirection: 'row',
-                  alignItems: 'flex-start',
+                  alignItems: 'center',
                   justifyContent: 'space-between',
                   gap: 12,
                 }}
               >
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ color: colors.text.primary, ...pageHeadingStyle }}>Tasks</Text>
-                  <Text style={{ color: colors.text.tertiary, fontSize: 13, fontWeight: '500', marginTop: 2 }}>Operations</Text>
+                <View style={{ minWidth: 0 }}>
+                  <Text
+                    numberOfLines={1}
+                    style={{ color: colors.text.primary, ...(isTabletSplitView ? { fontSize: 32, lineHeight: 36, fontWeight: '700' as const } : pageHeadingStyle) }}
+                  >
+                    Tasks
+                  </Text>
+                  {!isTabletSplitView ? (
+                    <Text style={{ color: colors.text.tertiary, fontSize: 13, fontWeight: '500', marginTop: 2 }}>Operations</Text>
+                  ) : null}
                 </View>
-                <Pressable
-                  onPress={() => setShowCreateModal(true)}
-                  style={{
-                    height: 40,
-                    borderRadius: 999,
-                    backgroundColor: themeMode === 'dark' ? '#FFFFFF' : colors.bg.card,
-                    borderWidth: 1,
-                    borderColor: themeMode === 'dark' ? '#FFFFFF' : colors.border.light,
-                    paddingHorizontal: 14,
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 7,
-                  }}
-                >
-                  <Plus size={16} color={themeMode === 'dark' ? '#111111' : colors.text.primary} strokeWidth={2.8} />
-                  <Text style={{ color: themeMode === 'dark' ? '#111111' : colors.text.primary, fontSize: 14, fontWeight: '700' }}>Add Task</Text>
-                </Pressable>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                  <TaskViewToggle value={taskViewMode} onChange={setTaskViewMode} />
+                  <Pressable
+                    onPress={() => setShowCreateModal(true)}
+                    style={{
+                      height: 38,
+                      borderRadius: 999,
+                      backgroundColor: themeMode === 'dark' ? '#FFFFFF' : colors.bg.card,
+                      borderWidth: 1,
+                      borderColor: themeMode === 'dark' ? '#FFFFFF' : colors.border.light,
+                      paddingHorizontal: 14,
+                      minWidth: 110,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 7,
+                    }}
+                  >
+                    <Plus size={14} color={themeMode === 'dark' ? '#111111' : colors.text.primary} strokeWidth={2.8} />
+                    <Text style={{ color: themeMode === 'dark' ? '#111111' : colors.text.primary, fontSize: 13, fontWeight: '600' }}>Add Task</Text>
+                  </Pressable>
+                </View>
               </View>
             </View>
           ) : null}
@@ -3304,7 +5570,7 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
               ? {
                 paddingLeft: 20,
                 paddingRight: 20,
-                paddingTop: 24,
+                paddingTop: isTabletSplitView ? 18 : 24,
                 paddingBottom: 24,
                 width: '100%',
                 maxWidth: isWebDesktop ? 1400 : undefined,
@@ -3314,81 +5580,84 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
           >
             {shouldUseDesktopCardsAndTable ? (
               <>
-                <View style={{ flexDirection: 'row', gap: 12, marginBottom: 10 }}>
-                  <Pressable
-                    onPress={() => applyKpiScope('due_today')}
-                    style={{
-                      flex: 1,
-                      borderRadius: 14,
-                      borderWidth: 1,
-                      borderColor: kpiScope === 'due_today' ? colors.text.primary : colors.border.light,
-                      backgroundColor: kpiScope === 'due_today' ? colors.bg.secondary : colors.bg.card,
-                      paddingHorizontal: 16,
-                      paddingVertical: 12,
-                    }}
-                  >
-                    <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' }}>Due today</Text>
-                    <Text style={{ color: colors.text.primary, fontSize: 30, lineHeight: 34, fontWeight: '700', marginTop: 4 }}>{dueTodayCount}</Text>
-                    <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 1 }}>{pendingCount} pending</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => applyKpiScope('overdue')}
-                    style={{
-                      flex: 1,
-                      borderRadius: 14,
-                      borderWidth: 1,
-                      borderColor: kpiScope === 'overdue' ? colors.text.primary : colors.border.light,
-                      backgroundColor: kpiScope === 'overdue' ? colors.bg.secondary : colors.bg.card,
-                      paddingHorizontal: 16,
-                      paddingVertical: 12,
-                    }}
-                  >
-                    <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' }}>Overdue</Text>
-                    <Text style={{ color: colors.text.primary, fontSize: 30, lineHeight: 34, fontWeight: '700', marginTop: 4 }}>{overdueCount}</Text>
-                    <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 1 }}>Needs immediate action</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => applyKpiScope('completed_today')}
-                    style={{
-                      flex: 1,
-                      borderRadius: 14,
-                      borderWidth: 1,
-                      borderColor: kpiScope === 'completed_today' ? colors.text.primary : colors.border.light,
-                      backgroundColor: kpiScope === 'completed_today' ? colors.bg.secondary : colors.bg.card,
-                      paddingHorizontal: 16,
-                      paddingVertical: 12,
-                    }}
-                  >
-                    <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' }}>Completed today</Text>
-                    <Text style={{ color: colors.text.primary, fontSize: 30, lineHeight: 34, fontWeight: '700', marginTop: 4 }}>{completedTodayCount}</Text>
-                    <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 1 }}>{completedCount} total completed</Text>
-                  </Pressable>
-                </View>
-                {activeKpiScopeLabel ? (
-                  <View style={{ marginBottom: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                    <Text style={{ color: colors.text.tertiary, fontSize: 12 }}>
-                      KPI focus: {activeKpiScopeLabel}
-                    </Text>
+                <>
+                  <View style={{ flexDirection: 'row', gap: 12, marginBottom: 10 }}>
                     <Pressable
-                      onPress={() => setKpiScope('all')}
+                      onPress={() => applyKpiScope('due_today')}
                       style={{
-                        height: 28,
-                        borderRadius: 999,
+                        flex: 1,
+                        borderRadius: 14,
                         borderWidth: 1,
-                        borderColor: colors.border.light,
-                        backgroundColor: colors.bg.card,
-                        paddingHorizontal: 10,
-                        alignItems: 'center',
-                        justifyContent: 'center',
+                        borderColor: kpiScope === 'due_today' ? colors.text.primary : colors.border.light,
+                        backgroundColor: kpiScope === 'due_today' ? colors.bg.secondary : colors.bg.card,
+                        paddingHorizontal: 16,
+                        paddingVertical: 12,
                       }}
                     >
-                      <Text style={{ color: colors.text.secondary, fontSize: 11, fontWeight: '600' }}>Clear KPI focus</Text>
+                      <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' }}>Due today</Text>
+                      <Text style={{ color: colors.text.primary, fontSize: 30, lineHeight: 34, fontWeight: '700', marginTop: 4 }}>{dueTodayCount}</Text>
+                      <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 1 }}>{pendingCount} pending</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => applyKpiScope('overdue')}
+                      style={{
+                        flex: 1,
+                        borderRadius: 14,
+                        borderWidth: 1,
+                        borderColor: kpiScope === 'overdue' ? colors.text.primary : colors.border.light,
+                        backgroundColor: kpiScope === 'overdue' ? colors.bg.secondary : colors.bg.card,
+                        paddingHorizontal: 16,
+                        paddingVertical: 12,
+                      }}
+                    >
+                      <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' }}>Overdue</Text>
+                      <Text style={{ color: colors.text.primary, fontSize: 30, lineHeight: 34, fontWeight: '700', marginTop: 4 }}>{overdueCount}</Text>
+                      <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 1 }}>Needs immediate action</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => applyKpiScope('completed_today')}
+                      style={{
+                        flex: 1,
+                        borderRadius: 14,
+                        borderWidth: 1,
+                        borderColor: kpiScope === 'completed_today' ? colors.text.primary : colors.border.light,
+                        backgroundColor: kpiScope === 'completed_today' ? colors.bg.secondary : colors.bg.card,
+                        paddingHorizontal: 16,
+                        paddingVertical: 12,
+                      }}
+                    >
+                      <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' }}>Completed today</Text>
+                      <Text style={{ color: colors.text.primary, fontSize: 30, lineHeight: 34, fontWeight: '700', marginTop: 4 }}>{completedTodayCount}</Text>
+                      <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 1 }}>{completedCount} total completed</Text>
                     </Pressable>
                   </View>
-                ) : null}
+                  {activeKpiScopeLabel ? (
+                    <View style={{ marginBottom: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                      <Text style={{ color: colors.text.tertiary, fontSize: 12 }}>
+                        KPI focus: {activeKpiScopeLabel}
+                      </Text>
+                      <Pressable
+                        onPress={() => setKpiScope('all')}
+                        style={{
+                          height: 28,
+                          borderRadius: 999,
+                          borderWidth: 1,
+                          borderColor: colors.border.light,
+                          backgroundColor: colors.bg.card,
+                          paddingHorizontal: 10,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <Text style={{ color: colors.text.secondary, fontSize: 11, fontWeight: '600' }}>Clear KPI focus</Text>
+                      </Pressable>
+                    </View>
+                  ) : null}
+                </>
 
-                <View style={{ flexDirection: isDesktop ? 'row' : 'column', gap: 12, marginBottom: 14 }}>
-                  <View style={{ flex: isDesktop ? 1 : undefined, borderRadius: 14, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 14 }}>
+                <View style={{ flexDirection: isTabletSplitView ? 'column' : (isDesktop ? 'row' : 'column'), gap: 12, marginTop: 10, marginBottom: 14 }}>
+                  {canViewTeamTasks ? (
+                    <View style={{ flex: isTabletSplitView ? undefined : (isDesktop ? 1 : undefined), width: isTabletSplitView ? '100%' : undefined, borderRadius: 14, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 14 }}>
                     {openCardMenu === 'people' ? (
                       <>
                         <Pressable
@@ -3491,9 +5760,10 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
                         </ScrollView>
                       )}
                     </View>
-                  </View>
+                    </View>
+                  ) : null}
 
-                  <View style={{ flex: isDesktop ? 1 : undefined, borderRadius: 14, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 14 }}>
+                  <View style={{ flex: isTabletSplitView ? undefined : (isDesktop ? 1 : undefined), width: isTabletSplitView ? '100%' : undefined, borderRadius: 14, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 14 }}>
                     {openCardMenu === 'assigned' ? (
                       <>
                         <Pressable
@@ -3560,7 +5830,7 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
                     </View>
 
                     <View style={{ marginTop: 8 }}>
-                      {assignedTaskRows.length === 0 ? (
+                      {assignedTaskCardRows.length === 0 ? (
                         <Text style={{ color: colors.text.tertiary, fontSize: 12, paddingVertical: 12 }}>No assigned tasks yet.</Text>
                       ) : (
                         <ScrollView
@@ -3569,8 +5839,8 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
                           nestedScrollEnabled
                           showsVerticalScrollIndicator={assignedTaskRows.length > OVERVIEW_CARD_VISIBLE_ROWS}
                         >
-                          {assignedTaskRows.map((row, index) => {
-                            const dueLabel = formatDueDateRelative(row.task.due_date);
+                          {assignedTaskCardRows.map((row, index) => {
+                            const dueLabel = formatTaskDueDateRelative(row.task);
                             const dueColor = row.task.status === 'done'
                               ? colors.text.muted
                               : isTaskOverdue(row.task)
@@ -3625,6 +5895,7 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
                   </View>
                 </View>
 
+                <View style={{ paddingTop: 10 }}>
                 {isWebMobileTableView ? (
                   <View style={{ marginBottom: 14, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                     <View style={{ flex: 1, height: 44, borderRadius: 999, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center' }}>
@@ -3655,53 +5926,219 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
                     </Pressable>
                   </View>
                 ) : (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 18, marginBottom: 14 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
-                      <View style={{ width: 340, height: 44, borderRadius: 999, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center' }}>
-                        <Search size={16} color={colors.text.tertiary} strokeWidth={2.2} />
-                        <TextInput
-                          value={searchQuery}
-                          onChangeText={setSearchQuery}
-                          placeholder="Search tasks"
-                          placeholderTextColor={colors.input.placeholder}
-                          style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 14 }}
-                          selectionColor={colors.text.primary}
-                        />
-                      </View>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        {FILTERS.map((item) => {
-                          const active = filter === item.id;
-                          return (
-                            <Pressable
-                              key={item.id}
-                              onPress={() => {
-                                setKpiScope('all');
-                                setFilter(item.id);
-                              }}
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: isTabletSplitView ? 12 : 18,
+                      marginBottom: 14,
+                      position: 'relative',
+                      zIndex: showDesktopScopeMenu ? 40 : 1,
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: isTabletSplitView ? 8 : 12, flex: 1, minWidth: 0 }}>
+                      {!isTabletSplitView ? (
+                        isIpadProView ? (
+                          showTabletSearch ? (
+                            <View style={{ width: 240, height: 40, borderRadius: 999, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center' }}>
+                              <Search size={15} color={colors.text.tertiary} strokeWidth={2.2} />
+                              <TextInput
+                                value={searchQuery}
+                                onChangeText={setSearchQuery}
+                                placeholder="Search tasks"
+                                placeholderTextColor={colors.input.placeholder}
+                                style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 13 }}
+                                selectionColor={colors.text.primary}
+                                autoFocus
+                              />
+                              <Pressable
+                                onPress={() => {
+                                  setShowTabletSearch(false);
+                                  setSearchQuery('');
+                                }}
+                                style={{ width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' }}
+                              >
+                                <X size={14} color={colors.text.secondary} strokeWidth={2.2} />
+                              </Pressable>
+                            </View>
+                          ) : (
+                          <Pressable
+                            onPress={() => setShowTabletSearch(true)}
+                            style={{
+                              width: 40,
+                              height: 40,
+                              borderRadius: 999,
+                              borderWidth: 1,
+                              borderColor: colors.border.light,
+                              backgroundColor: colors.bg.card,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            <Search size={16} color={colors.text.tertiary} strokeWidth={2.2} />
+                          </Pressable>
+                          )
+                        ) : (
+                          <View style={{ width: 340, height: 44, borderRadius: 999, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center' }}>
+                            <Search size={16} color={colors.text.tertiary} strokeWidth={2.2} />
+                            <TextInput
+                              value={searchQuery}
+                              onChangeText={setSearchQuery}
+                              placeholder="Search tasks"
+                              placeholderTextColor={colors.input.placeholder}
+                              style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 14 }}
+                              selectionColor={colors.text.primary}
+                            />
+                          </View>
+                        )
+                      ) : null}
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 6,
+                          flexWrap: 'wrap',
+                          flex: 1,
+                          minHeight: isTabletSplitView ? 40 : 44,
+                          paddingVertical: 4,
+                        }}
+                      >
+                        {canViewTeamTasks ? (
+                          <>
+                            <View style={{ position: 'relative', zIndex: showDesktopScopeMenu ? 50 : 1 }}>
+                              <Pressable
+                                onPress={() => setShowDesktopScopeMenu((current) => !current)}
+                                style={{
+                                  borderRadius: 999,
+                                  backgroundColor: colors.bg.secondary,
+                                  paddingHorizontal: 14,
+                                  height: 32,
+                                  flexDirection: 'row',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: 6,
+                                }}
+                              >
+                                {taskScope === 'team' ? (
+                                  <Funnel size={13} color={colors.text.secondary} strokeWidth={2.2} />
+                                ) : taskScope === 'all' ? (
+                                  <Layers size={13} color={colors.text.secondary} strokeWidth={2.2} />
+                                ) : (
+                                  <CheckCircle2 size={13} color={colors.text.secondary} strokeWidth={2.2} />
+                                )}
+                                <Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '600' }}>
+                                  {activeTaskScopeLabel}
+                                </Text>
+                                <ChevronDown size={13} color={colors.text.tertiary} strokeWidth={2.2} />
+                              </Pressable>
+
+                              {showDesktopScopeMenu ? (
+                                <View
+                                  style={{
+                                    position: 'absolute',
+                                    top: 38,
+                                    left: 0,
+                                    minWidth: 168,
+                                    borderRadius: 14,
+                                    borderWidth: 1,
+                                    borderColor: colors.border.light,
+                                    backgroundColor: colors.bg.card,
+                                    padding: 6,
+                                    shadowColor: '#000000',
+                                    shadowOpacity: 0.12,
+                                    shadowRadius: 12,
+                                    shadowOffset: { width: 0, height: 6 },
+                                    zIndex: 30,
+                                  }}
+                                >
+                                  {([
+                                    { id: 'all' as TaskScope, label: 'All tasks', icon: Layers },
+                                    { id: 'mine' as TaskScope, label: 'My tasks', icon: CheckCircle2 },
+                                    { id: 'team' as TaskScope, label: 'Team tasks', icon: Funnel },
+                                  ]).map((item) => {
+                                    const active = taskScope === item.id;
+                                    const Icon = item.icon;
+                                    return (
+                                      <Pressable
+                                        key={item.id}
+                                        onPress={() => {
+                                          setTaskScope(item.id);
+                                          setShowDesktopScopeMenu(false);
+                                        }}
+                                        style={{
+                                          height: 34,
+                                          borderRadius: 10,
+                                          paddingHorizontal: 10,
+                                          flexDirection: 'row',
+                                          alignItems: 'center',
+                                          justifyContent: 'space-between',
+                                          backgroundColor: active ? colors.bg.secondary : 'transparent',
+                                        }}
+                                      >
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                          <Icon size={13} color={active ? colors.text.primary : colors.text.secondary} strokeWidth={2.2} />
+                                          <Text style={{ color: active ? colors.text.primary : colors.text.secondary, fontSize: 12, fontWeight: active ? '600' : '500' }}>
+                                            {item.label}
+                                          </Text>
+                                        </View>
+                                        {active ? <Check size={13} color={colors.text.primary} strokeWidth={2.6} /> : null}
+                                      </Pressable>
+                                    );
+                                  })}
+                                </View>
+                              ) : null}
+                            </View>
+                            <View
                               style={{
-                                borderRadius: 999,
-                                borderWidth: 1,
-                                borderColor: active ? colors.text.primary : colors.border.light,
-                                backgroundColor: active ? colors.text.primary : colors.bg.card,
-                                paddingHorizontal: 14,
-                                height: 36,
-                                alignItems: 'center',
-                                justifyContent: 'center',
+                                width: 1,
+                                height: 18,
+                                backgroundColor: colors.border.light,
+                                marginHorizontal: 2,
                               }}
-                            >
-                              <Text style={{ color: active ? colors.bg.primary : colors.text.secondary, fontSize: 12, fontWeight: '600' }}>
-                                {item.label}
-                              </Text>
-                            </Pressable>
-                          );
-                        })}
+                            />
+                          </>
+                        ) : null}
+                        {!isIpadProView ? (
+                          FILTERS.map((item) => {
+                            const active = filter === item.id;
+                            const label = item.id === 'all' ? 'All' : item.label;
+                            return (
+                              <Pressable
+                                key={item.id}
+                                onPress={() => {
+                                  setKpiScope('all');
+                                  setFilter(item.id);
+                                }}
+                                style={{
+                                  borderRadius: 999,
+                                  backgroundColor: active ? colors.text.primary : colors.bg.secondary,
+                                  paddingHorizontal: 14,
+                                  height: 32,
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <Text style={{ color: active ? colors.bg.primary : colors.text.secondary, fontSize: 12, fontWeight: '600' }}>
+                                  {label}
+                                </Text>
+                              </Pressable>
+                            );
+                          })
+                        ) : null}
                       </View>
                     </View>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginLeft: 16 }}>
-                      <Text style={{ color: colors.text.primary, fontSize: 20, lineHeight: 24, fontWeight: '700' }}>
-                        {filteredTasks.length}
-                      </Text>
-                      <View
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginLeft: isTabletSplitView ? 8 : 16 }}>
+                      <View style={{ alignItems: 'flex-end', gap: 1 }}>
+                        <Text style={{ color: colors.text.primary, fontSize: isTabletSplitView ? 18 : 20, lineHeight: isTabletSplitView ? 22 : 24, fontWeight: '700' }}>
+                          {filteredTasks.length}
+                        </Text>
+                        <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '500' }} numberOfLines={1}>
+                          Showing {activeTaskScopeLabel} • {activeTaskStatusLabel}
+                        </Text>
+                      </View>
+                      <Pressable
+                        onPress={() => setShowMobileFilterModal(true)}
                         style={{
                           width: 40,
                           height: 40,
@@ -3714,73 +6151,94 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
                         }}
                       >
                         <Funnel size={16} color={colors.text.tertiary} strokeWidth={2.2} />
-                      </View>
+                      </Pressable>
                     </View>
                   </View>
                 )}
 
-                {forceDesktopCompletedOpen ? null : renderTaskTable(
-                  desktopOpenTasks,
-                  filteredTasks.length === 0 ? 'No tasks found.' : 'No open tasks found.'
-                )}
+                {taskViewMode === 'calendar' ? (
+                  <TaskCalendarView
+                    tasks={filteredTasks}
+                    selectedDate={selectedCalendarDate}
+                    displayedMonth={calendarMonthDate}
+                    selectedTaskId={selectedTaskId}
+                    teamMap={teamMap}
+                    unreadCounts={unreadCounts}
+                    commentCounts={commentCounts}
+                    isDesktopLayout={true}
+                    onSelectDate={handleCalendarDateSelect}
+                    onChangeMonth={handleCalendarMonthChange}
+                    onJumpToToday={handleCalendarJumpToToday}
+                    onOpenTask={openTaskFromCalendar}
+                    onToggleDone={(task) => quickStatusMutation.mutate({ task, next: task.status === 'done' ? 'todo' : 'done' })}
+                  />
+                ) : (
+                  <>
+                    {forceDesktopCompletedOpen ? null : renderTaskTable(
+                      desktopOpenTasks,
+                      filteredTasks.length === 0 ? 'No tasks found.' : 'No open tasks found.'
+                    )}
 
-                {desktopCompletedTasks.length > 0 || forceDesktopCompletedOpen ? (
-                  <View style={{ marginTop: forceDesktopCompletedOpen || !desktopOpenTasks.length ? 0 : 12 }}>
-                    <Pressable
-                      onPress={() => {
-                        if (forceDesktopCompletedOpen) return;
-                        setIsDesktopCompletedCollapsed((current) => !current);
-                      }}
-                      style={{
-                        borderRadius: desktopCompletedCollapsed ? 14 : 14,
-                        borderWidth: 1,
-                        borderColor: colors.border.light,
-                        backgroundColor: colors.bg.card,
-                        paddingHorizontal: 14,
-                        paddingVertical: 12,
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                      }}
-                    >
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                        <View
+                    {desktopCompletedTasks.length > 0 || forceDesktopCompletedOpen ? (
+                      <View style={{ marginTop: forceDesktopCompletedOpen ? 0 : 12 }}>
+                        <Pressable
+                          onPress={() => {
+                            if (forceDesktopCompletedOpen) return;
+                            setIsDesktopCompletedCollapsed((current) => !current);
+                          }}
                           style={{
-                            transform: [{ rotate: desktopCompletedCollapsed ? '-90deg' : '0deg' }],
+                            borderRadius: desktopCompletedCollapsed ? 14 : 14,
+                            borderWidth: 1,
+                            borderColor: colors.border.light,
+                            backgroundColor: colors.bg.card,
+                            paddingHorizontal: 14,
+                            paddingVertical: 12,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
                           }}
                         >
-                          <ChevronDown size={16} color={colors.text.primary} strokeWidth={2.2} />
-                        </View>
-                        <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' }}>
-                          Completed
-                        </Text>
-                      </View>
-                      <View
-                        style={{
-                          minWidth: 28,
-                          height: 28,
-                          borderRadius: 999,
-                          backgroundColor: colors.bg.secondary,
-                          borderWidth: 1,
-                          borderColor: colors.border.light,
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          paddingHorizontal: 8,
-                        }}
-                      >
-                        <Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '700' }}>
-                          {desktopCompletedTasks.length}
-                        </Text>
-                      </View>
-                    </Pressable>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                            <View
+                              style={{
+                                transform: [{ rotate: desktopCompletedCollapsed ? '-90deg' : '0deg' }],
+                              }}
+                            >
+                              <ChevronDown size={16} color={colors.text.primary} strokeWidth={2.2} />
+                            </View>
+                            <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' }}>
+                              Completed
+                            </Text>
+                          </View>
+                          <View
+                            style={{
+                              minWidth: 28,
+                              height: 28,
+                              borderRadius: 999,
+                              backgroundColor: colors.bg.secondary,
+                              borderWidth: 1,
+                              borderColor: colors.border.light,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              paddingHorizontal: 8,
+                            }}
+                          >
+                            <Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '700' }}>
+                              {desktopCompletedTasks.length}
+                            </Text>
+                          </View>
+                        </Pressable>
 
-                    {!desktopCompletedCollapsed ? (
-                      <View style={{ marginTop: 10 }}>
-                        {renderTaskTable(desktopCompletedTasks, 'No completed tasks found.')}
+                        {!desktopCompletedCollapsed ? (
+                          <View style={{ marginTop: 10 }}>
+                            {renderTaskTable(desktopCompletedTasks, 'No completed tasks found.')}
+                          </View>
+                        ) : null}
                       </View>
                     ) : null}
-                  </View>
-                ) : null}
+                  </>
+                )}
+                </View>
               </>
             ) : (
               <>
@@ -3789,27 +6247,76 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
                     <Text style={{ color: colors.text.primary, ...pageHeadingStyle }}>Tasks</Text>
                     <Text style={{ color: colors.text.tertiary, fontSize: 11, marginTop: 2 }}>{pendingCount} pending</Text>
                   </View>
-                  <Pressable
-                    onPress={() => setShowCreateModal(true)}
-                    style={{
-                      height: 38,
-                      borderRadius: 999,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      backgroundColor: themeMode === 'dark' ? '#FFFFFF' : '#111111',
-                      paddingHorizontal: 14,
-                      flexDirection: 'row',
-                      gap: 6,
-                    }}
-                  >
-                    <Plus size={15} color={themeMode === 'dark' ? '#111111' : '#FFFFFF'} strokeWidth={2.8} />
-                    <Text style={{ color: themeMode === 'dark' ? '#111111' : '#FFFFFF', fontSize: 13, fontWeight: '700' }}>
-                      Create Task
-                    </Text>
-                  </Pressable>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Pressable
+                      onPress={() => setShowMobileSearch((current) => !current)}
+                      style={{
+                        width: 38,
+                        height: 38,
+                        borderRadius: 19,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: colors.bg.card,
+                        borderWidth: 1,
+                        borderColor: colors.border.light,
+                      }}
+                    >
+                      <Search size={15} color={colors.text.secondary} strokeWidth={2.2} />
+                    </Pressable>
+                    <Pressable
+                      onPress={() => setShowCreateModal(true)}
+                      style={{
+                        height: 38,
+                        borderRadius: 999,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: themeMode === 'dark' ? '#FFFFFF' : '#111111',
+                        paddingHorizontal: 14,
+                        flexDirection: 'row',
+                        gap: 6,
+                      }}
+                    >
+                      <Plus size={15} color={themeMode === 'dark' ? '#111111' : '#FFFFFF'} strokeWidth={2.8} />
+                      <Text style={{ color: themeMode === 'dark' ? '#111111' : '#FFFFFF', fontSize: 13, fontWeight: '700' }}>
+                        Create Task
+                      </Text>
+                    </Pressable>
+                  </View>
                 </View>
 
-                <View style={{ marginHorizontal: 6, marginTop: 6, marginBottom: 10, flexDirection: 'row', gap: 12 }}>
+                {showMobileSearch ? (
+                  <View style={{ marginHorizontal: 6, marginBottom: MOBILE_TASK_SECTION_GAP, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <View style={{ flex: 1, height: 40, borderRadius: 999, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center' }}>
+                      <Search size={14} color={colors.text.tertiary} strokeWidth={2.2} />
+                      <TextInput
+                        value={searchQuery}
+                        onChangeText={setSearchQuery}
+                        placeholder="Search tasks"
+                        placeholderTextColor={colors.input.placeholder}
+                        style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 13 }}
+                        selectionColor={colors.text.primary}
+                        autoFocus
+                      />
+                    </View>
+                    <Pressable
+                      onPress={() => setShowMobileSearch(false)}
+                      style={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: 20,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: colors.bg.card,
+                        borderWidth: 1,
+                        borderColor: colors.border.light,
+                      }}
+                    >
+                      <X size={16} color={colors.text.secondary} strokeWidth={2.2} />
+                    </Pressable>
+                  </View>
+                ) : null}
+
+                <View style={{ marginHorizontal: 6, marginTop: 6, marginBottom: MOBILE_TASK_SECTION_GAP, flexDirection: 'row', gap: 12 }}>
                   <View
                     style={{
                       flex: 1,
@@ -3856,62 +6363,64 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
                 </View>
 
                 <View
-                  style={{ marginHorizontal: 6, marginBottom: 8, gap: 10 }}
+                  style={{ marginHorizontal: 6, marginBottom: MOBILE_TASK_SECTION_GAP, gap: MOBILE_TASK_SECTION_GAP }}
                 >
-                  <View
-                    style={{
-                      borderRadius: 14,
-                      borderWidth: 1,
-                      borderColor: colors.border.light,
-                      backgroundColor: colors.bg.card,
-                      paddingHorizontal: 14,
-                      paddingTop: 12,
-                      paddingBottom: 12,
-                    }}
-                  >
-                    <Text style={{ color: colors.text.primary, fontSize: 14, lineHeight: 18, fontWeight: '700' }}>People</Text>
-                    <Text style={{ color: colors.text.tertiary, fontSize: 11, marginTop: 2 }}>
-                      {peopleCardSubtitle}
-                    </Text>
+                  {canViewTeamTasks ? (
+                    <View
+                      style={{
+                        borderRadius: 14,
+                        borderWidth: 1,
+                        borderColor: colors.border.light,
+                        backgroundColor: colors.bg.card,
+                        paddingHorizontal: 14,
+                        paddingTop: 12,
+                        paddingBottom: 12,
+                      }}
+                    >
+                      <Text style={{ color: colors.text.primary, fontSize: 14, lineHeight: 18, fontWeight: '700' }}>People</Text>
+                      <Text style={{ color: colors.text.tertiary, fontSize: 11, marginTop: 2 }}>
+                        {peopleCardSubtitle}
+                      </Text>
 
-                    <View style={{ marginTop: 8 }}>
-                      {peopleRows.length === 0 ? (
-                        <Text style={{ color: colors.text.tertiary, fontSize: 12, paddingVertical: 12 }}>No team members yet.</Text>
-                      ) : (
-                        <ScrollView
-                          style={{ maxHeight: OVERVIEW_CARD_LIST_MAX_HEIGHT, flexGrow: 0 }}
-                          contentContainerStyle={{ paddingRight: 2 }}
-                          nestedScrollEnabled
-                          showsVerticalScrollIndicator={peopleRows.length > OVERVIEW_CARD_VISIBLE_ROWS}
-                        >
-                          {peopleRows.map((row, index) => {
-                            return (
-                              <View
-                                key={row.member.id}
-                                style={{
-                                  minHeight: OVERVIEW_CARD_ROW_HEIGHT,
-                                  flexDirection: 'row',
-                                  alignItems: 'center',
-                                  justifyContent: 'space-between',
-                                  gap: 10,
-                                  borderTopWidth: index === 0 ? 0 : 1,
-                                  borderTopColor: colors.border.light,
-                                }}
-                              >
-                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
-                                  <UserAvatar member={row.member} size={24} />
-                                  <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '500', flex: 1 }} numberOfLines={1}>
-                                    {row.member.name}
-                                  </Text>
+                      <View style={{ marginTop: 8 }}>
+                        {peopleRows.length === 0 ? (
+                          <Text style={{ color: colors.text.tertiary, fontSize: 12, paddingVertical: 12 }}>No team members yet.</Text>
+                        ) : (
+                          <ScrollView
+                            style={{ maxHeight: OVERVIEW_CARD_LIST_MAX_HEIGHT, flexGrow: 0 }}
+                            contentContainerStyle={{ paddingRight: 2 }}
+                            nestedScrollEnabled
+                            showsVerticalScrollIndicator={peopleRows.length > OVERVIEW_CARD_VISIBLE_ROWS}
+                          >
+                            {peopleRows.map((row, index) => {
+                              return (
+                                <View
+                                  key={row.member.id}
+                                  style={{
+                                    minHeight: OVERVIEW_CARD_ROW_HEIGHT,
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    gap: 10,
+                                    borderTopWidth: index === 0 ? 0 : 1,
+                                    borderTopColor: colors.border.light,
+                                  }}
+                                >
+                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+                                    <UserAvatar member={row.member} size={24} />
+                                    <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '500', flex: 1 }} numberOfLines={1}>
+                                      {row.member.name}
+                                    </Text>
+                                  </View>
+                                  <TaskPeopleBadges overdue={row.overdue} completed={row.completed} upcoming={row.upcoming} />
                                 </View>
-                                <TaskPeopleBadges overdue={row.overdue} completed={row.completed} upcoming={row.upcoming} />
-                              </View>
-                            );
-                          })}
-                        </ScrollView>
-                      )}
+                              );
+                            })}
+                          </ScrollView>
+                        )}
+                      </View>
                     </View>
-                  </View>
+                  ) : null}
 
                   <View
                     style={{
@@ -3930,7 +6439,7 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
                     </Text>
 
                     <View style={{ marginTop: 8 }}>
-                      {assignedTaskRows.length === 0 ? (
+                      {assignedTaskCardRows.length === 0 ? (
                         <Text style={{ color: colors.text.tertiary, fontSize: 12, paddingVertical: 12 }}>No assigned tasks yet.</Text>
                       ) : (
                         <ScrollView
@@ -3939,8 +6448,8 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
                           nestedScrollEnabled
                           showsVerticalScrollIndicator={assignedTaskRows.length > OVERVIEW_CARD_VISIBLE_ROWS}
                         >
-                          {assignedTaskRows.map((row, index) => {
-                            const dueLabel = formatDueDateRelative(row.task.due_date);
+                          {assignedTaskCardRows.map((row, index) => {
+                            const dueLabel = formatTaskDueDateRelative(row.task);
                             const dueColor = row.task.status === 'done'
                               ? colors.text.muted
                               : isTaskOverdue(row.task)
@@ -3994,24 +6503,195 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
                     </View>
                   </View>
                 </View>
+                <View
+                  style={{
+                    marginHorizontal: 6,
+                    marginBottom: MOBILE_TASK_SECTION_GAP,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 10,
+                    zIndex: showMobileScopeModal || showMobileViewModal ? 40 : 1,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                    <View style={{ position: 'relative', zIndex: showMobileViewModal ? 50 : 1 }}>
+                      <Pressable
+                        onPress={() => {
+                          setShowMobileViewModal((current) => !current);
+                          setShowMobileScopeModal(false);
+                        }}
+                        style={{
+                          borderRadius: 999,
+                          backgroundColor: colors.bg.card,
+                          borderWidth: 1,
+                          borderColor: colors.border.light,
+                          paddingHorizontal: 14,
+                          height: 34,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexDirection: 'row',
+                          gap: 6,
+                        }}
+                      >
+                        {taskViewMode === 'calendar' ? (
+                          <Calendar size={13} color={colors.text.secondary} strokeWidth={2.2} />
+                        ) : (
+                          <ArrowUpDown size={13} color={colors.text.secondary} strokeWidth={2.2} />
+                        )}
+                        <Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '600' }}>
+                          {taskViewMode === 'calendar' ? 'Calendar' : 'List'}
+                        </Text>
+                        <ChevronDown size={13} color={colors.text.tertiary} strokeWidth={2.2} />
+                      </Pressable>
 
-                <View style={{ marginHorizontal: 6, marginBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <View style={{ flex: 1, height: 40, borderRadius: 999, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center' }}>
-                    <Search size={14} color={colors.text.tertiary} strokeWidth={2.2} />
-                    <TextInput
-                      value={searchQuery}
-                      onChangeText={setSearchQuery}
-                      placeholder="Search tasks"
-                      placeholderTextColor={colors.input.placeholder}
-                      style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 13 }}
-                      selectionColor={colors.text.primary}
-                    />
+                      {showMobileViewModal ? (
+                        <View
+                          style={{
+                            position: 'absolute',
+                            top: 40,
+                            left: 0,
+                            minWidth: 156,
+                            borderRadius: 14,
+                            borderWidth: 1,
+                            borderColor: colors.border.light,
+                            backgroundColor: colors.bg.card,
+                            padding: 6,
+                            shadowColor: '#000000',
+                            shadowOpacity: 0.14,
+                            shadowRadius: 16,
+                            shadowOffset: { width: 0, height: 8 },
+                            elevation: 10,
+                          }}
+                        >
+                          {mobileViewOptions.map((option) => {
+                            const active = taskViewMode === option.id;
+                            const Icon = option.icon;
+                            return (
+                              <Pressable
+                                key={option.id}
+                                onPress={() => {
+                                  setTaskViewMode(option.id);
+                                  setShowMobileViewModal(false);
+                                }}
+                                style={{
+                                  height: 36,
+                                  borderRadius: 10,
+                                  paddingHorizontal: 10,
+                                  flexDirection: 'row',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  backgroundColor: active ? colors.bg.secondary : 'transparent',
+                                }}
+                              >
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                  <Icon size={13} color={active ? colors.text.primary : colors.text.secondary} strokeWidth={2.2} />
+                                  <Text style={{ color: active ? colors.text.primary : colors.text.secondary, fontSize: 12, fontWeight: active ? '600' : '500' }}>
+                                    {option.label}
+                                  </Text>
+                                </View>
+                                {active ? <Check size={13} color={colors.text.primary} strokeWidth={2.6} /> : null}
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                      ) : null}
+                    </View>
+
+                    {canViewTeamTasks ? (
+                      <View style={{ position: 'relative', zIndex: showMobileScopeModal ? 50 : 1 }}>
+                        <Pressable
+                          onPress={() => {
+                            setShowMobileScopeModal((current) => !current);
+                            setShowMobileViewModal(false);
+                          }}
+                          style={{
+                            borderRadius: 999,
+                            backgroundColor: colors.bg.card,
+                            borderWidth: 1,
+                            borderColor: colors.border.light,
+                            paddingHorizontal: 14,
+                            height: 34,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexDirection: 'row',
+                            gap: 6,
+                          }}
+                        >
+                          <Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '600' }}>
+                            {activeTaskScopeLabel}
+                          </Text>
+                          <ChevronDown size={13} color={colors.text.tertiary} strokeWidth={2.2} />
+                        </Pressable>
+
+                        {showMobileScopeModal ? (
+                          <View
+                            style={{
+                              position: 'absolute',
+                              top: 40,
+                              left: 0,
+                              minWidth: 168,
+                              borderRadius: 14,
+                              borderWidth: 1,
+                              borderColor: colors.border.light,
+                              backgroundColor: colors.bg.card,
+                              padding: 6,
+                              shadowColor: '#000000',
+                              shadowOpacity: 0.14,
+                              shadowRadius: 16,
+                              shadowOffset: { width: 0, height: 8 },
+                              elevation: 10,
+                            }}
+                          >
+                            {mobileScopeOptions.map((option) => {
+                              const active = taskScope === option.id;
+                              const Icon = option.icon;
+                              return (
+                                <Pressable
+                                  key={option.id}
+                                  onPress={() => {
+                                    setTaskScope(option.id);
+                                    setShowMobileScopeModal(false);
+                                  }}
+                                  style={{
+                                    height: 36,
+                                    borderRadius: 10,
+                                    paddingHorizontal: 10,
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    backgroundColor: active ? colors.bg.secondary : 'transparent',
+                                  }}
+                                >
+                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                    <Icon size={13} color={active ? colors.text.primary : colors.text.secondary} strokeWidth={2.2} />
+                                    <Text style={{ color: active ? colors.text.primary : colors.text.secondary, fontSize: 12, fontWeight: active ? '600' : '500' }}>
+                                      {option.label}
+                                    </Text>
+                                  </View>
+                                  {active ? <Check size={13} color={colors.text.primary} strokeWidth={2.6} /> : null}
+                                </Pressable>
+                              );
+                            })}
+                          </View>
+                        ) : null}
+                      </View>
+                    ) : (
+                      <Text style={{ color: colors.text.tertiary, fontSize: 11 }}>
+                        {activeTaskStatusLabel}
+                      </Text>
+                    )}
                   </View>
+
                   <Pressable
-                    onPress={() => setShowMobileFilterModal(true)}
+                    onPress={() => {
+                      setShowMobileScopeModal(false);
+                      setShowMobileViewModal(false);
+                      setShowMobileFilterModal(true);
+                    }}
                     style={{
-                      height: 40,
                       width: 40,
+                      height: 40,
                       borderRadius: 20,
                       borderWidth: 1,
                       borderColor: colors.border.light,
@@ -4023,7 +6703,23 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
                     <Funnel size={14} color={colors.text.secondary} strokeWidth={2.2} />
                   </Pressable>
                 </View>
-                {filteredTasks.length === 0 ? (
+                {taskViewMode === 'calendar' ? (
+                  <TaskCalendarView
+                    tasks={filteredTasks}
+                    selectedDate={selectedCalendarDate}
+                    displayedMonth={calendarMonthDate}
+                    selectedTaskId={null}
+                    teamMap={teamMap}
+                    unreadCounts={unreadCounts}
+                    commentCounts={commentCounts}
+                    isDesktopLayout={false}
+                    onSelectDate={handleCalendarDateSelect}
+                    onChangeMonth={handleCalendarMonthChange}
+                    onJumpToToday={handleCalendarJumpToToday}
+                    onOpenTask={openTaskFromCalendar}
+                    onToggleDone={(task) => quickStatusMutation.mutate({ task, next: task.status === 'done' ? 'todo' : 'done' })}
+                  />
+                ) : filteredTasks.length === 0 ? (
                   <View style={{ paddingVertical: 32, alignItems: 'center' }}>
                     <Text style={{ color: colors.text.tertiary, fontWeight: '700' }}>No tasks found.</Text>
                   </View>
@@ -4037,7 +6733,7 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
                         unreadCount={unreadCounts[task.id] ?? 0}
                         commentCount={commentCounts[task.id] ?? 0}
                         assignees={(task.assignee_user_ids ?? []).map((id) => teamMap.get(id)).filter(Boolean) as TeamMember[]}
-                        onSelect={() => router.push(`/task/${task.id}` as any)}
+                        onSelect={() => router.push(`/(tabs)/task/${task.id}` as any)}
                         onToggleDone={() => quickStatusMutation.mutate({ task, next: task.status === 'done' ? 'todo' : 'done' })}
                       />
                     ))}
@@ -4107,7 +6803,7 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
                         unreadCount={unreadCounts[task.id] ?? 0}
                         commentCount={commentCounts[task.id] ?? 0}
                         assignees={(task.assignee_user_ids ?? []).map((id) => teamMap.get(id)).filter(Boolean) as TeamMember[]}
-                        onSelect={() => router.push(`/task/${task.id}` as any)}
+                        onSelect={() => router.push(`/(tabs)/task/${task.id}` as any)}
                         onToggleDone={() => quickStatusMutation.mutate({ task, next: task.status === 'done' ? 'todo' : 'done' })}
                       />
                     )) : null}
@@ -4134,6 +6830,7 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
               task={selectedTask as Task}
               businessId={businessId}
               teamMembers={membersWithCurrentUser}
+              shareThreadOptions={shareThreadOptions}
               currentUserId={currentUserId}
               commentCount={commentCounts[(selectedTask as Task).id] ?? 0}
               onClose={() => setSelectedTaskId(null)}
@@ -4155,29 +6852,60 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
         form={createForm}
         teamMembers={membersWithCurrentUser}
         currentUserId={currentUserId}
+        allowEveryone={canViewTeamTasks}
         onChange={(patch) => setCreateForm((current) => ({ ...current, ...patch }))}
         onToggleAssignee={(userId) => {
           setCreateForm((current) => ({
             ...current,
-            assigneeUserIds: current.assigneeUserIds.includes(userId)
-              ? current.assigneeUserIds.filter((id) => id !== userId)
-              : [...current.assigneeUserIds, userId],
+            assigneeUserIds: userId === EVERYONE_ASSIGNEE_ID
+              ? (current.assigneeUserIds.includes(EVERYONE_ASSIGNEE_ID) ? [] : [EVERYONE_ASSIGNEE_ID])
+              : (() => {
+                const withoutEveryone = current.assigneeUserIds.filter((id) => id !== EVERYONE_ASSIGNEE_ID);
+                return withoutEveryone.includes(userId)
+                  ? withoutEveryone.filter((id) => id !== userId)
+                  : [...withoutEveryone, userId];
+              })(),
           }));
         }}
         onClose={() => setShowCreateModal(false)}
         isSubmitting={createMutation.isPending}
         onSubmit={() => {
+          const expandedAssigneeIds = expandAssigneeSelection(createForm.assigneeUserIds, membersWithCurrentUser);
+          const startsAt = createForm.itemType === 'event'
+            ? combineDateAndTime(createForm.dueDate, createForm.startTime, createForm.eventTimezone)
+            : null;
+          const endsAt = createForm.itemType === 'event'
+            ? combineDateAndTime(createForm.dueDate, createForm.endTime, createForm.eventTimezone)
+            : null;
+          const assigneeNames = createForm.assigneeUserIds.includes(EVERYONE_ASSIGNEE_ID)
+            ? ['Everyone']
+            : expandedAssigneeIds
+              .map((id) => teamMap.get(id)?.name?.trim())
+              .filter((value): value is string => Boolean(value));
+
           createMutation.mutate({
-            businessId,
-            title: createForm.title.trim(),
-            description: createForm.description.trim(),
-            priority: createForm.priority,
-            dueDate: createForm.dueDate ? format(createForm.dueDate, 'yyyy-MM-dd') : null,
-            assigneeUserIds: createForm.assigneeUserIds,
-            recurrenceFrequency: createForm.recurrenceFrequency,
-            recurrenceInterval: createForm.recurrenceInterval,
+            input: {
+              businessId,
+              itemType: createForm.itemType,
+              title: createForm.title.trim(),
+              description: createForm.description.trim(),
+              priority: createForm.priority,
+              dueDate: createForm.dueDate ? format(createForm.dueDate, 'yyyy-MM-dd') : null,
+              startsAt,
+              endsAt,
+              eventTimezone: createForm.itemType === 'event' ? createForm.eventTimezone : null,
+              location: createForm.itemType === 'event' ? createForm.location.trim() : null,
+              meetingLink: createForm.itemType === 'event' ? createForm.meetingLink.trim() : null,
+              assigneeUserIds: expandedAssigneeIds,
+              recurrenceFrequency: createForm.recurrenceFrequency,
+              recurrenceInterval: createForm.recurrenceInterval,
+            },
+            shareToThread: createForm.shareToThread && shareThreadOptions.length > 0,
+            shareThreadEntityId: createForm.shareThreadEntityId ?? shareThreadOptions[0]?.entityId ?? null,
+            assigneeNames,
           });
         }}
+        shareThreadOptions={shareThreadOptions}
       />
 
       <Modal
@@ -4217,7 +6945,7 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
               }}
             >
               <Text style={{ color: colors.text.primary, fontSize: 18, fontWeight: '700' }}>
-                Filter Tasks
+                Filters
               </Text>
               <Pressable
                 onPress={() => setShowMobileFilterModal(false)}

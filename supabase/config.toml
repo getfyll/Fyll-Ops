@@ -1,0 +1,5 @@
+[functions.send-thread-notification]
+verify_jwt = false
+
+[functions.fyll-ai-gemini]
+verify_jwt = true

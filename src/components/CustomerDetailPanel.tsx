@@ -5,6 +5,7 @@ import useFyllStore, { Customer, formatCurrency, NIGERIA_STATES, CASE_STATUS_COL
 import useAuthStore from '@/lib/state/auth-store';
 import { useThemeColors } from '@/lib/theme';
 import { DetailSection, DetailActionButton } from './SplitViewLayout';
+import { getOrderStatusColor } from '@/lib/order-status-colors';
 import * as Haptics from 'expo-haptics';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 
@@ -194,7 +195,7 @@ export function CustomerDetailPanel({ customerId, onEdit, onClose }: CustomerDet
 
   const getStatusChipColors = (statusName: string) => {
     const isRefund = statusName.toLowerCase().includes('refund');
-    const color = isRefund ? '#EF4444' : (statusColorByName.get(statusName) ?? '#6B7280');
+    const color = isRefund ? '#EF4444' : getOrderStatusColor(statusName, Object.fromEntries(statusColorByName.entries()), '#6B7280');
     return { bg: `${color}15`, text: color };
   };
 
@@ -620,13 +621,15 @@ export function CustomerDetailPanel({ customerId, onEdit, onClose }: CustomerDet
                 width: 80,
                 height: 80,
                 borderRadius: 40,
-                backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                backgroundColor: isDark ? '#FFFFFF' : '#111111',
                 alignItems: 'center',
                 justifyContent: 'center',
                 marginBottom: 16,
               }}
             >
-              <UserIcon size={40} color="#10B981" strokeWidth={1.5} />
+              <Text style={{ color: isDark ? '#111111' : '#FFFFFF', fontSize: 28, fontWeight: '700', letterSpacing: 1 }}>
+                {customer.fullName.trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('')}
+              </Text>
             </View>
             <Text style={{ color: colors.text.primary, fontSize: 24, fontWeight: '700', textAlign: 'center' }}>
               {customer.fullName}

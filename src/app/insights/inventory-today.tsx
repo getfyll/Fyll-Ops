@@ -186,7 +186,7 @@ export default function InventoryTodayScreen({ inline }: { inline?: boolean }) {
               <TrendingUp size={18} color={colors.text.tertiary} strokeWidth={2} />
               <Text
                 style={{ color: colors.text.primary }}
-                className="text-lg font-bold ml-2"
+                className={` font-bold ml-2`}
               >
                 Inventory Value
               </Text>
@@ -208,7 +208,7 @@ export default function InventoryTodayScreen({ inline }: { inline?: boolean }) {
               <RotateCcw size={18} color={colors.text.tertiary} strokeWidth={2} />
               <Text
                 style={{ color: colors.text.primary }}
-                className="text-lg font-bold ml-2"
+                className={` font-bold ml-2`}
               >
                 Today's Restocks
               </Text>
@@ -285,7 +285,7 @@ export default function InventoryTodayScreen({ inline }: { inline?: boolean }) {
                     <AlertTriangle size={18} color={colors.warning} strokeWidth={2} />
                     <Text
                       style={{ color: colors.text.primary }}
-                      className="text-lg font-bold ml-2"
+                      className={` font-bold ml-2`}
                     >
                       Low Stock Alert
                     </Text>
@@ -355,7 +355,7 @@ export default function InventoryTodayScreen({ inline }: { inline?: boolean }) {
                     <PackageX size={18} color={colors.danger} strokeWidth={2} />
                     <Text
                       style={{ color: colors.text.primary }}
-                      className="text-lg font-bold ml-2"
+                      className={` font-bold ml-2`}
                     >
                       Out of Stock
                     </Text>

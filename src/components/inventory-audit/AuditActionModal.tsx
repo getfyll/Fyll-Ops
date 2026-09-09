@@ -47,14 +47,14 @@ export function AuditActionModal({
               className="flex-1 rounded-full items-center justify-center"
               style={{ height: 48, backgroundColor: colors.bg.secondary }}
             >
-              <Text style={{ color: colors.text.secondary }} className="font-semibold">{cancelLabel}</Text>
+              <Text style={{ color: colors.text.secondary, fontSize: 14, fontWeight: '700' }}>{cancelLabel}</Text>
             </Pressable>
             <Pressable
               onPress={onConfirm}
               className="flex-1 rounded-full items-center justify-center"
               style={{ height: 48, backgroundColor: confirmBackgroundColor }}
             >
-              <Text style={{ color: confirmTextColor }} className="font-semibold">{confirmLabel}</Text>
+              <Text style={{ color: confirmTextColor, fontSize: 14, fontWeight: '700' }}>{confirmLabel}</Text>
             </Pressable>
           </View>
         </Pressable>

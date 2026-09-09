@@ -10,13 +10,19 @@ import type {
   Product,
   Order,
   Customer,
+  DeletedItem,
   RestockLog,
   Procurement,
   Expense,
+  OtherIncome,
   ExpenseRequest,
   RefundRequest,
   Case,
+  ReturnRequest,
   AuditLog,
+  Partner,
+  PartnerJob,
+  PartnerJobIssue,
   OrderStatus,
   SaleSource,
   CustomService,
@@ -29,8 +35,18 @@ import type {
   FinanceSupplier,
   ProcurementStatusOption,
   FixedCostSetting,
+  SalaryTemplate,
   FinanceRules,
+  WarehouseItem,
+  WarehouseCategoryOption,
+  WarehouseUnitOption,
+  OrderTimelineSettings,
 } from '@/lib/state/fyll-store';
+import {
+  DEFAULT_ORDER_QC_REQUIREMENTS,
+  sanitizeOrderQcRequirements,
+  type OrderQcRequirement,
+} from '@/lib/order-qc';
 
 const TABLES = {
   products: 'products',
@@ -39,10 +55,16 @@ const TABLES = {
   restockLogs: 'restock_logs',
   procurements: 'procurements',
   expenses: 'expenses',
+  otherIncomes: 'other_incomes',
   expenseRequests: 'expense_requests',
   refundRequests: 'refund_requests',
   cases: 'cases',
+  returns: 'returns',
   auditLogs: 'audit_logs',
+  partners: 'partners',
+  partnerJobs: 'partner_jobs',
+  partnerJobIssues: 'partner_job_issues',
+  deletedItems: 'deleted_items',
 };
 
 const SYNC_FINANCE_TABLES = true;
@@ -50,6 +72,7 @@ const ACTIVE_DATA_TABLES = Object.values(TABLES).filter((table) => {
   if (!SYNC_FINANCE_TABLES && (
     table === TABLES.procurements
     || table === TABLES.expenses
+    || table === TABLES.otherIncomes
     || table === TABLES.expenseRequests
     || table === TABLES.refundRequests
   )) {
@@ -74,10 +97,16 @@ const DATA_TABLE_TO_STORE_KEY = {
   [TABLES.restockLogs]: 'restockLogs',
   [TABLES.procurements]: 'procurements',
   [TABLES.expenses]: 'expenses',
+  [TABLES.otherIncomes]: 'otherIncomes',
   [TABLES.expenseRequests]: 'expenseRequests',
   [TABLES.refundRequests]: 'refundRequests',
   [TABLES.cases]: 'cases',
+  [TABLES.returns]: 'returns',
   [TABLES.auditLogs]: 'auditLogs',
+  [TABLES.partners]: 'partners',
+  [TABLES.partnerJobs]: 'partnerJobs',
+  [TABLES.partnerJobIssues]: 'partnerJobIssues',
+  [TABLES.deletedItems]: 'recycleBin',
 } as const;
 
 const IS_WEB = Platform.OS === 'web';
@@ -88,8 +117,10 @@ type GlobalSettingsPayload = {
   categories: string[];
   productVariables: ProductVariable[];
   orderStatuses: OrderStatus[];
+  qcChecklistRequirements: OrderQcRequirement[];
   saleSources: SaleSource[];
   customServices: CustomService[];
+  orderTimelineSettings: OrderTimelineSettings;
   paymentMethods: PaymentMethod[];
   logisticsCarriers: LogisticsCarrier[];
   expenseCategories: ExpenseCategory[];
@@ -101,9 +132,18 @@ type GlobalSettingsPayload = {
   autoCompleteFromStatus: string;
   autoCompleteToStatus: string;
   orderAutomations: OrderAutomationRule[];
+  deliveryFollowUpEnabled: boolean;
+  deliveryFollowUpDelayDays: number;
+  deliveryFollowUpResendDays: number;
+  deliveryFollowUpFromName: string;
+  orderStatusEmailEnabled: boolean;
   financeSuppliers: FinanceSupplier[];
   procurementStatusOptions: ProcurementStatusOption[];
   fixedCosts: FixedCostSetting[];
+  salaryTemplates: SalaryTemplate[];
+  warehouseItems: WarehouseItem[];
+  warehouseCategories: WarehouseCategoryOption[];
+  warehouseUnits: WarehouseUnitOption[];
   financeRules: FinanceRules;
 };
 
@@ -116,10 +156,51 @@ type BusinessSettingsData = {
   autoCompleteFromStatus?: string;
   autoCompleteToStatus?: string;
   orderAutomations?: OrderAutomationRule[];
+  deliveryFollowUpEnabled?: boolean;
+  deliveryFollowUpDelayDays?: number;
+  deliveryFollowUpResendDays?: number;
+  deliveryFollowUpFromName?: string;
+  orderStatusEmailEnabled?: boolean;
+  orderTimelineSettings?: OrderTimelineSettings;
+  qcChecklistRequirements?: OrderQcRequirement[];
   financeSuppliers?: FinanceSupplier[];
   procurementStatusOptions?: ProcurementStatusOption[];
   fixedCosts?: FixedCostSetting[];
+  salaryTemplates?: SalaryTemplate[];
+  warehouseItems?: WarehouseItem[];
+  warehouseCategories?: WarehouseCategoryOption[];
+  warehouseUnits?: WarehouseUnitOption[];
   financeRules?: FinanceRules;
+};
+
+const getGlobalBusinessSettingsData = (
+  rows: Array<{ id: string; data: BusinessSettingsData; updated_at?: string | null; created_at?: string | null }>
+) => {
+  const getRowScore = (row: { data: BusinessSettingsData }) => {
+    const settings = row.data?.orderTimelineSettings;
+    const orderTypes = settings?.orderTypes ?? [];
+    const shippingZones = settings?.shippingZones ?? [];
+    const workflowSteps = orderTypes.reduce((total, item) => (
+      total + (Array.isArray(item.workflowStatusIds) ? item.workflowStatusIds.length : 0)
+    ), 0);
+    return (orderTypes.length * 100) + (shippingZones.length * 10) + workflowSteps;
+  };
+  const getRowTime = (row: { updated_at?: string | null; created_at?: string | null }) => (
+    new Date(row.updated_at ?? row.created_at ?? 0).getTime() || 0
+  );
+  const candidates = rows.filter((row) => row.id === 'global' || row.data?.id === 'global');
+  const usableRows = candidates.length > 0 ? candidates : rows;
+  const bestRow = usableRows.reduce<typeof usableRows[number] | null>((best, row) => {
+    if (!best) return row;
+    const scoreDelta = getRowScore(row) - getRowScore(best);
+    if (scoreDelta > 0) return row;
+    if (scoreDelta === 0) {
+      const timeDelta = getRowTime(row) - getRowTime(best);
+      if (timeDelta > 0) return row;
+    }
+    return best;
+  }, null);
+  return bestRow?.data;
 };
 
 const DEFAULT_PROCUREMENT_STATUS_OPTIONS: ProcurementStatusOption[] = [
@@ -134,6 +215,9 @@ const toIdSet = (items: { id: string }[]) => new Set(items.map((item) => item.id
 const mapData = <T>(rows: { data: T }[]) => rows.map((row) => row.data);
 const sortById = <T extends { id: string }>(items: T[]) => (
   [...items].sort((a, b) => a.id.localeCompare(b.id))
+);
+const sortByKey = <T extends { key: string }>(items: T[]) => (
+  [...items].sort((a, b) => a.key.localeCompare(b.key))
 );
 
 const SETTINGS_TABLES = {
@@ -476,13 +560,20 @@ export function useSupabaseSync() {
   const restockLogs = useFyllStore((s) => s.restockLogs);
   const procurements = useFyllStore((s) => s.procurements);
   const expenses = useFyllStore((s) => s.expenses);
+  const otherIncomes = useFyllStore((s) => s.otherIncomes);
   const expenseRequests = useFyllStore((s) => s.expenseRequests);
   const refundRequests = useFyllStore((s) => s.refundRequests);
   const cases = useFyllStore((s) => s.cases);
+  const returns = useFyllStore((s) => s.returns);
   const auditLogs = useFyllStore((s) => s.auditLogs);
+  const partners = useFyllStore((s) => s.partners);
+  const partnerJobs = useFyllStore((s) => s.partnerJobs);
+  const partnerJobIssues = useFyllStore((s) => s.partnerJobIssues);
+  const recycleBin = useFyllStore((s) => s.recycleBin);
   const categories = useFyllStore((s) => s.categories);
   const productVariables = useFyllStore((s) => s.productVariables);
   const orderStatuses = useFyllStore((s) => s.orderStatuses);
+  const qcChecklistRequirements = useFyllStore((s) => s.qcChecklistRequirements);
   const saleSources = useFyllStore((s) => s.saleSources);
   const customServices = useFyllStore((s) => s.customServices);
   const paymentMethods = useFyllStore((s) => s.paymentMethods);
@@ -491,7 +582,12 @@ export function useSupabaseSync() {
   const financeSuppliers = useFyllStore((s) => s.financeSuppliers);
   const procurementStatusOptions = useFyllStore((s) => s.procurementStatusOptions);
   const fixedCosts = useFyllStore((s) => s.fixedCosts);
+  const salaryTemplates = useFyllStore((s) => s.salaryTemplates);
+  const warehouseItems = useFyllStore((s) => s.warehouseItems);
+  const warehouseCategories = useFyllStore((s) => s.warehouseCategories);
+  const warehouseUnits = useFyllStore((s) => s.warehouseUnits);
   const financeRules = useFyllStore((s) => s.financeRules);
+  const orderTimelineSettings = useFyllStore((s) => s.orderTimelineSettings);
   const caseStatuses = useFyllStore((s) => s.caseStatuses);
   const useGlobalLowStockThreshold = useFyllStore((s) => s.useGlobalLowStockThreshold);
   const globalLowStockThreshold = useFyllStore((s) => s.globalLowStockThreshold);
@@ -500,6 +596,11 @@ export function useSupabaseSync() {
   const autoCompleteFromStatus = useFyllStore((s) => s.autoCompleteFromStatus);
   const autoCompleteToStatus = useFyllStore((s) => s.autoCompleteToStatus);
   const orderAutomations = useFyllStore((s) => s.orderAutomations);
+  const deliveryFollowUpEnabled = useFyllStore((s) => s.deliveryFollowUpEnabled);
+  const deliveryFollowUpDelayDays = useFyllStore((s) => s.deliveryFollowUpDelayDays);
+  const deliveryFollowUpResendDays = useFyllStore((s) => s.deliveryFollowUpResendDays);
+  const deliveryFollowUpFromName = useFyllStore((s) => s.deliveryFollowUpFromName);
+  const orderStatusEmailEnabled = useFyllStore((s) => s.orderStatusEmailEnabled);
   const isBackgroundSyncing = useFyllStore((s) => s.isBackgroundSyncing);
 
   const prevProductIds = useRef<Set<string>>(new Set());
@@ -508,10 +609,16 @@ export function useSupabaseSync() {
   const prevRestockIds = useRef<Set<string>>(new Set());
   const prevProcurementIds = useRef<Set<string>>(new Set());
   const prevExpenseIds = useRef<Set<string>>(new Set());
+  const prevOtherIncomeIds = useRef<Set<string>>(new Set());
   const prevExpenseRequestIds = useRef<Set<string>>(new Set());
   const prevRefundRequestIds = useRef<Set<string>>(new Set());
   const prevCaseIds = useRef<Set<string>>(new Set());
+  const prevReturnIds = useRef<Set<string>>(new Set());
   const prevAuditLogIds = useRef<Set<string>>(new Set());
+  const prevPartnerIds = useRef<Set<string>>(new Set());
+  const prevPartnerJobIds = useRef<Set<string>>(new Set());
+  const prevPartnerJobIssueIds = useRef<Set<string>>(new Set());
+  const prevRecycleBinIds = useRef<Set<string>>(new Set());
   const prevOrderStatusIds = useRef<Set<string>>(new Set());
   const prevSaleSourceIds = useRef<Set<string>>(new Set());
   const prevCustomServiceIds = useRef<Set<string>>(new Set());
@@ -524,17 +631,20 @@ export function useSupabaseSync() {
   const lastSettingsSyncSignatureRef = useRef<string>('');
   const pendingSettingsSyncSignatureRef = useRef<string | null>(null);
   const hasHydratedBusinessSettingsRef = useRef(false);
+  const hasLoadedRemoteBusinessSettingsRef = useRef(false);
 
   useEffect(() => {
     if (!isAuthenticated || !businessId || isOfflineMode) {
       setIsInitialized(false);
       hasHydratedBusinessSettingsRef.current = false;
+      hasLoadedRemoteBusinessSettingsRef.current = false;
       return;
     }
 
     let cancelled = false;
     setIsInitialized(false);
     hasHydratedBusinessSettingsRef.current = false;
+    hasLoadedRemoteBusinessSettingsRef.current = false;
 
     const seedPrevIdsFromStore = () => {
       const seeded = useFyllStore.getState();
@@ -544,10 +654,16 @@ export function useSupabaseSync() {
       prevRestockIds.current = toIdSet(seeded.restockLogs);
       prevProcurementIds.current = toIdSet(seeded.procurements);
       prevExpenseIds.current = toIdSet(seeded.expenses);
+      prevOtherIncomeIds.current = toIdSet(seeded.otherIncomes);
       prevExpenseRequestIds.current = toIdSet(seeded.expenseRequests);
       prevRefundRequestIds.current = toIdSet(seeded.refundRequests);
       prevCaseIds.current = toIdSet(seeded.cases);
+      prevReturnIds.current = toIdSet(seeded.returns);
       prevAuditLogIds.current = toIdSet(seeded.auditLogs);
+      prevPartnerIds.current = toIdSet(seeded.partners);
+      prevPartnerJobIds.current = toIdSet(seeded.partnerJobs);
+      prevPartnerJobIssueIds.current = toIdSet(seeded.partnerJobIssues);
+      prevRecycleBinIds.current = toIdSet(seeded.recycleBin);
       prevOrderStatusIds.current = toIdSet(seeded.orderStatuses);
       prevSaleSourceIds.current = toIdSet(seeded.saleSources);
       prevCustomServiceIds.current = toIdSet(seeded.customServices);
@@ -568,10 +684,16 @@ export function useSupabaseSync() {
       restockLogs: RestockLog[];
       procurements: Procurement[];
       expenses: Expense[];
+      otherIncomes: OtherIncome[];
       expenseRequests: ExpenseRequest[];
       refundRequests: RefundRequest[];
       cases: Case[];
+      returns: ReturnRequest[];
       auditLogs: AuditLog[];
+      partners: Partner[];
+      partnerJobs: PartnerJob[];
+      partnerJobIssues: PartnerJobIssue[];
+      recycleBin: DeletedItem[];
       settings?: GlobalSettingsPayload | null;
     }) => {
       const normalizedProducts: Product[] = next.products.map((product): Product => {
@@ -594,10 +716,16 @@ export function useSupabaseSync() {
           restockLogs: next.restockLogs,
           procurements: next.procurements,
           expenses: next.expenses,
+          otherIncomes: next.otherIncomes,
           expenseRequests: next.expenseRequests,
           refundRequests: next.refundRequests,
           cases: next.cases,
+          returns: next.returns,
           auditLogs: next.auditLogs,
+          partners: next.partners,
+          partnerJobs: next.partnerJobs,
+          partnerJobIssues: next.partnerJobIssues,
+          recycleBin: next.recycleBin,
           categories: next.settings.categories,
           productVariables: next.settings.productVariables,
           orderStatuses: next.settings.orderStatuses,
@@ -609,8 +737,14 @@ export function useSupabaseSync() {
           financeSuppliers: next.settings.financeSuppliers,
           procurementStatusOptions: next.settings.procurementStatusOptions,
           fixedCosts: next.settings.fixedCosts,
+          salaryTemplates: next.settings.salaryTemplates,
+          warehouseItems: next.settings.warehouseItems,
+          warehouseCategories: next.settings.warehouseCategories,
+          warehouseUnits: next.settings.warehouseUnits,
+          qcChecklistRequirements: sanitizeOrderQcRequirements(next.settings.qcChecklistRequirements, false),
           caseStatuses: next.settings.caseStatuses,
           financeRules: next.settings.financeRules,
+          orderTimelineSettings: next.settings.orderTimelineSettings,
           useGlobalLowStockThreshold: next.settings.useGlobalLowStockThreshold,
           globalLowStockThreshold: next.settings.globalLowStockThreshold,
           autoCompleteOrders: next.settings.autoCompleteOrders,
@@ -618,6 +752,11 @@ export function useSupabaseSync() {
           autoCompleteFromStatus: next.settings.autoCompleteFromStatus,
           autoCompleteToStatus: next.settings.autoCompleteToStatus,
           orderAutomations: next.settings.orderAutomations,
+          deliveryFollowUpEnabled: next.settings.deliveryFollowUpEnabled,
+          deliveryFollowUpDelayDays: next.settings.deliveryFollowUpDelayDays,
+          deliveryFollowUpResendDays: next.settings.deliveryFollowUpResendDays,
+          deliveryFollowUpFromName: next.settings.deliveryFollowUpFromName,
+          orderStatusEmailEnabled: next.settings.orderStatusEmailEnabled,
         });
       } else {
         useFyllStore.setState({
@@ -627,10 +766,16 @@ export function useSupabaseSync() {
           restockLogs: next.restockLogs,
           procurements: next.procurements,
           expenses: next.expenses,
+          otherIncomes: next.otherIncomes,
           expenseRequests: next.expenseRequests,
           refundRequests: next.refundRequests,
           cases: next.cases,
+          returns: next.returns,
           auditLogs: next.auditLogs,
+          partners: next.partners,
+          partnerJobs: next.partnerJobs,
+          partnerJobIssues: next.partnerJobIssues,
+          recycleBin: next.recycleBin,
         });
       }
       prevProductIds.current = toIdSet(normalizedProducts);
@@ -639,10 +784,16 @@ export function useSupabaseSync() {
       prevRestockIds.current = toIdSet(next.restockLogs);
       prevProcurementIds.current = toIdSet(next.procurements);
       prevExpenseIds.current = toIdSet(next.expenses);
+      prevOtherIncomeIds.current = toIdSet(next.otherIncomes);
       prevExpenseRequestIds.current = toIdSet(next.expenseRequests);
       prevRefundRequestIds.current = toIdSet(next.refundRequests);
       prevCaseIds.current = toIdSet(next.cases);
+      prevReturnIds.current = toIdSet(next.returns);
       prevAuditLogIds.current = toIdSet(next.auditLogs);
+      prevPartnerIds.current = toIdSet(next.partners);
+      prevPartnerJobIds.current = toIdSet(next.partnerJobs);
+      prevPartnerJobIssueIds.current = toIdSet(next.partnerJobIssues);
+      prevRecycleBinIds.current = toIdSet(next.recycleBin);
       if (next.settings) {
         prevOrderStatusIds.current = toIdSet(next.settings.orderStatuses);
         prevSaleSourceIds.current = toIdSet(next.settings.saleSources);
@@ -658,7 +809,7 @@ export function useSupabaseSync() {
     };
 
     const applyDataSlice = <T extends { id: string }>(
-      key: 'products' | 'orders' | 'customers' | 'restockLogs' | 'procurements' | 'expenses' | 'expenseRequests' | 'refundRequests' | 'cases' | 'auditLogs',
+      key: 'products' | 'orders' | 'customers' | 'restockLogs' | 'procurements' | 'expenses' | 'otherIncomes' | 'expenseRequests' | 'refundRequests' | 'cases' | 'returns' | 'auditLogs' | 'partners' | 'partnerJobs' | 'partnerJobIssues' | 'recycleBin',
       rows: { data: T }[],
     ) => {
       const items = rows.map((row) => row.data);
@@ -681,10 +832,16 @@ export function useSupabaseSync() {
       if (key === 'restockLogs') prevRestockIds.current = toIdSet(nextItems);
       if (key === 'procurements') prevProcurementIds.current = toIdSet(nextItems);
       if (key === 'expenses') prevExpenseIds.current = toIdSet(nextItems);
+      if (key === 'otherIncomes') prevOtherIncomeIds.current = toIdSet(nextItems);
       if (key === 'expenseRequests') prevExpenseRequestIds.current = toIdSet(nextItems);
       if (key === 'refundRequests') prevRefundRequestIds.current = toIdSet(nextItems);
       if (key === 'cases') prevCaseIds.current = toIdSet(nextItems);
+      if (key === 'returns') prevReturnIds.current = toIdSet(nextItems);
       if (key === 'auditLogs') prevAuditLogIds.current = toIdSet(nextItems);
+      if (key === 'partners') prevPartnerIds.current = toIdSet(nextItems);
+      if (key === 'partnerJobs') prevPartnerJobIds.current = toIdSet(nextItems);
+      if (key === 'partnerJobIssues') prevPartnerJobIssueIds.current = toIdSet(nextItems);
+      if (key === 'recycleBin') prevRecycleBinIds.current = toIdSet(nextItems);
     };
 
     const runOrderAutomationAndPersist = async (
@@ -695,12 +852,17 @@ export function useSupabaseSync() {
       const { orders: automatedOrders, changedOrders } = autoCompleteEligibleOrders(ordersToCheck, config);
       if (changedOrders.length === 0) return automatedOrders;
 
+      // Auto-complete only updates the order's status. It intentionally does
+      // not email the customer or notify the business — those notifications
+      // caused a burst of confusing "delivered" emails when a backlog of
+      // stale orders crossed the automation's day threshold all at once.
       console.log(`✅ Auto-completed ${changedOrders.length} orders (${reason})`);
       try {
         await supabaseData.upsertCollection(TABLES.orders, businessId, changedOrders);
       } catch (error) {
         console.warn('Auto-complete orders sync failed:', error);
       }
+
       return automatedOrders;
     };
 
@@ -711,10 +873,15 @@ export function useSupabaseSync() {
       if (key === 'restockLogs') prevRestockIds.current = toIdSet(items);
       if (key === 'procurements') prevProcurementIds.current = toIdSet(items);
       if (key === 'expenses') prevExpenseIds.current = toIdSet(items);
+      if (key === 'otherIncomes') prevOtherIncomeIds.current = toIdSet(items);
       if (key === 'expenseRequests') prevExpenseRequestIds.current = toIdSet(items);
       if (key === 'refundRequests') prevRefundRequestIds.current = toIdSet(items);
       if (key === 'cases') prevCaseIds.current = toIdSet(items);
       if (key === 'auditLogs') prevAuditLogIds.current = toIdSet(items);
+      if (key === 'partners') prevPartnerIds.current = toIdSet(items);
+      if (key === 'partnerJobs') prevPartnerJobIds.current = toIdSet(items);
+      if (key === 'partnerJobIssues') prevPartnerJobIssueIds.current = toIdSet(items);
+      if (key === 'recycleBin') prevRecycleBinIds.current = toIdSet(items);
     };
 
     const applyRealtimeDataPayload = (table: string, payload: any): boolean => {
@@ -847,7 +1014,9 @@ export function useSupabaseSync() {
           prevCaseStatusIds.current = toIdSet(items);
           break;
         case SETTINGS_TABLES.businessSettings: {
-          const businessSettings = rows[0]?.data as BusinessSettingsData | undefined;
+          const businessSettings = getGlobalBusinessSettingsData(
+            rows as Array<{ id: string; data: BusinessSettingsData }>
+          );
           const fallbackFromStore = useFyllStore.getState();
           const normalizedOrderAutomations = normalizeOrderAutomations(
             businessSettings?.orderAutomations ?? [],
@@ -878,6 +1047,29 @@ export function useSupabaseSync() {
             autoCompleteFromStatus: legacyAutomation.autoCompleteFromStatus,
             autoCompleteToStatus: legacyAutomation.autoCompleteToStatus,
             orderAutomations: normalizedOrderAutomations,
+            deliveryFollowUpEnabled: businessSettings?.deliveryFollowUpEnabled
+              ?? useFyllStore.getState().deliveryFollowUpEnabled
+              ?? false,
+            deliveryFollowUpDelayDays: businessSettings?.deliveryFollowUpDelayDays
+              ?? useFyllStore.getState().deliveryFollowUpDelayDays
+              ?? 7,
+            deliveryFollowUpResendDays: businessSettings?.deliveryFollowUpResendDays
+              ?? useFyllStore.getState().deliveryFollowUpResendDays
+              ?? 7,
+            deliveryFollowUpFromName: typeof businessSettings?.deliveryFollowUpFromName === 'string'
+              ? businessSettings.deliveryFollowUpFromName
+              : useFyllStore.getState().deliveryFollowUpFromName,
+            orderStatusEmailEnabled: businessSettings?.orderStatusEmailEnabled
+              ?? useFyllStore.getState().orderStatusEmailEnabled
+              ?? false,
+            orderTimelineSettings: businessSettings?.orderTimelineSettings
+              ?? fallbackFromStore.orderTimelineSettings,
+            qcChecklistRequirements: sanitizeOrderQcRequirements(
+              businessSettings?.qcChecklistRequirements
+                ?? fallbackFromStore.qcChecklistRequirements
+                ?? DEFAULT_ORDER_QC_REQUIREMENTS,
+              false
+            ),
             financeSuppliers: businessSettings?.financeSuppliers
               ?? fallbackFromStore.financeSuppliers
               ?? [],
@@ -889,9 +1081,22 @@ export function useSupabaseSync() {
             fixedCosts: businessSettings?.fixedCosts
               ?? fallbackFromStore.fixedCosts
               ?? [],
+            salaryTemplates: businessSettings?.salaryTemplates
+              ?? fallbackFromStore.salaryTemplates
+              ?? [],
+            warehouseItems: businessSettings?.warehouseItems
+              ?? fallbackFromStore.warehouseItems
+              ?? [],
+            warehouseCategories: businessSettings?.warehouseCategories
+              ?? fallbackFromStore.warehouseCategories
+              ?? [],
+            warehouseUnits: businessSettings?.warehouseUnits
+              ?? fallbackFromStore.warehouseUnits
+              ?? [],
             financeRules: businessSettings?.financeRules
               ?? fallbackFromStore.financeRules,
           });
+          hasLoadedRemoteBusinessSettingsRef.current = true;
           hasHydratedBusinessSettingsRef.current = true;
           break;
         }
@@ -934,6 +1139,9 @@ export function useSupabaseSync() {
             case TABLES.expenses:
               applyDataSlice('expenses', await supabaseData.fetchCollection<Expense>(TABLES.expenses, businessId));
               break;
+            case TABLES.otherIncomes:
+              applyDataSlice('otherIncomes', await supabaseData.fetchCollection<OtherIncome>(TABLES.otherIncomes, businessId));
+              break;
             case TABLES.expenseRequests:
               applyDataSlice('expenseRequests', await supabaseData.fetchCollection<ExpenseRequest>(TABLES.expenseRequests, businessId));
               break;
@@ -943,11 +1151,29 @@ export function useSupabaseSync() {
             case TABLES.cases:
               applyDataSlice('cases', await supabaseData.fetchCollection<Case>(TABLES.cases, businessId));
               break;
+            case TABLES.returns:
+              applyDataSlice('returns', await supabaseData.fetchCollection<ReturnRequest>(TABLES.returns, businessId));
+              break;
             case TABLES.auditLogs:
               applyDataSlice(
                 'auditLogs',
                 await supabaseData.fetchCollection<AuditLog>(TABLES.auditLogs, businessId, { orderBy: 'updated_at', limit: 500 })
               );
+              break;
+            case TABLES.deletedItems:
+              applyDataSlice(
+                'recycleBin',
+                await supabaseData.fetchCollection<DeletedItem>(TABLES.deletedItems, businessId, { orderBy: 'updated_at', limit: 500 })
+              );
+              break;
+            case TABLES.partners:
+              applyDataSlice('partners', await supabaseData.fetchCollection<Partner>(TABLES.partners, businessId));
+              break;
+            case TABLES.partnerJobs:
+              applyDataSlice('partnerJobs', await supabaseData.fetchCollection<PartnerJob>(TABLES.partnerJobs, businessId));
+              break;
+            case TABLES.partnerJobIssues:
+              applyDataSlice('partnerJobIssues', await supabaseData.fetchCollection<PartnerJobIssue>(TABLES.partnerJobIssues, businessId));
               break;
             default:
               break;
@@ -1001,12 +1227,18 @@ export function useSupabaseSync() {
         const localOrders = localState.orders;
         const localCustomers = localState.customers;
         const localCases = localState.cases;
+        const localReturns = localState.returns;
         const localRestockLogs = localState.restockLogs;
         const localProcurements = localState.procurements;
         const localExpenses = localState.expenses;
+        const localOtherIncomes = localState.otherIncomes;
         const localExpenseRequests = localState.expenseRequests;
         const localRefundRequests = localState.refundRequests;
         const localAuditLogs = localState.auditLogs;
+        const localPartners = localState.partners;
+        const localPartnerJobs = localState.partnerJobs;
+        const localPartnerJobIssues = localState.partnerJobIssues;
+        const localRecycleBin = localState.recycleBin;
         // ── Wave 1: Minimal startup data (recent products/orders/customers/cases only) ──
         // Keep first paint fast; load settings and full datasets in Wave 2.
         const [
@@ -1014,6 +1246,7 @@ export function useSupabaseSync() {
           orderRowsResult,
           customerRowsResult,
           caseRowsResult,
+          returnRowsResult,
         ] = await Promise.allSettled([
           withTimeout(
             supabaseData.fetchCollection<Product>(TABLES.products, businessId, {
@@ -1047,12 +1280,21 @@ export function useSupabaseSync() {
             STARTUP_QUERY_TIMEOUT_MS,
             'Startup cases query'
           ),
+          withTimeout(
+            supabaseData.fetchCollection<ReturnRequest>(TABLES.returns, businessId, {
+              orderBy: 'updated_at',
+              limit: IS_WEB ? undefined : WAVE1_CASES_LIMIT,
+            }),
+            STARTUP_QUERY_TIMEOUT_MS,
+            'Startup returns query'
+          ),
         ]);
 
         const productRows = productRowsResult.status === 'fulfilled' ? productRowsResult.value : [];
         const orderRows = orderRowsResult.status === 'fulfilled' ? orderRowsResult.value : [];
         const customerPreviewRows = customerRowsResult.status === 'fulfilled' ? customerRowsResult.value : [];
         const casePreviewRows = caseRowsResult.status === 'fulfilled' ? caseRowsResult.value : [];
+        const returnPreviewRows = returnRowsResult.status === 'fulfilled' ? returnRowsResult.value : [];
 
         if (productRowsResult.status === 'rejected') {
           console.warn('Wave 1 products preview failed:', productRowsResult.reason);
@@ -1066,11 +1308,15 @@ export function useSupabaseSync() {
         if (caseRowsResult.status === 'rejected') {
           console.warn('Wave 1 cases preview failed:', caseRowsResult.reason);
         }
+        if (returnRowsResult.status === 'rejected') {
+          console.warn('Wave 1 returns preview failed:', returnRowsResult.reason);
+        }
 
         const remoteProducts = productRows.map((row) => row.data);
         const remoteOrdersPreview = orderRows.map((row) => row.data);
         const remoteCustomersPreview = customerPreviewRows.map((row) => row.data);
         const remoteCasesPreview = casePreviewRows.map((row) => row.data);
+        const remoteReturnsPreview = returnPreviewRows.map((row) => row.data);
 
         // Apply Wave 1 data immediately so the app can show recent items without flicker.
         if (!cancelled) {
@@ -1078,6 +1324,7 @@ export function useSupabaseSync() {
           const wave1Orders = remoteOrdersPreview.length > 0 ? mergeById(localOrders, remoteOrdersPreview) : localOrders;
           const wave1Customers = remoteCustomersPreview.length > 0 ? mergeById(localCustomers, remoteCustomersPreview) : localCustomers;
           const wave1Cases = remoteCasesPreview.length > 0 ? mergeById(localCases, remoteCasesPreview) : localCases;
+          const wave1Returns = remoteReturnsPreview.length > 0 ? mergeById(localReturns, remoteReturnsPreview) : localReturns;
           const shouldRestoreProductsFromLocal = (
             productRowsResult.status === 'fulfilled'
             && remoteProducts.length === 0
@@ -1095,10 +1342,16 @@ export function useSupabaseSync() {
             restockLogs: localRestockLogs,
             procurements: localProcurements,
             expenses: localExpenses,
+            otherIncomes: localOtherIncomes,
             expenseRequests: localExpenseRequests,
             refundRequests: localRefundRequests,
             cases: wave1Cases,
+            returns: wave1Returns,
             auditLogs: localAuditLogs,
+            partners: localPartners,
+            partnerJobs: localPartnerJobs,
+            partnerJobIssues: localPartnerJobIssues,
+            recycleBin: localRecycleBin,
           });
 
           // Mark as initialized — the app UI can now show
@@ -1158,6 +1411,11 @@ export function useSupabaseSync() {
                 businessId,
                 useIncrementalDataSync ? { orderBy: 'updated_at', updatedAfter: deltaSince } : { orderBy: 'updated_at' }
               ),
+              supabaseData.fetchCollection<ReturnRequest>(
+                TABLES.returns,
+                businessId,
+                useIncrementalDataSync ? { orderBy: 'updated_at', updatedAfter: deltaSince } : { orderBy: 'updated_at' }
+              ),
               supabaseData.fetchCollection<RestockLog>(
                 TABLES.restockLogs,
                 businessId,
@@ -1177,6 +1435,13 @@ export function useSupabaseSync() {
                     useIncrementalDataSync ? { updatedAfter: deltaSince } : undefined
                   )
                 : Promise.resolve(asRows(localExpenses)),
+              SYNC_FINANCE_TABLES
+                ? supabaseData.fetchCollection<OtherIncome>(
+                    TABLES.otherIncomes,
+                    businessId,
+                    useIncrementalDataSync ? { updatedAfter: deltaSince } : undefined
+                  )
+                : Promise.resolve(asRows(localOtherIncomes)),
               SYNC_FINANCE_TABLES
                 ? supabaseData.fetchCollection<ExpenseRequest>(
                     TABLES.expenseRequests,
@@ -1198,6 +1463,28 @@ export function useSupabaseSync() {
                   ? { orderBy: 'updated_at', updatedAfter: deltaSince }
                   : { orderBy: 'updated_at', limit: 500 }
               ),
+              supabaseData.fetchCollection<DeletedItem>(
+                TABLES.deletedItems,
+                businessId,
+                useIncrementalDataSync
+                  ? { orderBy: 'updated_at', updatedAfter: deltaSince }
+                  : { orderBy: 'updated_at', limit: 500 }
+              ),
+              supabaseData.fetchCollection<Partner>(
+                TABLES.partners,
+                businessId,
+                useIncrementalDataSync ? { updatedAfter: deltaSince } : undefined
+              ),
+              supabaseData.fetchCollection<PartnerJob>(
+                TABLES.partnerJobs,
+                businessId,
+                useIncrementalDataSync ? { updatedAfter: deltaSince } : undefined
+              ),
+              supabaseData.fetchCollection<PartnerJobIssue>(
+                TABLES.partnerJobIssues,
+                businessId,
+                useIncrementalDataSync ? { updatedAfter: deltaSince } : undefined
+              ),
               supabaseSettings.fetchSettings<OrderStatus>(SETTINGS_TABLES.orderStatuses, businessId),
               supabaseSettings.fetchSettings<SaleSource>(SETTINGS_TABLES.saleSources, businessId),
               supabaseSettings.fetchSettings<CustomService>(SETTINGS_TABLES.customServices, businessId),
@@ -1218,12 +1505,18 @@ export function useSupabaseSync() {
               orderDataRowsResult,
               customerRowsResult,
               caseRowsResult,
+              returnRowsResult,
               restockRowsResult,
               procurementRowsResult,
               expenseRowsResult,
+              otherIncomeRowsResult,
               expenseRequestRowsResult,
               refundRequestRowsResult,
               auditLogRowsResult,
+              recycleBinRowsResult,
+              partnerRowsResult,
+              partnerJobRowsResult,
+              partnerJobIssueRowsResult,
               orderStatusRowsResult,
               saleSourceRowsResult,
               customServiceRowsResult,
@@ -1240,12 +1533,18 @@ export function useSupabaseSync() {
             const orderDataRows = resolveSettled(orderDataRowsResult, asRows(localOrders), 'orders');
             const customerRows = resolveSettled(customerRowsResult, asRows(localCustomers), 'customers');
             const caseRows = resolveSettled(caseRowsResult, asRows(localCases), 'cases');
+            const returnRows = resolveSettled(returnRowsResult, asRows(localReturns), 'returns');
             const restockRows = resolveSettled(restockRowsResult, asRows(localRestockLogs), 'restock logs');
             const procurementRows = resolveSettled(procurementRowsResult, asRows(localProcurements), 'procurements');
             const expenseRows = resolveSettled(expenseRowsResult, asRows(localExpenses), 'expenses');
+            const otherIncomeRows = resolveSettled(otherIncomeRowsResult, asRows(localOtherIncomes), 'other income');
             const expenseRequestRows = resolveSettled(expenseRequestRowsResult, asRows(localExpenseRequests), 'expense requests');
             const refundRequestRows = resolveSettled(refundRequestRowsResult, asRows(localRefundRequests), 'refund requests');
             const auditLogRows = resolveSettled(auditLogRowsResult, asRows(localAuditLogs), 'audit logs');
+            const recycleBinRows = resolveSettled(recycleBinRowsResult, asRows(localRecycleBin), 'recycle bin');
+            const partnerRows = resolveSettled(partnerRowsResult, asRows(localPartners), 'partners');
+            const partnerJobRows = resolveSettled(partnerJobRowsResult, asRows(localPartnerJobs), 'partner jobs');
+            const partnerJobIssueRows = resolveSettled(partnerJobIssueRowsResult, asRows(localPartnerJobIssues), 'partner job issues');
             const orderStatusRows = resolveSettled(orderStatusRowsResult, asRows(localState.orderStatuses), 'order statuses');
             const saleSourceRows = resolveSettled(saleSourceRowsResult, asRows(localState.saleSources), 'sale sources');
             const customServiceRows = resolveSettled(customServiceRowsResult, asRows(localState.customServices), 'custom services');
@@ -1269,14 +1568,26 @@ export function useSupabaseSync() {
                   autoCompleteFromStatus: localState.autoCompleteFromStatus,
                   autoCompleteToStatus: localState.autoCompleteToStatus,
                   orderAutomations: localState.orderAutomations,
+                  deliveryFollowUpEnabled: localState.deliveryFollowUpEnabled,
+                  deliveryFollowUpDelayDays: localState.deliveryFollowUpDelayDays,
+                  deliveryFollowUpResendDays: localState.deliveryFollowUpResendDays,
+                  deliveryFollowUpFromName: localState.deliveryFollowUpFromName,
+                  orderStatusEmailEnabled: localState.orderStatusEmailEnabled,
+                  orderTimelineSettings: localState.orderTimelineSettings,
+                  qcChecklistRequirements: localState.qcChecklistRequirements,
                   financeSuppliers: localState.financeSuppliers,
                   procurementStatusOptions: localState.procurementStatusOptions,
                   fixedCosts: localState.fixedCosts,
+                  salaryTemplates: localState.salaryTemplates,
+                  warehouseItems: localState.warehouseItems,
+                  warehouseCategories: localState.warehouseCategories,
+                  warehouseUnits: localState.warehouseUnits,
                   financeRules: localState.financeRules,
                 },
               }],
               'business settings'
             );
+            const didLoadRemoteBusinessSettings = businessSettingsRowsResult.status === 'fulfilled';
 
             if (!cancelled) {
               applyingRemote.current = true;
@@ -1284,12 +1595,18 @@ export function useSupabaseSync() {
               const incomingOrders = orderDataRows.map((row) => row.data);
               const incomingCustomers = customerRows.map((row) => row.data);
               const incomingCases = caseRows.map((row) => row.data);
+              const incomingReturns = returnRows.map((row) => row.data);
               const incomingRestockLogs = restockRows.map((row) => row.data);
               const incomingProcurements = procurementRows.map((row) => row.data);
               const incomingExpenses = expenseRows.map((row) => row.data);
+              const incomingOtherIncomes = otherIncomeRows.map((row) => row.data);
               const incomingExpenseRequests = expenseRequestRows.map((row) => row.data);
               const incomingRefundRequests = refundRequestRows.map((row) => row.data);
               const incomingAuditLogs = auditLogRows.map((row) => row.data);
+              const incomingRecycleBin = recycleBinRows.map((row) => row.data);
+              const incomingPartners = partnerRows.map((row) => row.data);
+              const incomingPartnerJobs = partnerJobRows.map((row) => row.data);
+              const incomingPartnerJobIssues = partnerJobIssueRows.map((row) => row.data);
 
               const fullProducts = useIncrementalDataSync
                 ? mergeById(localProducts, incomingProducts)
@@ -1303,9 +1620,37 @@ export function useSupabaseSync() {
               const fullCases = useIncrementalDataSync
                 ? mergeById(localCases, incomingCases)
                 : preferExistingOnEmpty(incomingCases, localCases, 'cases full sync');
+              const fullReturns = useIncrementalDataSync
+                ? mergeById(localReturns, incomingReturns)
+                : preferExistingOnEmpty(incomingReturns, localReturns, 'returns full sync');
               const fullRestockLogs = useIncrementalDataSync ? mergeById(localRestockLogs, incomingRestockLogs) : incomingRestockLogs;
-              const fullProcurements = useIncrementalDataSync ? mergeById(localProcurements, incomingProcurements) : incomingProcurements;
+              // Procurements are edited heavily from the web workspace. Keep local optimistic
+              // rows during full sync so freshly duplicated/created orders do not disappear
+              // before the remote snapshot catches up. But never resurrect a procurement that
+              // was explicitly deleted (i.e. moved to the recycle bin) by a stale local cache.
+              const deletedProcurementIds = new Set(
+                [...localRecycleBin, ...incomingRecycleBin]
+                  .filter((item) => item.entityType === 'procurement')
+                  .map((item) => item.entityId)
+              );
+              const fullProcurements = mergeById(localProcurements, incomingProcurements)
+                .filter((procurement) => !deletedProcurementIds.has(procurement.id));
               const fullExpenses = useIncrementalDataSync ? mergeById(localExpenses, incomingExpenses) : incomingExpenses;
+              const fullOtherIncomes = useIncrementalDataSync
+                ? mergeById(localOtherIncomes, incomingOtherIncomes)
+                : preferExistingOnEmpty(incomingOtherIncomes, localOtherIncomes, 'other income full sync');
+              if (
+                !useIncrementalDataSync
+                && otherIncomeRowsResult.status === 'fulfilled'
+                && incomingOtherIncomes.length === 0
+                && localOtherIncomes.length > 0
+              ) {
+                try {
+                  await supabaseData.upsertCollection(TABLES.otherIncomes, businessId, localOtherIncomes);
+                } catch (restoreError) {
+                  console.warn('Other income restore to Supabase failed:', restoreError);
+                }
+              }
               const fullExpenseRequests = useIncrementalDataSync
                 ? mergeById(localExpenseRequests, incomingExpenseRequests)
                 : incomingExpenseRequests;
@@ -1321,8 +1666,22 @@ export function useSupabaseSync() {
                   return bTime - aTime;
                 })
                 .slice(0, 500);
+              const fullRecycleBin = useIncrementalDataSync
+                ? mergeById(localRecycleBin, incomingRecycleBin)
+                : incomingRecycleBin;
+              const fullPartners = useIncrementalDataSync
+                ? mergeById(localPartners, incomingPartners)
+                : incomingPartners;
+              const fullPartnerJobs = useIncrementalDataSync
+                ? mergeById(localPartnerJobs, incomingPartnerJobs)
+                : incomingPartnerJobs;
+              const fullPartnerJobIssues = useIncrementalDataSync
+                ? mergeById(localPartnerJobIssues, incomingPartnerJobIssues)
+                : incomingPartnerJobIssues;
 
-              const businessSettings = businessSettingsRows[0]?.data as BusinessSettingsData | undefined;
+              const businessSettings = getGlobalBusinessSettingsData(
+                businessSettingsRows as Array<{ id: string; data: BusinessSettingsData }>
+              );
               const normalizedOrderAutomations = normalizeOrderAutomations(
                 businessSettings?.orderAutomations ?? [],
                 {
@@ -1343,7 +1702,12 @@ export function useSupabaseSync() {
                 .map((row) => row.data?.name)
                 .filter((name): name is string => typeof name === 'string');
               const remoteProductVariables = mapData(productVariableRows);
-              const remoteOrderStatuses = mapData(orderStatusRows);
+              const remoteOrderStatuses = mapData(orderStatusRows).sort((a, b) => {
+                const aOrder = typeof a.order === 'number' ? a.order : Number.MAX_SAFE_INTEGER;
+                const bOrder = typeof b.order === 'number' ? b.order : Number.MAX_SAFE_INTEGER;
+                if (aOrder !== bOrder) return aOrder - bOrder;
+                return (a.name ?? '').localeCompare(b.name ?? '');
+              });
               const remoteSaleSources = mapData(saleSourceRows);
               const remoteCustomServices = mapData(customServiceRows);
               const remotePaymentMethods = mapData(paymentMethodRows);
@@ -1373,6 +1737,29 @@ export function useSupabaseSync() {
                 autoCompleteFromStatus: legacyAutomation.autoCompleteFromStatus,
                 autoCompleteToStatus: legacyAutomation.autoCompleteToStatus,
                 orderAutomations: normalizedOrderAutomations,
+                deliveryFollowUpEnabled: businessSettings?.deliveryFollowUpEnabled
+                  ?? localSettingsState.deliveryFollowUpEnabled
+                  ?? false,
+                deliveryFollowUpDelayDays: businessSettings?.deliveryFollowUpDelayDays
+                  ?? localSettingsState.deliveryFollowUpDelayDays
+                  ?? 7,
+                deliveryFollowUpResendDays: businessSettings?.deliveryFollowUpResendDays
+                  ?? localSettingsState.deliveryFollowUpResendDays
+                  ?? 7,
+                deliveryFollowUpFromName: typeof businessSettings?.deliveryFollowUpFromName === 'string'
+                  ? businessSettings.deliveryFollowUpFromName
+                  : localSettingsState.deliveryFollowUpFromName,
+                orderStatusEmailEnabled: businessSettings?.orderStatusEmailEnabled
+                  ?? localSettingsState.orderStatusEmailEnabled
+                  ?? false,
+                orderTimelineSettings: businessSettings?.orderTimelineSettings
+                  ?? localSettingsState.orderTimelineSettings,
+                qcChecklistRequirements: sanitizeOrderQcRequirements(
+                  businessSettings?.qcChecklistRequirements
+                    ?? localSettingsState.qcChecklistRequirements
+                    ?? DEFAULT_ORDER_QC_REQUIREMENTS,
+                  false
+                ),
                 financeSuppliers: businessSettings?.financeSuppliers
                   ?? localSettingsState.financeSuppliers
                   ?? [],
@@ -1384,10 +1771,23 @@ export function useSupabaseSync() {
                 fixedCosts: businessSettings?.fixedCosts
                   ?? localSettingsState.fixedCosts
                   ?? [],
+                salaryTemplates: businessSettings?.salaryTemplates
+                  ?? localSettingsState.salaryTemplates
+                  ?? [],
+                warehouseItems: businessSettings?.warehouseItems
+                  ?? localSettingsState.warehouseItems
+                  ?? [],
+                warehouseCategories: businessSettings?.warehouseCategories
+                  ?? localSettingsState.warehouseCategories
+                  ?? [],
+                warehouseUnits: businessSettings?.warehouseUnits
+                  ?? localSettingsState.warehouseUnits
+                  ?? [],
                 financeRules: businessSettings?.financeRules
                   ?? localSettingsState.financeRules,
               };
-              hasHydratedBusinessSettingsRef.current = true;
+              hasLoadedRemoteBusinessSettingsRef.current = didLoadRemoteBusinessSettings;
+              hasHydratedBusinessSettingsRef.current = didLoadRemoteBusinessSettings;
 
               const restoreOps: Promise<unknown>[] = [];
               if (remoteOrderStatuses.length === 0 && remoteSettings.orderStatuses.length > 0) {
@@ -1531,12 +1931,18 @@ export function useSupabaseSync() {
                 orders: autoCompletedOrders,
                 customers: fullCustomers,
                 cases: fullCases,
+                returns: fullReturns,
                 restockLogs: fullRestockLogs,
                 procurements: fullProcurements,
                 expenses: fullExpenses,
+                otherIncomes: fullOtherIncomes,
                 expenseRequests: fullExpenseRequests,
                 refundRequests: fullRefundRequests,
                 auditLogs: fullAuditLogs,
+                partners: fullPartners,
+                partnerJobs: fullPartnerJobs,
+                partnerJobIssues: fullPartnerJobIssues,
+                recycleBin: fullRecycleBin,
                 categories: remoteSettings.categories,
                 productVariables: remoteSettings.productVariables,
                 orderStatuses: remoteSettings.orderStatuses,
@@ -1548,8 +1954,14 @@ export function useSupabaseSync() {
                 financeSuppliers: remoteSettings.financeSuppliers,
                 procurementStatusOptions: remoteSettings.procurementStatusOptions,
                 fixedCosts: remoteSettings.fixedCosts,
+                salaryTemplates: remoteSettings.salaryTemplates,
+                warehouseItems: remoteSettings.warehouseItems,
+                warehouseCategories: remoteSettings.warehouseCategories,
+                warehouseUnits: remoteSettings.warehouseUnits,
+                qcChecklistRequirements: remoteSettings.qcChecklistRequirements,
                 caseStatuses: remoteSettings.caseStatuses,
                 financeRules: remoteSettings.financeRules,
+                orderTimelineSettings: remoteSettings.orderTimelineSettings,
                 useGlobalLowStockThreshold: remoteSettings.useGlobalLowStockThreshold,
                 globalLowStockThreshold: remoteSettings.globalLowStockThreshold,
                 autoCompleteOrders: remoteSettings.autoCompleteOrders,
@@ -1557,6 +1969,11 @@ export function useSupabaseSync() {
                 autoCompleteFromStatus: remoteSettings.autoCompleteFromStatus,
                 autoCompleteToStatus: remoteSettings.autoCompleteToStatus,
                 orderAutomations: remoteSettings.orderAutomations,
+                deliveryFollowUpEnabled: remoteSettings.deliveryFollowUpEnabled,
+                deliveryFollowUpDelayDays: remoteSettings.deliveryFollowUpDelayDays,
+                deliveryFollowUpResendDays: remoteSettings.deliveryFollowUpResendDays,
+                deliveryFollowUpFromName: remoteSettings.deliveryFollowUpFromName,
+                orderStatusEmailEnabled: remoteSettings.orderStatusEmailEnabled,
                 lastDataSyncAt: syncTimestamp,
                 lastFullDataSyncAt: useIncrementalDataSync ? localState.lastFullDataSyncAt : syncTimestamp,
               });
@@ -1564,12 +1981,18 @@ export function useSupabaseSync() {
               prevOrderIds.current = toIdSet(autoCompletedOrders);
               prevCustomerIds.current = toIdSet(fullCustomers);
               prevCaseIds.current = toIdSet(fullCases);
+              prevReturnIds.current = toIdSet(fullReturns);
               prevRestockIds.current = toIdSet(fullRestockLogs);
               prevProcurementIds.current = toIdSet(fullProcurements);
               prevExpenseIds.current = toIdSet(fullExpenses);
+              prevOtherIncomeIds.current = toIdSet(fullOtherIncomes);
               prevExpenseRequestIds.current = toIdSet(fullExpenseRequests);
               prevRefundRequestIds.current = toIdSet(fullRefundRequests);
               prevAuditLogIds.current = toIdSet(fullAuditLogs);
+              prevPartnerIds.current = toIdSet(fullPartners);
+              prevPartnerJobIds.current = toIdSet(fullPartnerJobs);
+              prevPartnerJobIssueIds.current = toIdSet(fullPartnerJobIssues);
+              prevRecycleBinIds.current = toIdSet(fullRecycleBin);
               prevOrderStatusIds.current = toIdSet(remoteSettings.orderStatuses);
               prevSaleSourceIds.current = toIdSet(remoteSettings.saleSources);
               prevCustomServiceIds.current = toIdSet(remoteSettings.customServices);
@@ -1812,6 +2235,12 @@ export function useSupabaseSync() {
   useEffect(() => {
     if (!SYNC_FINANCE_TABLES) return;
     if (!isInitialized || !businessId || isOfflineMode || applyingRemote.current || isBackgroundSyncing) return;
+    safeSyncDeletions(TABLES.otherIncomes, toIdSet(otherIncomes), prevOtherIncomeIds, 'other income');
+  }, [otherIncomes, businessId, isInitialized, isOfflineMode, isBackgroundSyncing, safeSyncDeletions]);
+
+  useEffect(() => {
+    if (!SYNC_FINANCE_TABLES) return;
+    if (!isInitialized || !businessId || isOfflineMode || applyingRemote.current || isBackgroundSyncing) return;
     safeSyncDeletions(TABLES.expenseRequests, toIdSet(expenseRequests), prevExpenseRequestIds, 'expense requests');
   }, [expenseRequests, businessId, isInitialized, isOfflineMode, isBackgroundSyncing, safeSyncDeletions]);
 
@@ -1825,6 +2254,26 @@ export function useSupabaseSync() {
     if (!isInitialized || !businessId || isOfflineMode || applyingRemote.current || isBackgroundSyncing) return;
     safeSyncDeletions(TABLES.cases, toIdSet(cases), prevCaseIds, 'cases');
   }, [cases, businessId, isInitialized, isOfflineMode, isBackgroundSyncing, safeSyncDeletions]);
+
+  useEffect(() => {
+    if (!isInitialized || !businessId || isOfflineMode || applyingRemote.current || isBackgroundSyncing) return;
+    safeSyncDeletions(TABLES.returns, toIdSet(returns), prevReturnIds, 'returns');
+  }, [returns, businessId, isInitialized, isOfflineMode, isBackgroundSyncing, safeSyncDeletions]);
+
+  useEffect(() => {
+    if (!isInitialized || !businessId || isOfflineMode || applyingRemote.current || isBackgroundSyncing) return;
+    safeSyncDeletions(TABLES.partners, toIdSet(partners), prevPartnerIds, 'partners');
+  }, [partners, businessId, isInitialized, isOfflineMode, isBackgroundSyncing, safeSyncDeletions]);
+
+  useEffect(() => {
+    if (!isInitialized || !businessId || isOfflineMode || applyingRemote.current || isBackgroundSyncing) return;
+    safeSyncDeletions(TABLES.partnerJobs, toIdSet(partnerJobs), prevPartnerJobIds, 'partner jobs');
+  }, [partnerJobs, businessId, isInitialized, isOfflineMode, isBackgroundSyncing, safeSyncDeletions]);
+
+  useEffect(() => {
+    if (!isInitialized || !businessId || isOfflineMode || applyingRemote.current || isBackgroundSyncing) return;
+    safeSyncDeletions(TABLES.partnerJobIssues, toIdSet(partnerJobIssues), prevPartnerJobIssueIds, 'partner job issues');
+  }, [partnerJobIssues, businessId, isInitialized, isOfflineMode, isBackgroundSyncing, safeSyncDeletions]);
 
   useEffect(() => {
     if (!isInitialized || !businessId || isOfflineMode || applyingRemote.current || isBackgroundSyncing) return;
@@ -1856,7 +2305,13 @@ export function useSupabaseSync() {
 
   useEffect(() => {
     if (!isInitialized || !businessId || isOfflineMode || applyingRemote.current || isBackgroundSyncing) return;
+    safeSyncDeletions(TABLES.deletedItems, toIdSet(recycleBin), prevRecycleBinIds, 'recycle bin items');
+  }, [recycleBin, businessId, isInitialized, isOfflineMode, isBackgroundSyncing, safeSyncDeletions]);
+
+  useEffect(() => {
+    if (!isInitialized || !businessId || isOfflineMode || applyingRemote.current || isBackgroundSyncing) return;
     if (!hasHydratedBusinessSettingsRef.current) return;
+    if (!hasLoadedRemoteBusinessSettingsRef.current) return;
 
     const nextOrderStatusIds = toIdSet(orderStatuses);
     const removedOrderStatuses = [...prevOrderStatusIds.current].filter((id) => !nextOrderStatusIds.has(id));
@@ -1901,7 +2356,7 @@ export function useSupabaseSync() {
     });
     const legacyAutomation = resolveLegacyAutomationFields(normalizedOrderAutomations);
 
-    const businessSettings = [{
+    const businessSettings = {
       id: 'global',
       useGlobalLowStockThreshold,
       globalLowStockThreshold,
@@ -1910,11 +2365,22 @@ export function useSupabaseSync() {
       autoCompleteFromStatus: legacyAutomation.autoCompleteFromStatus,
       autoCompleteToStatus: legacyAutomation.autoCompleteToStatus,
       orderAutomations: normalizedOrderAutomations,
+      deliveryFollowUpEnabled,
+      deliveryFollowUpDelayDays,
+      deliveryFollowUpResendDays,
+      deliveryFollowUpFromName,
+      orderStatusEmailEnabled,
+      orderTimelineSettings,
       financeSuppliers,
       procurementStatusOptions,
       fixedCosts,
+      salaryTemplates,
+      warehouseItems,
+      warehouseCategories,
+      warehouseUnits,
+      qcChecklistRequirements: sanitizeOrderQcRequirements(qcChecklistRequirements, false),
       financeRules,
-    }];
+    };
 
     const settingsSignature = JSON.stringify({
       businessId,
@@ -1934,9 +2400,20 @@ export function useSupabaseSync() {
       autoCompleteFromStatus: legacyAutomation.autoCompleteFromStatus,
       autoCompleteToStatus: legacyAutomation.autoCompleteToStatus,
       orderAutomations: normalizedOrderAutomations,
+      deliveryFollowUpEnabled,
+      deliveryFollowUpDelayDays,
+      deliveryFollowUpResendDays,
+      deliveryFollowUpFromName,
+      orderStatusEmailEnabled,
+      orderTimelineSettings,
       financeSuppliers: sortById(financeSuppliers),
       procurementStatusOptions: sortById(procurementStatusOptions),
       fixedCosts: sortById(fixedCosts),
+      salaryTemplates: sortById(salaryTemplates),
+      warehouseItems: sortById(warehouseItems),
+      warehouseCategories: sortById(warehouseCategories),
+      warehouseUnits: sortById(warehouseUnits),
+      qcChecklistRequirements: sortByKey(sanitizeOrderQcRequirements(qcChecklistRequirements, false)),
       financeRules,
     });
 
@@ -1959,7 +2436,7 @@ export function useSupabaseSync() {
       supabaseSettings.upsertSettings(SETTINGS_TABLES.expenseCategories, businessId, expenseCategories),
       supabaseSettings.upsertSettings(SETTINGS_TABLES.caseStatuses, businessId, caseStatuses),
       supabaseSettings.upsertSettings(SETTINGS_TABLES.productCategories, businessId, categoryItems),
-      supabaseSettings.upsertSettings(SETTINGS_TABLES.businessSettings, businessId, businessSettings),
+      supabaseSettings.upsertSettings(SETTINGS_TABLES.businessSettings, businessId, [businessSettings]),
     ])
       .then(() => {
         lastSettingsSyncSignatureRef.current = settingsSignature;
@@ -1988,6 +2465,7 @@ export function useSupabaseSync() {
     orderStatuses,
     saleSources,
     customServices,
+    orderTimelineSettings,
     paymentMethods,
     logisticsCarriers,
     expenseCategories,
@@ -2002,6 +2480,11 @@ export function useSupabaseSync() {
     financeSuppliers,
     procurementStatusOptions,
     fixedCosts,
+    salaryTemplates,
+    warehouseItems,
+    warehouseCategories,
+    warehouseUnits,
+    qcChecklistRequirements,
     financeRules,
     businessId,
     isInitialized,

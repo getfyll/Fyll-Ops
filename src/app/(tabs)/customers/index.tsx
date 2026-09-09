@@ -34,10 +34,12 @@ export default function CustomersScreen() {
 
   const customers = useFyllStore((s) => s.customers);
   const orders = useFyllStore((s) => s.orders);
+  const lastDataSyncAt = useFyllStore((s) => s.lastDataSyncAt);
   const addCustomer = useFyllStore((s) => s.addCustomer);
   const updateCustomer = useFyllStore((s) => s.updateCustomer);
   const deleteCustomer = useFyllStore((s) => s.deleteCustomer);
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
+  const isOfflineMode = useAuthStore((s) => s.isOfflineMode);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilterTab, setActiveFilterTab] = useState<CustomerFilterTab>('all');
@@ -50,6 +52,20 @@ export default function CustomersScreen() {
   const [visibleCustomersCount, setVisibleCustomersCount] = useState(CUSTOMERS_PAGE_SIZE);
   const isDark = colors.bg.primary === '#111111';
   const isPaginatingRef = useRef(false);
+
+  const lastSyncLabel = useMemo(() => {
+    if (!lastDataSyncAt) return 'Not synced yet';
+    try {
+      return new Date(lastDataSyncAt).toLocaleString('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch (error) {
+      return 'Recently';
+    }
+  }, [lastDataSyncAt]);
 
   // Split view state
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
@@ -369,27 +385,28 @@ export default function CustomersScreen() {
       {/* Header + Search */}
       <View style={{
         backgroundColor: isDark ? 'transparent' : (isWebDesktop ? colors.bg.card : colors.bg.primary),
-        borderBottomWidth: isWebDesktop ? 0 : (isDark ? 0 : 0.5),
+        borderBottomWidth: isWebDesktop ? 1 : (isDark ? 0 : 0.5),
         borderBottomColor: colors.border.light,
       }}>
         <View
-          className={isWebDesktop ? 'pb-3' : 'pb-3'}
           style={[
-            { paddingHorizontal: isWebDesktop ? 28 : 20, paddingTop: isWebDesktop ? 0 : settingsHeaderTopPadding },
-            isWebDesktop ? { maxWidth: 1456, width: '100%', alignSelf: 'flex-start' } : undefined,
+            { paddingHorizontal: isWebDesktop ? 0 : 20, paddingTop: isWebDesktop ? 0 : settingsHeaderTopPadding, paddingBottom: isWebDesktop ? 0 : 12 },
+            isWebDesktop ? { width: '100%' } : undefined,
           ]}
         >
           <View
             className={isWebDesktop ? 'flex-row items-start' : 'flex-row items-start mb-4'}
             style={isWebDesktop ? {
               gap: 12,
+              width: '100%',
+              maxWidth: 1400,
+              alignSelf: 'flex-start',
               minHeight: desktopHeaderMinHeight,
-              borderBottomWidth: 1,
-              borderBottomColor: colors.border.light,
-              marginBottom: 12,
               alignItems: 'center',
-              marginHorizontal: -28,
-              paddingHorizontal: 28,
+              paddingLeft: 20,
+              paddingRight: 20,
+              paddingTop: 20,
+              paddingBottom: 16,
             } : { gap: 12 }}
           >
             {openedFromSettings ? (
@@ -413,6 +430,24 @@ export default function CustomersScreen() {
                 <View>
                   <Text style={{ color: colors.text.primary, ...pageHeadingStyle }}>Customers</Text>
                   <Text style={{ color: colors.text.tertiary }} className="text-sm mt-1">Manage your customer database.</Text>
+                  {isOfflineMode ? (
+                    <View
+                      style={{
+                        marginTop: 6,
+                        alignSelf: 'flex-start',
+                        paddingHorizontal: 10,
+                        paddingVertical: 4,
+                        borderRadius: 999,
+                        backgroundColor: isDark ? 'rgba(248,113,113,0.16)' : 'rgba(239,68,68,0.12)',
+                        borderWidth: 1,
+                        borderColor: isDark ? 'rgba(248,113,113,0.35)' : 'rgba(239,68,68,0.28)',
+                      }}
+                    >
+                      <Text style={{ color: isDark ? '#FCA5A5' : '#B91C1C', fontSize: 12, fontWeight: '600' }}>
+                        Offline · Last synced {lastSyncLabel}
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
               <View className="flex-row gap-2">
                 <Pressable
@@ -432,8 +467,21 @@ export default function CustomersScreen() {
               </View>
             </View>
           </View>
+        </View>
+      </View>
 
+      <View
+        style={[
+          {
+            paddingHorizontal: isWebDesktop ? 0 : 20,
+            paddingTop: isWebDesktop ? 12 : 0,
+            paddingBottom: 12,
+          },
+          isWebDesktop ? { width: '100%' } : undefined,
+        ]}
+      >
           {isWebDesktop ? (
+            <View style={{ width: '100%', maxWidth: 1400, alignSelf: 'flex-start', paddingLeft: 20, paddingRight: 20 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <View
                 className="flex-row items-center rounded-full px-4"
@@ -514,6 +562,7 @@ export default function CustomersScreen() {
                 )}
               </Pressable>
             </View>
+            </View>
           ) : (
             <View className="flex-row items-center gap-2">
               <View
@@ -552,20 +601,22 @@ export default function CustomersScreen() {
               </Pressable>
             </View>
           )}
-        </View>
       </View>
 
       <ScrollView
         style={{
           flex: 1,
-          paddingHorizontal: isWebDesktop ? 28 : 20,
-          paddingTop: 16,
+          paddingHorizontal: isWebDesktop ? 0 : 20,
+          paddingTop: isWebDesktop ? 0 : 16,
           backgroundColor: showSplitView ? colors.bg.primary : (isWebDesktop ? colors.bg.primary : colors.bg.secondary),
         }}
         contentContainerStyle={{
           maxWidth: isWebDesktop ? 1400 : isDesktop ? 600 : undefined,
           alignSelf: isWebDesktop ? 'flex-start' : isDesktop && !selectedCustomerId ? 'center' : undefined,
           width: '100%',
+          paddingLeft: isWebDesktop ? 20 : 0,
+          paddingRight: isWebDesktop ? 20 : 0,
+          paddingTop: isWebDesktop ? 16 : 0,
         }}
         showsVerticalScrollIndicator={false}
         onScroll={handleCustomersScroll}

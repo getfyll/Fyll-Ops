@@ -187,7 +187,7 @@ export default function TodayInsightScreen({ inline }: { inline?: boolean }) {
               <DollarSign size={18} color={colors.text.tertiary} strokeWidth={2} />
               <Text
                 style={{ color: colors.text.primary }}
-                className="text-lg font-bold ml-2"
+                className={` font-bold ml-2`}
               >
                 Average Order Value
               </Text>
@@ -211,7 +211,7 @@ export default function TodayInsightScreen({ inline }: { inline?: boolean }) {
               <Clock size={18} color={colors.text.tertiary} strokeWidth={2} />
               <Text
                 style={{ color: colors.text.primary }}
-                className="text-lg font-bold ml-2"
+                className={` font-bold ml-2`}
               >
                 Activity by Hour
               </Text>

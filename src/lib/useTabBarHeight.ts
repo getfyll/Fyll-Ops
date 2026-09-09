@@ -11,10 +11,14 @@ import { useBreakpoint } from '@/lib/useBreakpoint';
  * This hook always returns a number and never throws.
  */
 export function useTabBarHeight(): number {
-  const { isDesktop } = useBreakpoint();
+  const { isDesktop, isMobile } = useBreakpoint();
 
   // Keep in sync with `src/app/(tabs)/_layout.tsx` tab bar sizing.
-  const height = Platform.OS === 'web' ? 80 : Platform.OS === 'ios' ? 88 : 70;
+  const mobileNavHeight = Platform.OS === 'ios' ? 82 : 76;
+  const mobileNavBottomMargin = Platform.OS === 'ios' ? 52 : 48;
+  const mobileButtonClearance = 48;
+  const mobileHeight = mobileNavHeight + mobileNavBottomMargin + mobileButtonClearance;
+  const height = isMobile ? mobileHeight : Platform.OS === 'web' ? 80 : Platform.OS === 'ios' ? 88 : 70;
 
   // Desktop uses a sidebar and hides the bottom tab bar.
   return isDesktop ? 0 : height;

@@ -1,1 +1,1 @@
-export { supabase } from '../supabase';
+export { assertSupabaseConfig, supabase } from '../supabase';

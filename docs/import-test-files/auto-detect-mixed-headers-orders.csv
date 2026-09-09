@@ -1,0 +1,4 @@
+Order ID,Customer Full Name,Billing Email,Billing Phone,Shipping State,Shipping Address 1,Product,Qty,Line Total,Date Created,Payment Gateway,Order Status,External Order Reference
+WCX-2001,Zee Omotayo,zee.omotayo@example.com,+2348081112233,Lagos,"14 Allen Ave, Ikeja",Aviator Classic,1,129000,2026-02-11,Card,Processing,WCX-2001
+WCX-2001,Zee Omotayo,zee.omotayo@example.com,+2348081112233,Lagos,"14 Allen Ave, Ikeja",Wayfarer Prime,1,99000,2026-02-11,Card,Processing,WCX-2001
+WCX-2002,Uche Eze,uche.eze@example.com,+2348057788990,Anambra,"8 Zik Ave, Awka",Urban Rectangle,2,178000,2026-02-14,POS,Ready for Pickup,WCX-2002

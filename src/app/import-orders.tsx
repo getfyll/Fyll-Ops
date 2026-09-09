@@ -3,7 +3,7 @@ import { View, Text, Pressable, ScrollView, ActivityIndicator, Platform } from '
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
-import { ChevronLeft, Upload, AlertCircle } from 'lucide-react-native';
+import { ArrowLeft, Upload, AlertCircle } from 'lucide-react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
@@ -123,7 +123,8 @@ export default function ImportOrdersScreen() {
   const { from } = useLocalSearchParams<{ from?: string | string[] }>();
   const goBack = useSettingsBack();
   const colors = useThemeColors();
-  const panelStyles = getSettingsWebPanelStyles(isFromSettingsRoute(from), colors.bg.primary, colors.border.light);
+  const openedFromSettings = isFromSettingsRoute(from);
+  const panelStyles = getSettingsWebPanelStyles(openedFromSettings, colors.bg.primary, colors.border.light);
 
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
   const currentUserName = useAuthStore((s) => s.currentUser?.name ?? '');
@@ -569,6 +570,7 @@ export default function ImportOrdersScreen() {
             discountCode: draft.discountCode || undefined,
             discountAmount,
             paymentMethod: draft.paymentMethod || paymentMethods[0]?.name || 'Imported',
+            orderClassification: 'Sale',
             status: draft.status || orderStatuses[0]?.name || 'Processing',
             source: draft.source || saleSources[0]?.name || 'Imported CSV',
             subtotal,
@@ -629,12 +631,19 @@ export default function ImportOrdersScreen() {
             <Pressable
               onPress={goBack}
               className="w-10 h-10 rounded-xl items-center justify-center mr-3 active:opacity-50"
-              style={{ backgroundColor: colors.bg.secondary }}
+              style={{ backgroundColor: 'transparent' }}
             >
-              <ChevronLeft size={24} color={colors.text.primary} strokeWidth={2} />
+              <ArrowLeft size={24} color={colors.text.primary} strokeWidth={2} />
             </Pressable>
             <View className="flex-1">
-              <Text style={{ color: colors.text.primary }} className="font-bold text-xl">
+              <Text
+                style={{
+                  color: colors.text.primary,
+                  fontSize: Platform.OS === 'web' ? 14 : 20,
+                  lineHeight: Platform.OS === 'web' ? 18 : 24,
+                  fontWeight: '600',
+                }}
+              >
                 Import Orders
               </Text>
               <Text style={{ color: colors.text.tertiary }} className="text-sm mt-0.5">

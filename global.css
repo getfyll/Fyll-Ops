@@ -14,6 +14,27 @@ select {
   font-size: 16px !important;
 }
 
+input:focus,
+textarea:focus,
+select:focus,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  .finance-date-input {
+    color-scheme: dark;
+  }
+
+  .finance-date-input::-webkit-calendar-picker-indicator {
+    filter: invert(78%) sepia(4%) saturate(175%) hue-rotate(177deg) brightness(93%) contrast(88%);
+    opacity: 0.95;
+  }
+}
+
 /* hide OneSignal floating bell on mobile when not needed */
 .onesignal-bell-launcher,
 .onesignal-bell-launcher__inner,
@@ -21,4 +42,53 @@ select {
 .onesignal-bell-container,
 .onesignal-bell-launcher-button {
   display: none !important;
+}
+
+.social-checkout-edit-field,
+.social-checkout-edit-address-field {
+  border-radius: 18px !important;
+}
+
+@media (max-width: 767px) {
+  .social-checkout-edit-field {
+    min-height: 54px !important;
+    height: 54px !important;
+    border-radius: 16px !important;
+    display: flex !important;
+    align-items: center !important;
+    box-sizing: border-box !important;
+  }
+
+  .social-checkout-edit-address-field {
+    min-height: 72px !important;
+    height: 72px !important;
+    border-radius: 18px !important;
+    align-items: stretch !important;
+    justify-content: flex-start !important;
+    padding-top: 9px !important;
+    padding-bottom: 9px !important;
+  }
+
+  .social-checkout-edit-field input,
+  .social-checkout-edit-field textarea,
+  .social-checkout-edit-field [contenteditable='true'] {
+    min-height: 34px !important;
+    height: 34px !important;
+    line-height: 23px !important;
+    text-align: left !important;
+    align-self: stretch !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    box-sizing: border-box !important;
+  }
+
+  .social-checkout-edit-address-field input,
+  .social-checkout-edit-address-field textarea,
+  .social-checkout-edit-address-field [contenteditable='true'] {
+    min-height: 54px !important;
+    height: 54px !important;
+    line-height: 23px !important;
+    text-align: left !important;
+    white-space: normal !important;
+  }
 }

@@ -16,6 +16,7 @@ export default function LogisticsInsightScreen() {
 
   const timeRangeOptions: { key: TimeRange; label: string }[] = [
     { key: '7d', label: 'Last 7 days' },
+    { key: 'month', label: 'This Month' },
     { key: '30d', label: 'Last 30 days' },
     { key: 'year', label: 'This Year' },
   ];
@@ -199,7 +200,7 @@ export default function LogisticsInsightScreen() {
               <Clock size={18} color={colors.text.tertiary} strokeWidth={2} />
               <Text
                 style={{ color: colors.text.primary }}
-                className="text-lg font-bold ml-2"
+                className="text-base font-bold ml-2"
               >
                 Order Status
               </Text>

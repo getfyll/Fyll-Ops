@@ -5,7 +5,22 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const isServer = typeof window === 'undefined' || typeof localStorage === 'undefined';
 const FYLL_STORAGE_KEY = 'fyll-storage';
 const MAX_SAFE_WEB_STORAGE_SIZE = 4_500_000;
-const WEB_PREVIEW_LIMIT = 200;
+const WEB_PREVIEW_LIMIT = 50;
+const FYLL_COLLECTION_LIMITS: Record<string, number> = {
+  products: 50,
+  orders: 50,
+  customers: 50,
+  cases: 25,
+  restockLogs: 10,
+  procurements: 10,
+  expenses: 10,
+  otherIncomes: 10,
+  expenseRequests: 10,
+  refundRequests: 10,
+  warehouseItems: 25,
+  auditLogs: 25,
+  recycleBin: 25,
+};
 
 const toPreviewArray = <T>(value: unknown, limit: number): T[] => {
   if (!Array.isArray(value)) return [];
@@ -38,22 +53,81 @@ const compactFyllStoragePayload = (rawValue: string): string | null => {
       return null;
     }
 
-    const compactState = {
-      ...parsed.state,
-      products: toPreviewArray(parsed.state.products, WEB_PREVIEW_LIMIT)
-        .map((product) => stripDataUris(product)),
-      orders: toPreviewArray(parsed.state.orders, WEB_PREVIEW_LIMIT),
-      customers: toPreviewArray(parsed.state.customers, WEB_PREVIEW_LIMIT),
-      cases: toPreviewArray(parsed.state.cases, WEB_PREVIEW_LIMIT),
-      restockLogs: toPreviewArray(parsed.state.restockLogs, 10),
-      procurements: toPreviewArray(parsed.state.procurements, 10),
-      expenses: toPreviewArray(parsed.state.expenses, 10),
-      auditLogs: toPreviewArray(parsed.state.auditLogs, WEB_PREVIEW_LIMIT),
-    };
+    const compactState = stripDataUris(parsed.state) as Record<string, unknown>;
+    Object.entries(FYLL_COLLECTION_LIMITS).forEach(([key, limit]) => {
+      compactState[key] = toPreviewArray(parsed.state?.[key], limit)
+        .map((item) => stripDataUris(item));
+    });
 
     return JSON.stringify({ ...parsed, state: compactState });
   } catch {
     return null;
+  }
+};
+
+const createMinimalFyllStoragePayload = (rawValue: string): string | null => {
+  try {
+    const parsed = JSON.parse(rawValue) as { state?: Record<string, unknown>; version?: number };
+    if (!parsed || typeof parsed !== 'object' || !parsed.state || typeof parsed.state !== 'object') {
+      return null;
+    }
+
+    const state = parsed.state;
+    const minimalState = {
+      themeMode: state.themeMode,
+      userRole: state.userRole,
+      lastDataSyncAt: state.lastDataSyncAt,
+      lastFullDataSyncAt: state.lastFullDataSyncAt,
+      useGlobalLowStockThreshold: state.useGlobalLowStockThreshold,
+      globalLowStockThreshold: state.globalLowStockThreshold,
+      autoCompleteOrders: state.autoCompleteOrders,
+      autoCompleteAfterDays: state.autoCompleteAfterDays,
+      autoCompleteFromStatus: state.autoCompleteFromStatus,
+      autoCompleteToStatus: state.autoCompleteToStatus,
+      orderAutomations: state.orderAutomations,
+      categories: state.categories,
+      productVariables: state.productVariables,
+      orderStatuses: state.orderStatuses,
+      saleSources: state.saleSources,
+      customServices: state.customServices,
+      paymentMethods: state.paymentMethods,
+      logisticsCarriers: state.logisticsCarriers,
+      expenseCategories: state.expenseCategories,
+      financeSuppliers: state.financeSuppliers,
+      procurementStatusOptions: state.procurementStatusOptions,
+      fixedCosts: state.fixedCosts,
+      salaryTemplates: state.salaryTemplates,
+      warehouseCategories: state.warehouseCategories,
+      warehouseUnits: state.warehouseUnits,
+      financeRules: state.financeRules,
+      caseStatuses: state.caseStatuses,
+    };
+
+    return JSON.stringify({ ...parsed, state: stripDataUris(minimalState) });
+  } catch {
+    return null;
+  }
+};
+
+const setFyllStorageWithFallback = (value: string): boolean => {
+  const attempts = [value, compactFyllStoragePayload(value), createMinimalFyllStoragePayload(value)]
+    .filter((entry): entry is string => Boolean(entry));
+
+  for (const attempt of attempts) {
+    try {
+      localStorage.removeItem(FYLL_STORAGE_KEY);
+      localStorage.setItem(FYLL_STORAGE_KEY, attempt);
+      return true;
+    } catch {
+      // Try the next, smaller payload.
+    }
+  }
+
+  try {
+    localStorage.removeItem(FYLL_STORAGE_KEY);
+    return true;
+  } catch {
+    return false;
   }
 };
 
@@ -66,7 +140,7 @@ export const storage = Platform.OS === 'web'
           if (key === FYLL_STORAGE_KEY && value && value.length > MAX_SAFE_WEB_STORAGE_SIZE) {
             const compact = compactFyllStoragePayload(value);
             if (compact) {
-              localStorage.setItem(key, compact);
+              setFyllStorageWithFallback(compact);
               return compact;
             }
             return value;
@@ -82,22 +156,11 @@ export const storage = Platform.OS === 'web'
           if (isServer) return;
           localStorage.setItem(key, value);
         } catch (e) {
-          console.error('localStorage setItem error:', e);
-          try {
-            if (isServer) return;
-            const message = String((e as Error)?.message ?? '');
-            if (message.includes('QuotaExceeded')) {
-              if (key === FYLL_STORAGE_KEY) {
-                const compact = compactFyllStoragePayload(value);
-                if (compact) {
-                  localStorage.setItem(key, compact);
-                  return;
-                }
-              }
-            }
-          } catch (cleanupError) {
-            console.error('localStorage cleanup error:', cleanupError);
+          if (!isServer && key === FYLL_STORAGE_KEY) {
+            const recovered = setFyllStorageWithFallback(value);
+            if (recovered) return;
           }
+          console.error('localStorage setItem error:', e);
         }
       },
       removeItem: async (key: string) => {

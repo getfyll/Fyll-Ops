@@ -3,7 +3,7 @@ import { View, Text, Pressable, ScrollView, ActivityIndicator, Platform } from '
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
-import { ChevronLeft, Upload, Check, X, AlertCircle } from 'lucide-react-native';
+import { ArrowLeft, Upload, Check, X, AlertCircle } from 'lucide-react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
@@ -68,7 +68,8 @@ export default function ImportCustomersScreen() {
   const { from } = useLocalSearchParams<{ from?: string | string[] }>();
   const goBack = useSettingsBack();
   const colors = useThemeColors();
-  const panelStyles = getSettingsWebPanelStyles(isFromSettingsRoute(from), colors.bg.primary, colors.border.light);
+  const openedFromSettings = isFromSettingsRoute(from);
+  const panelStyles = getSettingsWebPanelStyles(openedFromSettings, colors.bg.primary, colors.border.light);
   const businessId = useAuthStore((s) => s.businessId);
   const existingCustomers = useFyllStore((s) => s.customers);
   const addCustomer = useFyllStore((s) => s.addCustomer);
@@ -265,12 +266,19 @@ export default function ImportCustomersScreen() {
         <Pressable
           onPress={goBack}
           className="w-10 h-10 rounded-xl items-center justify-center mr-3 active:opacity-50"
-          style={{ backgroundColor: colors.bg.secondary }}
+          style={{ backgroundColor: 'transparent' }}
         >
-          <ChevronLeft size={24} color={colors.text.primary} strokeWidth={2} />
+          <ArrowLeft size={24} color={colors.text.primary} strokeWidth={2} />
         </Pressable>
         <View className="flex-1">
-          <Text style={{ color: colors.text.primary }} className="font-bold text-xl">
+          <Text
+            style={{
+              color: colors.text.primary,
+              fontSize: Platform.OS === 'web' ? 14 : 20,
+              lineHeight: Platform.OS === 'web' ? 18 : 24,
+              fontWeight: '600',
+            }}
+          >
             Import Customers
           </Text>
           <Text style={{ color: colors.text.tertiary }} className="text-sm mt-0.5">
@@ -345,7 +353,7 @@ export default function ImportCustomersScreen() {
                 >
                   <Upload size={28} color={colors.accent.primary} strokeWidth={2} />
                 </View>
-                <Text style={{ color: colors.text.primary }} className="font-bold text-lg">
+                <Text style={{ color: colors.text.primary, fontSize: 14, lineHeight: 18, fontWeight: '600' }}>
                   Choose CSV File
                 </Text>
                 <Text style={{ color: colors.text.tertiary }} className="text-sm mt-1">
@@ -361,7 +369,7 @@ export default function ImportCustomersScreen() {
           <View className="mb-6">
             <View className="flex-row items-center justify-between mb-3">
               <View>
-                <Text style={{ color: colors.text.primary }} className="font-bold text-lg">
+                <Text style={{ color: colors.text.primary, fontSize: 14, lineHeight: 18, fontWeight: '600' }}>
                   Preview
                 </Text>
                 <Text style={{ color: colors.text.tertiary }} className="text-sm">

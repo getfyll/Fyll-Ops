@@ -20,7 +20,12 @@ export const getSettingsWebPanelStyles = (
     inner: {
       flex: 1,
       backgroundColor,
-      ...(active ? { width: '100%' } : {}),
+      ...(active
+        ? {
+            width: '100%' as const,
+            overflow: 'hidden' as const,
+          }
+        : {}),
     },
   };
 };

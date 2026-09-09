@@ -18,6 +18,7 @@ export default function RefundsInsightScreen({ inline }: { inline?: boolean }) {
 
   const timeRangeOptions: { key: TimeRange; label: string }[] = [
     { key: '7d', label: 'Last 7 days' },
+    { key: 'month', label: 'This Month' },
     { key: '30d', label: 'Last 30 days' },
     { key: 'year', label: 'This Year' },
   ];
@@ -196,7 +197,7 @@ export default function RefundsInsightScreen({ inline }: { inline?: boolean }) {
           >
             <Text
               style={{ color: colors.text.primary }}
-              className="text-lg font-bold mb-4"
+              className={` font-bold mb-4`}
             >
               Revenue Impact
             </Text>

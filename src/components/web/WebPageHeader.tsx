@@ -24,6 +24,9 @@ export function WebPageHeader({
           alignItems: 'center',
           justifyContent: 'space-between',
           gap: 16,
+          position: 'relative',
+          zIndex: 1000,
+          elevation: 1000,
         },
         style,
       ]}
@@ -46,8 +49,11 @@ export function WebPageHeader({
           </Text>
         ) : null}
       </View>
-      {actions ? <View style={{ flexDirection: 'row', gap: 10 }}>{actions}</View> : null}
+      {actions ? (
+        <View style={{ flexDirection: 'row', gap: 10, position: 'relative', zIndex: 1001, elevation: 1001 }}>
+          {actions}
+        </View>
+      ) : null}
     </View>
   );
 }
-

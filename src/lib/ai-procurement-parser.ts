@@ -1,9 +1,11 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI } from '@/lib/secure-gemini';
 
-const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
+const GEMINI_API_KEY = 'server-side';
 const GEMINI_MODEL = process.env.EXPO_PUBLIC_GEMINI_MODEL || '';
 const MAX_RETRIES = 2;
 const RETRY_DELAYS_MS = [1200, 2500];
+const SUPPORTED_GEMINI_INLINE_MIME_PREFIXES = ['image/'];
+const SUPPORTED_GEMINI_INLINE_MIME_TYPES = ['application/pdf', 'text/plain'];
 
 export interface ProcurementLine {
   description: string;
@@ -189,7 +191,7 @@ export async function parseProcurementDraft(params: {
   suppliers?: string[];
 }): Promise<ProcurementDraftData | null> {
   if (!GEMINI_API_KEY) {
-    throw new Error('Gemini API key not configured. Please add EXPO_PUBLIC_GEMINI_API_KEY to your .env file.');
+    throw new Error('Fyll AI is not configured. Add GEMINI_API_KEY as a private Supabase secret.');
   }
 
   const text = params.messageText?.trim();
@@ -225,6 +227,13 @@ function parseDataUrl(dataUrl: string): { mimeType: string; data: string } {
   return { mimeType: match[1], data: match[2] };
 }
 
+function isSupportedGeminiInlineMimeType(mimeType: string): boolean {
+  const normalized = mimeType.trim().toLowerCase();
+  if (!normalized) return false;
+  if (SUPPORTED_GEMINI_INLINE_MIME_PREFIXES.some((prefix) => normalized.startsWith(prefix))) return true;
+  return SUPPORTED_GEMINI_INLINE_MIME_TYPES.includes(normalized);
+}
+
 function isRetryableGeminiError(error: unknown): boolean {
   const message = String((error as Error | undefined)?.message || '');
   return message.includes('429') || message.toLowerCase().includes('quota') || message.includes('503');
@@ -248,8 +257,13 @@ async function generateWithRetry(
 
       const imageParts = imageDataUrls.map((url) => {
         const { mimeType, data } = parseDataUrl(url);
-        return { inlineData: { data, mimeType } };
-      });
+        return { mimeType, data };
+      })
+        .filter(({ mimeType }) => isSupportedGeminiInlineMimeType(mimeType))
+        .map(({ mimeType, data }) => ({ inlineData: { data, mimeType } }));
+      if (imageParts.length === 0) {
+        throw new Error('Unsupported attachment type for Fyll AI. Please upload image or PDF files.');
+      }
 
       const result = await model.generateContent({
         contents: [{ role: 'user', parts: [{ text: promptText }, ...imageParts] }],
@@ -269,11 +283,11 @@ async function generateWithModelFallback(
   imageDataUrls: string[]
 ): Promise<string> {
   const models = GEMINI_MODEL ? [GEMINI_MODEL] : [
+    'gemini-2.5-flash',
     'gemini-1.5-flash',
     'gemini-1.5-flash-latest',
     'gemini-1.5-flash-002',
     'gemini-1.5-pro',
-    'gemini-2.0-flash',
   ];
 
   let lastError: unknown = null;

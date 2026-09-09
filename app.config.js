@@ -47,6 +47,8 @@ export default {
     },
     // Add this section to inject environment variables
     extra: {
+      supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,
+      supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
       firebaseApiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
       firebaseAuthDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
       firebaseProjectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
@@ -56,6 +58,8 @@ export default {
       firebaseDatabaseId: process.env.EXPO_PUBLIC_FIREBASE_DATABASE_ID,
       onesignalAppId: process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID,
       onesignalSafariWebId: process.env.EXPO_PUBLIC_ONESIGNAL_SAFARI_WEB_ID,
+      partnerOnesignalAppId: process.env.EXPO_PUBLIC_PARTNER_ONESIGNAL_APP_ID,
+      partnerOnesignalSafariWebId: process.env.EXPO_PUBLIC_PARTNER_ONESIGNAL_SAFARI_WEB_ID,
     }
   }
 };

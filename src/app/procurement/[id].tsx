@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, Platform, Modal } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Truck, Pencil, Trash2, FileText, User, Calendar, Clock, Package, Paperclip, Image as ImageIcon, MoreVertical } from 'lucide-react-native';
+import { ArrowLeft, Truck, Pencil, Trash2, FileText, Package, Paperclip, Image as ImageIcon, MoreVertical, User, Calendar, Clock, CheckCircle, XCircle, Send, PlusCircle } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import useFyllStore, { type Procurement, formatCurrency } from '@/lib/state/fyll-store';
 import useAuthStore from '@/lib/state/auth-store';
@@ -27,6 +27,53 @@ const extractMetadataValue = (source: string | undefined, key: string): string |
 const stripMetadata = (source: string | undefined): string => {
   if (!source) return '';
   return source.replace(/\[([a-z_]+):([^\]]+)\]/gi, '').replace(/\s+/g, ' ').trim();
+};
+
+const sanitizeMetadata = (value: string): string => value.replace(/\]/g, '').trim();
+
+const buildProcurementNotes = (
+  note: string,
+  poNumber: string,
+  status: string,
+  receivedDate: string,
+  extraMetadata?: Record<string, string | null | undefined>,
+  existingNotes?: string
+) => {
+  const metadataEntries = new Map<string, string>();
+  const metadataPattern = /\[([a-z_]+):([^\]]+)\]/gi;
+  const source = existingNotes ?? '';
+  let match = metadataPattern.exec(source);
+  while (match) {
+    const key = match[1]?.trim().toLowerCase();
+    const value = match[2]?.trim();
+    if (key && value) {
+      metadataEntries.set(key, sanitizeMetadata(value));
+    }
+    match = metadataPattern.exec(source);
+  }
+
+  metadataEntries.set('po', sanitizeMetadata(poNumber.trim().toUpperCase()));
+  metadataEntries.set('status', sanitizeMetadata(status.toLowerCase()));
+  metadataEntries.set('expected', sanitizeMetadata(receivedDate));
+
+  Object.entries(extraMetadata ?? {}).forEach(([rawKey, rawValue]) => {
+    const key = rawKey.trim().toLowerCase();
+    if (!key) return;
+    const value = (rawValue ?? '').trim();
+    if (!value) {
+      metadataEntries.delete(key);
+      return;
+    }
+    metadataEntries.set(key, sanitizeMetadata(value));
+  });
+
+  const metadataChunks = Array.from(metadataEntries.entries()).map(
+    ([key, value]) => `[${key}:${value}]`
+  );
+  if (note.trim()) {
+    metadataChunks.unshift(note.trim());
+  }
+  return metadataChunks.join(' ').trim();
 };
 
 const resolvePONumber = (procurement: Procurement): string => {
@@ -104,18 +151,36 @@ const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
   cancelled: { bg: 'rgba(239, 68, 68, 0.16)',  text: '#EF4444' },
 };
 
+const capitalizeDisplayValue = (value: string): string => {
+  if (!value) return value;
+  return value.charAt(0).toUpperCase() + value.slice(1);
+};
+
+const formatPanelDate = (value: string | undefined): string => {
+  if (!value) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [year, month, day] = value.split('-');
+    return `${day}/${month}/${year}`;
+  }
+  const parsed = new Date(value).getTime();
+  if (!Number.isFinite(parsed)) return value;
+  return new Date(parsed).toLocaleDateString('en-GB');
+};
+
 export default function ProcurementDetailScreen() {
   const router = useRouter();
   const colors = useStatsColors();
   const insets = useSafeAreaInsets();
   const { isDesktop } = useBreakpoint();
   const isWebDesktop = Platform.OS === 'web' && isDesktop;
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, section } = useLocalSearchParams<{ id: string; section?: string }>();
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const procurements = useFyllStore((s) => s.procurements);
   const products = useFyllStore((s) => s.products);
   const deleteProcurement = useFyllStore((s) => s.deleteProcurement);
+  const updateProcurement = useFyllStore((s) => s.updateProcurement);
+  const procurementStatusOptions = useFyllStore((s) => s.procurementStatusOptions);
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
 
   const procurement = useMemo(() => procurements.find((p) => p.id === id) ?? null, [procurements, id]);
@@ -130,27 +195,113 @@ export default function ProcurementDetailScreen() {
   }, [procurement]);
 
   const statusColors = STATUS_COLORS[status.toLowerCase()] ?? { bg: 'rgba(0,0,0,0.07)', text: '#555555' };
+  const visibleStatusOptions = useMemo(
+    () => (procurementStatusOptions.length > 0
+      ? procurementStatusOptions
+          .slice()
+          .sort((left, right) => left.order - right.order)
+          .map((option) => option.name)
+      : ['Draft', 'Sent', 'Confirmed', 'Received', 'Cancelled']),
+    [procurementStatusOptions]
+  );
   const cleanNotes = useMemo(() => stripMetadata(procurement?.notes), [procurement]);
+  const procurementSection = useMemo<'procurement' | 'costing'>(() => {
+    const sectionParam = typeof section === 'string' ? section.trim().toLowerCase() : '';
+    if (sectionParam === 'costing') return 'costing';
+    const metadataMode = procurement ? extractMetadataValue(procurement.notes, 'mode')?.trim().toLowerCase() : '';
+    if (metadataMode === 'costing') return 'costing';
+    const hasCostingFields = procurement?.items.some((item) => (
+      (item.serviceFee ?? 0) > 0
+      || (item.deliveryFee ?? 0) > 0
+      || (item.shippingClearanceFee ?? 0) > 0
+      || (item.additionalFee ?? 0) > 0
+      || (item.targetMarginPercent ?? 0) > 0
+      || (item.currentSellingPrice ?? 0) > 0
+    ));
+    return hasCostingFields ? 'costing' : 'procurement';
+  }, [procurement, section]);
 
   const itemRows = useMemo(() => {
     if (!procurement) return [];
-    return procurement.items.map((item) => {
+    return procurement.items
+    .filter((item) => item.productId !== 'charge-transfer-fees' && item.productId !== 'charge-stamp-duty')
+    .map((item, index) => {
       const storedName = item.productName;
       const storedVariant = item.variantName ?? '';
       const product = products.find((p) => p.id === item.productId);
       const variant = product?.variants.find((v) => v.id === item.variantId);
       const resolvedName = product?.name;
       const resolvedVariant = variant ? Object.values(variant.variableValues ?? {}).join(', ') : '';
-      const name = storedName ?? resolvedName ?? null;
+      const fallbackName = item.productId.startsWith('charge-payment-') ? `Payment ${index + 1}` : `Line item ${index + 1}`;
+      const name = storedName?.trim() || resolvedName?.trim() || fallbackName;
       const variantLabel = storedVariant || resolvedVariant;
       return {
-        id: `${item.productId}-${item.variantId}`,
-        name: name ? (variantLabel ? `${name} — ${variantLabel}` : name) : null,
+        id: `${item.productId}-${item.variantId}-${index}`,
+        name: variantLabel ? `${name} — ${variantLabel}` : name,
+        quantityPurchased: item.quantity && item.quantity > 0 ? item.quantity : 0,
+        quantityReceived: item.quantityReceived && item.quantityReceived > 0 ? item.quantityReceived : (item.quantity && item.quantity > 0 ? item.quantity : 0),
+        unitCost: item.unitCost && item.unitCost > 0 ? item.unitCost : 0,
+        expectedProfit: item.expectedProfit ?? 0,
         costAtPurchase: item.costAtPurchase,
         total: item.costAtPurchase,
+        paymentDate: formatPanelDate(item.paymentDate),
       };
-    }).filter((r) => r.name !== null) as { id: string; name: string; costAtPurchase: number; total: number }[];
+    }) as {
+      id: string;
+      name: string;
+      quantityPurchased: number;
+      quantityReceived: number;
+      unitCost: number;
+      expectedProfit: number;
+      costAtPurchase: number;
+      total: number;
+      paymentDate: string;
+    }[];
   }, [procurement, products]);
+  const procurementChargeTotals = useMemo(() => {
+    if (!procurement) return { transfer: 0, stampDuty: 0, total: 0, count: 0 };
+    return procurement.items.reduce((acc, item) => {
+      if (item.productId !== 'charge-transfer-fees' && item.productId !== 'charge-stamp-duty') {
+        acc.count += 1;
+      }
+      if (item.productId === 'charge-transfer-fees') {
+        acc.transfer += item.costAtPurchase;
+      } else if (item.productId === 'charge-stamp-duty') {
+        acc.stampDuty += item.costAtPurchase;
+      }
+      acc.total = acc.transfer + acc.stampDuty;
+      return acc;
+    }, { transfer: 0, stampDuty: 0, total: 0, count: 0 });
+  }, [procurement]);
+  const nonChargeLineCount = useMemo(
+    () => procurement?.items.filter((item) => item.productId !== 'charge-transfer-fees' && item.productId !== 'charge-stamp-duty').length ?? 0,
+    [procurement]
+  );
+  type ProcActivityEventType = 'create' | 'submit' | 'approve' | 'reject';
+  const activityEvents = useMemo<{ label: string; actor: string; ts: string; type: ProcActivityEventType }[]>(() => {
+    if (!procurement) return [];
+    const events: { label: string; actor: string; ts: string; type: ProcActivityEventType }[] = [];
+    events.push({
+      label: 'PO created',
+      actor: extractMetadataValue(procurement.notes, 'submitted_by_name') || procurement.createdBy || 'Admin',
+      ts: procurement.createdAt,
+      type: 'create',
+    });
+    const approvalStatus = extractMetadataValue(procurement.notes, 'approval_status');
+    const submittedByName = extractMetadataValue(procurement.notes, 'submitted_by_name');
+    const submittedAt = extractMetadataValue(procurement.notes, 'submitted_at');
+    const reviewedByName = extractMetadataValue(procurement.notes, 'reviewed_by_name');
+    const reviewedAt = extractMetadataValue(procurement.notes, 'reviewed_at');
+    if (approvalStatus === 'submitted' || approvalStatus === 'approved' || approvalStatus === 'rejected') {
+      events.push({ label: 'Submitted for approval', actor: submittedByName || 'Team member', ts: submittedAt || procurement.createdAt, type: 'submit' });
+    }
+    if (approvalStatus === 'approved') {
+      events.push({ label: 'PO approved', actor: reviewedByName || 'Admin', ts: reviewedAt || '', type: 'approve' });
+    } else if (approvalStatus === 'rejected') {
+      events.push({ label: 'PO declined', actor: reviewedByName || 'Admin', ts: reviewedAt || '', type: 'reject' });
+    }
+    return events;
+  }, [procurement]);
 
   const handleDelete = () => {
     if (!procurement) return;
@@ -161,7 +312,27 @@ export default function ProcurementDetailScreen() {
 
   const handleEdit = () => {
     if (!procurement) return;
-    router.replace(`/(tabs)/finance?section=procurement&editProcurementId=${encodeURIComponent(procurement.id)}` as any);
+    router.replace(`/(tabs)/finance?section=${procurementSection}&editProcurementId=${encodeURIComponent(procurement.id)}` as any);
+  };
+
+  const handleUpdateStatus = (nextStatus: string) => {
+    if (!procurement) return;
+    const normalizedStatus = nextStatus.trim();
+    if (!normalizedStatus || status.trim().toLowerCase() === normalizedStatus.toLowerCase()) return;
+    const nextNotes = buildProcurementNotes(
+      stripMetadata(procurement.notes),
+      poNumber,
+      normalizedStatus,
+      receivedDate,
+      {
+        paid_date: paidDate,
+        received_date: receivedDate,
+        requested_status: normalizedStatus,
+      },
+      procurement.notes
+    );
+    updateProcurement(procurement.id, { notes: nextNotes }, businessId);
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
   if (!procurement) {
@@ -178,18 +349,6 @@ export default function ProcurementDetailScreen() {
   const StatusBadge = () => (
     <View className="px-2.5 py-1 rounded-full" style={{ backgroundColor: statusColors.bg }}>
       <Text className="text-xs font-semibold" style={{ color: statusColors.text }}>{status}</Text>
-    </View>
-  );
-
-  const MetaRow = ({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) => (
-    <View className="flex-row items-center py-4" style={{ borderTopWidth: 1, borderTopColor: colors.divider, paddingHorizontal: 16 }}>
-      <View className="rounded-xl items-center justify-center" style={{ width: 42, height: 42, backgroundColor: colors.bg.input, borderWidth: 1, borderColor: colors.divider }}>
-        {icon}
-      </View>
-      <View style={{ marginLeft: 14, flex: 1, minWidth: 0 }}>
-        <Text style={{ color: colors.text.muted }} className="text-xs">{label}</Text>
-        <Text style={{ color: colors.text.primary }} className="text-sm font-semibold mt-0.5" numberOfLines={1}>{value}</Text>
-      </View>
     </View>
   );
 
@@ -263,173 +422,188 @@ export default function ProcurementDetailScreen() {
         >
           {/* Hero card */}
           <View style={cardStyle}>
-            <View style={{ padding: 20, alignItems: 'center' }}>
-              <View className="rounded-2xl items-center justify-center mb-3" style={{ width: 54, height: 54, backgroundColor: colors.bg.input, borderWidth: 1, borderColor: colors.divider }}>
-                <Truck size={22} color={colors.text.tertiary} strokeWidth={2.2} />
-              </View>
-              {procurement.title ? (
-                <>
-                  <Text style={{ color: colors.text.primary, fontSize: 22, fontWeight: '700', textAlign: 'center', marginBottom: 2 }}>
-                    {procurement.title}
+            <View style={{ padding: 20, borderBottomWidth: 1, borderBottomColor: colors.divider }}>
+              <View className="flex-row items-start justify-between" style={{ gap: 12 }}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase tracking-wider mb-1">Procurement</Text>
+                  <Text style={{ color: colors.text.primary, fontSize: isWebDesktop ? 22 : 20, fontWeight: '600', lineHeight: isWebDesktop ? 28 : 26 }} numberOfLines={2}>
+                    {capitalizeDisplayValue(procurement.title || poNumber)}
                   </Text>
-                  {!isWebDesktop ? (
-                    <Text style={{ color: colors.text.secondary, fontSize: 15, fontWeight: '600', marginBottom: 3 }}>
-                      {procurement.supplierName || '—'}
-                    </Text>
-                  ) : null}
-                  <Text style={{ color: colors.text.muted, fontSize: 13, marginBottom: 6 }}>{poNumber}</Text>
-                </>
-              ) : (
-                <>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase tracking-wider mb-1">
-                  {poNumber}
-                </Text>
-                  {!isWebDesktop ? (
-                    <Text style={{ color: colors.text.secondary, fontSize: 15, fontWeight: '600', marginBottom: 4 }}>
-                      {procurement.supplierName || '—'}
-                    </Text>
-                  ) : null}
-                </>
-              )}
-              <Text style={{ color: colors.text.primary, fontSize: 44, lineHeight: 48, textAlign: 'center' }} className="font-bold">
-                {formatCurrency(procurement.totalCost)}
-              </Text>
-              {isWebDesktop ? (
-                <>
-                  <Text style={{ color: colors.text.secondary }} className="text-sm mt-1">
-                    Paid on {paidDate}
-                  </Text>
-                  <View style={{ marginTop: 8 }}>
-                    <StatusBadge />
-                  </View>
-                </>
-              ) : null}
-            </View>
-          </View>
-
-          {/* Summary grid */}
-          <View style={{ ...cardStyle, padding: 16 }}>
-            {isWebDesktop ? (
-              <View className="flex-row items-center justify-between">
-                <View style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs uppercase font-semibold mb-1">Supplier</Text>
-                  <Text style={{ color: colors.text.primary }} className="text-lg font-semibold" numberOfLines={1}>
-                    {procurement.supplierName || '—'}
+                  <Text style={{ color: colors.text.secondary, fontSize: isWebDesktop ? 14 : 13, marginTop: 4 }} numberOfLines={1}>
+                    {capitalizeDisplayValue(procurement.supplierName || 'No supplier')}
                   </Text>
                 </View>
                 <StatusBadge />
               </View>
-            ) : null}
-            <View className={`${isWebDesktop ? 'mt-3 pt-3' : ''} flex-row items-center justify-between`} style={{ borderTopWidth: isWebDesktop ? 1 : 0, borderTopColor: colors.divider }}>
-              <View>
-                <Text style={{ color: colors.text.tertiary }} className="text-xs uppercase font-semibold mb-1">Total Cost</Text>
-                <Text style={{ color: colors.text.primary }} className="text-base font-semibold">{formatCurrency(procurement.totalCost)}</Text>
+              <Text style={{ color: colors.text.primary, fontSize: 44, lineHeight: 48, marginTop: 14 }} className="font-medium">
+                {formatCurrency(procurement.totalCost)}
+              </Text>
+              <Text style={{ color: colors.text.secondary, fontSize: isWebDesktop ? 13 : 12, marginTop: 6 }}>
+                {poNumber} · Paid on {paidDate}
+              </Text>
+            </View>
+            <View style={{ flexDirection: 'row' }}>
+              <View style={{ flex: 1, paddingHorizontal: 16, paddingVertical: 14 }}>
+                <Text style={{ color: colors.text.tertiary }} className="text-xs uppercase font-semibold">Supplier</Text>
+                <Text style={{ color: colors.text.primary, fontSize: isWebDesktop ? 16 : 14, fontWeight: '600', marginTop: 4 }} numberOfLines={1}>
+                  {capitalizeDisplayValue(procurement.supplierName || 'No supplier')}
+                </Text>
               </View>
-              <View style={{ alignItems: 'flex-end' }}>
-                <Text style={{ color: colors.text.tertiary }} className="text-xs uppercase font-semibold mb-1">Line Items</Text>
-                <Text style={{ color: colors.text.primary }} className="text-base font-semibold">{procurement.items.length}</Text>
+              <View style={{ width: 1, backgroundColor: colors.divider }} />
+              <View style={{ flex: 1, paddingHorizontal: 16, paddingVertical: 14 }}>
+                <Text style={{ color: colors.text.tertiary }} className="text-xs uppercase font-semibold">Line Items</Text>
+                <Text style={{ color: colors.text.primary, fontSize: isWebDesktop ? 16 : 14, fontWeight: '600', marginTop: 4 }}>
+                  {nonChargeLineCount > 0 ? nonChargeLineCount : procurement.items.length}
+                </Text>
               </View>
             </View>
           </View>
 
-          {isWebDesktop ? (
-            <>
-              {/* Details */}
-              <View style={cardStyle}>
-                <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 }}>
-                  <Text style={{ color: colors.text.muted }} className="text-xs font-semibold uppercase tracking-wider">Details</Text>
-                </View>
-                <MetaRow icon={<User size={18} color={colors.text.tertiary} strokeWidth={2} />} label="Supplier" value={procurement.supplierName || '—'} />
-                <MetaRow icon={<Calendar size={18} color={colors.text.tertiary} strokeWidth={2} />} label="Date Paid" value={paidDate} />
-                <MetaRow icon={<Calendar size={18} color={colors.text.tertiary} strokeWidth={2} />} label="Date Received" value={receivedDate} />
-                <MetaRow icon={<Clock size={18} color={colors.text.tertiary} strokeWidth={2} />} label="Created" value={createdAt || '—'} />
-              </View>
+          {/* Status */}
+          <View style={{ ...cardStyle, padding: 16 }}>
+            <Text style={{ color: colors.text.muted }} className="text-xs font-semibold uppercase tracking-wider mb-3">Status</Text>
+            <View className="flex-row flex-wrap" style={{ gap: 8 }}>
+              {visibleStatusOptions.map((option) => {
+                const optionColors = STATUS_COLORS[option.toLowerCase()] ?? { bg: colors.bg.input, text: colors.text.secondary };
+                const isSelected = status.trim().toLowerCase() === option.trim().toLowerCase();
+                return (
+                  <Pressable
+                    key={option}
+                    onPress={() => {
+                      if (isSelected) return;
+                      handleUpdateStatus(option);
+                    }}
+                    style={{
+                      height: 34,
+                      paddingHorizontal: 12,
+                      borderRadius: 999,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: isSelected ? optionColors.bg : colors.bg.input,
+                      borderWidth: 1,
+                      borderColor: isSelected ? optionColors.text : colors.divider,
+                    }}
+                  >
+                    <Text style={{ color: isSelected ? optionColors.text : colors.text.secondary, fontSize: 12, fontWeight: '600' }}>
+                      {capitalizeDisplayValue(option)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
 
-              {/* Items */}
-              {itemRows.length > 0 ? (
-                <View style={cardStyle}>
-                  <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 }}>
-                    <Text style={{ color: colors.text.muted }} className="text-xs font-semibold uppercase tracking-wider">Items</Text>
-                  </View>
-                  {itemRows.map((item, index) => (
-                    <View
-                      key={item.id}
-                      style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: index === 0 ? 1 : 0, borderTopColor: colors.divider, gap: 12 }}
-                    >
-                      <View style={{ width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg.input, borderWidth: 1, borderColor: colors.divider }}>
-                        <Package size={16} color={colors.text.tertiary} strokeWidth={2} />
-                      </View>
-                      <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }} numberOfLines={1}>{item.name}</Text>
-                        <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 1 }}>Line amount</Text>
-                      </View>
-                      <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600' }}>{formatCurrency(item.total)}</Text>
+          {/* Details */}
+          <View style={cardStyle}>
+            <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 }}>
+              <Text style={{ color: colors.text.muted }} className="text-xs font-semibold uppercase tracking-wider">Details</Text>
+            </View>
+            {[
+              { label: 'PO Name', value: procurement.title || poNumber, icon: <FileText size={13} color={colors.text.tertiary} strokeWidth={2} /> },
+              { label: 'Supplier', value: procurement.supplierName || '—', icon: <User size={13} color={colors.text.tertiary} strokeWidth={2} /> },
+              { label: 'Status', value: status, icon: <Truck size={13} color={colors.text.tertiary} strokeWidth={2} /> },
+              { label: 'Date Paid', value: paidDate || '—', icon: <Calendar size={13} color={colors.text.tertiary} strokeWidth={2} /> },
+              { label: 'Date Received', value: receivedDate || '—', icon: <Calendar size={13} color={colors.text.tertiary} strokeWidth={2} /> },
+              { label: 'Created', value: createdAt || '—', icon: <Clock size={13} color={colors.text.tertiary} strokeWidth={2} /> },
+            ].map((row, index) => (
+              <View
+                key={row.label}
+                className="flex-row justify-between"
+                style={{
+                  alignItems: 'flex-start',
+                  paddingHorizontal: 16,
+                  paddingVertical: 10,
+                  borderTopWidth: index === 0 ? 1 : 0,
+                  borderTopColor: colors.divider,
+                  gap: 10,
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  {row.icon}
+                  <Text style={{ color: colors.text.secondary, fontSize: 12 }}>{row.label}</Text>
+                </View>
+                <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '600', flex: 1, textAlign: 'right', marginLeft: 20 }}>
+                  {capitalizeDisplayValue(row.value)}
+                </Text>
+              </View>
+            ))}
+          </View>
+
+          {/* Payment Breakdown */}
+          {itemRows.length > 0 ? (
+            <View style={cardStyle}>
+              <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 10 }}>
+                <Text style={{ color: colors.text.muted }} className="text-xs font-semibold uppercase tracking-wider">Payment Breakdown</Text>
+              </View>
+              {itemRows.map((item, index) => (
+                <View
+                  key={item.id}
+                  className="flex-row justify-between"
+                  style={{
+                    alignItems: 'flex-start',
+                    paddingHorizontal: 16,
+                    paddingTop: index === 0 ? 4 : 8,
+                    paddingBottom: 8,
+                    gap: 10,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, minWidth: 0, paddingRight: 12 }}>
+                    <Package size={13} color={colors.text.tertiary} strokeWidth={2} />
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={{ color: colors.text.secondary, fontSize: 12 }} numberOfLines={1}>{capitalizeDisplayValue(item.name)}</Text>
+                      <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 1 }} numberOfLines={1}>
+                        Qty {item.quantityReceived}/{item.quantityPurchased || item.quantityReceived} · Unit {formatCurrency(item.unitCost || 0)}
+                      </Text>
+                      {item.paymentDate ? (
+                        <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 1 }} numberOfLines={1}>
+                          Paid {item.paymentDate}
+                        </Text>
+                      ) : null}
                     </View>
-                  ))}
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '600', textAlign: 'right' }}>{formatCurrency(item.total)}</Text>
+                    <Text style={{ color: item.expectedProfit >= 0 ? colors.success : colors.danger, fontSize: 11, marginTop: 1 }}>
+                      Profit {formatCurrency(item.expectedProfit)}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+              {procurementChargeTotals.total > 0 ? (
+                <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 10, borderTopWidth: 1, borderTopColor: colors.divider }}>
+                  {procurementChargeTotals.transfer > 0 ? (
+                    <View className="flex-row items-center justify-between">
+                      <Text style={{ color: colors.text.muted, fontSize: 11 }}>
+                        Transfer fees{procurementChargeTotals.count > 1 ? ` (${procurementChargeTotals.count}x)` : ''}
+                      </Text>
+                      <Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '600' }}>
+                        {formatCurrency(procurementChargeTotals.transfer)}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {procurementChargeTotals.stampDuty > 0 ? (
+                    <View className="flex-row items-center justify-between" style={{ marginTop: procurementChargeTotals.transfer > 0 ? 6 : 0 }}>
+                      <Text style={{ color: colors.text.muted, fontSize: 11 }}>
+                        Stamp duty{procurementChargeTotals.count > 1 ? ` (${procurementChargeTotals.count}x)` : ''}
+                      </Text>
+                      <Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '600' }}>
+                        {formatCurrency(procurementChargeTotals.stampDuty)}
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
               ) : null}
-            </>
-          ) : (
-            <>
-              {/* Items */}
-              {itemRows.length > 0 ? (
-                <View style={cardStyle}>
-                  <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 }}>
-                    <Text style={{ color: colors.text.muted }} className="text-xs font-semibold uppercase tracking-wider">Items</Text>
-                  </View>
-                  {itemRows.map((item, index) => (
-                    <View
-                      key={item.id}
-                      style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: index === 0 ? 1 : 0, borderTopColor: colors.divider, gap: 12 }}
-                    >
-                      <View style={{ width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg.input, borderWidth: 1, borderColor: colors.divider }}>
-                        <Package size={16} color={colors.text.tertiary} strokeWidth={2} />
-                      </View>
-                      <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }} numberOfLines={1}>{item.name}</Text>
-                        <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 1 }}>Line amount</Text>
-                      </View>
-                      <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600' }}>{formatCurrency(item.total)}</Text>
-                    </View>
-                  ))}
-                </View>
-              ) : null}
-
-              {/* Status & Timeline */}
-              <View style={cardStyle}>
-                <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 }}>
-                  <Text style={{ color: colors.text.muted }} className="text-xs font-semibold uppercase tracking-wider">Status & Timeline</Text>
-                </View>
-                <View className="flex-row items-center py-4" style={{ borderTopWidth: 1, borderTopColor: colors.divider, paddingHorizontal: 16 }}>
-                  <View className="rounded-xl items-center justify-center" style={{ width: 42, height: 42, backgroundColor: colors.bg.input, borderWidth: 1, borderColor: colors.divider }}>
-                    <Truck size={18} color={colors.text.tertiary} strokeWidth={2} />
-                  </View>
-                  <View style={{ marginLeft: 14, flex: 1, minWidth: 0 }}>
-                    <Text style={{ color: colors.text.muted }} className="text-xs">Status</Text>
-                    <View style={{ marginTop: 5, alignSelf: 'flex-start' }}>
-                      <StatusBadge />
-                    </View>
-                  </View>
-                </View>
-                <MetaRow icon={<Calendar size={18} color={colors.text.tertiary} strokeWidth={2} />} label="Date Paid" value={paidDate} />
-                <MetaRow icon={<Calendar size={18} color={colors.text.tertiary} strokeWidth={2} />} label="Date Received" value={receivedDate} />
-                <MetaRow icon={<Clock size={18} color={colors.text.tertiary} strokeWidth={2} />} label="Created" value={createdAt || '—'} />
+              <View className="flex-row items-center justify-between" style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 14, borderTopWidth: 1, borderTopColor: colors.divider }}>
+                <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '700' }}>Total Cost</Text>
+                <Text style={{ color: colors.text.primary, fontSize: 16, fontWeight: '500' }}>{formatCurrency(procurement.totalCost)}</Text>
               </View>
-            </>
-          )}
-
-          {/* Notes */}
-          {cleanNotes ? (
-            <View style={{ ...cardStyle, padding: 16 }}>
-              <Text style={{ color: colors.text.tertiary }} className="text-xs uppercase font-semibold mb-2">Notes</Text>
-              <Text style={{ color: colors.text.primary, lineHeight: 22 }} className="text-sm">{cleanNotes}</Text>
             </View>
           ) : null}
 
           {/* Attachments */}
           {(procurement.attachments?.length ?? 0) > 0 ? (
             <View style={cardStyle}>
-              <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 }}>
+              <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 10 }}>
                 <Text style={{ color: colors.text.muted }} className="text-xs font-semibold uppercase tracking-wider">Attachments</Text>
               </View>
               {procurement.attachments!.map((attachment, index) => (
@@ -448,12 +622,65 @@ export default function ProcurementDetailScreen() {
                     )}
                   </View>
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }} numberOfLines={1}>{attachment.name}</Text>
+                    <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }} numberOfLines={1}>{attachment.name || `Attachment ${index + 1}`}</Text>
                     {attachment.mimeType ? <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 1 }}>{attachment.mimeType}</Text> : null}
                   </View>
                   <Paperclip size={14} color={colors.text.muted} strokeWidth={1.5} />
                 </Pressable>
               ))}
+            </View>
+          ) : null}
+
+          {/* Notes */}
+          {cleanNotes ? (
+            <View style={{ ...cardStyle, padding: 16 }}>
+              <Text style={{ color: colors.text.tertiary }} className="text-xs uppercase font-semibold mb-2">Notes</Text>
+              <Text style={{ color: colors.text.primary, lineHeight: 22 }} className="text-sm">{cleanNotes}</Text>
+            </View>
+          ) : null}
+
+          {/* Activity */}
+          {activityEvents.length > 0 ? (
+            <View style={cardStyle}>
+              <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 10 }}>
+                <Text style={{ color: colors.text.muted }} className="text-xs font-semibold uppercase tracking-wider">Activity</Text>
+              </View>
+              {activityEvents.map((event, index) => {
+                const isLast = index === activityEvents.length - 1;
+                const dotColor = event.type === 'approve' ? '#10B981' : event.type === 'reject' ? '#EF4444' : event.type === 'submit' ? '#3B82F6' : colors.text.muted;
+                const dotBg = event.type === 'approve' ? 'rgba(16,185,129,0.12)' : event.type === 'reject' ? 'rgba(239,68,68,0.12)' : event.type === 'submit' ? 'rgba(59,130,246,0.12)' : colors.bg.input;
+                const EventIcon = event.type === 'approve' ? CheckCircle : event.type === 'reject' ? XCircle : event.type === 'submit' ? Send : PlusCircle;
+                const tsMs = new Date(event.ts).getTime();
+                const tsLabel = (() => {
+                  if (!Number.isFinite(tsMs)) return '';
+                  const diffMs = Date.now() - tsMs;
+                  const mins = Math.floor(diffMs / 60000);
+                  if (mins < 1) return 'just now';
+                  if (mins < 60) return `${mins}m ago`;
+                  const hrs = Math.floor(mins / 60);
+                  if (hrs < 24) return `${hrs}h ago`;
+                  const days = Math.floor(hrs / 24);
+                  if (days < 7) return `${days}d ago`;
+                  return new Date(tsMs).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                })();
+                return (
+                  <View key={`${event.label}-${index}`} style={{ flexDirection: 'row', paddingHorizontal: 16, paddingBottom: isLast ? 16 : 0 }}>
+                    <View style={{ width: 32, alignItems: 'center', paddingTop: 2 }}>
+                      <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: dotBg, alignItems: 'center', justifyContent: 'center' }}>
+                        <EventIcon size={13} color={dotColor} strokeWidth={2} />
+                      </View>
+                      {!isLast ? <View style={{ width: 1.5, flex: 1, backgroundColor: colors.divider, marginTop: 4 }} /> : null}
+                    </View>
+                    <View style={{ flex: 1, paddingLeft: 10, paddingTop: 4, paddingBottom: isLast ? 0 : 14 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                        <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '600', flex: 1 }}>{event.label}</Text>
+                        {tsLabel ? <Text style={{ color: colors.text.muted, fontSize: 10 }}>{tsLabel}</Text> : null}
+                      </View>
+                      <Text style={{ color: colors.text.tertiary, fontSize: 10, marginTop: 2 }}>{event.actor}</Text>
+                    </View>
+                  </View>
+                );
+              })}
             </View>
           ) : null}
         </ScrollView>

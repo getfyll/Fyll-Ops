@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { X, Plus, Minus, Trash2, ChevronDown, Package, Paperclip, FileText, Image as ImageIcon } from 'lucide-react-native';
+import { X, Plus, Minus, Trash2, Paperclip, FileText, Image as ImageIcon, Search } from 'lucide-react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import useFyllStore, { ProcurementItem, ProcurementAttachment, formatCurrency } from '@/lib/state/fyll-store';
 import useAuthStore from '@/lib/state/auth-store';
@@ -17,7 +17,6 @@ export default function NewProcurementScreen() {
   const router = useRouter();
   const products = useFyllStore((s) => s.products);
   const addProcurement = useFyllStore((s) => s.addProcurement);
-  const updateVariantStock = useFyllStore((s) => s.updateVariantStock);
   const businessId = useAuthStore((s) => s.businessId);
 
   const [title, setTitle] = useState('');
@@ -26,8 +25,28 @@ export default function NewProcurementScreen() {
   const [items, setItems] = useState<ItemFormData[]>([]);
   const [attachments, setAttachments] = useState<ProcurementAttachment[]>([]);
   const [showProductSelector, setShowProductSelector] = useState(false);
-  const [expandedProduct, setExpandedProduct] = useState<string | null>(null);
+  const [productSearch, setProductSearch] = useState('');
   const [pickingFile, setPickingFile] = useState(false);
+
+  const flatVariants = useMemo(() => {
+    const query = productSearch.toLowerCase().trim();
+    const all = products.flatMap((p) =>
+      p.variants.map((v) => ({
+        productId: p.id,
+        variantId: v.id,
+        productName: p.name,
+        variantName: Object.values(v.variableValues).join(' / '),
+        sku: v.sku,
+      }))
+    );
+    if (!query) return all;
+    return all.filter(
+      (v) =>
+        v.productName.toLowerCase().includes(query) ||
+        v.variantName.toLowerCase().includes(query) ||
+        v.sku?.toLowerCase().includes(query)
+    );
+  }, [products, productSearch]);
   const [isSaving, setIsSaving] = useState(false);
 
   const totalCost = useMemo(() => {
@@ -144,7 +163,7 @@ export default function NewProcurementScreen() {
         variantName,
       }));
 
-      addProcurement({
+      await addProcurement({
         id: Math.random().toString(36).substring(2, 15),
         title: title.trim() || undefined,
         supplierName: supplierName.trim(),
@@ -154,10 +173,6 @@ export default function NewProcurementScreen() {
         createdAt: new Date().toISOString(),
         attachments: finalizedAttachments.length > 0 ? finalizedAttachments : undefined,
       }, businessId);
-
-      items.forEach((item) => {
-        updateVariantStock(item.productId, item.variantId, item.quantity);
-      });
 
       router.back();
     } catch (error) {
@@ -268,57 +283,53 @@ export default function NewProcurementScreen() {
             {/* Product Selector */}
             {showProductSelector && (
               <View className="bg-gray-50 rounded-xl p-3 mb-3">
-                {products.map((product) => (
-                  <View key={product.id} className="mb-2">
-                    <Pressable
-                      onPress={() => setExpandedProduct(expandedProduct === product.id ? null : product.id)}
-                      className="flex-row items-center justify-between py-2"
-                    >
-                      <View className="flex-row items-center">
-                        <Package size={18} color="#374151" strokeWidth={1.5} />
-                        <Text className="text-gray-900 font-semibold text-sm ml-2">{product.name}</Text>
-                      </View>
-                      <ChevronDown
-                        size={18}
-                        color="#6B7280"
-                        strokeWidth={2}
-                        style={{ transform: [{ rotate: expandedProduct === product.id ? '180deg' : '0deg' }] }}
-                      />
+                <View className="flex-row items-center bg-white rounded-xl px-3 py-2 mb-3 border border-gray-200">
+                  <Search size={16} color="#9CA3AF" strokeWidth={2} />
+                  <TextInput
+                    placeholder="Search by product, variant, or SKU…"
+                    placeholderTextColor="#9CA3AF"
+                    value={productSearch}
+                    onChangeText={setProductSearch}
+                    autoCapitalize="none"
+                    className="flex-1 ml-2 text-gray-900 text-sm"
+                  />
+                  {productSearch.length > 0 && (
+                    <Pressable onPress={() => setProductSearch('')} className="active:opacity-50">
+                      <X size={14} color="#9CA3AF" strokeWidth={2} />
                     </Pressable>
-                    {expandedProduct === product.id && (
-                      <View className="pl-6 border-l-2 border-gray-200">
-                        {product.variants.map((variant) => {
-                          const variantName = Object.values(variant.variableValues).join(' / ');
-                          const isAdded = items.some(
-                            (i) => i.productId === product.id && i.variantId === variant.id
-                          );
+                  )}
+                </View>
 
-                          return (
-                            <Pressable
-                              key={variant.id}
-                              onPress={() => handleAddItem(product.id, variant.id, product.name, variantName)}
-                              disabled={isAdded}
-                              className={cn(
-                                'flex-row items-center justify-between py-2 px-2 rounded-lg mb-1',
-                                isAdded ? 'bg-green-100' : 'bg-white active:bg-gray-100'
-                              )}
-                            >
-                              <View>
-                                <Text className="text-gray-800 text-sm font-medium">{variantName}</Text>
-                                <Text className="text-gray-500 text-xs">SKU: {variant.sku}</Text>
-                              </View>
-                              {isAdded ? (
-                                <Text className="text-green-600 text-xs font-semibold">Added</Text>
-                              ) : (
-                                <Plus size={18} color="#6B7280" strokeWidth={2} />
-                              )}
-                            </Pressable>
-                          );
-                        })}
-                      </View>
-                    )}
-                  </View>
-                ))}
+                {flatVariants.length === 0 ? (
+                  <Text className="text-gray-400 text-sm text-center py-4">No variants found</Text>
+                ) : (
+                  flatVariants.map((v) => {
+                    const isAdded = items.some(
+                      (i) => i.productId === v.productId && i.variantId === v.variantId
+                    );
+                    return (
+                      <Pressable
+                        key={`${v.productId}-${v.variantId}`}
+                        onPress={() => handleAddItem(v.productId, v.variantId, v.productName, v.variantName)}
+                        disabled={isAdded}
+                        className={cn(
+                          'flex-row items-center justify-between py-2.5 px-3 rounded-xl mb-1.5',
+                          isAdded ? 'bg-green-50' : 'bg-white active:bg-gray-100'
+                        )}
+                      >
+                        <View className="flex-1 mr-2">
+                          <Text className="text-gray-900 text-sm font-semibold">{v.variantName || v.productName}</Text>
+                          <Text className="text-gray-500 text-xs mt-0.5">{v.productName}{v.sku ? ` · ${v.sku}` : ''}</Text>
+                        </View>
+                        {isAdded ? (
+                          <Text className="text-green-600 text-xs font-semibold">Added</Text>
+                        ) : (
+                          <Plus size={18} color="#6B7280" strokeWidth={2} />
+                        )}
+                      </Pressable>
+                    );
+                  })
+                )}
               </View>
             )}
 

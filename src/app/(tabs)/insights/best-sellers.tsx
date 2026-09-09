@@ -27,6 +27,7 @@ export default function BestSellersScreen() {
 
   const timeRangeOptions: { key: TimeRange; label: string }[] = [
     { key: '7d', label: 'Last 7 days' },
+    { key: 'month', label: 'This Month' },
     { key: '30d', label: 'Last 30 days' },
     { key: 'year', label: 'This Year' },
   ];

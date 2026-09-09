@@ -8,7 +8,7 @@ import { supabaseSettings } from "@/lib/supabase/settings";
 import { capitalizeDisplayLabel } from "@/lib/display-format";
 import { findOrderTrackingStageByName, sanitizeOrderStatus, sanitizeOrderStatuses, type OrderTrackingStage } from "@/lib/order-status";
 import { syncFyllOrderStatusToWooCommerce } from "@/lib/woocommerce";
-import { formatAddressValue } from "@/lib/format-address";
+import { formatAddressValue, normalizeDeliveryStateValue } from "@/lib/format-address";
 import {
   buildOrderQcRequirement,
   DEFAULT_ORDER_QC_REQUIREMENTS,
@@ -52,7 +52,7 @@ const sanitizeProductForWebPersist = (product: Product): Product => ({
 // Nigeria States
 export const NIGERIA_STATES = [
   'Abia', 'Adamawa', 'Akwa Ibom', 'Anambra', 'Bauchi', 'Bayelsa', 'Benue', 'Borno',
-  'Cross River', 'Delta', 'Ebonyi', 'Edo', 'Ekiti', 'Enugu', 'FCT', 'Gombe',
+  'Cross River', 'Delta', 'Ebonyi', 'Edo', 'Ekiti', 'Enugu', 'Abuja', 'Gombe',
   'Imo', 'Jigawa', 'Kaduna', 'Kano', 'Katsina', 'Kebbi', 'Kogi', 'Kwara',
   'Lagos', 'Nasarawa', 'Niger', 'Ogun', 'Ondo', 'Osun', 'Oyo', 'Plateau',
   'Rivers', 'Sokoto', 'Taraba', 'Yobe', 'Zamfara'
@@ -73,6 +73,10 @@ export interface ProductVariant {
   stock: number;
   sellingPrice: number;
   imageUrl?: string; // Optional variant-specific image
+  wooCommerceProductId?: string;
+  wooCommerceVariationId?: string;
+  sourceProductId?: string;
+  sourceVariantId?: string;
 }
 
 export type ProductType = 'product' | 'service';
@@ -135,6 +139,9 @@ export interface Product {
   // showSyncedProducts), so a connected WooCommerce catalog doesn't clutter
   // an already-audited manual inventory.
   catalogSource?: string;
+  wooCommerceProductId?: string;
+  sourceProductId?: string;
+  websiteProductId?: string;
   // Archive: a lighter-weight alternative to Delete/Recycle Bin — keeps the
   // product record fully intact (no snapshot/recycle-bin mechanics) and just
   // hides it from the default inventory view. Meant for cases like "this
@@ -260,6 +267,8 @@ export interface OrderItem {
   variantId: string;
   quantity: number;
   unitPrice: number;
+  productName?: string;
+  variantName?: string;
   serviceId?: string;
   serviceVariables?: ServiceOrderVariable[];
   serviceFields?: ServiceOrderField[];
@@ -284,7 +293,7 @@ export interface BankAccount {
 // where staff builds `resolvedItems` from scratch by reading the note (see
 // social-checkout/[id].tsx). Stored in the `social_checkouts` table (same
 // generic id/business_id/data-jsonb shape as `orders`) via supabaseData.
-export type SocialCheckoutStatus = 'awaiting_payment' | 'payment_submitted' | 'verified' | 'cancelled' | 'expired';
+export type SocialCheckoutStatus = 'awaiting_payment' | 'payment_submitted' | 'verified' | 'rejected' | 'cancelled' | 'expired';
 
 export const SOCIAL_CHECKOUT_EXPIRY_MS = 24 * 60 * 60 * 1000;
 
@@ -334,6 +343,7 @@ export interface SocialCheckoutDraft {
   convertedOrderId?: string;
   paymentSubmittedEmailSentAt?: string;
   paymentConfirmedEmailSentAt?: string;
+  paymentRejectedEmailSentAt?: string;
   orderCreatedEmailSentAt?: string;
   activityLog?: Array<{
     id: string;
@@ -404,6 +414,12 @@ export interface Order {
   status: string;
   orderStatus?: string;
   source: string; // WhatsApp, Instagram, etc.
+  fyllCheckout?: {
+    reference?: string;
+    amountPaid?: number;
+    expectedAmount?: number;
+    balanceDue?: number;
+  };
   subtotal: number; // Products only
   totalAmount: number; // Grand total
   refund?: Refund; // Refund info if refunded
@@ -439,7 +455,10 @@ const normalizeOrderAddressFields = <T extends Partial<Order>>(order: T): T => {
   }
 
   if ('deliveryState' in nextOrder) {
-    nextOrder.deliveryState = formatAddressValue((nextOrder as Record<string, unknown>).deliveryState);
+    nextOrder.deliveryState = normalizeDeliveryStateValue(
+      (nextOrder as Record<string, unknown>).deliveryState,
+      (nextOrder as Record<string, unknown>).deliveryAddress
+    );
   }
 
   return nextOrder;
@@ -527,6 +546,93 @@ export interface Procurement {
   createdAt: string;
   createdBy?: string;
   attachments?: ProcurementAttachment[];
+}
+
+export type PartnerBillingCycle = 'manual' | 'weekly' | 'biweekly' | 'monthly';
+
+export interface Partner {
+  id: string;
+  name: string;
+  contactName?: string;
+  phone?: string;
+  email?: string;
+  notes?: string;
+  allowedJobStatuses?: PartnerJobStatus[];
+  businessJobStatuses?: PartnerJobStatus[];
+  partnerJobStatuses?: PartnerJobStatus[];
+  statusColors?: Record<string, { bg: string; text: string }>;
+  // How this partner's jobs are grouped for billing in their portal.
+  // 'manual' (default when absent) keeps today's behavior: partner picks
+  // any unbilled jobs freely. Weekly/biweekly/monthly auto-bucket unbilled
+  // jobs into periods so the partner sends one bill per period.
+  billingCycle?: PartnerBillingCycle;
+  magicLinkToken: string;
+  isActive: boolean;
+  createdAt: string;
+  createdBy?: string;
+}
+
+export type PartnerJobStatus = string;
+
+export type PartnerBillStatus = 'pending' | 'approved' | 'rejected' | 'queried' | 'paid';
+
+export interface PartnerJob {
+  id: string;
+  partnerId: string;
+  orderId?: string;
+  customerName: string;
+  imageUrl?: string;
+  itemLabel?: string;
+  jobType?: string;
+  jobService?: string;
+  documentUrl?: string;
+  documentName?: string;
+  documentMimeType?: string;
+  status: PartnerJobStatus;
+  amount?: number;
+  notes?: string;
+  dispatchedAt?: string;
+  acceptedAt?: string;
+  readyAt?: string;
+  collectedAt?: string;
+  billedAt?: string;
+  // Set once the partner bundles this job into a bill and submits it for
+  // business review. Jobs sharing a billId are one bill; billStatus/notes
+  // are duplicated across them so business actions can update the whole
+  // batch with the same loop used elsewhere in this store.
+  billId?: string;
+  billStatus?: PartnerBillStatus;
+  billSubmittedAt?: string;
+  billRespondedAt?: string;
+  billRespondedBy?: string;
+  billNote?: string;
+  billPaidAt?: string;
+  // Denormalized from the latest open row in partnerJobIssues, so job lists
+  // and the partner portal can flag/hold a job without an extra fetch.
+  hasOpenIssue?: boolean;
+  createdAt: string;
+  createdBy?: string;
+}
+
+export type PartnerJobIssueStatus = 'open' | 'resolved';
+
+// A defect/complaint reported by the business against a job it sent to a
+// partner. Separate from the general Cases system (which is customer-facing)
+// — deliberately simple, no comment thread, just a single report + optional
+// resolution note, and it flags the job's payment on hold while open.
+export interface PartnerJobIssue {
+  id: string;
+  partnerId: string;
+  jobId: string;
+  orderId?: string;
+  description: string;
+  screenshotUrl?: string;
+  status: PartnerJobIssueStatus;
+  createdAt: string;
+  createdBy?: string;
+  resolvedAt?: string;
+  resolvedBy?: string;
+  resolutionNote?: string;
 }
 
 export type ExpensePaymentStatus = 'draft' | 'partial' | 'paid';
@@ -793,6 +899,27 @@ export interface AuditLogItem {
   discrepancy: number;
 }
 
+export interface AuditLogActivityChange {
+  variantId: string;
+  productName: string;
+  variantName: string;
+  sku: string;
+  previousExpectedStock?: number;
+  nextExpectedStock?: number;
+  previousActualStock: number;
+  nextActualStock: number;
+  previousDiscrepancy: number;
+  nextDiscrepancy: number;
+}
+
+export interface AuditLogActivity {
+  id: string;
+  action: string;
+  performedBy?: string;
+  createdAt: string;
+  changes: AuditLogActivityChange[];
+}
+
 export interface AuditLog {
   id: string;
   month: number; // 0-11
@@ -801,7 +928,9 @@ export interface AuditLog {
   discrepancies: number;
   completedAt: string;
   performedBy?: string;
+  scope?: 'products' | 'warehouse';
   items: AuditLogItem[];
+  activityLog?: AuditLogActivity[];
 }
 
 export interface RestockLog {
@@ -1055,7 +1184,9 @@ export type DeletedEntityType =
   | 'expense-request'
   | 'refund-request'
   | 'case'
-  | 'return';
+  | 'return'
+  | 'partner'
+  | 'partner-job';
 
 export interface DeletedItem {
   id: string;
@@ -1101,6 +1232,7 @@ interface FyllStore {
   deliveryFollowUpDelayDays: number;
   deliveryFollowUpResendDays: number;
   deliveryFollowUpFromName: string;
+  orderStatusEmailEnabled: boolean;
   setAutoCompleteOrders: (enabled: boolean) => void;
   setAutoCompleteAfterDays: (days: number) => void;
   setAutoCompleteFromStatus: (status: string) => void;
@@ -1113,6 +1245,7 @@ interface FyllStore {
   setDeliveryFollowUpDelayDays: (days: number) => void;
   setDeliveryFollowUpResendDays: (days: number) => void;
   setDeliveryFollowUpFromName: (value: string) => void;
+  setOrderStatusEmailEnabled: (enabled: boolean) => void;
 
   // Global Categories
   categories: string[];
@@ -1231,6 +1364,20 @@ interface FyllStore {
   updateProcurement: (id: string, procurement: Partial<Procurement>, businessId?: string | null) => void;
   deleteProcurement: (id: string, businessId?: string | null) => void;
 
+  partners: Partner[];
+  addPartner: (partner: Partner, businessId?: string | null) => void;
+  updatePartner: (id: string, partner: Partial<Partner>, businessId?: string | null) => void;
+  deletePartner: (id: string, businessId?: string | null) => void;
+
+  partnerJobs: PartnerJob[];
+  addPartnerJob: (job: PartnerJob, businessId?: string | null) => void;
+  updatePartnerJob: (id: string, job: Partial<PartnerJob>, businessId?: string | null) => void;
+  deletePartnerJob: (id: string, businessId?: string | null) => void;
+
+  partnerJobIssues: PartnerJobIssue[];
+  addPartnerJobIssue: (issue: PartnerJobIssue, businessId?: string | null) => Promise<void>;
+  updatePartnerJobIssue: (id: string, issue: Partial<PartnerJobIssue>, businessId?: string | null) => void;
+
   // Expenses
   expenses: Expense[];
   otherIncomes: OtherIncome[];
@@ -1277,6 +1424,7 @@ interface FyllStore {
   // Audit Logs
   auditLogs: AuditLog[];
   addAuditLog: (log: AuditLog) => void;
+  updateAuditLog: (id: string, updates: Partial<AuditLog>) => void;
   hasAuditForMonth: (month: number, year: number) => boolean;
 
   // Cases
@@ -1432,6 +1580,7 @@ const initialState = {
   deliveryFollowUpDelayDays: 7,
   deliveryFollowUpResendDays: 7,
   deliveryFollowUpFromName: '',
+  orderStatusEmailEnabled: false,
   categories: initialCategories,
   customers: [] as Customer[],
   products: [] as Product[],
@@ -1445,6 +1594,9 @@ const initialState = {
   paymentMethods: initialPaymentMethods,
   logisticsCarriers: initialLogisticsCarriers,
   procurements: [] as Procurement[],
+  partners: [] as Partner[],
+  partnerJobs: [] as PartnerJob[],
+  partnerJobIssues: [] as PartnerJobIssue[],
   expenses: [] as Expense[],
   otherIncomes: [] as OtherIncome[],
   expenseRequests: initialExpenseRequests,
@@ -2070,6 +2222,30 @@ const useFyllStore = create<FyllStore>()(
             removeFromBin();
             return;
           }
+          case 'partner': {
+            const partner = deletedItem.data as Partner;
+            set({ partners: [...get().partners.filter((item) => item.id !== partner.id), partner] });
+            if (businessId) await supabaseData.upsertCollection('partners', businessId, [partner]);
+            if (businessId) {
+              await deleteDeletedItemsFromSupabase(businessId, [deletedItem.id]).catch((error) => {
+                console.warn('Supabase recycle bin cleanup failed:', error);
+              });
+            }
+            removeFromBin();
+            return;
+          }
+          case 'partner-job': {
+            const job = deletedItem.data as PartnerJob;
+            set({ partnerJobs: [...get().partnerJobs.filter((item) => item.id !== job.id), job] });
+            if (businessId) await supabaseData.upsertCollection('partner_jobs', businessId, [job]);
+            if (businessId) {
+              await deleteDeletedItemsFromSupabase(businessId, [deletedItem.id]).catch((error) => {
+                console.warn('Supabase recycle bin cleanup failed:', error);
+              });
+            }
+            removeFromBin();
+            return;
+          }
           case 'procurement-item': {
             const procurementId = deletedItem.parentId;
             const procurement = get().procurements.find((item) => item.id === procurementId);
@@ -2246,6 +2422,7 @@ const useFyllStore = create<FyllStore>()(
       setDeliveryFollowUpFromName: (value) => set({
         deliveryFollowUpFromName: value.trim().slice(0, 80),
       }),
+      setOrderStatusEmailEnabled: (enabled) => set({ orderStatusEmailEnabled: enabled }),
       setOrderAutomations: (rules) => set(() => {
         const nextRules = sanitizeOrderAutomations(rules);
         return {
@@ -2433,6 +2610,7 @@ const useFyllStore = create<FyllStore>()(
               ? Math.floor(state.deliveryFollowUpResendDays)
               : 7,
             deliveryFollowUpFromName: state.deliveryFollowUpFromName.trim(),
+            orderStatusEmailEnabled: state.orderStatusEmailEnabled ?? false,
             orderTimelineSettings: mergedOrderTimelineSettings,
             orderTimelineSettingsLastKnownPopulated: backupOrderTimelineSettings,
             financeSuppliers,
@@ -2476,6 +2654,7 @@ const useFyllStore = create<FyllStore>()(
               ? Math.floor(state.deliveryFollowUpResendDays)
               : 7,
             deliveryFollowUpFromName: state.deliveryFollowUpFromName.trim(),
+            orderStatusEmailEnabled: state.orderStatusEmailEnabled ?? false,
             orderTimelineSettings: mergedOrderTimelineSettings,
           });
 
@@ -2910,6 +3089,16 @@ const useFyllStore = create<FyllStore>()(
           )
           && updates.updatedBy !== 'WooCommerce Sync'
         );
+        const shouldSendOrderStatusChangeEmail = Boolean(
+          get().orderStatusEmailEnabled
+          && businessId
+          && previousOrder
+          && nextStatus
+          && nextStatus !== previousOrder.status
+          && !shouldTryDeliveryConfirmationEmail
+          && !shouldForceDeliveryConfirmationEmail
+          && updates.updatedBy !== 'WooCommerce Sync'
+        );
         const appendSystemOrderActivity = async (orderId: string, action: string) => {
           const currentOrder = get().orders.find((o) => o.id === orderId);
           if (!currentOrder || !businessId) return;
@@ -3026,6 +3215,28 @@ const useFyllStore = create<FyllStore>()(
                     const message = error instanceof Error ? error.message : 'Unknown error';
                     await appendSystemOrderActivity(id, `Delivery confirmation status email trigger failed: ${message}`);
                     console.warn('Delivery confirmation status email trigger failed:', error);
+                  }
+                }
+
+                if (shouldSendOrderStatusChangeEmail) {
+                  try {
+                    const { error } = await supabase.functions.invoke('send-order-status-email', {
+                      body: {
+                        businessId,
+                        orderId: id,
+                        previousStatus: previousOrder?.status ?? '',
+                        newStatus: nextStatus,
+                      },
+                    });
+
+                    if (error) {
+                      throw error;
+                    }
+
+                    await appendSystemOrderActivity(id, `Sent order status update email for status changed to ${nextStatus}`);
+                  } catch (error) {
+                    const message = error instanceof Error ? error.message : 'Unknown error';
+                    console.warn('Order status change email trigger failed:', message);
                   }
                 }
 
@@ -3538,6 +3749,93 @@ const useFyllStore = create<FyllStore>()(
         ]).catch((error) => console.warn('Supabase procurement delete failed:', error));
       },
 
+      // Partners
+      addPartner: (partner, businessId) => {
+        set({ partners: [...get().partners, partner] });
+        if (!businessId) return;
+        supabaseData
+          .upsertCollection('partners', businessId, [partner])
+          .catch((error) => console.warn('Supabase partner add failed:', error));
+      },
+      updatePartner: (id, updates, businessId) => {
+        set({ partners: get().partners.map((p) => p.id === id ? { ...p, ...updates } : p) });
+        if (!businessId) return;
+        const updated = get().partners.find((p) => p.id === id);
+        if (!updated) return;
+        supabaseData
+          .upsertCollection('partners', businessId, [updated])
+          .catch((error) => console.warn('Supabase partner update failed:', error));
+      },
+      deletePartner: (id, businessId) => {
+        const deletedPartner = get().partners.find((p) => p.id === id);
+        const deletedPartnerItem = deletedPartner
+          ? createDeletedItem('partner', deletedPartner.id, deletedPartner.name || 'Partner', deletedPartner)
+          : null;
+        set({
+          partners: get().partners.filter((p) => p.id !== id),
+          recycleBin: deletedPartnerItem ? [deletedPartnerItem, ...get().recycleBin] : get().recycleBin,
+        });
+        if (!businessId) return;
+        void Promise.all([
+          supabaseData.deleteByIds('partners', businessId, [id]),
+          deletedPartnerItem ? persistDeletedItemsToSupabase(businessId, [deletedPartnerItem]) : Promise.resolve(),
+        ]).catch((error) => console.warn('Supabase partner delete failed:', error));
+      },
+
+      // Partner jobs
+      addPartnerJob: (job, businessId) => {
+        set({ partnerJobs: [...get().partnerJobs, job] });
+        if (!businessId) return;
+        supabaseData
+          .upsertCollection('partner_jobs', businessId, [job])
+          .catch((error) => console.warn('Supabase partner job add failed:', error));
+      },
+      updatePartnerJob: (id, updates, businessId) => {
+        set({ partnerJobs: get().partnerJobs.map((j) => j.id === id ? { ...j, ...updates } : j) });
+        if (!businessId) return;
+        const updated = get().partnerJobs.find((j) => j.id === id);
+        if (!updated) return;
+        supabaseData
+          .upsertCollection('partner_jobs', businessId, [updated])
+          .catch((error) => console.warn('Supabase partner job update failed:', error));
+      },
+      deletePartnerJob: (id, businessId) => {
+        const deletedJob = get().partnerJobs.find((j) => j.id === id);
+        const deletedJobItem = deletedJob
+          ? createDeletedItem('partner-job', deletedJob.id, deletedJob.customerName || 'Partner job', deletedJob)
+          : null;
+        set({
+          partnerJobs: get().partnerJobs.filter((j) => j.id !== id),
+          recycleBin: deletedJobItem ? [deletedJobItem, ...get().recycleBin] : get().recycleBin,
+        });
+        if (!businessId) return;
+        void Promise.all([
+          supabaseData.deleteByIds('partner_jobs', businessId, [id]),
+          deletedJobItem ? persistDeletedItemsToSupabase(businessId, [deletedJobItem]) : Promise.resolve(),
+        ]).catch((error) => console.warn('Supabase partner job delete failed:', error));
+      },
+
+      // Partner job issues
+      addPartnerJobIssue: async (issue, businessId) => {
+        set({ partnerJobIssues: [...get().partnerJobIssues, issue] });
+        if (!businessId) return;
+        try {
+          await supabaseData.upsertCollection('partner_job_issues', businessId, [issue]);
+        } catch (error) {
+          console.warn('Supabase partner job issue add failed:', error);
+          throw error;
+        }
+      },
+      updatePartnerJobIssue: (id, updates, businessId) => {
+        set({ partnerJobIssues: get().partnerJobIssues.map((i) => i.id === id ? { ...i, ...updates } : i) });
+        if (!businessId) return;
+        const updated = get().partnerJobIssues.find((i) => i.id === id);
+        if (!updated) return;
+        supabaseData
+          .upsertCollection('partner_job_issues', businessId, [updated])
+          .catch((error) => console.warn('Supabase partner job issue update failed:', error));
+      },
+
       // Expenses
       addExpense: (expense, businessId) => {
         set({ expenses: [...get().expenses, expense] });
@@ -3926,6 +4224,9 @@ const useFyllStore = create<FyllStore>()(
 
       // Audit Logs
       addAuditLog: (log) => set({ auditLogs: [...get().auditLogs, log] }),
+      updateAuditLog: (id, updates) => set((state) => ({
+        auditLogs: state.auditLogs.map((log) => (log.id === id ? { ...log, ...updates } : log)),
+      })),
       hasAuditForMonth: (month, year) => {
         return get().auditLogs.some((log) => log.month === month && log.year === year);
       },
@@ -4338,6 +4639,7 @@ const useFyllStore = create<FyllStore>()(
           deliveryFollowUpDelayDays: state.deliveryFollowUpDelayDays,
           deliveryFollowUpResendDays: state.deliveryFollowUpResendDays,
           deliveryFollowUpFromName: state.deliveryFollowUpFromName,
+          orderStatusEmailEnabled: state.orderStatusEmailEnabled,
           categories: state.categories,
           customers: state.customers,
           products: state.products,

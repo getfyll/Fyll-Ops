@@ -1,21 +1,27 @@
 import React, { useState } from 'react';
-import { View, Text, Pressable, TextInput, Alert, ScrollView } from 'react-native';
+import { View, Text, Pressable, TextInput, Alert, ScrollView, Platform, type ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
-import { ChevronLeft, User as UserIcon, Mail, Lock, Save } from 'lucide-react-native';
+import { ArrowLeft, User as UserIcon, Mail, Lock, Save } from 'lucide-react-native';
 import { useThemeColors } from '@/lib/theme';
 import useAuthStore from '@/lib/state/auth-store';
 import * as Haptics from 'expo-haptics';
 import { getSettingsWebPanelStyles, isFromSettingsRoute } from '@/lib/settings-web-panel';
 import { useSettingsBack } from '@/lib/useSettingsBack';
 
-export default function AccountSettingsScreen() {
+type AccountSettingsScreenProps = {
+  embeddedInSettings?: boolean;
+};
+
+export default function AccountSettingsScreen({ embeddedInSettings = false }: AccountSettingsScreenProps) {
   const { from } = useLocalSearchParams<{ from?: string | string[] }>();
   const goBack = useSettingsBack();
   const colors = useThemeColors();
+  const isEmbeddedWeb = Platform.OS === 'web' && (isFromSettingsRoute(from) || embeddedInSettings);
+  const panelBackgroundColor = colors.bg.primary;
   const panelStyles = getSettingsWebPanelStyles(
-    isFromSettingsRoute(from),
-    colors.bg.primary,
+    isEmbeddedWeb,
+    panelBackgroundColor,
     colors.border.light
   );
   const currentUser = useAuthStore((s) => s.currentUser);
@@ -29,15 +35,17 @@ export default function AccountSettingsScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const primaryPillButtonStyle = {
+  const primaryPillButtonStyle: ViewStyle = {
     backgroundColor: colors.text.primary,
     height: 56,
     borderRadius: 999,
     opacity: isLoading ? 0.7 : 1,
-  } as const;
+    ...(isEmbeddedWeb ? { width: '20%', minWidth: 220, alignSelf: 'flex-start' } : {}),
+  };
   const primaryPillTextStyle = {
     color: colors.bg.primary,
   } as const;
+  const fieldBorderColor = isEmbeddedWeb ? colors.border.light : colors.input.border;
 
   const handleUpdateProfile = async () => {
     if (!name.trim() || !email.trim()) {
@@ -114,18 +122,38 @@ export default function AccountSettingsScreen() {
       <View style={panelStyles.inner}>
       <SafeAreaView className="flex-1" edges={['top']}>
         {/* Header */}
-        <View className="px-5 pt-4 pb-3 flex-row items-center" style={{ borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
+        <View
+          className="px-5 pt-4 pb-3 flex-row items-center"
+          style={{
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border.light,
+            ...(Platform.OS === 'web' ? { paddingHorizontal: 24, paddingTop: 10, paddingBottom: 10 } : {}),
+          }}
+        >
           <Pressable
             onPress={goBack}
-            className="w-10 h-10 rounded-xl items-center justify-center mr-3 active:opacity-50"
-            style={{ backgroundColor: colors.bg.secondary }}
+            className="w-10 h-10 items-center justify-center mr-3 active:opacity-50"
+            style={{ backgroundColor: 'transparent' }}
           >
-            <ChevronLeft size={20} color={colors.text.primary} strokeWidth={2} />
+            <ArrowLeft size={20} color={colors.text.primary} strokeWidth={2} />
           </Pressable>
-          <Text style={{ color: colors.text.primary }} className="text-xl font-bold">Account Settings</Text>
+          <Text
+            style={{
+              color: colors.text.primary,
+              fontSize: Platform.OS === 'web' ? 14 : 20,
+              lineHeight: Platform.OS === 'web' ? 18 : 24,
+              fontWeight: '600',
+            }}
+          >
+            Account Settings
+          </Text>
         </View>
 
-        <ScrollView className="flex-1 px-5 pt-6" showsVerticalScrollIndicator={false}>
+        <ScrollView
+          className="flex-1 px-5 pt-6"
+          contentContainerStyle={isEmbeddedWeb ? { paddingHorizontal: 12, paddingBottom: 64 } : undefined}
+          showsVerticalScrollIndicator={false}
+        >
           {/* Profile Picture */}
           {currentUser && (
             <View className="items-center mb-8">
@@ -160,7 +188,7 @@ export default function AccountSettingsScreen() {
               style={{
                 backgroundColor: colors.input.bg,
                 borderWidth: 1,
-                borderColor: colors.input.border,
+                borderColor: fieldBorderColor,
                 height: 56,
               }}
             >
@@ -186,7 +214,7 @@ export default function AccountSettingsScreen() {
               style={{
                 backgroundColor: colors.input.bg,
                 borderWidth: 1,
-                borderColor: colors.input.border,
+                borderColor: fieldBorderColor,
                 height: 56,
               }}
             >
@@ -236,7 +264,7 @@ export default function AccountSettingsScreen() {
               style={{
                 backgroundColor: colors.input.bg,
                 borderWidth: 1,
-                borderColor: colors.input.border,
+                borderColor: fieldBorderColor,
                 height: 56,
               }}
             >
@@ -263,7 +291,7 @@ export default function AccountSettingsScreen() {
               style={{
                 backgroundColor: colors.input.bg,
                 borderWidth: 1,
-                borderColor: colors.input.border,
+                borderColor: fieldBorderColor,
                 height: 56,
               }}
             >
@@ -290,7 +318,7 @@ export default function AccountSettingsScreen() {
               style={{
                 backgroundColor: colors.input.bg,
                 borderWidth: 1,
-                borderColor: colors.input.border,
+                borderColor: fieldBorderColor,
                 height: 56,
               }}
             >

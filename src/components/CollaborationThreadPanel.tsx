@@ -1,5 +1,14 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Dimensions, Image, ImageBackground, Linking, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import React, { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Dimensions, Image, ImageBackground, Linking, Modal, Platform, Pressable, ScrollView, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, {
+  Extrapolation,
+  interpolate,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { RealtimeChannel } from '@supabase/supabase-js';
@@ -55,6 +64,11 @@ interface CreateCommentVariables {
   parentCommentId?: string | null;
   mentionUserIds?: string[];
   attachment?: PendingAttachment | null;
+  optimisticId?: string;
+  rawComposerText?: string;
+  replyTargetSnapshot?: ReplyTarget | null;
+  selectedMentionIdsSnapshot?: string[];
+  pendingAttachmentSnapshot?: PendingAttachment | null;
 }
 
 interface PendingAttachment {
@@ -62,6 +76,14 @@ interface PendingAttachment {
   name: string;
   mimeType?: string | null;
   size?: number | null;
+}
+
+interface CreateCommentMutationContext {
+  optimisticId: string;
+  rawComposerText: string;
+  replyTargetSnapshot: ReplyTarget | null;
+  selectedMentionIdsSnapshot: string[];
+  pendingAttachmentSnapshot: PendingAttachment | null;
 }
 
 interface MentionableMember {
@@ -218,12 +240,73 @@ const getTypingNamesFromPresenceState = (
   return names;
 };
 
+const mergeCommentIntoList = (
+  previous: CollaborationComment[] | undefined,
+  nextComment: CollaborationComment
+): CollaborationComment[] => {
+  const existing = previous ?? [];
+  const nextCommentTime = new Date(nextComment.created_at).getTime();
+  const normalizedNextCommentTime = Number.isFinite(nextCommentTime) ? nextCommentTime : Date.now();
+  let didUpdate = false;
+
+  const withoutDuplicate = existing.map((comment) => {
+    if (comment.id !== nextComment.id) return comment;
+    didUpdate = true;
+    return {
+      ...comment,
+      ...nextComment,
+      attachments: nextComment.attachments ?? comment.attachments ?? [],
+    };
+  });
+
+  const merged = didUpdate ? withoutDuplicate : [...withoutDuplicate, nextComment];
+  return merged.slice().sort((left, right) => {
+    const leftTime = new Date(left.created_at).getTime();
+    const rightTime = new Date(right.created_at).getTime();
+    const normalizedLeftTime = Number.isFinite(leftTime) ? leftTime : normalizedNextCommentTime;
+    const normalizedRightTime = Number.isFinite(rightTime) ? rightTime : normalizedNextCommentTime;
+    return normalizedLeftTime - normalizedRightTime;
+  });
+};
+
+const buildOptimisticComment = ({
+  businessId,
+  threadId,
+  authorUserId,
+  body,
+  parentCommentId,
+  optimisticId,
+}: {
+  businessId: string;
+  threadId: string;
+  authorUserId: string;
+  body: string;
+  parentCommentId?: string | null;
+  optimisticId: string;
+}): CollaborationComment => {
+  const nowIso = new Date().toISOString();
+  return {
+    id: optimisticId,
+    business_id: businessId,
+    thread_id: threadId,
+    parent_comment_id: parentCommentId ?? null,
+    author_user_id: authorUserId,
+    body,
+    created_at: nowIso,
+    updated_at: nowIso,
+    attachments: [],
+  };
+};
+
 type MessageSegment = { type: 'text' | 'mention' | 'url' | 'order'; value: string; orderId?: string };
 
 const parseMessageSegments = (text: string, orderMap?: Map<string, string>): MessageSegment[] => {
   const segments: MessageSegment[] = [];
-  // Match: order tags (📦 #XXXX), URLs, @mentions
-  const tokenRegex = /(📦\s*#(\S+)[^\n]*|https?:\/\/[^\s]+|@\S+)/g;
+  // Match: order tags (📦 #XXXX), URLs, @mentions.
+  // The @mention branch requires whitespace (or string start) right before
+  // the "@" so it doesn't match mid-word, e.g. the "@gmail.com" half of an
+  // email address like "name@gmail.com".
+  const tokenRegex = /(📦\s*#(\S+)[^\n]*|https?:\/\/[^\s]+|(?<!\S)@\S+)/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
    
@@ -250,15 +333,125 @@ const parseMessageSegments = (text: string, orderMap?: Map<string, string>): Mes
 const chatWallpaperLight = require('../../assets/fylls threads bg-lm.png');
 const chatWallpaperDark = require('../../assets/fylls threads dm.png');
 
-// Swipe-to-reply removed for stability and scroll reliability.
+// Native swipe-to-reply keeps vertical scroll reliable by only activating on deliberate horizontal pans.
 function SwipeableMessage({
-  onSwipeReply: _onSwipeReply,
+  isOwnMessage,
+  onSwipeReply,
   children,
 }: {
+  isOwnMessage: boolean;
   onSwipeReply: () => void;
   children: React.ReactNode;
 }) {
-  return <>{children}</>;
+  const colors = useThemeColors();
+  const translateX = useSharedValue<number>(0);
+  const didTriggerReply = useSharedValue<boolean>(false);
+  const swipeDirection = isOwnMessage ? -1 : 1;
+  const maxSwipeDistance = 84;
+  const replyTriggerDistance = 56;
+
+  const bubbleAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }],
+  }));
+
+  const iconAnimatedStyle = useAnimatedStyle(() => {
+    const progress = interpolate(
+      Math.abs(translateX.value),
+      [8, replyTriggerDistance],
+      [0, 1],
+      Extrapolation.CLAMP
+    );
+
+    return {
+      opacity: progress,
+      transform: [{ scale: 0.88 + progress * 0.12 }],
+    };
+  });
+
+  const panGesture = useMemo(
+    () => Gesture.Pan()
+      .enabled(Platform.OS !== 'web')
+      .activeOffsetX([-12, 12])
+      .failOffsetY([-10, 10])
+      .onUpdate((event) => {
+        const rawTranslation = event.translationX * swipeDirection;
+        if (rawTranslation <= 0) {
+          translateX.value = withSpring(0, {
+            damping: 22,
+            stiffness: 280,
+            mass: 0.3,
+          });
+          didTriggerReply.value = false;
+          return;
+        }
+
+        translateX.value = Math.min(rawTranslation, maxSwipeDistance) * swipeDirection;
+      })
+      .onEnd(() => {
+        const didCrossThreshold = Math.abs(translateX.value) >= replyTriggerDistance;
+        translateX.value = withSpring(0, {
+          damping: 22,
+          stiffness: 280,
+          mass: 0.3,
+        });
+
+        if (didCrossThreshold && !didTriggerReply.value) {
+          didTriggerReply.value = true;
+          runOnJS(onSwipeReply)();
+        }
+
+        didTriggerReply.value = false;
+      })
+      .onFinalize(() => {
+        translateX.value = withSpring(0, {
+          damping: 22,
+          stiffness: 280,
+          mass: 0.3,
+        });
+        didTriggerReply.value = false;
+      }),
+    [didTriggerReply, maxSwipeDistance, onSwipeReply, replyTriggerDistance, swipeDirection, translateX]
+  );
+
+  if (Platform.OS === 'web') {
+    return <>{children}</>;
+  }
+
+  const replyIconColor = isOwnMessage
+    ? 'rgba(255,255,255,0.88)'
+    : colors.text.muted;
+
+  return (
+    <GestureDetector gesture={panGesture}>
+      <View
+        style={{
+          position: 'relative',
+          alignSelf: isOwnMessage ? 'flex-end' : 'flex-start',
+        }}
+      >
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            {
+              position: 'absolute',
+              top: '50%',
+              zIndex: 0,
+              marginTop: -10,
+              left: isOwnMessage ? undefined : -30,
+              right: isOwnMessage ? -30 : undefined,
+            },
+            iconAnimatedStyle,
+          ]}
+        >
+          <CornerUpLeft size={18} color={replyIconColor} strokeWidth={2.4} />
+        </Animated.View>
+
+        <Animated.View style={bubbleAnimatedStyle}>
+          {children}
+        </Animated.View>
+      </View>
+    </GestureDetector>
+  );
 }
 
 export function CollaborationThreadPanel({
@@ -278,18 +471,21 @@ export function CollaborationThreadPanel({
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const isPaneVariant = variant === 'pane';
-  const viewportWidth = Dimensions.get('window').width;
+  const { width: viewportWidth } = useWindowDimensions();
   const isNarrowWebViewport = Platform.OS === 'web' && viewportWidth <= 900;
+  const isTabletWebViewport = Platform.OS === 'web' && viewportWidth > 900 && viewportWidth <= 1366;
   const mobileBubbleMaxWidth = Math.max(220, Math.floor(viewportWidth * 0.66));
   const webBubbleMaxWidth = isNarrowWebViewport
-    ? Math.max(320, Math.floor(viewportWidth * 0.6))
-    : 560;
+    ? Math.max(300, Math.floor(viewportWidth * 0.54))
+    : isTabletWebViewport
+      ? Math.min(420, Math.floor(viewportWidth * 0.4))
+      : 560;
   const bubbleMaxWidth = Platform.OS === 'web' ? webBubbleMaxWidth : mobileBubbleMaxWidth;
+  const defaultBubbleRightPadding = isTabletWebViewport ? 24 : 32;
   const replyPreviewMaxWidth = Math.max(140, Math.floor(bubbleMaxWidth * 0.78));
   const attachmentPreviewWidth = Platform.OS === 'web'
     ? 220
     : Math.max(160, Math.min(220, bubbleMaxWidth - 46));
-  const attachmentPreviewHeight = Math.floor(attachmentPreviewWidth * (170 / 220));
   const useFullscreenThreadInfo = Platform.OS !== 'web' || isNarrowWebViewport;
   const showThreadWallpaper = entityType === 'order'
     || (entityType === 'case' && isTeamThreadEntityId(entityId));
@@ -312,10 +508,13 @@ export function CollaborationThreadPanel({
   const pendingOwnMessageScrollRef = useRef<boolean>(false);
   const isAtBottomRef = useRef<boolean>(true);
   const latestSeenCommentIdRef = useRef<string | null>(null);
+  const lastSendAttemptRef = useRef<{ fingerprint: string; sentAt: number } | null>(null);
 
   const [composerText, setComposerText] = useState<string>('');
+  const deferredComposerText = useDeferredValue(composerText);
   const [composerInputHeight, setComposerInputHeight] = useState<number>(24);
-  const [composerSelection, setComposerSelection] = useState<{ start: number; end: number }>({ start: 0, end: 0 });
+  const composerSelectionRef = useRef<{ start: number; end: number }>({ start: 0, end: 0 });
+  const [controlledSelection, setControlledSelection] = useState<{ start: number; end: number } | undefined>(undefined);
   const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
   const [editTarget, setEditTarget] = useState<CollaborationComment | null>(null);
   const [messageActionTarget, setMessageActionTarget] = useState<CollaborationComment | null>(null);
@@ -342,7 +541,7 @@ export function CollaborationThreadPanel({
   // pinnedMessages and starredMessages (saved) are derived from DB queries below
   const [pinnedMessages, setPinnedMessages] = useState<Record<string, boolean>>({});
   const [starredMessages, setStarredMessages] = useState<Record<string, boolean>>({});
-  const lastTapTimeRef = useRef<Record<string, number>>({});
+  const lastTapStateRef = useRef<Record<string, { time: number; count: number }>>({});
   const [onlineCount, setOnlineCount] = useState<number>(0);
   const [typingUserNames, setTypingUserNames] = useState<string[]>([]);
   const [typingDotCount, setTypingDotCount] = useState<number>(1);
@@ -354,9 +553,17 @@ export function CollaborationThreadPanel({
   const [attachmentPreviewUrls, setAttachmentPreviewUrls] = useState<Record<string, string>>({});
   const [loadedAttachmentImages, setLoadedAttachmentImages] = useState<Record<string, boolean>>({});
   const [activeImagePreview, setActiveImagePreview] = useState<{ uri: string; fileName: string } | null>(null);
+  const [optimisticComments, setOptimisticComments] = useState<CollaborationComment[]>([]);
   const lastMarkedNotificationKeyRef = useRef<string>('');
   const lastSeenThreadKeyRef = useRef<string>('');
   const [isScrollReady, setIsScrollReady] = useState<boolean>(false);
+
+  const addOptimisticComment = useCallback((comment: CollaborationComment) => {
+    setOptimisticComments((previous) => {
+      if (previous.some((existingComment) => existingComment.id === comment.id)) return previous;
+      return [...previous, comment];
+    });
+  }, []);
 
   const scrollThreadToBottom = (animated: boolean, onComplete?: () => void) => {
     requestAnimationFrame(() => {
@@ -518,6 +725,10 @@ export function CollaborationThreadPanel({
   });
 
   const threadId = threadQuery.data?.id ?? null;
+  const commentsQueryKey = useMemo(
+    () => ['collaboration-comments', businessId, threadId] as const,
+    [businessId, threadId]
+  );
 
   useLayoutEffect(() => {
     setIsScrollReady(false);
@@ -531,12 +742,13 @@ export function CollaborationThreadPanel({
   }, [businessId, entityType, entityId]);
 
   const commentsQuery = useQuery({
-    queryKey: ['collaboration-comments', businessId, threadId],
+    queryKey: commentsQueryKey,
     enabled: Boolean(businessId) && Boolean(threadId) && !isOfflineMode,
     queryFn: () => collaborationData.listThreadComments(businessId as string, threadId as string),
-    refetchInterval: 8000,
+    refetchInterval: 30000,
     staleTime: 30 * 1000,       // keep cached data fresh for 30s — no flicker on reopen
     gcTime: 5 * 60 * 1000,      // keep in memory for 5 min after unmount
+    placeholderData: (previous) => previous,
   });
 
   const commentIds = commentsQuery.data?.map((comment) => comment.id) ?? [];
@@ -548,6 +760,85 @@ export function CollaborationThreadPanel({
     refetchInterval: 8000,
     staleTime: 15_000,
   });
+
+  useEffect(() => {
+    if (!businessId || !threadId || isOfflineMode) return;
+
+    const channel = supabase
+      .channel(`collaboration-comments-${businessId}-${threadId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'collaboration_comments',
+          filter: `thread_id=eq.${threadId}`,
+        },
+        (payload) => {
+          const nextComment = payload.new as CollaborationComment;
+          if (!nextComment?.id || nextComment.business_id !== businessId) return;
+          queryClient.setQueryData<CollaborationComment[]>(
+            commentsQueryKey,
+            (previous) => mergeCommentIntoList(previous, { ...nextComment, attachments: undefined })
+          );
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'collaboration_comments',
+          filter: `thread_id=eq.${threadId}`,
+        },
+        (payload) => {
+          const nextComment = payload.new as CollaborationComment;
+          if (!nextComment?.id || nextComment.business_id !== businessId) return;
+          queryClient.setQueryData<CollaborationComment[]>(
+            commentsQueryKey,
+            (previous) => mergeCommentIntoList(previous, { ...nextComment, attachments: undefined })
+          );
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'collaboration_comments',
+          filter: `thread_id=eq.${threadId}`,
+        },
+        (payload) => {
+          const deletedComment = payload.old as Partial<CollaborationComment>;
+          if (!deletedComment?.id) return;
+          queryClient.setQueryData<CollaborationComment[]>(
+            commentsQueryKey,
+            (previous) => (previous ?? []).filter((comment) => comment.id !== deletedComment.id)
+          );
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'collaboration_attachments',
+        },
+        (payload) => {
+          const nextAttachment = payload.new as CollaborationAttachment;
+          if (!nextAttachment?.comment_id || nextAttachment.business_id !== businessId) return;
+          const commentExistsInThisThread = (queryClient.getQueryData<CollaborationComment[]>(commentsQueryKey) ?? [])
+            .some((comment) => comment.id === nextAttachment.comment_id);
+          if (!commentExistsInThisThread) return;
+          void queryClient.refetchQueries({ queryKey: commentsQueryKey, exact: true });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [businessId, commentsQueryKey, isOfflineMode, queryClient, threadId]);
 
   const unreadNotificationsQuery = useQuery({
     queryKey: ['collaboration-notifications-unread', businessId],
@@ -718,30 +1009,57 @@ export function CollaborationThreadPanel({
         attachments: uploadedAttachments,
       });
     },
-    onSuccess: async (createdComment) => {
-      queryClient.setQueryData<CollaborationComment[]>(
-        ['collaboration-comments', businessId, threadId],
-        (previous) => {
-          const existing = previous ?? [];
-          if (existing.some((comment) => comment.id === createdComment.id)) return existing;
-          return [...existing, createdComment];
-        }
-      );
+    onMutate: async (variables): Promise<CreateCommentMutationContext> => {
+      const optimisticId = variables.optimisticId ?? `optimistic-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      if (businessId && threadId && currentUserId) {
+        const optimisticComment = buildOptimisticComment({
+          businessId,
+          threadId,
+          authorUserId: currentUserId,
+          body: variables.body,
+          parentCommentId: variables.parentCommentId ?? null,
+          optimisticId,
+        });
+        addOptimisticComment(optimisticComment);
+      }
+
       setComposerText('');
       trackTypingPresence(false, true);
-      setComposerSelection({ start: 0, end: 0 });
+      composerSelectionRef.current = { start: 0, end: 0 };
+      setControlledSelection({ start: 0, end: 0 });
       setReplyTarget(null);
       setSelectedMentionIds([]);
       setPendingAttachment(null);
       setComposerError('');
       setPendingIncomingCount(0);
       shouldScrollToBottomOnContentChangeRef.current = true;
+
+      return {
+        optimisticId,
+        rawComposerText: variables.rawComposerText ?? variables.body,
+        replyTargetSnapshot: variables.replyTargetSnapshot ?? null,
+        selectedMentionIdsSnapshot: variables.selectedMentionIdsSnapshot ?? [],
+        pendingAttachmentSnapshot: variables.pendingAttachmentSnapshot ?? null,
+      };
+    },
+    onSuccess: async (createdComment, _variables, context) => {
+      if (context?.optimisticId) {
+        setOptimisticComments((previous) => previous.filter((comment) => comment.id !== context.optimisticId));
+      }
+      queryClient.setQueryData<CollaborationComment[]>(
+        commentsQueryKey,
+        (previous) => mergeCommentIntoList(previous, createdComment)
+      );
+      shouldScrollToBottomOnContentChangeRef.current = true;
       await queryClient.invalidateQueries({ queryKey: ['collaboration-notifications-unread', businessId] });
     },
-    onError: async (error, variables) => {
+    onError: async (error, variables, context) => {
+      if (context?.optimisticId) {
+        setOptimisticComments((previous) => previous.filter((comment) => comment.id !== context.optimisticId));
+      }
       // Refetch comments to check if the comment actually appeared
-      await queryClient.invalidateQueries({ queryKey: ['collaboration-comments', businessId, threadId] });
-      const latestComments = queryClient.getQueryData(['collaboration-comments', businessId, threadId]) ?? [];
+      await queryClient.invalidateQueries({ queryKey: commentsQueryKey });
+      const latestComments = queryClient.getQueryData(commentsQueryKey) ?? [];
       // Check if the comment body matches the one just sent (trimmed)
       const sentBody = variables?.body?.trim?.();
       const found = Array.isArray(latestComments) && sentBody
@@ -751,7 +1069,8 @@ export function CollaborationThreadPanel({
         setComposerError('');
         setComposerText('');
         trackTypingPresence(false, true);
-        setComposerSelection({ start: 0, end: 0 });
+        composerSelectionRef.current = { start: 0, end: 0 };
+        setControlledSelection({ start: 0, end: 0 });
         setReplyTarget(null);
         setSelectedMentionIds([]);
         setPendingAttachment(null);
@@ -761,6 +1080,14 @@ export function CollaborationThreadPanel({
         scrollThreadToBottom(false);
       } else {
         pendingOwnMessageScrollRef.current = false;
+        setComposerText(context?.rawComposerText ?? variables?.rawComposerText ?? variables?.body ?? '');
+        const restoreText = context?.rawComposerText ?? variables?.rawComposerText ?? variables?.body ?? '';
+        const nextCursor = restoreText.length;
+        composerSelectionRef.current = { start: nextCursor, end: nextCursor };
+        setControlledSelection({ start: nextCursor, end: nextCursor });
+        setReplyTarget(context?.replyTargetSnapshot ?? variables?.replyTargetSnapshot ?? null);
+        setSelectedMentionIds(context?.selectedMentionIdsSnapshot ?? variables?.selectedMentionIdsSnapshot ?? []);
+        setPendingAttachment(context?.pendingAttachmentSnapshot ?? variables?.pendingAttachmentSnapshot ?? null);
         setComposerError(error instanceof Error ? error.message : 'Could not send comment. Please try again.');
       }
     },
@@ -768,15 +1095,23 @@ export function CollaborationThreadPanel({
 
   const updateCommentMutation = useMutation({
     mutationFn: async ({ commentId, body }: { commentId: string; body: string }) => {
-      return collaborationData.updateComment(commentId, body);
+      await collaborationData.updateComment(commentId, body);
+      return { commentId, body };
     },
-    onSuccess: async () => {
+    onSuccess: ({ commentId, body }) => {
+      queryClient.setQueryData<CollaborationComment[]>(
+        commentsQueryKey,
+        (previous) => (previous ?? []).map((comment) => (
+          comment.id === commentId
+            ? { ...comment, body, edited_at: new Date().toISOString(), updated_at: new Date().toISOString() }
+            : comment
+        ))
+      );
       setEditTarget(null);
       setComposerText('');
       trackTypingPresence(false, true);
-      setComposerSelection({ start: 0, end: 0 });
+      composerSelectionRef.current = { start: 0, end: 0 };
       setComposerError('');
-      await queryClient.invalidateQueries({ queryKey: ['collaboration-comments', businessId, threadId] });
     },
     onError: (error) => {
       setComposerError(error instanceof Error ? error.message : 'Could not edit message. Please try again.');
@@ -785,11 +1120,15 @@ export function CollaborationThreadPanel({
 
   const deleteCommentMutation = useMutation({
     mutationFn: async (commentId: string) => {
-      return collaborationData.deleteComment(commentId);
+      await collaborationData.deleteComment(commentId);
+      return commentId;
     },
-    onSuccess: async () => {
+    onSuccess: (commentId) => {
+      queryClient.setQueryData<CollaborationComment[]>(
+        commentsQueryKey,
+        (previous) => (previous ?? []).filter((comment) => comment.id !== commentId)
+      );
       setMessageActionTarget(null);
-      await queryClient.invalidateQueries({ queryKey: ['collaboration-comments', businessId, threadId] });
     },
     onError: (error) => {
       console.warn('Delete comment failed:', error);
@@ -847,7 +1186,15 @@ export function CollaborationThreadPanel({
     }
   }, [isClosed, trackTypingPresence]);
 
-  const comments = useMemo(() => commentsQuery.data ?? [], [commentsQuery.data]);
+  const comments = useMemo(() => {
+    const persistedComments = commentsQuery.data ?? [];
+    if (optimisticComments.length === 0) return persistedComments;
+    const persistedIds = new Set(persistedComments.map((comment) => comment.id));
+    return [
+      ...persistedComments,
+      ...optimisticComments.filter((comment) => !persistedIds.has(comment.id)),
+    ];
+  }, [commentsQuery.data, optimisticComments]);
   const unreadNotifications = useMemo(() => unreadNotificationsQuery.data ?? [], [unreadNotificationsQuery.data]);
 
   const unreadForThread = useMemo(() => {
@@ -897,13 +1244,6 @@ export function CollaborationThreadPanel({
   });
 
   const businessProfiles = useMemo(() => businessProfilesQuery.data ?? [], [businessProfilesQuery.data]);
-
-  // Debug: log what data sources provide for mentionable members
-  useEffect(() => {
-    console.log('[CollabThread] teamMembers:', teamMembers.length, teamMembers.map((m) => ({ id: m.id.slice(0, 8), name: m.name, role: m.role })));
-    console.log('[CollabThread] businessProfiles:', businessProfiles.length, businessProfiles.map((p) => ({ id: p.id.slice(0, 8), name: p.name, role: p.role })));
-    console.log('[CollabThread] currentUserId:', currentUserId?.slice(0, 8));
-  }, [businessProfiles, currentUserId, teamMembers]);
 
   const authorMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -992,6 +1332,16 @@ export function CollaborationThreadPanel({
     });
     return map;
   }, [orderedComments]);
+
+  const trimmedCommentSearch = searchQuery.trim().toLowerCase();
+  const displayedComments = useMemo(() => {
+    if (!trimmedCommentSearch) return orderedComments;
+    return orderedComments.filter((comment) => {
+      const body = comment.body.toLowerCase();
+      const author = (authorMap.get(comment.author_user_id) ?? '').toLowerCase();
+      return body.includes(trimmedCommentSearch) || author.includes(trimmedCommentSearch);
+    });
+  }, [authorMap, orderedComments, trimmedCommentSearch]);
 
   const imageAttachmentsForPreview = useMemo(() => {
     const unique = new Map<string, CollaborationAttachment>();
@@ -1118,11 +1468,10 @@ export function CollaborationThreadPanel({
     return result;
   }, [authorMap, businessProfiles, currentUserId, orderedComments, roleMap, teamMembers]);
 
-  const activeMentionToken = useMemo(() => {
-    const cursorIndex = composerSelection.start;
-    if (cursorIndex < 0 || cursorIndex > composerText.length) return null;
+  const getMentionTokenAt = (text: string, cursorIndex: number) => {
+    if (cursorIndex < 0 || cursorIndex > text.length) return null;
 
-    const beforeCursor = composerText.slice(0, cursorIndex);
+    const beforeCursor = text.slice(0, cursorIndex);
     const triggerMatch = beforeCursor.match(/(?:^|\s)@([^\s@]*)$/);
     if (!triggerMatch) return null;
 
@@ -1134,7 +1483,11 @@ export function CollaborationThreadPanel({
       atIndex,
       cursorIndex,
     };
-  }, [composerSelection.start, composerText]);
+  };
+
+  const activeMentionToken = useMemo(() => {
+    return getMentionTokenAt(deferredComposerText, composerSelectionRef.current.start);
+  }, [deferredComposerText]);
 
   const filteredMentionMembers = useMemo(() => {
     if (!activeMentionToken) return [];
@@ -1185,14 +1538,20 @@ export function CollaborationThreadPanel({
 
     const mentionToken = isEveryone ? `@${EVERYONE_MENTION_TOKEN}` : `@${userName}`;
 
-    if (activeMentionToken) {
-      const prefix = composerText.slice(0, activeMentionToken.atIndex);
-      const suffix = composerText.slice(activeMentionToken.cursorIndex).replace(/^\s*/, '');
+    // Recompute against the live composerText/cursor rather than reusing
+    // activeMentionToken — that's derived from a useDeferredValue snapshot,
+    // which can lag a keystroke behind by the time a suggestion is tapped,
+    // leaving a stray trailing character (e.g. "@David d") in the result.
+    const liveMentionToken = getMentionTokenAt(composerText, composerSelectionRef.current.start) ?? activeMentionToken;
+
+    if (liveMentionToken) {
+      const prefix = composerText.slice(0, liveMentionToken.atIndex);
+      const suffix = composerText.slice(liveMentionToken.cursorIndex).replace(/^\s*/, '');
       const nextText = `${prefix}${mentionToken} ${suffix}`;
       const nextCursor = `${prefix}${mentionToken} `.length;
 
       setComposerText(nextText);
-      setComposerSelection({ start: nextCursor, end: nextCursor });
+      setControlledSelection({ start: nextCursor, end: nextCursor });
       // Re-focus after a tick so the keyboard stays open
       requestAnimationFrame(() => composerInputRef.current?.focus());
       return;
@@ -1202,7 +1561,7 @@ export function CollaborationThreadPanel({
       const separator = previous.trim().length > 0 ? ' ' : '';
       const nextText = `${previous}${separator}${mentionToken} `;
       const nextCursor = nextText.length;
-      setComposerSelection({ start: nextCursor, end: nextCursor });
+      setControlledSelection({ start: nextCursor, end: nextCursor });
       return nextText;
     });
     requestAnimationFrame(() => composerInputRef.current?.focus());
@@ -1216,15 +1575,25 @@ export function CollaborationThreadPanel({
     });
   };
 
-  const handleBubbleTap = (commentId: string) => {
+  const handleBubbleTap = (comment: CollaborationComment) => {
     const now = Date.now();
-    const lastTap = lastTapTimeRef.current[commentId] ?? 0;
-    if (now - lastTap < 300) {
-      handleDoubleTap(commentId);
-      lastTapTimeRef.current[commentId] = 0;
-    } else {
-      lastTapTimeRef.current[commentId] = now;
+    const previous = lastTapStateRef.current[comment.id];
+    const isBurstTap = previous && (now - previous.time < 320);
+    const nextCount = isBurstTap ? previous.count + 1 : 1;
+
+    if (nextCount === 2) {
+      handleDoubleTap(comment.id);
+      lastTapStateRef.current[comment.id] = { time: now, count: 2 };
+      return;
     }
+
+    if (nextCount >= 3) {
+      beginReply(comment);
+      lastTapStateRef.current[comment.id] = { time: 0, count: 0 };
+      return;
+    }
+
+    lastTapStateRef.current[comment.id] = { time: now, count: 1 };
   };
 
   const beginReply = (comment: CollaborationComment) => {
@@ -1235,15 +1604,15 @@ export function CollaborationThreadPanel({
       authorName,
     });
     if (comment.author_user_id !== currentUserId) {
-      setSelectedMentionIds((previous) => {
-        if (previous.includes(comment.author_user_id)) return previous;
-        return [...previous, comment.author_user_id];
+      setSelectedMentionIds((previousIds) => {
+        if (previousIds.includes(comment.author_user_id)) return previousIds;
+        return [...previousIds, comment.author_user_id];
       });
     }
   };
 
   const insertComposerToken = (token: string) => {
-    const cursorIndex = composerSelection.start;
+    const cursorIndex = composerSelectionRef.current.start;
     const beforeCursor = composerText.slice(0, cursorIndex);
     const afterCursor = composerText.slice(cursorIndex);
     const needsSpace = beforeCursor.length > 0 && !/\s$/.test(beforeCursor);
@@ -1252,7 +1621,7 @@ export function CollaborationThreadPanel({
     const nextCursor = beforeCursor.length + insertion.length;
 
     setComposerText(nextText);
-    setComposerSelection({ start: nextCursor, end: nextCursor });
+    setControlledSelection({ start: nextCursor, end: nextCursor });
     requestAnimationFrame(() => {
       composerInputRef.current?.focus();
     });
@@ -1371,7 +1740,23 @@ export function CollaborationThreadPanel({
       return;
     }
     const trimmed = composerText.trim();
-    if ((!trimmed && !pendingAttachment) || createCommentMutation.isPending || !threadId) return;
+    if ((!trimmed && !pendingAttachment) || !threadId) return;
+    const rawComposerText = composerText;
+    const optimisticBody = trimmed || `Shared an attachment: ${pendingAttachment?.name ?? ''}`;
+    const sendFingerprint = [
+      threadId,
+      rawComposerText.trim(),
+      pendingAttachment?.uri ?? '',
+      replyTarget?.commentId ?? '',
+    ].join(':');
+    const now = Date.now();
+    if (
+      lastSendAttemptRef.current?.fingerprint === sendFingerprint
+      && now - lastSendAttemptRef.current.sentAt < 700
+    ) {
+      return;
+    }
+    lastSendAttemptRef.current = { fingerprint: sendFingerprint, sentAt: now };
     trackTypingPresence(false, true);
     setComposerError('');
 
@@ -1393,11 +1778,35 @@ export function CollaborationThreadPanel({
 
     pendingOwnMessageScrollRef.current = true;
     shouldScrollToBottomOnContentChangeRef.current = true;
+    const optimisticId = `optimistic-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    if (businessId && currentUserId) {
+      addOptimisticComment(buildOptimisticComment({
+        businessId,
+        threadId,
+        authorUserId: currentUserId,
+        body: optimisticBody,
+        parentCommentId: replyTarget?.commentId ?? null,
+        optimisticId,
+      }));
+    }
+    setComposerText('');
+    composerSelectionRef.current = { start: 0, end: 0 };
+    setControlledSelection({ start: 0, end: 0 });
+    setReplyTarget(null);
+    setSelectedMentionIds([]);
+    setPendingAttachment(null);
+    setPendingIncomingCount(0);
+
     createCommentMutation.mutate({
-      body: trimmed || `Shared an attachment: ${pendingAttachment?.name ?? ''}`,
+      body: optimisticBody,
       parentCommentId: replyTarget?.commentId ?? null,
       mentionUserIds: mentionIds,
       attachment: pendingAttachment,
+      optimisticId,
+      rawComposerText,
+      replyTargetSnapshot: replyTarget,
+      selectedMentionIdsSnapshot: mentionIds,
+      pendingAttachmentSnapshot: pendingAttachment,
     });
   };
 
@@ -1435,22 +1844,698 @@ export function CollaborationThreadPanel({
 
   const getOrderStatusColor = (status: string) => {
     const s = status.toLowerCase().trim();
-    if (['delivered', 'completed', 'fulfilled'].some((v) => s.includes(v))) return '#10B981';
-    if (['processing', 'confirmed', 'in progress', 'in_progress', 'packed'].some((v) => s.includes(v))) return '#3B82F6';
+    if (['delivered', 'completed', 'fulfilled', 'verified', 'paid', 'confirmed'].some((v) => s.includes(v))) return '#10B981';
+    if (['processing', 'in progress', 'in_progress', 'packed'].some((v) => s.includes(v))) return '#3B82F6';
     if (['cancelled', 'canceled', 'refunded', 'failed'].some((v) => s.includes(v))) return '#EF4444';
     if (['pending', 'new', 'draft'].some((v) => s.includes(v))) return '#F59E0B';
     return colors.accent.primary;
   };
 
+  const getOrderStatusLabel = (status: string) => {
+    const s = status.toLowerCase().trim();
+    if (['verified', 'paid', 'confirmed'].some((v) => s.includes(v))) return 'Payment Confirmed';
+    return status
+      .trim()
+      .toLowerCase()
+      .replace(/[_-]+/g, ' ')
+      .split(' ')
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+  };
+
   const canSend = editTarget
     ? (composerText.trim().length > 0 && !updateCommentMutation.isPending)
-    : (Boolean(threadId) && !createCommentMutation.isPending && (composerText.trim().length > 0 || Boolean(pendingAttachment)));
+    : (Boolean(threadId) && (composerText.trim().length > 0 || Boolean(pendingAttachment)));
   const typingStatusLabel = useMemo(() => {
     if (typingUserNames.length === 0) return '';
     if (typingUserNames.length === 1) return `${typingUserNames[0]} is typing`;
     if (typingUserNames.length === 2) return `${typingUserNames[0]} and ${typingUserNames[1]} are typing`;
     return `${typingUserNames[0]} and ${typingUserNames.length - 1} others are typing`;
   }, [typingUserNames]);
+
+  const renderedComments = useMemo(() => {
+    if (orderedComments.length === 0 && !commentsQuery.isLoading) {
+      return (
+        <Text style={{ color: colors.text.tertiary, fontSize: 13 }}>
+          No team activity yet. Start the thread.
+        </Text>
+      );
+    }
+
+    if (trimmedCommentSearch && displayedComments.length === 0) {
+      return (
+        <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+          <Search size={28} color={colors.text.muted} strokeWidth={1.5} />
+          <Text style={{ color: colors.text.muted, fontSize: 14, fontWeight: '600', marginTop: 10 }}>
+            No results for "{searchQuery.trim()}"
+          </Text>
+        </View>
+      );
+    }
+
+    return (
+      <View>
+        {displayedComments.map((comment, index) => {
+      const authorName = authorMap.get(comment.author_user_id) ?? 'Team member';
+      const authorRole = roleMap.get(comment.author_user_id);
+      const displayName = formatDisplayName(authorName, authorRole);
+      const isOwnComment = comment.author_user_id === currentUserId;
+      const parentComment = comment.parent_comment_id ? commentsById.get(comment.parent_comment_id) ?? null : null;
+      const parentAuthorName = parentComment ? (authorMap.get(parentComment.author_user_id) ?? 'Team member') : null;
+      const avatarColor = isOwnComment ? (isDark ? '#FFFFFF' : '#000000') : getAvatarColor(authorName);
+      const ownBubbleColor = '#182A66';
+      const ownBubblePrimaryTextColor = '#FFFFFF';
+      const ownBubbleSecondaryTextColor = 'rgba(255,255,255,0.9)';
+      const ownBubbleMutedTextColor = 'rgba(255,255,255,0.74)';
+      const ownBubbleSubtleTextColor = 'rgba(255,255,255,0.62)';
+      const bubbleNameFontSize = Platform.OS === 'web' ? 16 : 14;
+      const bubbleNameLineHeight = Platform.OS === 'web' ? 23 : 20;
+      const bubbleMessageFontSize = Platform.OS === 'web' ? 16 : 14;
+      const bubbleMessageLineHeight = Platform.OS === 'web' ? 23 : 20;
+      const headerNameColor = isOwnComment ? ownBubbleSecondaryTextColor : avatarColor;
+      const parentAuthorColor = parentComment
+        ? (parentComment.author_user_id === currentUserId
+          ? ownBubbleSecondaryTextColor
+          : getAvatarColor(parentAuthorName ?? 'Team member'))
+        : colors.text.primary;
+      const attachments = comment.attachments ?? [];
+      const hasOnlyImageAttachments = attachments.length > 0
+        && attachments.every((attachment) => isImageAttachment(attachment.file_name, attachment.mime_type));
+      const hasMessageBody = comment.body.trim().length > 0;
+      const useAttachmentSizedBubble = hasOnlyImageAttachments;
+      const attachmentSizedBubbleWidth = Math.min(bubbleMaxWidth, attachmentPreviewWidth + 28);
+      const previousComment = index > 0 ? displayedComments[index - 1] : null;
+      const nextComment = index < displayedComments.length - 1 ? displayedComments[index + 1] : null;
+      const showDayDivider = !previousComment || !isSameCalendarDay(previousComment.created_at, comment.created_at);
+      const showAuthorHeader = !previousComment
+        || previousComment.author_user_id !== comment.author_user_id
+        || !isSameCalendarDay(previousComment.created_at, comment.created_at);
+      const showAvatar = !nextComment
+        || nextComment.author_user_id !== comment.author_user_id
+        || !isSameCalendarDay(nextComment.created_at, comment.created_at);
+      const showThreadAvatar = !isOwnComment;
+      const showBubbleAuthorHeader = showAuthorHeader && !parentComment && !isOwnComment;
+      const isStackedWithPrevious = previousComment?.author_user_id === comment.author_user_id
+        && Boolean(previousComment?.created_at)
+        && isSameCalendarDay(previousComment.created_at, comment.created_at);
+      const rowSpacingTop = isStackedWithPrevious ? 8 : 12;
+      const isLatestDisplayedComment = index === displayedComments.length - 1;
+
+      return (
+        <View key={comment.id} style={{ marginTop: index === 0 ? 0 : rowSpacingTop }}>
+          {showDayDivider && (
+            <View style={{ alignItems: 'center', marginVertical: 6 }}>
+              <View
+                style={{
+                  backgroundColor: isDark ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.06)',
+                  borderRadius: 10,
+                  paddingHorizontal: 9,
+                  paddingVertical: 3,
+                }}
+              >
+                <Text
+                  style={{
+                    color: isDark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.52)',
+                    fontSize: 10,
+                    fontWeight: '700',
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.6,
+                  }}
+                >
+                  {formatDayDivider(comment.created_at)}
+                </Text>
+              </View>
+            </View>
+          )}
+
+          <View
+            style={{ flexDirection: isOwnComment ? 'row-reverse' : 'row' }}
+            {...(Platform.OS === 'web' ? {
+              onMouseEnter: () => setHoveredCommentId(comment.id),
+              onMouseLeave: () => setHoveredCommentId(null),
+            } : {})}
+          >
+            {showThreadAvatar ? (
+              <View
+                style={{
+                  width: 32,
+                  minHeight: 32,
+                  marginRight: isOwnComment ? 0 : 10,
+                  marginLeft: isOwnComment ? 10 : 0,
+                  flexShrink: 0,
+                  justifyContent: 'flex-end',
+                  marginBottom: isLatestDisplayedComment ? 18 : 0,
+                }}
+              >
+                {showAvatar ? (
+                  <View
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: 999,
+                      backgroundColor: avatarColor,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Text style={{ color: isOwnComment && isDark ? '#000000' : '#FFFFFF', fontSize: 12, fontWeight: '800' }}>
+                      {getInitials(authorName)}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
+
+            <View style={{ flex: 1, alignItems: isOwnComment ? 'flex-end' : 'flex-start' }}>
+              <SwipeableMessage
+                isOwnMessage={isOwnComment}
+                onSwipeReply={() => {
+                  setReplyTarget({ commentId: comment.id, authorUserId: comment.author_user_id, authorName: authorName });
+                  composerInputRef.current?.focus();
+                }}
+              >
+                <Pressable
+                  onPress={() => handleBubbleTap(comment)}
+                  onLongPress={(event) => {
+                    actionModalSnapRef.current = comment;
+                    setMessageActionTarget(comment);
+                    setMessageActionY(event.nativeEvent.pageY);
+                    setMessageActionX(event.nativeEvent.pageX);
+                  }}
+                  delayLongPress={350}
+                  style={{
+                    borderRadius: 14,
+                    borderTopLeftRadius: 5,
+                    borderTopRightRadius: 14,
+                    paddingLeft: parentComment ? 0 : 14,
+                    paddingRight: parentComment ? 0 : (useAttachmentSizedBubble ? 14 : defaultBubbleRightPadding),
+                    paddingTop: parentComment ? 0 : 12,
+                    paddingBottom: 12,
+                    width: useAttachmentSizedBubble ? attachmentSizedBubbleWidth : undefined,
+                    maxWidth: bubbleMaxWidth,
+                    minWidth: 0,
+                    backgroundColor: isOwnComment
+                      ? ownBubbleColor
+                      : (isDark ? '#3A3A3C' : '#FFFFFF'),
+                    borderWidth: isOwnComment ? 0 : (isDark ? 0 : 1),
+                    borderColor: isOwnComment ? 'transparent' : colors.border.light,
+                    alignSelf: isOwnComment ? 'flex-end' : 'flex-start',
+                    overflow: 'hidden',
+                  }}
+                >
+                  {showBubbleAuthorHeader ? (
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        marginBottom: 7,
+                        paddingRight: 20,
+                        alignSelf: 'flex-start',
+                      }}
+                    >
+                      {pinnedMessages[comment.id] ? (
+                        <Pin size={10} color="#F97316" strokeWidth={2.5} style={{ marginRight: 4 }} />
+                      ) : null}
+                      <Text
+                        style={{
+                          color: headerNameColor,
+                          fontSize: bubbleNameFontSize,
+                          lineHeight: bubbleNameLineHeight,
+                          fontWeight: '600',
+                        }}
+                        numberOfLines={1}
+                      >
+                        {displayName}
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  {parentComment && (
+                    <View
+                      style={{
+                        marginTop: 10,
+                        marginLeft: 10,
+                        marginRight: 10,
+                        marginBottom: 8,
+                        minWidth: 0,
+                        width: 'auto',
+                        maxWidth: '100%',
+                        borderTopLeftRadius: 10,
+                        borderTopRightRadius: 10,
+                        borderBottomLeftRadius: 10,
+                        borderBottomRightRadius: 10,
+                        overflow: 'hidden',
+                        borderBottomWidth: 1,
+                        borderBottomColor: isOwnComment
+                          ? 'rgba(0,0,0,0.2)'
+                          : (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.12)'),
+                        backgroundColor: isOwnComment
+                          ? 'rgba(0,0,0,0.26)'
+                          : (isDark ? '#252527' : '#2B2B2E'),
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'stretch', minWidth: 0 }}>
+                        <View
+                          style={{
+                            flex: 1,
+                            minWidth: 0,
+                            paddingHorizontal: 10,
+                            paddingVertical: 9,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              color: isOwnComment
+                                ? ownBubbleSecondaryTextColor
+                                : parentAuthorColor,
+                              fontSize: 12,
+                              fontWeight: '600',
+                              marginBottom: 4,
+                            }}
+                            numberOfLines={1}
+                            ellipsizeMode="tail"
+                          >
+                            {parentAuthorName}
+                          </Text>
+                          <Text
+                            style={{
+                              color: isOwnComment
+                                ? ownBubbleMutedTextColor
+                                : 'rgba(255,255,255,0.82)',
+                              fontSize: 12,
+                              lineHeight: 18,
+                              flexShrink: 1,
+                              ...(Platform.OS === 'web' ? ({ wordBreak: 'break-word' } as any) : null),
+                            }}
+                            numberOfLines={3}
+                            ellipsizeMode="tail"
+                          >
+                            {parentComment.body.trim() || 'Attachment'}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  )}
+
+                  <View style={{ paddingHorizontal: parentComment ? 14 : 0 }}>
+                    {attachments.length > 0 && (
+                      <View
+                        style={{
+                          gap: 6,
+                          marginBottom: hasMessageBody ? 8 : 0,
+                          width: useAttachmentSizedBubble ? '100%' : undefined,
+                        }}
+                      >
+                        {attachments.map((attachment) => (
+                          (() => {
+                            const canRenderImage = isImageAttachment(attachment.file_name, attachment.mime_type);
+                            const imagePreviewUrl = attachmentPreviewUrls[attachment.id];
+                            const isImageLoaded = Boolean(loadedAttachmentImages[attachment.id]);
+                            const showImageLoader = !imagePreviewUrl || !isImageLoaded;
+                            const imageBoxWidth = useAttachmentSizedBubble
+                              ? attachmentSizedBubbleWidth - 28
+                              : attachmentPreviewWidth;
+                            const imageBoxHeight = Math.floor(imageBoxWidth * (170 / 220));
+
+                            if (canRenderImage) {
+                              return (
+                                <Pressable
+                                  key={attachment.id}
+                                  onPress={() => { void handleAttachmentPress(attachment, imagePreviewUrl); }}
+                                  style={{
+                                    borderRadius: 12,
+                                    overflow: 'hidden',
+                                    width: imageBoxWidth,
+                                    height: imageBoxHeight,
+                                    borderWidth: 1,
+                                    borderColor: isOwnComment
+                                      ? 'rgba(255,255,255,0.16)'
+                                      : colors.border.light,
+                                    backgroundColor: isOwnComment
+                                      ? 'rgba(255,255,255,0.06)'
+                                      : colors.bg.secondary,
+                                  }}
+                                >
+                                  <View
+                                    style={{
+                                      position: 'absolute',
+                                      top: 0,
+                                      right: 0,
+                                      bottom: 0,
+                                      left: 0,
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      backgroundColor: isOwnComment
+                                        ? 'rgba(255,255,255,0.08)'
+                                        : colors.bg.secondary,
+                                    }}
+                                  >
+                                    <ImageIcon
+                                      size={24}
+                                      color={isOwnComment
+                                        ? ownBubbleMutedTextColor
+                                        : colors.text.tertiary}
+                                      strokeWidth={2}
+                                    />
+                                  </View>
+                                  {imagePreviewUrl ? (
+                                    <Image
+                                      source={{ uri: imagePreviewUrl }}
+                                      resizeMode="cover"
+                                      fadeDuration={180}
+                                      onLoad={() => {
+                                        setLoadedAttachmentImages((previous) => {
+                                          if (previous[attachment.id]) return previous;
+                                          return { ...previous, [attachment.id]: true };
+                                        });
+                                      }}
+                                      onError={() => {
+                                        setLoadedAttachmentImages((previous) => ({
+                                          ...previous,
+                                          [attachment.id]: false,
+                                        }));
+                                      }}
+                                      style={{
+                                        width: imageBoxWidth,
+                                        height: imageBoxHeight,
+                                        opacity: isImageLoaded ? 1 : 0,
+                                      }}
+                                    />
+                                  ) : null}
+                                  {showImageLoader ? (
+                                    <View
+                                      style={{
+                                        position: 'absolute',
+                                        top: 0,
+                                        right: 0,
+                                        bottom: 0,
+                                        left: 0,
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                      }}
+                                    >
+                                      <ActivityIndicator
+                                        size="small"
+                                        color={isOwnComment ? ownBubblePrimaryTextColor : colors.text.muted}
+                                      />
+                                    </View>
+                                  ) : null}
+                                </Pressable>
+                              );
+                            }
+
+                            return (
+                              <Pressable
+                                key={attachment.id}
+                                onPress={() => { void handleAttachmentPress(attachment); }}
+                                style={{
+                                  borderWidth: 1,
+                                  borderColor: isOwnComment
+                                    ? 'rgba(255,255,255,0.16)'
+                                    : colors.border.light,
+                                  backgroundColor: isOwnComment
+                                    ? 'rgba(255,255,255,0.06)'
+                                    : colors.bg.secondary,
+                                  borderRadius: 10,
+                                  paddingHorizontal: 10,
+                                  paddingVertical: 7,
+                                  flexDirection: 'row',
+                                  alignItems: 'center',
+                                  gap: 8,
+                                }}
+                              >
+                                <Paperclip size={14} color={isOwnComment ? ownBubblePrimaryTextColor : colors.text.tertiary} strokeWidth={2} />
+                                <View style={{ flex: 1 }}>
+                                  <Text
+                                    numberOfLines={1}
+                                    style={{
+                                      color: isOwnComment ? ownBubblePrimaryTextColor : colors.text.secondary,
+                                      fontSize: 12,
+                                      fontWeight: '700',
+                                    }}
+                                  >
+                                    {attachment.file_name}
+                                  </Text>
+                                  <Text
+                                    style={{
+                                      color: isOwnComment
+                                        ? ownBubbleMutedTextColor
+                                        : colors.text.muted,
+                                      fontSize: 11,
+                                      marginTop: 1,
+                                    }}
+                                  >
+                                    {formatFileSize(attachment.file_size)}
+                                  </Text>
+                                </View>
+                              </Pressable>
+                            );
+                          })()
+                        ))}
+                      </View>
+                    )}
+
+                    {(() => {
+                      const allSegs = parseMessageSegments(comment.body, orderByNumber);
+                      const orderSegs = allSegs.filter(s => s.type === 'order');
+                      const inlineSegs = allSegs.filter(s => s.type !== 'order');
+                      const hasInlineText = inlineSegs.some(s => s.value.trim().length > 0);
+                      const hasEveryonePing = /(?:^|\s)@everyone\b/i.test(comment.body);
+                      return (
+                        <>
+                          {hasEveryonePing && (
+                            <View
+                              style={{
+                                alignSelf: 'flex-start',
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                gap: 6,
+                                marginBottom: (orderSegs.length > 0 || hasInlineText) ? 8 : 0,
+                                paddingHorizontal: 8,
+                                paddingVertical: 4,
+                                borderRadius: 999,
+                                backgroundColor: 'rgba(239,68,68,0.12)',
+                                borderWidth: 1,
+                                borderColor: 'rgba(239,68,68,0.45)',
+                              }}
+                            >
+                              <Bell size={11} color="#DC2626" strokeWidth={2.2} />
+                              <Text style={{ fontSize: 11, fontWeight: '800', color: '#DC2626', letterSpacing: 0.1 }}>
+                                Team Ping
+                              </Text>
+                            </View>
+                          )}
+
+                          {orderSegs.map((segment, segIndex) => {
+                            const rawNum = segment.value.replace('📦', '').replace('#', '').split('—')[0].trim();
+                            const normalizedNum = rawNum.replace(/^ORD[-\s]*/i, '');
+                            const order = storeOrders.find((o) => {
+                              const n = o.orderNumber.replace(/^ORD[-\s]*/i, '');
+                              return n === normalizedNum || o.orderNumber === rawNum;
+                            });
+                            const statusColor = order?.status ? getOrderStatusColor(order.status) : colors.accent.primary;
+                            return (
+                              <Pressable
+                                key={`${comment.id}-order-${segIndex}`}
+                                onPress={() => { if (segment.orderId) router.push(`/order/${segment.orderId}`); else if (order) router.push(`/order/${order.id}`); }}
+                                style={{
+                                  marginBottom: hasInlineText ? 8 : 0,
+                                  borderRadius: 12,
+                                  backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
+                                  borderWidth: 1,
+                                  borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
+                                  padding: 10,
+                                  flexDirection: 'row',
+                                  alignItems: 'center',
+                                  gap: 10,
+                                  shadowColor: '#000',
+                                  shadowOffset: { width: 0, height: 1 },
+                                  shadowOpacity: isDark ? 0.3 : 0.06,
+                                  shadowRadius: 4,
+                                  elevation: 2,
+                                }}
+                              >
+                                <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: statusColor + '1A', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: statusColor + '30' }}>
+                                  <Package size={18} color={statusColor} strokeWidth={2} />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                  <Text style={{ color: isDark ? '#FFFFFF' : '#0B0B0B', fontSize: 13, fontWeight: '800', letterSpacing: -0.2 }} numberOfLines={1}>
+                                    {order ? `ORD-${order.orderNumber.replace(/^ORD[-\s]*/i, '')}` : `ORD-${normalizedNum}`}
+                                  </Text>
+                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                                    <Text style={{ color: isDark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.5)', fontSize: 12 }} numberOfLines={1}>
+                                      {order?.customerName ?? 'Unknown'}
+                                    </Text>
+                                    {order?.status && (
+                                      <>
+                                        <View style={{ width: 3, height: 3, borderRadius: 2, backgroundColor: statusColor }} />
+                                        <Text style={{ color: statusColor, fontSize: 11, fontWeight: '700' }}>
+                                          {getOrderStatusLabel(order.status)}
+                                        </Text>
+                                      </>
+                                    )}
+                                  </View>
+                                </View>
+                                <ChevronRight size={14} color={isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.25)'} strokeWidth={2.5} />
+                              </Pressable>
+                            );
+                          })}
+
+                          {hasInlineText && (
+                            <View>
+                              <Text
+                                style={{
+                                  color: isOwnComment ? ownBubblePrimaryTextColor : colors.text.secondary,
+                                  fontSize: bubbleMessageFontSize,
+                                  lineHeight: bubbleMessageLineHeight,
+                                  flexShrink: 1,
+                                  ...(Platform.OS === 'web' ? ({ wordBreak: 'break-word' } as any) : null),
+                                }}
+                              >
+                                {inlineSegs.map((segment, segIndex) => {
+                                  if (segment.type === 'mention') {
+                                    return (
+                                      <Text
+                                        key={`${comment.id}-seg-${segIndex}`}
+                                        style={{
+                                          fontWeight: '600',
+                                          color: isOwnComment ? ownBubblePrimaryTextColor : colors.text.secondary,
+                                          backgroundColor: isOwnComment
+                                            ? 'rgba(255,255,255,0.14)'
+                                            : (isDark ? 'rgba(59,130,246,0.2)' : '#EFF6FF'),
+                                        }}
+                                      >
+                                        {segment.value}
+                                      </Text>
+                                    );
+                                  }
+                                  if (segment.type === 'url') {
+                                    return (
+                                      <Text
+                                        key={`${comment.id}-seg-${segIndex}`}
+                                        style={{
+                                          color: isOwnComment
+                                            ? ownBubbleSecondaryTextColor
+                                            : '#3B82F6',
+                                          textDecorationLine: 'underline',
+                                        }}
+                                        onPress={() => { void Linking.openURL(segment.value); }}
+                                      >
+                                        {segment.value}
+                                      </Text>
+                                    );
+                                  }
+                                  return segment.value;
+                                })}
+                                {comment.edited_at ? (
+                                  <Text style={{ fontSize: 11, color: isOwnComment ? ownBubbleSubtleTextColor : colors.text.muted }}>
+                                    {' '}(edited)
+                                  </Text>
+                                ) : null}
+                              </Text>
+                            </View>
+                          )}
+                        </>
+                      );
+                    })()}
+
+                    <Text
+                      style={{
+                        width: '100%',
+                        textAlign: 'right',
+                        color: isOwnComment
+                          ? ownBubbleSubtleTextColor
+                          : colors.text.muted,
+                        fontSize: 9,
+                        fontWeight: '700',
+                        marginTop: 5,
+                        lineHeight: 11,
+                      }}
+                    >
+                      {formatMessageTime(comment.created_at)}
+                    </Text>
+                  </View>
+
+                  {(Platform.OS !== 'web' || hoveredCommentId === comment.id) && (
+                    <Pressable
+                      onPress={(event) => { actionModalSnapRef.current = comment; setMessageActionTarget(comment); setMessageActionY(event.nativeEvent.pageY); setMessageActionX(event.nativeEvent.pageX); }}
+                      hitSlop={{ top: 6, right: 6, bottom: 6, left: 6 }}
+                      style={{ position: 'absolute', top: 6, right: 10 }}
+                    >
+                      <ChevronDown
+                        size={16}
+                        strokeWidth={2.5}
+                        color={isOwnComment
+                          ? ownBubbleMutedTextColor
+                          : (isDark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.55)')}
+                      />
+                    </Pressable>
+                  )}
+                </Pressable>
+              </SwipeableMessage>
+
+              {(likeCounts[comment.id] ?? 0) > 0 && (
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    marginTop: 2,
+                    alignSelf: isOwnComment ? 'flex-end' : 'flex-start',
+                    gap: 3,
+                    backgroundColor: isDark ? '#2A2A2A' : '#F3F4F6',
+                    paddingHorizontal: 7,
+                    paddingVertical: 3,
+                    borderRadius: 99,
+                  }}
+                >
+                  <Text style={{ fontSize: 12 }}>👍</Text>
+                  {(likeCounts[comment.id] ?? 0) > 1 && (
+                    <Text style={{ color: colors.text.muted, fontSize: 11, fontWeight: '600' }}>
+                      {likeCounts[comment.id]}
+                    </Text>
+                  )}
+                </View>
+              )}
+
+              {isLatestDisplayedComment ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, alignSelf: isOwnComment ? 'flex-end' : 'flex-start' }}>
+                  <Pressable onPress={() => beginReply(comment)}>
+                    <Text style={{ color: colors.text.muted, fontSize: 11, fontWeight: '700' }}>Reply</Text>
+                  </Pressable>
+                </View>
+              ) : null}
+            </View>
+          </View>
+        </View>
+      );
+        })}
+      </View>
+    );
+  }, [
+    orderedComments.length,
+    commentsQuery.isLoading,
+    trimmedCommentSearch,
+    searchQuery,
+    displayedComments,
+    authorMap,
+    roleMap,
+    currentUserId,
+    commentsById,
+    isDark,
+    bubbleMaxWidth,
+    attachmentPreviewWidth,
+    defaultBubbleRightPadding,
+    replyPreviewMaxWidth,
+    attachmentPreviewUrls,
+    loadedAttachmentImages,
+    colors,
+    pinnedMessages,
+    likeCounts,
+    hoveredCommentId,
+    orderByNumber,
+    storeOrders,
+    router,
+  ]);
 
   if (!businessId) {
     return (
@@ -1697,10 +2782,7 @@ export function CollaborationThreadPanel({
             const shouldStickToBottom = shouldScrollToBottomOnContentChangeRef.current || isAtBottomRef.current;
             if (!shouldStickToBottom) return;
             shouldScrollToBottomOnContentChangeRef.current = false;
-            // Use animated scroll after initial load so new messages slide in smoothly
-            // instead of jumping. On initial load isScrollReady is false, so we skip
-            // animation to avoid the flash-from-top glitch.
-            scrollThreadToBottom(isScrollReady, () => {
+            scrollThreadToBottom(false, () => {
               setIsScrollReady(true);
             });
           }}
@@ -1738,540 +2820,7 @@ export function CollaborationThreadPanel({
           <Text style={{ color: colors.text.muted, fontSize: 13 }}>Loading activity...</Text>
         ) : null}
 
-        {orderedComments.length === 0 && !commentsQuery.isLoading ? (
-          <Text style={{ color: colors.text.tertiary, fontSize: 13 }}>
-            No team activity yet. Start the thread.
-          </Text>
-        ) : (
-          (() => {
-            const trimmedSearch = searchQuery.trim().toLowerCase();
-            const displayedComments = trimmedSearch
-              ? orderedComments.filter((c) => {
-                  const body = c.body.toLowerCase();
-                  const author = (authorMap.get(c.author_user_id) ?? '').toLowerCase();
-                  return body.includes(trimmedSearch) || author.includes(trimmedSearch);
-                })
-              : orderedComments;
-
-            if (trimmedSearch && displayedComments.length === 0) {
-              return (
-                <View style={{ alignItems: 'center', paddingVertical: 40 }}>
-                  <Search size={28} color={colors.text.muted} strokeWidth={1.5} />
-                  <Text style={{ color: colors.text.muted, fontSize: 14, fontWeight: '600', marginTop: 10 }}>
-                    No results for "{searchQuery.trim()}"
-                  </Text>
-                </View>
-              );
-            }
-
-            return displayedComments.map((comment, index) => {
-            const authorName = authorMap.get(comment.author_user_id) ?? 'Team member';
-            const authorRole = roleMap.get(comment.author_user_id);
-            const displayName = formatDisplayName(authorName, authorRole);
-            const isOwnComment = comment.author_user_id === currentUserId;
-            const parentComment = comment.parent_comment_id ? commentsById.get(comment.parent_comment_id) ?? null : null;
-            const parentAuthorName = parentComment ? (authorMap.get(parentComment.author_user_id) ?? 'Team member') : null;
-            const avatarColor = isOwnComment ? (isDark ? '#FFFFFF' : '#000000') : getAvatarColor(authorName);
-            const attachments = comment.attachments ?? [];
-            const previousComment = index > 0 ? displayedComments[index - 1] : null;
-            const showDayDivider = !previousComment || !isSameCalendarDay(previousComment.created_at, comment.created_at);
-
-            return (
-              <View key={comment.id}>
-                {showDayDivider && (
-                  <View style={{ alignItems: 'center', marginVertical: 6 }}>
-                    <View
-                      style={{
-                        backgroundColor: isDark ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.06)',
-                        borderRadius: 10,
-                        paddingHorizontal: 9,
-                        paddingVertical: 3,
-                      }}
-                    >
-                      <Text
-                        style={{
-                          color: isDark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.52)',
-                          fontSize: 10,
-                          fontWeight: '700',
-                          textTransform: 'uppercase',
-                          letterSpacing: 0.6,
-                        }}
-                      >
-                        {formatDayDivider(comment.created_at)}
-                      </Text>
-                    </View>
-                  </View>
-                )}
-
-                <View
-                  style={{ flexDirection: isOwnComment ? 'row-reverse' : 'row' }}
-                  {...(Platform.OS === 'web' ? {
-                    onMouseEnter: () => setHoveredCommentId(comment.id),
-                    onMouseLeave: () => setHoveredCommentId(null),
-                  } : {})}
-                >
-                  <View
-                    style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: 999,
-                      backgroundColor: avatarColor,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      marginRight: isOwnComment ? 0 : 10,
-                      marginLeft: isOwnComment ? 10 : 0,
-                      marginTop: 2,
-                      flexShrink: 0,
-                    }}
-                  >
-                    <Text style={{ color: isOwnComment && isDark ? '#000000' : '#FFFFFF', fontSize: 12, fontWeight: '800' }}>
-                      {getInitials(authorName)}
-                    </Text>
-                  </View>
-
-                  <View style={{ flex: 1, alignItems: isOwnComment ? 'flex-end' : 'flex-start' }}>
-                    <View
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'baseline',
-                        justifyContent: isOwnComment ? 'flex-end' : 'space-between',
-                        marginBottom: 4,
-                        width: isOwnComment ? undefined : '100%',
-                        alignSelf: isOwnComment ? 'flex-end' : 'stretch',
-                      }}
-                    >
-                      {isOwnComment ? (
-                        <>
-                          {pinnedMessages[comment.id] && <Pin size={10} color="#F97316" strokeWidth={2.5} style={{ marginRight: 3 }} />}
-                          <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', marginRight: 8 }}>
-                            {formatMessageTime(comment.created_at)}
-                          </Text>
-                          <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '700' }}>{displayName}</Text>
-                        </>
-                      ) : (
-                        <>
-                          <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '700' }}>{displayName}</Text>
-                          {pinnedMessages[comment.id] && <Pin size={10} color="#F97316" strokeWidth={2.5} style={{ marginLeft: 3 }} />}
-                          <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600' }}>
-                            {formatMessageTime(comment.created_at)}
-                          </Text>
-                        </>
-                      )}
-                    </View>
-
-                    <SwipeableMessage
-                      onSwipeReply={() => {
-                        setReplyTarget({ commentId: comment.id, authorUserId: comment.author_user_id, authorName: authorName });
-                        composerInputRef.current?.focus();
-                      }}
-                    >
-                      <Pressable
-                        onPress={() => handleBubbleTap(comment.id)}
-                        onLongPress={(event) => {
-                          actionModalSnapRef.current = comment;
-                          setMessageActionTarget(comment);
-                          setMessageActionY(event.nativeEvent.pageY);
-                          setMessageActionX(event.nativeEvent.pageX);
-                        }}
-                        delayLongPress={350}
-                        style={{
-                          borderRadius: 14,
-                          borderTopLeftRadius: 5,
-                          borderTopRightRadius: 14,
-                          paddingLeft: 14,
-                          paddingRight: 32,
-                          paddingVertical: 12,
-                          maxWidth: bubbleMaxWidth,
-                          minWidth: 0,
-                          backgroundColor: isOwnComment
-                            ? colors.accent.primary
-                            : (isDark ? '#3A3A3C' : '#FFFFFF'),
-                          borderWidth: isOwnComment ? 0 : (isDark ? 0 : 1),
-                          borderColor: isOwnComment ? 'transparent' : colors.border.light,
-                          alignSelf: isOwnComment ? 'flex-end' : 'flex-start',
-                          overflow: 'hidden',
-                        }}
-                      >
-                      {parentComment && (
-                        <View
-                          style={{
-                            marginBottom: 6,
-                            minWidth: 0,
-                            maxWidth: replyPreviewMaxWidth,
-                          }}
-                        >
-                          <Text
-                            style={{
-                              color: isOwnComment
-                                ? (isDark ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.82)')
-                                : colors.text.tertiary,
-                              fontSize: 11,
-                              flexShrink: 1,
-                              ...(Platform.OS === 'web' ? ({ wordBreak: 'break-word' } as any) : null),
-                            }}
-                            numberOfLines={1}
-                            ellipsizeMode="tail"
-                          >
-                            ↪ {parentAuthorName}: {parentComment.body}
-                          </Text>
-                        </View>
-                      )}
-
-                      {attachments.length > 0 && (
-                        <View style={{ gap: 6, marginBottom: comment.body.trim().length > 0 ? 8 : 0 }}>
-                          {attachments.map((attachment) => (
-                            (() => {
-                              const canRenderImage = isImageAttachment(attachment.file_name, attachment.mime_type);
-                              const imagePreviewUrl = attachmentPreviewUrls[attachment.id];
-                              const isImageLoaded = Boolean(loadedAttachmentImages[attachment.id]);
-                              const showImageLoader = !imagePreviewUrl || !isImageLoaded;
-
-                              if (canRenderImage) {
-                                return (
-                                  <Pressable
-                                    key={attachment.id}
-                                    onPress={() => { void handleAttachmentPress(attachment, imagePreviewUrl); }}
-                                    style={{
-                                      borderRadius: 12,
-                                      overflow: 'hidden',
-                                      width: attachmentPreviewWidth,
-                                      height: attachmentPreviewHeight,
-                                      borderWidth: 1,
-                                      borderColor: isOwnComment
-                                        ? (isDark ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.25)')
-                                        : colors.border.light,
-                                      backgroundColor: isOwnComment
-                                        ? (isDark ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)')
-                                        : colors.bg.secondary,
-                                    }}
-                                  >
-                                    <View
-                                      style={{
-                                        position: 'absolute',
-                                        top: 0,
-                                        right: 0,
-                                        bottom: 0,
-                                        left: 0,
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        backgroundColor: isOwnComment
-                                          ? (isDark ? 'rgba(0,0,0,0.16)' : 'rgba(255,255,255,0.16)')
-                                          : colors.bg.secondary,
-                                      }}
-                                    >
-                                      <ImageIcon
-                                        size={24}
-                                        color={isOwnComment
-                                          ? (isDark ? 'rgba(0,0,0,0.42)' : 'rgba(255,255,255,0.55)')
-                                          : colors.text.tertiary}
-                                        strokeWidth={2}
-                                      />
-                                    </View>
-                                    {imagePreviewUrl ? (
-                                      <Image
-                                        source={{ uri: imagePreviewUrl }}
-                                        resizeMode="cover"
-                                        fadeDuration={180}
-                                        onLoad={() => {
-                                          setLoadedAttachmentImages((previous) => {
-                                            if (previous[attachment.id]) return previous;
-                                            return { ...previous, [attachment.id]: true };
-                                          });
-                                        }}
-                                        onError={() => {
-                                          setLoadedAttachmentImages((previous) => ({
-                                            ...previous,
-                                            [attachment.id]: false,
-                                          }));
-                                        }}
-                                        style={{
-                                          width: attachmentPreviewWidth,
-                                          height: attachmentPreviewHeight,
-                                          opacity: isImageLoaded ? 1 : 0,
-                                        }}
-                                      />
-                                    ) : null}
-                                    {showImageLoader ? (
-                                      <View
-                                        style={{
-                                          position: 'absolute',
-                                          top: 0,
-                                          right: 0,
-                                          bottom: 0,
-                                          left: 0,
-                                          alignItems: 'center',
-                                          justifyContent: 'center',
-                                        }}
-                                      >
-                                        <ActivityIndicator
-                                          size="small"
-                                          color={isOwnComment ? (isDark ? '#000000' : '#FFFFFF') : colors.text.muted}
-                                        />
-                                      </View>
-                                    ) : null}
-                                  </Pressable>
-                                );
-                              }
-
-                              return (
-                                <Pressable
-                                  key={attachment.id}
-                                  onPress={() => { void handleAttachmentPress(attachment); }}
-                                  style={{
-                                    borderWidth: 1,
-                                    borderColor: isOwnComment
-                                      ? (isDark ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.25)')
-                                      : colors.border.light,
-                                    backgroundColor: isOwnComment
-                                      ? (isDark ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.08)')
-                                      : colors.bg.secondary,
-                                    borderRadius: 10,
-                                    paddingHorizontal: 10,
-                                    paddingVertical: 7,
-                                    flexDirection: 'row',
-                                    alignItems: 'center',
-                                    gap: 8,
-                                  }}
-                                >
-                                  <Paperclip size={14} color={isOwnComment ? (isDark ? '#000000' : '#FFFFFF') : colors.text.tertiary} strokeWidth={2} />
-                                  <View style={{ flex: 1 }}>
-                                    <Text
-                                      numberOfLines={1}
-                                      style={{
-                                        color: isOwnComment ? (isDark ? '#000000' : '#FFFFFF') : colors.text.secondary,
-                                        fontSize: 12,
-                                        fontWeight: '700',
-                                      }}
-                                    >
-                                      {attachment.file_name}
-                                    </Text>
-                                    <Text
-                                      style={{
-                                        color: isOwnComment
-                                          ? (isDark ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.75)')
-                                          : colors.text.muted,
-                                        fontSize: 11,
-                                        marginTop: 1,
-                                      }}
-                                    >
-                                      {formatFileSize(attachment.file_size)}
-                                    </Text>
-                                  </View>
-                                </Pressable>
-                              );
-                            })()
-                          ))}
-                        </View>
-                      )}
-
-                      {(() => {
-                        const allSegs = parseMessageSegments(comment.body, orderByNumber);
-                        const orderSegs = allSegs.filter(s => s.type === 'order');
-                        const inlineSegs = allSegs.filter(s => s.type !== 'order');
-                        const hasInlineText = inlineSegs.some(s => s.value.trim().length > 0);
-                        const hasEveryonePing = /(?:^|\s)@everyone\b/i.test(comment.body);
-                        return (
-                          <>
-                            {hasEveryonePing && (
-                              <View
-                                style={{
-                                  alignSelf: 'flex-start',
-                                  flexDirection: 'row',
-                                  alignItems: 'center',
-                                  gap: 6,
-                                  marginBottom: (orderSegs.length > 0 || hasInlineText) ? 8 : 0,
-                                  paddingHorizontal: 8,
-                                  paddingVertical: 4,
-                                  borderRadius: 999,
-                                  backgroundColor: 'rgba(239,68,68,0.12)',
-                                  borderWidth: 1,
-                                  borderColor: 'rgba(239,68,68,0.45)',
-                                }}
-                              >
-                                <Bell
-                                  size={11}
-                                  color="#DC2626"
-                                  strokeWidth={2.2}
-                                />
-                                <Text
-                                  style={{
-                                    fontSize: 11,
-                                    fontWeight: '800',
-                                    color: '#DC2626',
-                                    letterSpacing: 0.1,
-                                  }}
-                                >
-                                  Team Ping
-                                </Text>
-                              </View>
-                            )}
-
-                            {/* Order cards rendered above any text */}
-                            {orderSegs.map((segment, segIndex) => {
-                              const rawNum = segment.value.replace('📦', '').replace('#', '').split('—')[0].trim();
-                              const normalizedNum = rawNum.replace(/^ORD[-\s]*/i, '');
-                              const order = storeOrders.find(o => {
-                                const n = o.orderNumber.replace(/^ORD[-\s]*/i, '');
-                                return n === normalizedNum || o.orderNumber === rawNum;
-                              });
-                              const statusColor = order?.status ? getOrderStatusColor(order.status) : colors.accent.primary;
-                              return (
-                                <Pressable
-                                  key={`${comment.id}-order-${segIndex}`}
-                                  onPress={() => { if (segment.orderId) router.push(`/order/${segment.orderId}`); else if (order) router.push(`/order/${order.id}`); }}
-                                  style={{
-                                    marginBottom: hasInlineText ? 8 : 0,
-                                    borderRadius: 12,
-                                    backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
-                                    borderWidth: 1,
-                                    borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
-                                    padding: 10,
-                                    flexDirection: 'row',
-                                    alignItems: 'center',
-                                    gap: 10,
-                                    shadowColor: '#000',
-                                    shadowOffset: { width: 0, height: 1 },
-                                    shadowOpacity: isDark ? 0.3 : 0.06,
-                                    shadowRadius: 4,
-                                    elevation: 2,
-                                  }}
-                                >
-                                  <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: statusColor + '1A', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: statusColor + '30' }}>
-                                    <Package size={18} color={statusColor} strokeWidth={2} />
-                                  </View>
-                                  <View style={{ flex: 1 }}>
-                                    <Text style={{ color: isDark ? '#FFFFFF' : '#0B0B0B', fontSize: 13, fontWeight: '800', letterSpacing: -0.2 }} numberOfLines={1}>
-                                      {order ? `ORD-${order.orderNumber.replace(/^ORD[-\s]*/i, '')}` : `ORD-${normalizedNum}`}
-                                    </Text>
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                                      <Text style={{ color: isDark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.5)', fontSize: 12 }} numberOfLines={1}>
-                                        {order?.customerName ?? 'Unknown'}
-                                      </Text>
-                                      {order?.status && (
-                                        <>
-                                          <View style={{ width: 3, height: 3, borderRadius: 2, backgroundColor: statusColor }} />
-                                          <Text style={{ color: statusColor, fontSize: 11, fontWeight: '700' }}>
-                                            {order.status.charAt(0).toUpperCase() + order.status.slice(1).toLowerCase()}
-                                          </Text>
-                                        </>
-                                      )}
-                                    </View>
-                                  </View>
-                                  <ChevronRight size={14} color={isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.25)'} strokeWidth={2.5} />
-                                </Pressable>
-                              );
-                            })}
-
-                            {/* Regular text */}
-                            {hasInlineText && (
-                              <Text
-                                style={{
-                                  color: isOwnComment ? (isDark ? '#000000' : '#FFFFFF') : colors.text.secondary,
-                                  fontSize: 16,
-                                  lineHeight: 23,
-                                  flexShrink: 1,
-                                  ...(Platform.OS === 'web' ? ({ wordBreak: 'break-word' } as any) : null),
-                                }}
-                              >
-                                {inlineSegs.map((segment, segIndex) => {
-                                  if (segment.type === 'mention') {
-                            return (
-                              <Text
-                                key={`${comment.id}-seg-${segIndex}`}
-                                style={{
-                                  fontWeight: '800',
-                                  color: isOwnComment ? (isDark ? '#000000' : '#FFFFFF') : colors.text.secondary,
-                                  backgroundColor: isOwnComment
-                                    ? (isDark ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.2)')
-                                    : (isDark ? 'rgba(59,130,246,0.2)' : '#EFF6FF'),
-                                }}
-                              >
-                                {segment.value}
-                              </Text>
-                            );
-                          }
-                          if (segment.type === 'url') {
-                            return (
-                              <Text
-                                key={`${comment.id}-seg-${segIndex}`}
-                                style={{
-                                  color: isOwnComment
-                                    ? (isDark ? 'rgba(0,0,0,0.75)' : 'rgba(255,255,255,0.9)')
-                                    : '#3B82F6',
-                                  textDecorationLine: 'underline',
-                                }}
-                                onPress={() => { void Linking.openURL(segment.value); }}
-                              >
-                                {segment.value}
-                              </Text>
-                            );
-                          }
-                                  return segment.value;
-                                })}
-                                {comment.edited_at ? (
-                                  <Text style={{ fontSize: 11, color: isOwnComment ? (isDark ? 'rgba(0,0,0,0.45)' : 'rgba(255,255,255,0.6)') : colors.text.muted }}>
-                                    {' '}(edited)
-                                  </Text>
-                                ) : null}
-                              </Text>
-                            )}
-                          </>
-                        );
-                      })()}
-
-                      {(Platform.OS !== 'web' || hoveredCommentId === comment.id) && (
-                        <Pressable
-                          onPress={(event) => { actionModalSnapRef.current = comment; setMessageActionTarget(comment); setMessageActionY(event.nativeEvent.pageY); setMessageActionX(event.nativeEvent.pageX); }}
-                          hitSlop={{ top: 6, right: 6, bottom: 6, left: 6 }}
-                          style={{ position: 'absolute', top: 6, right: 10 }}
-                        >
-                          <ChevronDown
-                            size={16}
-                            strokeWidth={2.5}
-                            color={isOwnComment
-                              ? (isDark ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.65)')
-                              : (isDark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.55)')}
-                          />
-                        </Pressable>
-                      )}
-                      </Pressable>
-                    </SwipeableMessage>
-
-                    {(likeCounts[comment.id] ?? 0) > 0 && (
-                      <View
-                        style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          marginTop: 2,
-                          alignSelf: isOwnComment ? 'flex-end' : 'flex-start',
-                          gap: 3,
-                          backgroundColor: isDark ? '#2A2A2A' : '#F3F4F6',
-                          paddingHorizontal: 7,
-                          paddingVertical: 3,
-                          borderRadius: 99,
-                        }}
-                      >
-                        <Text style={{ fontSize: 12 }}>👍</Text>
-                        {(likeCounts[comment.id] ?? 0) > 1 && (
-                          <Text style={{ color: colors.text.muted, fontSize: 11, fontWeight: '600' }}>
-                            {likeCounts[comment.id]}
-                          </Text>
-                        )}
-                      </View>
-                    )}
-
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, alignSelf: isOwnComment ? 'flex-end' : 'flex-start' }}>
-                      <Pressable onPress={() => beginReply(comment)}>
-                        <Text style={{ color: colors.text.muted, fontSize: 11, fontWeight: '700' }}>Reply</Text>
-                      </Pressable>
-                    </View>
-                  </View>
-                </View>
-              </View>
-            );
-          });
-          })()
-        )}
+        {renderedComments}
         </ScrollView>
       </View>
 
@@ -2279,7 +2828,7 @@ export function CollaborationThreadPanel({
         style={{
           paddingTop: 12,
           paddingHorizontal: 12,
-          paddingBottom: Platform.OS === 'web' ? 4 : 8,
+          paddingBottom: (Platform.OS === 'web' ? 18 : 16) + (isPaneVariant ? insets.bottom : 0),
           backgroundColor: colors.bg.card,
           borderTopWidth: 1,
           borderTopColor: colors.border.light,
@@ -2602,7 +3151,8 @@ export function CollaborationThreadPanel({
                 backgroundColor: colors.bg.secondary,
                 paddingLeft: 14,
                 paddingRight: 40,
-                paddingVertical: 9,
+                paddingTop: 9,
+                paddingBottom: 13,
               }}
             >
               <TextInput
@@ -2616,9 +3166,12 @@ export function CollaborationThreadPanel({
                 }
                 placeholderTextColor={colors.text.muted}
                 value={composerText}
-                selection={composerSelection}
+                selection={controlledSelection}
                 onChangeText={handleComposerTextChange}
-                onSelectionChange={(event) => setComposerSelection(event.nativeEvent.selection)}
+                onSelectionChange={(event) => {
+                  composerSelectionRef.current = event.nativeEvent.selection;
+                  if (controlledSelection !== undefined) setControlledSelection(undefined);
+                }}
                 onFocus={() => {
                   if (!isClosed && composerText.trim().length > 0) {
                     trackTypingPresence(true, true);
@@ -2668,7 +3221,7 @@ export function CollaborationThreadPanel({
           <Pressable
             onPressIn={() => {
               if (Platform.OS !== 'web') {
-                composerInputRef.current?.focus();
+                void Haptics.selectionAsync().catch(() => {});
               }
             }}
             onPress={handleSend}
@@ -2799,7 +3352,7 @@ export function CollaborationThreadPanel({
                           if (!snap) return;
                           setEditTarget(snap);
                           setComposerText(snap.body);
-                          setComposerSelection({ start: snap.body.length, end: snap.body.length });
+                          setControlledSelection({ start: snap.body.length, end: snap.body.length });
                           setMessageActionTarget(null);
                           requestAnimationFrame(() => composerInputRef.current?.focus());
                         }}

@@ -18,6 +18,7 @@ export default function SalesInsightScreen({ inline }: { inline?: boolean }) {
 
   const timeRangeOptions: { key: TimeRange; label: string }[] = [
     { key: '7d', label: 'Last 7 days' },
+    { key: 'month', label: 'This Month' },
     { key: '30d', label: 'Last 30 days' },
     { key: 'year', label: 'This Year' },
   ];
@@ -31,6 +32,12 @@ export default function SalesInsightScreen({ inline }: { inline?: boolean }) {
 
   // Revenue by source rows
   const revenueSourceRows = analytics.revenueBySource.map((item) => ({
+    label: item.label,
+    value: formatCurrency(item.value),
+    percentage: item.percentage,
+  }));
+
+  const revenueCategoryRows = analytics.revenueByCategory.map((item) => ({
     label: item.label,
     value: formatCurrency(item.value),
     percentage: item.percentage,
@@ -160,7 +167,7 @@ export default function SalesInsightScreen({ inline }: { inline?: boolean }) {
           >
             <Text
               style={{ color: colors.text.primary }}
-              className="text-lg font-bold mb-4"
+              className={` font-bold mb-4`}
             >
               Revenue Over Time
             </Text>
@@ -185,6 +192,22 @@ export default function SalesInsightScreen({ inline }: { inline?: boolean }) {
               emptyMessage="No sales data available"
             />
           </View>
+
+          {/* Revenue by Source */}
+          {revenueCategoryRows.length > 0 && (
+            <View className="mt-4">
+              <BreakdownTable
+                title="Revenue by Order Category"
+                data={revenueCategoryRows}
+                columns={{
+                  label: 'Category',
+                  value: 'Revenue',
+                  percentage: 'Share',
+                }}
+                emptyMessage="No category data available"
+              />
+            </View>
+          )}
 
           {/* Revenue by Source */}
           {revenueSourceRows.length > 0 && (

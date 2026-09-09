@@ -1,0 +1,6 @@
+name,amount,date,category,supplier,type,frequency,notes
+Office Rent January,350000,03/01/2026,Rent & Utilities,Prime Properties,recurring,Monthly,Main office rent for January
+Instagram Ads Campaign,120000,2026-01-15,Marketing & Ads,Meta Platforms,one-time,,Q1 acquisition campaign
+Courier Dispatch,18500,18-01-2026,Logistics & Delivery,GIG Logistics,one-time,,Daily same-day deliveries
+Payroll Batch,860000,2026-02-01,Salaries & Wages,Team Payroll,recurring,Monthly,February payroll
+Software Subscriptions,65000,2026-02-05,Software & Subscriptions,Stripe + Notion,recurring,Monthly,Tools and billing stack

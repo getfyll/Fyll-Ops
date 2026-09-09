@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, Pressable, ScrollView, ActivityIndicator, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
-import { ChevronLeft, Upload } from 'lucide-react-native';
+import { ArrowLeft, Upload } from 'lucide-react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
@@ -60,7 +60,8 @@ export default function ImportProductsScreen() {
   const { from } = useLocalSearchParams<{ from?: string | string[] }>();
   const goBack = useSettingsBack();
   const colors = useThemeColors();
-  const panelStyles = getSettingsWebPanelStyles(isFromSettingsRoute(from), colors.bg.primary, colors.border.light);
+  const openedFromSettings = isFromSettingsRoute(from);
+  const panelStyles = getSettingsWebPanelStyles(openedFromSettings, colors.bg.primary, colors.border.light);
   const businessId = useAuthStore((s) => s.businessId);
   const existingProducts = useFyllStore((s) => s.products);
   const productVariables = useFyllStore((s) => s.productVariables);
@@ -229,11 +230,20 @@ export default function ImportProductsScreen() {
             <Pressable
               onPress={goBack}
               className="w-10 h-10 rounded-xl items-center justify-center mr-3 active:opacity-50"
-              style={{ backgroundColor: colors.bg.secondary }}
+              style={{ backgroundColor: 'transparent' }}
             >
-              <ChevronLeft size={20} color={colors.text.primary} strokeWidth={2} />
+              <ArrowLeft size={20} color={colors.text.primary} strokeWidth={2} />
             </Pressable>
-            <Text style={{ color: colors.text.primary }} className="text-xl font-bold">Import Products</Text>
+            <Text
+              style={{
+                color: colors.text.primary,
+                fontSize: Platform.OS === 'web' ? 14 : 20,
+                lineHeight: Platform.OS === 'web' ? 18 : 24,
+                fontWeight: '600',
+              }}
+            >
+              Import Products
+            </Text>
           </View>
 
           <Text style={{ color: colors.text.tertiary }} className="text-sm mb-4">

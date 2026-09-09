@@ -51,6 +51,12 @@ type TaskDueRemindersPayload = {
   reminderDate?: string | null;
 };
 
+type TaskEventRemindersPayload = {
+  type: 'task_event_reminders';
+  businessId: string;
+  reminderIso?: string | null;
+};
+
 type TaskCompletedNotificationPayload = {
   type: 'task_completed';
   businessId: string;
@@ -60,6 +66,55 @@ type TaskCompletedNotificationPayload = {
   taskId: string;
   taskTitle: string;
   completedAt?: string | null;
+};
+
+type DirectSubscriptionTestPayload = {
+  type: 'direct_subscription_test';
+  businessId: string;
+  subscriptionId: string;
+  heading?: string | null;
+  content?: string | null;
+};
+
+type PartnerJobDispatchedNotificationPayload = {
+  type: 'partner_job_dispatched';
+  businessId: string;
+  partnerId: string;
+  jobId: string;
+  customerName?: string;
+  itemLabel?: string;
+};
+
+type PartnerIssueReportedNotificationPayload = {
+  type: 'partner_issue_reported';
+  businessId: string;
+  partnerId: string;
+  jobId: string;
+  issueId: string;
+  customerName?: string;
+  itemLabel?: string;
+};
+
+type PartnerIssueResolvedNotificationPayload = {
+  type: 'partner_issue_resolved';
+  businessId: string;
+  partnerId: string;
+  jobId: string;
+  issueId: string;
+  customerName?: string;
+  itemLabel?: string;
+};
+
+type PartnerJobEventNotificationPayload = {
+  type: 'partner_job_event';
+  businessId: string;
+  partnerToken?: string | null;
+  jobId: string;
+  event: 'accepted' | 'rejected' | 'bill_submitted' | 'status_updated';
+  customerName?: string;
+  itemLabel?: string;
+  amount?: string;
+  statusLabel?: string;
 };
 
 const invokeNotificationFunction = async (payload: Record<string, unknown>) => {
@@ -104,31 +159,44 @@ const invokeNotificationFunction = async (payload: Record<string, unknown>) => {
 };
 
 export function useWebPushNotifications() {
-  const { isReady, loginOneSignalUser, logoutOneSignalUser } = useOneSignal();
+  const {
+    isReady,
+    loginOneSignalUser,
+    logoutOneSignalUser,
+    setOneSignalTag,
+    getOneSignalDebugState,
+    forceOneSignalResync,
+  } = useOneSignal();
 
-  const promptForPermission = useCallback(() => {
-    if (typeof window === 'undefined' || !isReady) return;
-    window.OneSignalDeferred = window.OneSignalDeferred || [];
-    window.OneSignalDeferred.push(async (OneSignal: any) => {
-      try {
-        await OneSignal.Notifications.requestPermission();
-      } catch (err) {
-        console.warn('[OneSignal] permission prompt error:', err);
-      }
+  const promptForPermission = useCallback(async () => {
+    if (typeof window === 'undefined' || !isReady) return false;
+    return await new Promise<boolean>((resolve) => {
+      let settled = false;
+      const finish = (granted: boolean) => {
+        if (settled) return;
+        settled = true;
+        resolve(granted);
+      };
+
+      window.OneSignalDeferred = window.OneSignalDeferred || [];
+      window.OneSignalDeferred.push(async (OneSignal: any) => {
+        try {
+          await OneSignal.Notifications.requestPermission();
+          finish(Boolean(OneSignal?.Notifications?.permission));
+        } catch (err) {
+          console.warn('[OneSignal] permission prompt error:', err);
+          finish(false);
+        }
+      });
+
+      setTimeout(() => finish(false), 8000);
     });
   }, [isReady]);
 
   const setUserTag = useCallback((key: string, value: string) => {
     if (typeof window === 'undefined' || !isReady) return;
-    window.OneSignalDeferred = window.OneSignalDeferred || [];
-    window.OneSignalDeferred.push(async (OneSignal: any) => {
-      try {
-        await OneSignal.User.addTag(key, value);
-      } catch (err) {
-        console.warn('[OneSignal] addTag error:', err);
-      }
-    });
-  }, [isReady]);
+    setOneSignalTag(key, value);
+  }, [isReady, setOneSignalTag]);
 
   const tagWithBusinessId = useCallback((businessId: string) => {
     if (!businessId) return;
@@ -145,7 +213,43 @@ export function useWebPushNotifications() {
     logoutOneSignalUser();
   }, [isReady, logoutOneSignalUser]);
 
-  return { isReady, promptForPermission, setUserTag, tagWithBusinessId, loginUser, logoutUser };
+  const getDebugState = useCallback(async () => {
+    if (!isReady) return null;
+    return await getOneSignalDebugState();
+  }, [getOneSignalDebugState, isReady]);
+
+  const forceResync = useCallback(async () => {
+    if (!isReady) return null;
+    return await forceOneSignalResync();
+  }, [forceOneSignalResync, isReady]);
+
+  const sendDirectSubscriptionTest = useCallback(async (options: {
+    businessId: string;
+    subscriptionId: string;
+    heading?: string;
+    content?: string;
+  }) => {
+    const payload: DirectSubscriptionTestPayload = {
+      type: 'direct_subscription_test',
+      businessId: options.businessId.trim(),
+      subscriptionId: options.subscriptionId.trim(),
+      heading: options.heading ?? null,
+      content: options.content ?? null,
+    };
+    return await invokeNotificationFunction(payload);
+  }, []);
+
+  return {
+    isReady,
+    promptForPermission,
+    setUserTag,
+    tagWithBusinessId,
+    loginUser,
+    logoutUser,
+    getDebugState,
+    forceResync,
+    sendDirectSubscriptionTest,
+  };
 }
 
 // Simple deduplication: track recently sent notification keys to avoid duplicates
@@ -415,5 +519,188 @@ export async function triggerTaskDueReminders(options: {
     console.log('OneSignal task due reminder trigger error:', error);
     if (throwOnError) throw error;
     return null;
+  }
+}
+
+/**
+ * Ask the backend to send event reminders for soon/starting-now events.
+ * Safe to call repeatedly; the backend deduplicates reminders per task/user/stage.
+ */
+export async function triggerTaskEventReminders(options: {
+  businessId: string;
+  reminderIso?: string | null;
+}, config?: {
+  throwOnError?: boolean;
+}): Promise<Record<string, unknown> | null> {
+  const { businessId, reminderIso } = options;
+  const throwOnError = config?.throwOnError ?? false;
+  if (!businessId) return null;
+
+  const payload: TaskEventRemindersPayload = {
+    type: 'task_event_reminders',
+    businessId,
+    reminderIso: reminderIso ?? null,
+  };
+
+  try {
+    const result = await invokeNotificationFunction(payload);
+    return (result ?? null) as Record<string, unknown> | null;
+  } catch (error) {
+    console.log('OneSignal task event reminder trigger error:', error);
+    if (throwOnError) throw error;
+    return null;
+  }
+}
+
+/**
+ * Sends a real test push to the currently signed-in user's own registered
+ * Expo push tokens (native iOS/Android), via the authenticated backend path.
+ * Used by the debug screen to verify native push delivery end-to-end.
+ */
+export async function sendExpoPushTest(): Promise<Record<string, unknown> | null> {
+  return await invokeNotificationFunction({ type: 'expo_push_test' }) as Record<string, unknown> | null;
+}
+
+/**
+ * Sends a real test push to the currently signed-in partner's own device,
+ * from the partner portal's Account tab. Session-mode only — there's no
+ * session to target for a magic-link (token-mode) partner.
+ */
+export async function sendPartnerTestPush(): Promise<Record<string, unknown> | null> {
+  return await invokeNotificationFunction({ type: 'partner_test_push' }) as Record<string, unknown> | null;
+}
+
+/**
+ * Push a business staff member's dispatched job to the partner, if the
+ * partner has a linked account (session-mode). Token-only partners have no
+ * session to push to — the accompanying job-dispatch email covers them.
+ * Safe to call fire-and-forget; failures are swallowed.
+ */
+export async function sendPartnerJobDispatchedNotification(options: {
+  businessId: string;
+  partnerId: string;
+  jobId: string;
+  customerName?: string;
+  itemLabel?: string;
+}): Promise<void> {
+  const { businessId, partnerId, jobId, customerName, itemLabel } = options;
+  if (!businessId || !partnerId || !jobId) return;
+
+  const payload: PartnerJobDispatchedNotificationPayload = {
+    type: 'partner_job_dispatched',
+    businessId,
+    partnerId,
+    jobId,
+    customerName,
+    itemLabel,
+  };
+
+  try {
+    await invokeNotificationFunction(payload);
+  } catch (error) {
+    console.log('Partner job dispatched notification error:', error);
+  }
+}
+
+/**
+ * Push a business staff member's reported job issue to the partner, if the
+ * partner has a linked account (session-mode). Fire-and-forget.
+ */
+export async function sendPartnerIssueReportedNotification(options: {
+  businessId: string;
+  partnerId: string;
+  jobId: string;
+  issueId: string;
+  customerName?: string;
+  itemLabel?: string;
+}): Promise<void> {
+  const { businessId, partnerId, jobId, issueId, customerName, itemLabel } = options;
+  if (!businessId || !partnerId || !jobId || !issueId) return;
+
+  const payload: PartnerIssueReportedNotificationPayload = {
+    type: 'partner_issue_reported',
+    businessId,
+    partnerId,
+    jobId,
+    issueId,
+    customerName,
+    itemLabel,
+  };
+
+  try {
+    await invokeNotificationFunction(payload);
+  } catch (error) {
+    console.log('Partner issue reported notification error:', error);
+  }
+}
+
+/**
+ * Push a business staff member's issue resolution to the partner, if the
+ * partner has a linked account (session-mode). Fire-and-forget.
+ */
+export async function sendPartnerIssueResolvedNotification(options: {
+  businessId: string;
+  partnerId: string;
+  jobId: string;
+  issueId: string;
+  customerName?: string;
+  itemLabel?: string;
+}): Promise<void> {
+  const { businessId, partnerId, jobId, issueId, customerName, itemLabel } = options;
+  if (!businessId || !partnerId || !jobId || !issueId) return;
+
+  const payload: PartnerIssueResolvedNotificationPayload = {
+    type: 'partner_issue_resolved',
+    businessId,
+    partnerId,
+    jobId,
+    issueId,
+    customerName,
+    itemLabel,
+  };
+
+  try {
+    await invokeNotificationFunction(payload);
+  } catch (error) {
+    console.log('Partner issue resolved notification error:', error);
+  }
+}
+
+/**
+ * Notify business staff when a partner accepts/rejects a job or submits a
+ * bill. Called from the partner portal, which has no business-staff
+ * session — pass `partnerToken` for magic-link (token-mode) partners; a
+ * signed-in (session-mode) partner's own auth token is attached
+ * automatically. Safe to call fire-and-forget; failures are swallowed.
+ */
+export async function sendPartnerJobEventNotification(options: {
+  businessId: string;
+  partnerToken?: string | null;
+  jobId: string;
+  event: 'accepted' | 'rejected' | 'bill_submitted' | 'status_updated';
+  customerName?: string;
+  itemLabel?: string;
+  amount?: string;
+  statusLabel?: string;
+}): Promise<void> {
+  const { businessId, partnerToken, jobId, event, customerName, itemLabel, amount, statusLabel } = options;
+  if (!businessId || !jobId || !event) return;
+
+  const payload: PartnerJobEventNotificationPayload = {
+    type: 'partner_job_event',
+    businessId,
+    partnerToken: partnerToken ?? null,
+    jobId,
+    event,
+    customerName,
+    itemLabel,
+    amount,
+    statusLabel,
+  };
+
+  try {
+    await invokeNotificationFunction(payload);
+  } catch (error) {
+    console.log('Partner job event notification error:', error);
   }
 }

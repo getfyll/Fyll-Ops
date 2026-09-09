@@ -1,17 +1,23 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, ScrollView, Pressable, Platform, Modal, TextInput, Image } from 'react-native';
+import { View, Text, ScrollView, Pressable, Platform, Modal, TextInput, Image, ActivityIndicator } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Lock, Plus, Receipt, TrendingUp, TrendingDown, Truck, Trash2, MoreVertical, ChevronDown, ChevronLeft, ChevronRight, Search, Filter, Settings, Download, Pencil, X, Sparkles, Calendar, FileText, Camera, Check, Clock, Paperclip, Image as ImageIcon, ShoppingCart, User, Shield, ArrowLeft } from 'lucide-react-native';
+import { Lock, Plus, Receipt, TrendingUp, TrendingDown, Truck, Trash2, MoreVertical, ChevronDown, ChevronLeft, ChevronRight, Search, Filter, Settings, Download, Pencil, X, Sparkles, Calendar, FileText, Camera, Check, Clock, Paperclip, Image as ImageIcon, ShoppingCart, User, Shield, ArrowLeft, Banknote, Menu, Package, BarChart3, Tag, Calculator } from 'lucide-react-native';
+import { pickImageSimple } from '@/hooks/useImagePicker';
+import { prepareProductMediaForPersistence } from '@/lib/product-media';
 import * as Haptics from 'expo-haptics';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
+import { format } from 'date-fns';
 import useFyllStore, {
+  type Order,
   type Expense,
   type ExpensePaymentStatus,
+  type OtherIncome,
+  type OtherIncomeType,
   type ExpenseRequest,
   type ExpenseRequestReceipt,
   type ExpenseRequestStatus,
@@ -22,6 +28,7 @@ import useFyllStore, {
   type ProcurementStatusOption,
   type FixedCostSetting,
   type FixedCostFrequency,
+  type SalaryTemplate,
   type BankChargeTier,
   formatCurrency,
 } from '@/lib/state/fyll-store';
@@ -44,6 +51,9 @@ import { parseProcurementDraft, type ProcurementDraftData } from '@/lib/ai-procu
 import { askFyllAssistant, type FyllAssistantCard, type FyllAssistantResponse } from '@/lib/fyll-ai-assistant';
 import { ExpenseDetailPanel } from '@/components/ExpenseDetailPanel';
 import { ProcurementDetailPanel } from '@/components/ProcurementDetailPanel';
+import { ProcurementCreateInventoryProductModal } from '@/components/ProcurementCreateInventoryProductModal';
+import { ResolvedAttachmentImage } from '@/components/ResolvedAttachmentImage';
+import { ProcurementOrdersWorkspace, type ProcurementOrderStatus, type ProcurementProductSelection, type ProcurementReceivedUpdate, type ProcurementWorkspaceSection } from '@/components/ProcurementOrdersWorkspace';
 import { sendThreadNotification } from '@/hooks/useWebPushNotifications';
 import {
   applyPaidRefundRequestToOrder,
@@ -51,6 +61,7 @@ import {
   formatRefundRequestStatusLabel,
   inferRefundRequestType,
 } from '@/lib/refund-requests';
+import { getOrderClassification, getRefundDate, getRefundedAmount, isSaleOrder } from '@/lib/analytics-utils';
 import {
   canAccessFinanceScreen,
   canCreateExpenseRequestForRole,
@@ -60,7 +71,6 @@ import {
   getDefaultFinanceSectionForRole,
   type FinanceSection,
 } from '@/lib/finance-access';
-import { getRefundDate, getRefundedAmount } from '@/lib/analytics-utils';
 import { openRefundRequestAttachment, type RefundRequestAttachmentDraft, uploadRefundRequestAttachments } from '@/lib/refund-request-attachments';
 import { openAttachmentPath, uploadBusinessAttachment } from '@/lib/storage-attachments';
 
@@ -71,17 +81,30 @@ type ExpenseFilter = 'all' | ExpenseType;
 type ExpenseRequestFilter = 'all' | ExpenseRequestStatus;
 type RefundRequestFilter = 'all' | RefundRequestStatus;
 type ExpenseSort = 'newest' | 'oldest' | 'amount-high' | 'amount-low';
+type RevenueSort = ExpenseSort;
 type RefundSort = ExpenseSort;
 type ProcurementStatus = string;
 type ProcurementApprovalStatus = 'draft' | 'submitted' | 'approved' | 'rejected';
 type ProcurementFilter = 'all' | string;
 type ProcurementSort = 'workflow' | 'newest' | 'oldest' | 'amount-high' | 'amount-low';
-type OverviewRange = '7d' | '30d' | 'year';
+type ProcurementChildPage = 'overview' | ProcurementWorkspaceSection;
+type MobileFinanceMenuOption =
+  | { type: 'tab'; key: TabType; label: string; icon: typeof TrendingUp }
+  | { type: 'procurement-page'; key: ProcurementWorkspaceSection; label: string; icon: typeof TrendingUp }
+  | { type: 'route'; key: 'calculator'; label: string; icon: typeof TrendingUp; href: '/calculator' };
+type OverviewRange = '7d' | 'month' | '30d' | 'year';
+type FinanceSettingsView = 'suppliers' | 'categories' | 'fixed-costs' | 'salary-templates' | 'statuses' | 'rules' | 'export';
 
 type TrendBucket = {
   key: string;
   label: string;
   revenue: number;
+  otherIncome: number;
+  totalCashIn: number;
+  gatewayFees: number;
+  stampDuty: number;
+  refunds: number;
+  netRevenue: number;
   expenses: number;
   procurement: number;
   outflow: number;
@@ -100,6 +123,17 @@ type ExpenseRow = {
   sortAt: number;
 };
 
+type OtherIncomeRow = {
+  id: string;
+  title: string;
+  source: string;
+  type: OtherIncomeType;
+  amount: number;
+  date: string;
+  note?: string;
+  sortAt: number;
+};
+
 type ExpenseRequestRow = {
   id: string;
   name: string;
@@ -115,6 +149,23 @@ type ExpenseRequestRow = {
   submittedByUserId: string;
   rejectionReason?: string;
   dateAt: number;
+  sortAt: number;
+};
+
+type RevenueOrderRow = {
+  id: string;
+  orderNumber: string;
+  customerName: string;
+  category: string;
+  source: string;
+  paymentMethod: string;
+  status: string;
+  grossAmount: number;
+  gatewayFees: number;
+  stampDuty: number;
+  refundAmount: number;
+  netAmount: number;
+  date: string;
   sortAt: number;
 };
 
@@ -144,6 +195,7 @@ type ExpenseBreakdownLineItem = {
   amount: number;
   category: string;
   kind: 'base' | 'charge';
+  source?: 'manual' | 'system';
 };
 
 type ExpenseBreakdownDraftItem = {
@@ -153,6 +205,72 @@ type ExpenseBreakdownDraftItem = {
   category: string;
   kind: 'base' | 'charge';
 };
+
+type SalaryTemplateLineDraft = {
+  id: string;
+  employeeName: string;
+  amount: string;
+};
+
+type SalaryRunLineDraft = {
+  id: string;
+  employeeName: string;
+  amount: string;
+};
+
+type ProcurementLineDraft = {
+  id: string;
+  productId?: string;
+  variantId?: string;
+  variantName?: string;
+  productName: string;
+  quantityPurchased: string;
+  quantityReceived: string;
+  unitCost: string;
+  serviceFee: string;
+  deliveryFee: string;
+  shippingClearanceFee: string;
+  additionalFee: string;
+  marginPercent: string;
+  currentSellingPrice: string;
+  paymentDate: string;
+  isNewProduct?: boolean;
+  isSample?: boolean;
+  imageUrl?: string;
+  properties: string[];
+};
+
+type ProcurementComputedLine = {
+  id: string;
+  productId?: string;
+  variantId?: string;
+  variantName?: string;
+  productName: string;
+  quantityPurchased: number;
+  quantityReceived: number;
+  unitCost: number;
+  serviceFee: number;
+  deliveryFee: number;
+  shippingClearanceFee: number;
+  additionalFee: number;
+  paymentDate: string;
+  marginPercent: number;
+  currentSellingPrice: number;
+  baseCost: number;
+  feesTotal: number;
+  lineTotal: number;
+  landedUnitCost: number;
+  targetSellingPriceFromMargin: number;
+  effectiveSellingPrice: number;
+  expectedProfit: number;
+  isNewProduct?: boolean;
+  isSample?: boolean;
+  imageUrl?: string;
+  properties: string[];
+  isValid: boolean;
+};
+
+type ProcurementMode = 'procurement' | 'costing';
 
 type ProcurementRow = {
   id: string;
@@ -169,6 +287,45 @@ type ProcurementRow = {
   receivedDate: string;
   total: number;
   lineCount: number;
+  mode: ProcurementMode;
+  sortAt: number;
+};
+
+type ProcurementExportLineRow = {
+  procurementId: string;
+  itemIndex: number;
+  poNumber: string;
+  supplier: string;
+  procurementTitle: string;
+  dateLabel: string;
+  dateReceivedLabel: string;
+  status: string;
+  productName: string;
+  variantName: string;
+  sku: string;
+  qtyOrdered: number;
+  qtyReceived: number;
+  unitCost: number;
+  serviceFee: number;
+  shippingFee: number;
+  deliveryFee: number;
+  additionalFee: number;
+  landedUnitCost: number;
+  sellingPrice: number;
+  expectedProfit: number;
+  lineTotal: number;
+  sourceTag: string;
+  createdBy: string;
+};
+
+type SalaryRunRow = {
+  id: string;
+  name: string;
+  templateName: string;
+  employeeCount: number;
+  amount: number;
+  date: string;
+  createdBy: string;
   sortAt: number;
 };
 
@@ -183,10 +340,24 @@ type MobileDetailState =
 
 const tabOptions: { key: TabType; label: string; icon: typeof TrendingUp }[] = [
   { key: 'overview', label: 'Overview', icon: TrendingUp },
+  { key: 'revenue', label: 'Revenue', icon: Banknote },
+  { key: 'other-income', label: 'Other Income', icon: Sparkles },
   { key: 'expenses', label: 'Expenses', icon: Receipt },
   { key: 'refunds', label: 'Refunds', icon: TrendingDown },
   { key: 'procurement', label: 'Procurement', icon: Truck },
+  { key: 'costing', label: 'Costing', icon: FileText },
+  { key: 'salary', label: 'Salary', icon: User },
   { key: 'settings', label: 'Settings', icon: Settings },
+];
+
+const financeSettingsMenuOptions: { key: FinanceSettingsView; label: string }[] = [
+  { key: 'suppliers', label: 'Suppliers' },
+  { key: 'categories', label: 'Expense Categories' },
+  { key: 'fixed-costs', label: 'Fixed Costs' },
+  { key: 'salary-templates', label: 'Salary Templates' },
+  { key: 'statuses', label: 'PO Statuses' },
+  { key: 'rules', label: 'Rules' },
+  { key: 'export', label: 'Export' },
 ];
 
 const expenseSortOptions: { key: ExpenseSort; label: string }[] = [
@@ -214,6 +385,15 @@ const refundRequestFilterOptions: { key: RefundRequestFilter; label: string }[] 
   { key: 'rejected', label: 'Rejected' },
 ];
 
+const refundRequestStatusOptions: { key: RefundRequestStatus; label: string }[] = refundRequestFilterOptions
+  .filter((option): option is { key: RefundRequestStatus; label: string } => option.key !== 'all');
+
+const expensePaymentStatusOptions: { key: ExpensePaymentStatus; label: string; color: string; bg: string }[] = [
+  { key: 'draft', label: 'Draft', color: '#6B7280', bg: 'rgba(107,114,128,0.12)' },
+  { key: 'partial', label: 'Partial', color: '#F59E0B', bg: 'rgba(245,158,11,0.12)' },
+  { key: 'paid', label: 'Paid', color: '#10B981', bg: 'rgba(16,185,129,0.12)' },
+];
+
 const procurementSortOptions: { key: ProcurementSort; label: string }[] = [
   { key: 'workflow', label: 'Workflow status' },
   { key: 'newest', label: 'Newest first' },
@@ -223,10 +403,12 @@ const procurementSortOptions: { key: ProcurementSort; label: string }[] = [
 ];
 
 const expenseTypeOptions: ExpenseType[] = ['one-time', 'recurring'];
+const otherIncomeTypeOptions: OtherIncomeType[] = ['grant', 'owner-contribution', 'loan', 'other-income'];
 const expenseFrequencyOptions = ['Monthly', 'Quarterly', 'Yearly'];
 const fixedCostFrequencyOptions: FixedCostFrequency[] = ['Monthly', 'Quarterly', 'Yearly'];
 const overviewRangeOptions: { key: OverviewRange; label: string }[] = [
   { key: '7d', label: 'Last 7 days' },
+  { key: 'month', label: 'This Month' },
   { key: '30d', label: 'Last 30 days' },
   { key: 'year', label: 'This Year' },
 ];
@@ -236,6 +418,26 @@ const STAMP_DUTY_THRESHOLD_LABEL = `₦${STAMP_DUTY_THRESHOLD.toLocaleString('en
 const formatExpenseTypeLabel = (value: ExpenseType) => (
   value === 'one-time' ? 'One-Time' : value.charAt(0).toUpperCase() + value.slice(1)
 );
+const formatOtherIncomeTypeLabel = (value: OtherIncomeType) => {
+  if (value === 'grant') return 'Grant';
+  if (value === 'owner-contribution') return 'Owner Contribution';
+  if (value === 'loan') return 'Loan';
+  return 'Other Income';
+};
+const capitalizeDisplayValue = (value?: string | null) => {
+  if (!value) return value ?? '';
+  return value.charAt(0).toUpperCase() + value.slice(1);
+};
+const formatPanelDate = (value: string | undefined): string => {
+  if (!value) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [year, month, day] = value.split('-');
+    return `${day}/${month}/${year}`;
+  }
+  const parsed = new Date(value).getTime();
+  if (!Number.isFinite(parsed)) return value;
+  return new Date(parsed).toLocaleDateString('en-GB');
+};
 const isBankTransferPaymentMethod = (value?: string) => {
   const normalized = value?.trim().toLowerCase() ?? '';
   if (!normalized) return false;
@@ -279,9 +481,13 @@ const parseTimestamp = (value?: string): number | null => {
 
 const resolveTab = (value?: string | string[]): TabType => {
   const section = Array.isArray(value) ? value[0] : value;
+  if (section === 'revenue') return 'revenue';
+  if (section === 'other-income') return 'other-income';
   if (section === 'expenses') return 'expenses';
   if (section === 'refunds') return 'refunds';
   if (section === 'procurement') return 'procurement';
+  if (section === 'costing') return 'costing';
+  if (section === 'salary') return 'salary';
   if (section === 'settings') return 'settings';
   return 'overview';
 };
@@ -291,6 +497,17 @@ const resolveParamValue = (value?: string | string[]): string | null => {
   if (typeof candidate !== 'string') return null;
   const trimmed = candidate.trim();
   return trimmed.length > 0 ? trimmed : null;
+};
+
+const resolveProcurementChildPage = (value?: string | string[]): ProcurementChildPage => {
+  const page = resolveParamValue(value);
+  if (page === 'orders') return 'orders';
+  if (page === 'receive-goods') return 'receive-goods';
+  if (page === 'suppliers') return 'suppliers';
+  if (page === 'cost-breakdown') return 'cost-breakdown';
+  if (page === 'margin-tracker') return 'margin-tracker';
+  if (page === 'fee-templates') return 'fee-templates';
+  return 'overview';
 };
 
 const slugify = (value: string) => value
@@ -378,6 +595,100 @@ const normalizeBreakdownCategory = (value: string): string => {
   return trimmed.length > 0 ? trimmed : 'General';
 };
 
+const EXPENSE_BANK_CHARGE_LABEL = 'Bank Charges';
+const EXPENSE_STAMP_DUTY_LABEL = 'Stamp Duty';
+const PROCUREMENT_SYSTEM_CHARGE_PRODUCT_IDS = new Set(['charge-transfer-fees', 'charge-stamp-duty']);
+const PROCUREMENT_TRANSFER_CHARGE_MULTIPLIER = 2;
+
+const isSystemProcurementChargeItem = (productId: string): boolean => (
+  PROCUREMENT_SYSTEM_CHARGE_PRODUCT_IDS.has(productId)
+);
+
+const isPaymentBreakdownProcurementItem = (productId: string): boolean => (
+  productId.startsWith('charge-payment-') || isSystemProcurementChargeItem(productId)
+);
+
+const resolveProcurementPaymentBreakdownTotal = (procurement: Procurement): number => {
+  if (resolveProcurementMode(procurement) !== 'procurement') return procurement.totalCost;
+  return procurement.items
+    .filter((item) => isPaymentBreakdownProcurementItem(item.productId))
+    .reduce((sum, item) => sum + item.costAtPurchase, 0);
+};
+
+const isSystemExpenseChargeLine = (
+  line: Pick<ExpenseBreakdownLineItem, 'label' | 'source'> | null | undefined
+): boolean => {
+  if (!line) return false;
+  if (line.source === 'system') return true;
+  const normalizedLabel = line.label.trim().toLowerCase();
+  return normalizedLabel === EXPENSE_BANK_CHARGE_LABEL.toLowerCase()
+    || normalizedLabel === EXPENSE_STAMP_DUTY_LABEL.toLowerCase();
+};
+
+const stripSystemExpenseChargeLines = (lineItems: ExpenseBreakdownLineItem[]): ExpenseBreakdownLineItem[] => (
+  lineItems
+    .filter((line) => !isSystemExpenseChargeLine(line))
+    .map((line) => ({
+      ...line,
+      source: 'manual' as const,
+    }))
+);
+
+const buildStoredExpenseLineItems = ({
+  lineItems,
+  fallbackCategory,
+  bankChargeAmount,
+  stampDutyAmount,
+}: {
+  lineItems: ExpenseBreakdownLineItem[];
+  fallbackCategory: string;
+  bankChargeAmount: number;
+  stampDutyAmount: number;
+}): ExpenseBreakdownLineItem[] => {
+  const manualLineItems = stripSystemExpenseChargeLines(lineItems);
+  const primaryCategory = normalizeBreakdownCategory(manualLineItems[0]?.category || fallbackCategory);
+  const storedLineItems: ExpenseBreakdownLineItem[] = manualLineItems.map((line) => ({
+    ...line,
+    category: normalizeBreakdownCategory(line.category || primaryCategory),
+    source: 'manual' as const,
+  }));
+
+  if (bankChargeAmount > 0) {
+    storedLineItems.push({
+      id: 'line-bank-charges',
+      label: EXPENSE_BANK_CHARGE_LABEL,
+      amount: bankChargeAmount,
+      category: primaryCategory,
+      kind: 'charge',
+      source: 'system',
+    });
+  }
+
+  if (stampDutyAmount > 0) {
+    storedLineItems.push({
+      id: 'line-stamp-duty',
+      label: EXPENSE_STAMP_DUTY_LABEL,
+      amount: stampDutyAmount,
+      category: primaryCategory,
+      kind: 'charge',
+      source: 'system',
+    });
+  }
+
+  return storedLineItems;
+};
+
+const parseExpenseApplyBankCharges = (
+  description: string | undefined,
+  lineItems?: ExpenseBreakdownLineItem[]
+): boolean => {
+  const raw = extractMetadataValue(description, 'apply_bank_charges')?.trim().toLowerCase();
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  if (lineItems && lineItems.some((line) => isSystemExpenseChargeLine(line))) return true;
+  return true;
+};
+
 const parseExpenseLineItemsFromDescription = (
   description: string | undefined,
   fallbackCategory: string,
@@ -389,18 +700,21 @@ const parseExpenseLineItemsFromDescription = (
     amount?: number;
     category?: string;
     kind?: 'base' | 'charge';
+    source?: 'manual' | 'system';
   }[]>(encoded);
 
   if (parsed && parsed.length > 0) {
-    const normalized = parsed
+    const normalized: ExpenseBreakdownLineItem[] = parsed
       .map((line, index) => {
         const kind: 'base' | 'charge' = line.kind === 'charge' ? 'charge' : (index === 0 ? 'base' : 'charge');
+        const source: 'manual' | 'system' = line.source === 'system' ? 'system' : 'manual';
         return {
           id: `line-${index + 1}`,
           label: (line.label ?? '').trim() || (index === 0 ? 'Base Amount' : 'Additional Charge'),
           amount: Number.isFinite(Number(line.amount)) ? Number(line.amount) : 0,
           category: normalizeBreakdownCategory(line.category ?? fallbackCategory),
           kind,
+          source,
         };
       })
       .filter((line) => line.amount >= 0);
@@ -413,6 +727,7 @@ const parseExpenseLineItemsFromDescription = (
     amount: Number.isFinite(fallbackAmount) ? fallbackAmount : 0,
     category: normalizeBreakdownCategory(fallbackCategory),
     kind: 'base',
+    source: 'manual',
   }];
 };
 
@@ -459,8 +774,116 @@ const createBaseBreakdownDraftItem = (
   kind: 'base',
 });
 
+const createSalaryTemplateLineDraft = (
+  employeeName: string = '',
+  amount: string = ''
+): SalaryTemplateLineDraft => ({
+  id: `salary-line-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+  employeeName,
+  amount,
+});
+
 const lineItemAmountToNumber = (value: string): number => {
   const parsed = Number(String(value).replace(/,/g, '').trim());
+  if (!Number.isFinite(parsed) || parsed < 0) return 0;
+  return parsed;
+};
+
+const createProcurementLineDraft = (
+  seed: Partial<Omit<ProcurementLineDraft, 'id'>> = {}
+): ProcurementLineDraft => ({
+  id: `pline-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+  productId: seed.productId,
+  variantId: seed.variantId,
+  variantName: seed.variantName,
+  productName: seed.productName ?? '',
+  quantityPurchased: seed.quantityPurchased ?? '',
+  quantityReceived: seed.quantityReceived ?? '',
+  unitCost: seed.unitCost ?? '',
+  serviceFee: seed.serviceFee ?? '',
+  deliveryFee: seed.deliveryFee ?? '',
+  shippingClearanceFee: seed.shippingClearanceFee ?? '',
+  additionalFee: seed.additionalFee ?? '',
+  marginPercent: seed.marginPercent ?? '',
+  currentSellingPrice: seed.currentSellingPrice ?? '',
+  paymentDate: seed.paymentDate ?? '',
+  isNewProduct: seed.isNewProduct ?? false,
+  isSample: seed.isSample ?? false,
+  imageUrl: seed.imageUrl,
+  properties: seed.properties ?? [],
+});
+
+const parseNonNegativeInteger = (value: string): number => {
+  const parsed = Number(String(value).replace(/,/g, '').trim());
+  if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+  return Math.floor(parsed);
+};
+
+const computeProcurementLine = (line: ProcurementLineDraft): ProcurementComputedLine => {
+  const quantityPurchased = parseNonNegativeInteger(line.quantityPurchased);
+  const quantityReceivedInput = parseNonNegativeInteger(line.quantityReceived);
+  const quantityReceived = quantityPurchased > 0
+    ? Math.min(quantityPurchased, quantityReceivedInput)
+    : 0;
+
+  const unitCost = lineItemAmountToNumber(line.unitCost);
+  const serviceFee = lineItemAmountToNumber(line.serviceFee);
+  const deliveryFee = lineItemAmountToNumber(line.deliveryFee);
+  const shippingClearanceFee = lineItemAmountToNumber(line.shippingClearanceFee);
+  const additionalFee = lineItemAmountToNumber(line.additionalFee);
+  const marginPercent = lineItemAmountToNumber(line.marginPercent);
+  const currentSellingPrice = lineItemAmountToNumber(line.currentSellingPrice);
+  const baseCost = quantityPurchased * unitCost;
+  const feesTotal = serviceFee + deliveryFee + shippingClearanceFee + additionalFee;
+  const landedUnitCost = unitCost + feesTotal;
+  const lineTotal = quantityPurchased * landedUnitCost;
+  const targetSellingPriceFromMargin = marginPercent > 0 && marginPercent < 100
+    ? landedUnitCost / (1 - (marginPercent / 100))
+    : landedUnitCost * (1 + (marginPercent / 100));
+  const effectiveSellingPrice = currentSellingPrice > 0 ? currentSellingPrice : targetSellingPriceFromMargin;
+  const unitsForProfit = quantityReceived > 0 ? quantityReceived : quantityPurchased;
+  const expectedProfit = unitsForProfit * (effectiveSellingPrice - landedUnitCost);
+  const productName = line.productName.trim();
+
+  return {
+    id: line.id,
+    productId: line.productId,
+    variantId: line.variantId,
+    variantName: line.variantName,
+    productName,
+    quantityPurchased,
+    quantityReceived,
+    unitCost,
+    serviceFee,
+    deliveryFee,
+    shippingClearanceFee,
+    additionalFee,
+    paymentDate: line.paymentDate,
+    marginPercent,
+    currentSellingPrice,
+    baseCost,
+    feesTotal,
+    lineTotal,
+    landedUnitCost,
+    targetSellingPriceFromMargin,
+    effectiveSellingPrice,
+    expectedProfit,
+    isNewProduct: line.isNewProduct,
+    isSample: line.isSample,
+    imageUrl: line.imageUrl,
+    properties: line.properties,
+    isValid: Boolean(productName && quantityPurchased > 0 && unitCost > 0 && lineTotal > 0),
+  };
+};
+
+const formatMoneyDraftValue = (value: number): string => {
+  if (!Number.isFinite(value) || value <= 0) return '0';
+  const fixed = value.toFixed(2);
+  return fixed.replace(/\.00$/, '').replace(/(\.\d*[1-9])0$/, '$1');
+};
+
+const normalizeProcurementMoneyValue = (value: unknown): number => {
+  const parsed = Number(String(value ?? '').replace(/,/g, '').trim());
   if (!Number.isFinite(parsed) || parsed < 0) return 0;
   return parsed;
 };
@@ -491,12 +914,27 @@ const isImageUpload = (fileName: string, mimeType?: string | null) => {
   );
 };
 
+const DEFAULT_PROCUREMENT_PROPERTY_OPTIONS = [
+  'Optical',
+  'Blue light',
+  'Anti-glare',
+  'Photochromic',
+  'Polarized',
+  'Transition',
+  'Clear lens',
+  'Tinted lens',
+];
+
 const inferMimeTypeFromFileName = (fileName: string) => {
   const lowered = fileName.toLowerCase();
   if (lowered.endsWith('.jpg') || lowered.endsWith('.jpeg')) return 'image/jpeg';
   if (lowered.endsWith('.png')) return 'image/png';
   if (lowered.endsWith('.webp')) return 'image/webp';
   if (lowered.endsWith('.heic')) return 'image/heic';
+  if (lowered.endsWith('.pdf')) return 'application/pdf';
+  if (lowered.endsWith('.txt')) return 'text/plain';
+  if (lowered.endsWith('.doc')) return 'application/msword';
+  if (lowered.endsWith('.docx')) return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
   return 'application/octet-stream';
 };
 
@@ -577,6 +1015,19 @@ const normalizeProcurementStatus = (status?: string | null): ProcurementStatus |
   return words.map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
 };
 
+const shouldShowProcurementReceivedQuantity = (status?: string | null): boolean => {
+  const normalized = status?.trim().toLowerCase() ?? '';
+  return normalized.includes('received') || normalized.includes('partial');
+};
+
+const normalizeProcurementOrderEditorStatus = (status: ProcurementStatus): ProcurementStatus => {
+  const normalized = status.trim().toLowerCase();
+  if (normalized.includes('received')) return 'Received';
+  if (normalized.includes('partial')) return 'Partial';
+  if (normalized.includes('ordered')) return 'Ordered';
+  return 'Ordered';
+};
+
 const formatSignedCurrency = (amount: number): string => {
   const absolute = Math.abs(amount);
   return `${amount < 0 ? '-' : ''}${formatCurrency(absolute)}`;
@@ -631,6 +1082,24 @@ const inferExpenseType = (expense: Expense): ExpenseType => {
 
 const isFixedExpense = (expense: Expense): boolean => inferExpenseClassification(expense) === 'fixed';
 
+const isSalaryExpense = (expense: Expense): boolean => {
+  const salaryRunFlag = extractMetadataValue(expense.description, 'salary_run')?.trim().toLowerCase();
+  if (salaryRunFlag === 'true') return true;
+
+  const normalizedCategory = expense.category.trim().toLowerCase();
+  if (
+    normalizedCategory === 'salaries & wages'
+    || normalizedCategory === 'salary'
+    || normalizedCategory === 'salaries'
+    || normalizedCategory === 'payroll'
+  ) {
+    return true;
+  }
+
+  const source = `${expense.category} ${expense.description}`.toLowerCase();
+  return source.includes('salary run') || source.includes('payroll');
+};
+
 const inferExpenseFrequency = (expense: Expense, type: ExpenseType): string => {
   const metadataFrequency = extractMetadataValue(expense.description, 'frequency');
   if (metadataFrequency) return formatFrequencyLabel(metadataFrequency);
@@ -653,6 +1122,12 @@ const inferProcurementStatus = (procurement: Procurement): ProcurementStatus => 
   if (source.includes('sent')) return 'Sent';
   if (source.includes('confirm')) return 'Confirmed';
   return 'Received';
+};
+
+const resolveProcurementMode = (procurement: Procurement): ProcurementMode => {
+  const metadataMode = extractMetadataValue(procurement.notes, 'mode')?.trim().toLowerCase();
+  if (metadataMode === 'costing') return 'costing';
+  return 'procurement';
 };
 
 const inferProcurementApprovalStatus = (procurement: Procurement): ProcurementApprovalStatus => {
@@ -758,8 +1233,16 @@ const resolveProcurementPaidTimestamp = (procurement: Procurement): number => {
   return parseFlexibleDateToTimestamp(paidDate) ?? createdAtMs;
 };
 
+const isProcurementRecord = (procurement: Procurement): boolean => (
+  resolveProcurementMode(procurement) === 'procurement'
+);
+
+const resolveExplicitProcurementPONumber = (procurement: Procurement): string => (
+  extractMetadataValue(procurement.notes, 'po')?.trim().toUpperCase() ?? ''
+);
+
 const resolveProcurementPONumber = (procurement: Procurement): string => {
-  const metadataPo = extractMetadataValue(procurement.notes, 'po');
+  const metadataPo = resolveExplicitProcurementPONumber(procurement);
   if (metadataPo) return metadataPo.toUpperCase();
 
   const rawId = procurement.id.slice(-4).toUpperCase();
@@ -797,6 +1280,7 @@ function FinanceMetricCard({
   trendPlacement = 'below',
   compactTrend = false,
   valueFontSize = 16,
+  loading = false,
   onPress,
   colors,
 }: {
@@ -809,6 +1293,7 @@ function FinanceMetricCard({
   trendPlacement?: 'below' | 'right';
   compactTrend?: boolean;
   valueFontSize?: number;
+  loading?: boolean;
   onPress?: () => void;
   colors: ReturnType<typeof useStatsColors>;
 }) {
@@ -856,10 +1341,33 @@ function FinanceMetricCard({
       <Text style={{ color: colors.text.tertiary, fontSize: labelFontSize }} className={labelClassName}>
         {label}
       </Text>
-      <Text style={{ color: colors.text.primary, fontSize: resolvedValueFontSize, lineHeight: resolvedValueFontSize + 2 }} className="font-bold" numberOfLines={1}>
-        {value}
-      </Text>
-      {trendPlacement === 'right' ? (
+      {loading ? (
+        <View
+          style={{
+            width: '68%',
+            height: resolvedValueFontSize + 2,
+            borderRadius: 6,
+            backgroundColor: colors.bg.input,
+            opacity: 0.82,
+          }}
+        />
+      ) : (
+        <Text style={{ color: colors.text.primary, fontSize: resolvedValueFontSize, lineHeight: resolvedValueFontSize + 2 }} className="font-bold" numberOfLines={1}>
+          {value}
+        </Text>
+      )}
+      {loading ? (
+        <View
+          style={{
+            width: trendPlacement === 'right' ? '52%' : '44%',
+            height: 11,
+            borderRadius: 6,
+            backgroundColor: colors.bg.input,
+            opacity: 0.66,
+            marginTop: 12,
+          }}
+        />
+      ) : trendPlacement === 'right' ? (
         <View className="flex-row items-end justify-between mt-2">
           {helper.trim().length > 0 ? (
             <Text style={{ color: helperColor }} className={helperTextClassName}>
@@ -1011,7 +1519,14 @@ function StatusBadge({
 
 export default function FinanceScreen() {
   const router = useRouter();
-  const { section, editExpenseId, editProcurementId } = useLocalSearchParams<{ section?: string | string[]; editExpenseId?: string | string[]; editProcurementId?: string | string[] }>();
+  const { section, procurementPage, editExpenseId, editProcurementId } = useLocalSearchParams<{
+    section?: string | string[];
+    procurementPage?: string | string[];
+    editExpenseId?: string | string[];
+    editProcurementId?: string | string[];
+  }>();
+  const routeProcurementChildPage = resolveProcurementChildPage(procurementPage);
+  const lastRouteProcurementChildPageRef = useRef<ProcurementChildPage | null>(null);
   const routeEditExpenseId = resolveParamValue(editExpenseId);
   const consumedRouteEditExpenseIdRef = useRef<string | null>(null);
   const routeEditProcurementId = resolveParamValue(editProcurementId);
@@ -1035,8 +1550,12 @@ export default function FinanceScreen() {
   const { isDesktop, isTablet, isMobile, width: viewportWidth } = useBreakpoint();
   const pageHeadingStyle = getStandardPageHeadingStyle(isMobile);
 
+  const products = useFyllStore((s) => s.products);
+  const productVariables = useFyllStore((s) => s.productVariables);
+  const warehouseItems = useFyllStore((s) => s.warehouseItems);
   const orders = useFyllStore((s) => s.orders);
   const expenses = useFyllStore((s) => s.expenses);
+  const otherIncomes = useFyllStore((s) => s.otherIncomes);
   const expenseRequests = useFyllStore((s) => s.expenseRequests);
   const refundRequests = useFyllStore((s) => s.refundRequests);
   const procurements = useFyllStore((s) => s.procurements);
@@ -1044,16 +1563,24 @@ export default function FinanceScreen() {
   const financeSuppliers = useFyllStore((s) => s.financeSuppliers);
   const procurementStatusOptions = useFyllStore((s) => s.procurementStatusOptions);
   const fixedCosts = useFyllStore((s) => s.fixedCosts);
+  const salaryTemplates = useFyllStore((s) => s.salaryTemplates);
   const addExpense = useFyllStore((s) => s.addExpense);
+  const addOtherIncome = useFyllStore((s) => s.addOtherIncome);
   const addExpenseRequest = useFyllStore((s) => s.addExpenseRequest);
   const addRefundRequest = useFyllStore((s) => s.addRefundRequest);
   const addProcurement = useFyllStore((s) => s.addProcurement);
+  const addProduct = useFyllStore((s) => s.addProduct);
+  const addProductVariable = useFyllStore((s) => s.addProductVariable);
   const updateExpense = useFyllStore((s) => s.updateExpense);
+  const updateOtherIncome = useFyllStore((s) => s.updateOtherIncome);
   const updateExpenseRequest = useFyllStore((s) => s.updateExpenseRequest);
   const updateRefundRequest = useFyllStore((s) => s.updateRefundRequest);
   const updateOrder = useFyllStore((s) => s.updateOrder);
   const updateProcurement = useFyllStore((s) => s.updateProcurement);
+  const updateProductVariable = useFyllStore((s) => s.updateProductVariable);
+  const recordInventoryStockMovement = useFyllStore((s) => s.recordInventoryStockMovement);
   const deleteExpense = useFyllStore((s) => s.deleteExpense);
+  const deleteOtherIncome = useFyllStore((s) => s.deleteOtherIncome);
   const deleteExpenseRequest = useFyllStore((s) => s.deleteExpenseRequest);
   const deleteRefundRequest = useFyllStore((s) => s.deleteRefundRequest);
   const deleteProcurement = useFyllStore((s) => s.deleteProcurement);
@@ -1069,12 +1596,18 @@ export default function FinanceScreen() {
   const addFixedCost = useFyllStore((s) => s.addFixedCost);
   const updateFixedCost = useFyllStore((s) => s.updateFixedCost);
   const deleteFixedCost = useFyllStore((s) => s.deleteFixedCost);
+  const addSalaryTemplate = useFyllStore((s) => s.addSalaryTemplate);
+  const updateSalaryTemplate = useFyllStore((s) => s.updateSalaryTemplate);
+  const deleteSalaryTemplate = useFyllStore((s) => s.deleteSalaryTemplate);
+  const saveGlobalSettings = useFyllStore((s) => s.saveGlobalSettings);
   const financeRules = useFyllStore((s) => s.financeRules);
   const updateFinanceRules = useFyllStore((s) => s.updateFinanceRules);
   const addRevenueRule = useFyllStore((s) => s.addRevenueRule);
   const updateRevenueRule = useFyllStore((s) => s.updateRevenueRule);
   const deleteRevenueRule = useFyllStore((s) => s.deleteRevenueRule);
   const paymentMethods = useFyllStore((s) => s.paymentMethods);
+  const isBackgroundSyncing = useFyllStore((s) => s.isBackgroundSyncing);
+  const lastDataSyncAt = useFyllStore((s) => s.lastDataSyncAt);
   const authRole = useAuthStore((s) => s.currentUser?.role ?? 'staff');
   const currentUserId = useAuthStore((s) => s.currentUser?.id ?? '');
   const currentUserName = useAuthStore((s) => s.currentUser?.name ?? 'Team Member');
@@ -1084,9 +1617,17 @@ export default function FinanceScreen() {
 
   const [activeTab, setActiveTab] = useState<TabType>(() => resolveTab(section));
   const [overviewRange, setOverviewRange] = useState<OverviewRange>('30d');
+  const [revenuePeriod, setRevenuePeriod] = useState<OverviewRange>('30d');
+  const [revenueSearchQuery, setRevenueSearchQuery] = useState('');
+  const [revenueSort, setRevenueSort] = useState<RevenueSort>('newest');
+  const [revenueOrderCategoryFilter, setRevenueOrderCategoryFilter] = useState('Sale');
+  const [revenuePaymentMethodFilter, setRevenuePaymentMethodFilter] = useState('all');
+  const [revenueSourceFilter, setRevenueSourceFilter] = useState('all');
+  const [otherIncomePeriod, setOtherIncomePeriod] = useState<OverviewRange>('30d');
   const [expensePeriod, setExpensePeriod] = useState<OverviewRange>('30d');
   const [refundPeriod, setRefundPeriod] = useState<OverviewRange>('30d');
   const [procurementPeriod, setProcurementPeriod] = useState<OverviewRange>('30d');
+  const [salaryPeriod, setSalaryPeriod] = useState<OverviewRange>('30d');
   const [expenseFilter, setExpenseFilter] = useState<ExpenseFilter>('all');
   const [expenseSort, setExpenseSort] = useState<ExpenseSort>('newest');
   const [expenseRequestFilter, setExpenseRequestFilter] = useState<ExpenseRequestFilter>('all');
@@ -1095,23 +1636,29 @@ export default function FinanceScreen() {
   const [refundSort, setRefundSort] = useState<RefundSort>('newest');
   const [procurementFilter, setProcurementFilter] = useState<ProcurementFilter>('all');
   const [procurementSort, setProcurementSort] = useState<ProcurementSort>('workflow');
+  const [showRevenueFilterSheet, setShowRevenueFilterSheet] = useState(false);
   const [showExpenseFilterSheet, setShowExpenseFilterSheet] = useState(false);
   const [showExpenseRequestFilterSheet, setShowExpenseRequestFilterSheet] = useState(false);
   const [showRefundRequestFilterSheet, setShowRefundRequestFilterSheet] = useState(false);
   const [showProcurementFilterSheet, setShowProcurementFilterSheet] = useState(false);
+  const [showMobileFinanceMenu, setShowMobileFinanceMenu] = useState(false);
   const [expenseWorkspaceView, setExpenseWorkspaceView] = useState<ExpenseWorkspaceView>('list');
+  const [refundWorkspaceView, setRefundWorkspaceView] = useState<ExpenseWorkspaceView>('list');
   const [showExpenseApprovalWorkspace, setShowExpenseApprovalWorkspace] = useState(false);
   const [approvalWorkspaceSelectedId, setApprovalWorkspaceSelectedId] = useState<string | null>(null);
   const [approvalQueueSearchQuery, setApprovalQueueSearchQuery] = useState('');
   const [approvalInfoRequestNote, setApprovalInfoRequestNote] = useState('');
   const [procurementWorkspaceView, setProcurementWorkspaceView] = useState<'list' | 'approvals'>('list');
+  const [procurementChildPage, setProcurementChildPage] = useState<ProcurementChildPage>('overview');
   const [procurementWorkspaceSelectedId, setProcurementWorkspaceSelectedId] = useState<string | null>(null);
   const [procurementQueueSearchQuery, setProcurementQueueSearchQuery] = useState('');
   const [approvalDetailRequestId, setApprovalDetailRequestId] = useState<string | null>(null);
   const [mobileDetail, setMobileDetail] = useState<MobileDetailState>(null);
   const [selectedExpenseId, setSelectedExpenseId] = useState<string | null>(null);
   const [selectedProcurementId, setSelectedProcurementId] = useState<string | null>(null);
+  const [otherIncomeSearchQuery, setOtherIncomeSearchQuery] = useState('');
   const [expenseSearchQuery, setExpenseSearchQuery] = useState('');
+  const [salarySearchQuery, setSalarySearchQuery] = useState('');
   const [procurementSearchQuery, setProcurementSearchQuery] = useState('');
   const [showExpenseAiModal, setShowExpenseAiModal] = useState(false);
   const [showFinanceAiPanel, setShowFinanceAiPanel] = useState(false);
@@ -1120,18 +1667,48 @@ export default function FinanceScreen() {
   const [aiParsedDrafts, setAiParsedDrafts] = useState<ExpenseDraftData[]>([]);
   const [aiParsedProcurementDraft, setAiParsedProcurementDraft] = useState<ProcurementDraftData | null>(null);
   const [showExpenseModal, setShowExpenseModal] = useState(false);
+  const [showOtherIncomeModal, setShowOtherIncomeModal] = useState(false);
   const [showProcurementModal, setShowProcurementModal] = useState(false);
+  const [showProcurementExportModal, setShowProcurementExportModal] = useState(false);
+  const [showProcurementExportPoPicker, setShowProcurementExportPoPicker] = useState(false);
+  const [procurementExportSelectedId, setProcurementExportSelectedId] = useState<string>('all');
+  const [procurementExportPoSearch, setProcurementExportPoSearch] = useState('');
+  const [showNewPoItemPicker, setShowNewPoItemPicker] = useState(false);
+  const [newPoItemSearch, setNewPoItemSearch] = useState('');
+  const [mergingProcurementId, setMergingProcurementId] = useState<string | null>(null);
+  const [mergeProcurementSearch, setMergeProcurementSearch] = useState('');
   const [expenseModalMode, setExpenseModalMode] = useState<'create' | 'edit'>('create');
   const [procurementModalMode, setProcurementModalMode] = useState<'create' | 'edit'>('create');
+  const [activeProcurementProductLineId, setActiveProcurementProductLineId] = useState<string | null>(null);
+  const [activeProcurementVariantLineId, setActiveProcurementVariantLineId] = useState<string | null>(null);
+  const [orderLineCreateProductDraft, setOrderLineCreateProductDraft] = useState<{
+    lineId: string;
+    name: string;
+    variantType: string;
+    variants: { id: string; name: string; price: string; imageUri?: string | null }[];
+    imageUri: string | null;
+    isNewProduct: boolean;
+  } | null>(null);
+  const [orderLineCreateProductSaving, setOrderLineCreateProductSaving] = useState(false);
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
+  const [editingOtherIncomeId, setEditingOtherIncomeId] = useState<string | null>(null);
   const [editingExpenseRequestId, setEditingExpenseRequestId] = useState<string | null>(null);
   const [editingRefundRequestId, setEditingRefundRequestId] = useState<string | null>(null);
   const [editingProcurementId, setEditingProcurementId] = useState<string | null>(null);
+  const [editingProcurementItemIndex, setEditingProcurementItemIndex] = useState<number | null>(null);
   const [expenseActionMenuId, setExpenseActionMenuId] = useState<string | null>(null);
   const [procurementActionMenuId, setProcurementActionMenuId] = useState<string | null>(null);
   const [refundDetailActionMenuOpen, setRefundDetailActionMenuOpen] = useState(false);
   const [refundComposerActionMenuOpen, setRefundComposerActionMenuOpen] = useState(false);
   const [expenseName, setExpenseName] = useState('');
+  const [otherIncomeTitleDraft, setOtherIncomeTitleDraft] = useState('');
+  const [otherIncomeSourceDraft, setOtherIncomeSourceDraft] = useState('');
+  const [otherIncomeAmountDraft, setOtherIncomeAmountDraft] = useState('');
+  const [otherIncomeDateDraft, setOtherIncomeDateDraft] = useState(toInputDate());
+  const [otherIncomeTypeDraft, setOtherIncomeTypeDraft] = useState<OtherIncomeType>('grant');
+  const [otherIncomeNoteDraft, setOtherIncomeNoteDraft] = useState('');
+  const [showOtherIncomeDatePicker, setShowOtherIncomeDatePicker] = useState(false);
+  const [isSavingOtherIncome, setIsSavingOtherIncome] = useState(false);
   const [expenseMerchant, setExpenseMerchant] = useState('');
   const [expenseAmount, setExpenseAmount] = useState('');
   const [expenseLineItems, setExpenseLineItems] = useState<ExpenseBreakdownDraftItem[]>([]);
@@ -1161,6 +1738,10 @@ export default function FinanceScreen() {
   const [selectedRefundOrderId, setSelectedRefundOrderId] = useState<string | null>(null);
   const [refundAmountDraft, setRefundAmountDraft] = useState('');
   const [applyRefundBankCharges, setApplyRefundBankCharges] = useState(true);
+  const [refundBankChargeDraft, setRefundBankChargeDraft] = useState('0');
+  const [refundStampDutyDraft, setRefundStampDutyDraft] = useState('0');
+  const [refundBankChargeManuallyEdited, setRefundBankChargeManuallyEdited] = useState(false);
+  const [refundStampDutyManuallyEdited, setRefundStampDutyManuallyEdited] = useState(false);
   const [refundReasonDraft, setRefundReasonDraft] = useState('');
   const [refundNoteDraft, setRefundNoteDraft] = useState('');
   const [refundAttachmentDrafts, setRefundAttachmentDrafts] = useState<RefundRequestAttachmentDraft[]>([]);
@@ -1186,15 +1767,18 @@ export default function FinanceScreen() {
   const [poStatusDraft, setPoStatusDraft] = useState<ProcurementStatus>('Draft');
   const [showPoSupplierDropdown, setShowPoSupplierDropdown] = useState(false);
   const [showPoStatusDropdown, setShowPoStatusDropdown] = useState(false);
+  const [showPoNumberDropdown, setShowPoNumberDropdown] = useState(false);
   const [poSupplierDraft, setPoSupplierDraft] = useState('');
   const [poSupplierSearch, setPoSupplierSearch] = useState('');
   const [poExpectedDateDraft, setPoExpectedDateDraft] = useState(toInputDate());
   const [poReceivedDateDraft, setPoReceivedDateDraft] = useState(toInputDate());
   const [showPoDatePicker, setShowPoDatePicker] = useState(false);
+  const [openLineDatePickerId, setOpenLineDatePickerId] = useState<string | null>(null);
   const [showPoReceivedDatePicker, setShowPoReceivedDatePicker] = useState(false);
-  const [poPurchaseLines, setPoPurchaseLines] = useState<{ id: string; description: string; amount: string }[]>([{ id: 'l0', description: '', amount: '' }]);
+  const [procurementDraftMode, setProcurementDraftMode] = useState<ProcurementMode>('procurement');
+  const [poPurchaseLines, setPoPurchaseLines] = useState<ProcurementLineDraft[]>([createProcurementLineDraft()]);
   const [poNoteDraft, setPoNoteDraft] = useState('');
-  const [financeSettingsView, setFinanceSettingsView] = useState<'suppliers' | 'categories' | 'fixed-costs' | 'statuses' | 'rules' | 'export'>('suppliers');
+  const [financeSettingsView, setFinanceSettingsView] = useState<FinanceSettingsView>('suppliers');
   const [supplierSearchQuery, setSupplierSearchQuery] = useState('');
   const [statusSearchQuery, setStatusSearchQuery] = useState('');
   const [showSupplierModal, setShowSupplierModal] = useState(false);
@@ -1209,6 +1793,7 @@ export default function FinanceScreen() {
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [editingStatusId, setEditingStatusId] = useState<string | null>(null);
   const [statusNameDraft, setStatusNameDraft] = useState('');
+  const [statusOrderDraft, setStatusOrderDraft] = useState('');
   const [fixedCostSearchQuery, setFixedCostSearchQuery] = useState('');
   const [showFixedCostModal, setShowFixedCostModal] = useState(false);
   const [editingFixedCostId, setEditingFixedCostId] = useState<string | null>(null);
@@ -1223,6 +1808,18 @@ export default function FinanceScreen() {
   const [fixedCostFrequencyDraft, setFixedCostFrequencyDraft] = useState<FixedCostFrequency>('Monthly');
   const [showFixedCostFrequencyDropdown, setShowFixedCostFrequencyDropdown] = useState(false);
   const [fixedCostNotesDraft, setFixedCostNotesDraft] = useState('');
+  const [showSalaryTemplateModal, setShowSalaryTemplateModal] = useState(false);
+  const [showSalaryTemplatePickerModal, setShowSalaryTemplatePickerModal] = useState(false);
+  const [editingSalaryTemplateId, setEditingSalaryTemplateId] = useState<string | null>(null);
+  const [salaryTemplateNameDraft, setSalaryTemplateNameDraft] = useState('');
+  const [salaryTemplateNotesDraft, setSalaryTemplateNotesDraft] = useState('');
+  const [salaryTemplateLinesDraft, setSalaryTemplateLinesDraft] = useState<SalaryTemplateLineDraft[]>([createSalaryTemplateLineDraft()]);
+  const [showSalaryRunModal, setShowSalaryRunModal] = useState(false);
+  const [salaryRunTemplateId, setSalaryRunTemplateId] = useState<string | null>(null);
+  const [salaryRunNameDraft, setSalaryRunNameDraft] = useState('');
+  const [salaryRunLinesDraft, setSalaryRunLinesDraft] = useState<SalaryRunLineDraft[]>([]);
+  const [salaryRunNoteDraft, setSalaryRunNoteDraft] = useState('');
+  const [salaryRunDateDraft, setSalaryRunDateDraft] = useState(toInputDate());
   const [showBankChargeTierModal, setShowBankChargeTierModal] = useState(false);
   const [editingBankChargeTierId, setEditingBankChargeTierId] = useState<string | null>(null);
   const [tierMaxAmountDraft, setTierMaxAmountDraft] = useState('');
@@ -1240,13 +1837,16 @@ export default function FinanceScreen() {
   const [stampDutyDraft, setStampDutyDraft] = useState('');
   const [chargePreviewAmountDraft, setChargePreviewAmountDraft] = useState('50000');
   const [settingsToast, setSettingsToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [financeStartupSkeleton, setFinanceStartupSkeleton] = useState(() => !lastDataSyncAt);
   const settingsToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isFinanceApprover = authRole === 'admin';
   const isManagerRole = authRole === 'manager';
+  const canManageOtherIncome = isFinanceApprover || isManagerRole;
   const canCreateExpenseRequest = canCreateExpenseRequestForRole(authRole);
   const canCreateRefundRequest = canCreateRefundRequestForRole(authRole);
   const canCreateProcurementRequest = canCreateProcurementRequestForRole(authRole);
+  const shouldShowFinanceSkeleton = !isOfflineMode && (isBackgroundSyncing || (!lastDataSyncAt && financeStartupSkeleton));
   const canAccessFinance = canAccessFinanceScreen(authRole);
   const isWebDesktop = Platform.OS === 'web' && isDesktop;
   const isCompactLayout = !isWebDesktop;
@@ -1264,22 +1864,59 @@ export default function FinanceScreen() {
   const financeSectionControlsMargin = isMobile ? 24 : 20;
   const financeSectionBodyMargin = isMobile ? 20 : 16;
 
+  const isProcurementOrdersPage = activeTab === 'procurement' && procurementChildPage === 'orders';
+  const isProcurementReceiveGoodsPage = activeTab === 'procurement' && procurementChildPage === 'receive-goods';
+  const isProcurementCostBreakdownPage = activeTab === 'procurement' && procurementChildPage === 'cost-breakdown';
+  const isProcurementMarginTrackerPage = activeTab === 'procurement' && procurementChildPage === 'margin-tracker';
+  const isProcurementChildHeaderPage = isProcurementOrdersPage || isProcurementReceiveGoodsPage || isProcurementCostBreakdownPage || isProcurementMarginTrackerPage;
   const activeTabLabel = activeTab === 'overview'
     ? 'Overview'
-    : activeTab === 'expenses'
-      ? 'Expenses'
-      : activeTab === 'refunds'
-        ? 'Refunds'
-      : activeTab === 'procurement'
-        ? 'Procurement'
-        : 'Settings';
-  const financeHeaderTitle = isWebDesktop && activeTab !== 'overview' ? activeTabLabel : 'Finance';
-  const financeHeaderSubtitle = isWebDesktop && activeTab !== 'overview' ? 'Finance' : activeTabLabel;
+    : activeTab === 'revenue'
+      ? 'Revenue'
+      : activeTab === 'other-income'
+        ? 'Other Income'
+      : activeTab === 'expenses'
+        ? 'Expenses'
+        : activeTab === 'refunds'
+          ? 'Refunds'
+          : activeTab === 'procurement'
+            ? (authRole === 'admin' ? 'Procurement' : 'Goods Received')
+            : activeTab === 'costing'
+              ? 'Costing'
+            : activeTab === 'salary'
+              ? 'Salary'
+              : 'Settings';
+  const financeHeaderTitle = isProcurementOrdersPage
+    ? 'Procurement Orders'
+    : isProcurementReceiveGoodsPage
+      ? 'Goods Received'
+    : isProcurementCostBreakdownPage
+      ? 'Cost Breakdown'
+    : isProcurementMarginTrackerPage
+      ? 'Margin Tracker'
+    : isWebDesktop && activeTab !== 'overview'
+      ? activeTabLabel
+      : 'Finance';
+  const financeHeaderSubtitle = isProcurementOrdersPage
+    ? 'Track incoming goods, landed costs, and expected margins'
+    : isProcurementReceiveGoodsPage
+      ? 'Confirm quantities received per order. Updates procurement status, not inventory stock.'
+    : isProcurementCostBreakdownPage
+      ? 'Analyze landed costs, fees, and product cost composition'
+    : isProcurementMarginTrackerPage
+      ? 'Track target vs actual margins and expected profit'
+    : isWebDesktop && activeTab !== 'overview'
+      ? 'Finance'
+      : activeTabLabel;
   const isShowingWebExpenseApprovals = isWebDesktop && isFinanceApprover && expenseWorkspaceView === 'approvals';
-  const isShowingWebProcurementApprovals = isWebDesktop && isFinanceApprover && procurementWorkspaceView === 'approvals';
+  const isExpenseApprovalListMode = isFinanceApprover && expenseWorkspaceView === 'approvals';
+  const isShowingWebRefundApprovals = isWebDesktop && isFinanceApprover && refundWorkspaceView === 'approvals';
+  const isShowingWebProcurementApprovals = isWebDesktop && isFinanceApprover && activeTab === 'procurement' && procurementWorkspaceView === 'approvals';
   const isDesktopExpenseSplitView = isWebDesktop && !isMobile && activeTab === 'expenses' && (isFinanceApprover || Boolean(selectedExpenseId)) && !isShowingWebExpenseApprovals;
   const isDesktopRefundSplitView = isWebDesktop && !isMobile && activeTab === 'refunds' && Boolean(selectedRefundRequestId);
   const isDesktopProcurementSplitView = isWebDesktop && !isMobile && activeTab === 'procurement' && !isShowingWebProcurementApprovals && (isFinanceApprover || Boolean(selectedProcurementId));
+  const isDesktopCostingSplitView = isWebDesktop && !isMobile && activeTab === 'costing' && (isFinanceApprover || Boolean(selectedProcurementId));
+  const isDesktopSalarySplitView = isWebDesktop && !isMobile && activeTab === 'salary' && Boolean(selectedExpenseId);
   const adminNotificationRecipientIds = useMemo(
     () => teamMembers
       .filter((member) => member.role === 'admin' && member.id !== currentUserId)
@@ -1304,21 +1941,40 @@ export default function FinanceScreen() {
     }
     return `${subject} saved. Syncing to cloud.`;
   }, [businessId, isOfflineMode]);
+  useEffect(() => {
+    if (lastDataSyncAt) {
+      setFinanceStartupSkeleton(false);
+      return;
+    }
+    const timer = setTimeout(() => setFinanceStartupSkeleton(false), 3800);
+    return () => clearTimeout(timer);
+  }, [lastDataSyncAt]);
+  const persistFinanceSettings = useCallback((subject: string) => {
+    if (!businessId || isOfflineMode) return;
+    void saveGlobalSettings(businessId).then((result) => {
+      if (result.success) return;
+      console.warn(`${subject} cloud sync failed:`, result.error);
+      showSettingsToast('error', `${subject} saved locally. Cloud sync failed.`);
+    });
+  }, [businessId, isOfflineMode, saveGlobalSettings, showSettingsToast]);
   const refreshFinanceExpensesRealtime = useCallback(async () => {
     if (!businessId || isOfflineMode) return;
     try {
-      const [expenseRows, expenseRequestRows, refundRequestRows] = await Promise.all([
+      const [expenseRows, otherIncomeRows, expenseRequestRows, refundRequestRows] = await Promise.all([
         supabaseData.fetchCollection<Expense>('expenses', businessId, { orderBy: 'updated_at' }),
+        supabaseData.fetchCollection<OtherIncome>('other_incomes', businessId, { orderBy: 'updated_at' }),
         supabaseData.fetchCollection<ExpenseRequest>('expense_requests', businessId, { orderBy: 'updated_at' }),
         supabaseData.fetchCollection<RefundRequest>('refund_requests', businessId, { orderBy: 'updated_at' }),
       ]);
 
       const nextExpenses = (expenseRows ?? []).map((row) => row.data);
+      const nextOtherIncomes = (otherIncomeRows ?? []).map((row) => row.data);
       const nextExpenseRequests = (expenseRequestRows ?? []).map((row) => row.data);
       const nextRefundRequests = (refundRequestRows ?? []).map((row) => row.data);
 
       useFyllStore.setState({
         expenses: nextExpenses,
+        otherIncomes: nextOtherIncomes,
         expenseRequests: nextExpenseRequests,
         refundRequests: nextRefundRequests,
       });
@@ -1340,6 +1996,13 @@ export default function FinanceScreen() {
     channel.on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'expenses', filter: `business_id=eq.${businessId}` },
+      () => {
+        void refreshFinanceExpensesRealtime();
+      }
+    );
+    channel.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'other_incomes', filter: `business_id=eq.${businessId}` },
       () => {
         void refreshFinanceExpensesRealtime();
       }
@@ -1368,7 +2031,39 @@ export default function FinanceScreen() {
     () => getAllowedFinanceSections(authRole),
     [authRole]
   );
-  const visibleTabOptions = tabOptions.filter((tab) => allowedTabs.includes(tab.key));
+  const isProcurementAdminView = authRole === 'admin';
+  const normalizeProcurementPageForRole = useCallback((page: ProcurementChildPage): ProcurementChildPage => {
+    if (isProcurementAdminView) return page;
+    return 'receive-goods';
+  }, [isProcurementAdminView]);
+  const visibleTabOptions = useMemo(
+    () => tabOptions
+      .filter((tab) => allowedTabs.includes(tab.key))
+      .map((tab) => (
+        !isProcurementAdminView && tab.key === 'procurement'
+          ? { ...tab, label: 'Goods Received' }
+          : tab
+      )),
+    [allowedTabs, isProcurementAdminView]
+  );
+  const mobileFinanceMenuOptions: MobileFinanceMenuOption[] = [
+    ...visibleTabOptions
+    .filter((tab) => tab.key !== 'costing')
+    .flatMap<MobileFinanceMenuOption>((tab) => {
+      if (tab.key !== 'procurement') return [{ type: 'tab' as const, key: tab.key, label: tab.label, icon: tab.icon }];
+      const procurementPages: MobileFinanceMenuOption[] = isProcurementAdminView ? [
+        { type: 'tab' as const, key: tab.key, label: tab.label, icon: tab.icon },
+        { type: 'procurement-page' as const, key: 'orders' as ProcurementWorkspaceSection, label: 'Orders', icon: ShoppingCart },
+        { type: 'procurement-page' as const, key: 'receive-goods' as ProcurementWorkspaceSection, label: 'Goods Received', icon: Truck },
+        { type: 'procurement-page' as const, key: 'cost-breakdown' as ProcurementWorkspaceSection, label: 'Cost Breakdown', icon: BarChart3 },
+        { type: 'procurement-page' as const, key: 'margin-tracker' as ProcurementWorkspaceSection, label: 'Margin Tracker', icon: TrendingUp },
+      ] : [
+        { type: 'procurement-page' as const, key: 'receive-goods' as ProcurementWorkspaceSection, label: 'Goods Received', icon: Truck },
+      ];
+      return procurementPages;
+    }),
+    { type: 'route' as const, key: 'calculator', label: 'Calculator', icon: Calculator, href: '/calculator' },
+  ];
   const showFinanceTopHeader = true;
   const showTopHeaderDivider = isWebDesktop;
 
@@ -1378,10 +2073,41 @@ export default function FinanceScreen() {
   }, [section]);
 
   useEffect(() => {
+    if (activeTab !== 'procurement') return;
+    const nextProcurementPage = normalizeProcurementPageForRole(routeProcurementChildPage);
+    if (nextProcurementPage !== routeProcurementChildPage) {
+      router.replace(`/(tabs)/finance?section=procurement&procurementPage=${nextProcurementPage}` as any);
+    }
+    if (lastRouteProcurementChildPageRef.current === nextProcurementPage) return;
+    lastRouteProcurementChildPageRef.current = nextProcurementPage;
+    setProcurementChildPage((previous) => (
+      previous === nextProcurementPage ? previous : nextProcurementPage
+    ));
+  }, [activeTab, normalizeProcurementPageForRole, routeProcurementChildPage, router]);
+
+  useEffect(() => {
     if (activeTab !== 'expenses' && expenseWorkspaceView !== 'list') {
       setExpenseWorkspaceView('list');
     }
   }, [activeTab, expenseWorkspaceView]);
+
+  useEffect(() => {
+    if (activeTab !== 'refunds' && refundWorkspaceView !== 'list') {
+      setRefundWorkspaceView('list');
+    }
+  }, [activeTab, refundWorkspaceView]);
+
+  useEffect(() => {
+    if (activeTab !== 'procurement' && procurementChildPage !== 'overview') {
+      setProcurementChildPage('overview');
+    }
+  }, [activeTab, procurementChildPage]);
+
+  useEffect(() => {
+    if (activeTab === 'procurement' && procurementChildPage !== 'overview' && selectedProcurementId) {
+      setSelectedProcurementId(null);
+    }
+  }, [activeTab, procurementChildPage, selectedProcurementId]);
 
   useEffect(() => {
     if (allowedTabs.includes(activeTab)) return;
@@ -1400,12 +2126,45 @@ export default function FinanceScreen() {
 
   const selectTab = (tab: TabType) => {
     if (!allowedTabs.includes(tab)) return;
-    if (tab === activeTab) return;
+    setShowMobileFinanceMenu(false);
+    if (tab === activeTab && !(tab === 'procurement' && procurementChildPage !== 'overview')) return;
     void Haptics.selectionAsync();
     setActiveTab(tab);
+    if (tab === 'procurement') setProcurementChildPage(normalizeProcurementPageForRole('overview'));
     setSelectedExpenseId(null);
     setSelectedProcurementId(null);
-    router.replace(`/(tabs)/finance?section=${tab}` as any);
+    router.replace(tab === 'procurement' && !isProcurementAdminView
+      ? '/(tabs)/finance?section=procurement&procurementPage=receive-goods' as any
+      : `/(tabs)/finance?section=${tab}` as any);
+  };
+
+  const selectProcurementPage = (page: ProcurementWorkspaceSection) => {
+    if (!allowedTabs.includes('procurement')) return;
+    const nextPage = normalizeProcurementPageForRole(page) as ProcurementWorkspaceSection;
+    setShowMobileFinanceMenu(false);
+    void Haptics.selectionAsync();
+    setActiveTab('procurement');
+    setProcurementChildPage(nextPage);
+    setSelectedExpenseId(null);
+    setSelectedProcurementId(null);
+    router.replace(`/(tabs)/finance?section=procurement&procurementPage=${nextPage}` as any);
+  };
+
+  const selectFinanceSettingsView = (view: FinanceSettingsView) => {
+    if (!allowedTabs.includes('settings')) return;
+    void Haptics.selectionAsync();
+    setFinanceSettingsView(view);
+    setActiveTab('settings');
+    setSelectedExpenseId(null);
+    setSelectedProcurementId(null);
+    setShowMobileFinanceMenu(false);
+    router.replace('/(tabs)/finance?section=settings' as any);
+  };
+
+  const openOrderInWorkspace = (orderId: string) => {
+    if (!orderId) return;
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push((isWebDesktop ? `/orders/${orderId}?returnTo=finance-revenue` : `/order/${orderId}?returnTo=finance-revenue`) as any);
   };
 
   const effectiveProcurementStatusOptions = useMemo<ProcurementStatusOption[]>(() => {
@@ -1543,22 +2302,208 @@ export default function FinanceScreen() {
       .slice(0, 50);
   }, [availableProcurementSuppliers, poSupplierSearch]);
 
+  const availableProcurementPoNumbers = useMemo(() => {
+    const poEntries = new Map<string, { poNumber: string; dateLabel: string }>();
+    procurements.forEach((procurement) => {
+      const poNumber = resolveExplicitProcurementPONumber(procurement);
+      if (!poNumber) return;
+      const createdAtMs = parseTimestamp(procurement.createdAt) ?? Date.now();
+      const paidDate = resolveProcurementPaidDate(procurement, createdAtMs);
+      poEntries.set(poNumber, {
+        poNumber,
+        dateLabel: formatPanelDate(paidDate),
+      });
+    });
+    return Array.from(poEntries.values()).sort((a, b) => a.poNumber.localeCompare(b.poNumber));
+  }, [procurements]);
+
+  const filteredProcurementPoNumbers = useMemo(() => {
+    const query = poNumberDraft.trim().toLowerCase();
+    return availableProcurementPoNumbers
+      .filter((entry) => !query || entry.poNumber.toLowerCase().includes(query))
+      .slice(0, 8);
+  }, [availableProcurementPoNumbers, poNumberDraft]);
+
+  const availableProcurementProducts = useMemo(() => (
+    [
+      ...products
+        .filter((product) => product.productType !== 'service')
+        .map((product) => ({
+          productId: product.id,
+          productName: product.name.trim(),
+          category: product.categories?.[0]?.trim() ?? '',
+          imageUrl: product.imageUrl,
+          variants: product.variants ?? [],
+          source: 'inventory' as const,
+        })),
+      ...warehouseItems.map((item) => ({
+        productId: item.id,
+        productName: item.name.trim(),
+        category: item.category?.trim() ?? '',
+        imageUrl: item.imageUrl,
+        variants: [],
+        source: 'warehouse' as const,
+      })),
+    ]
+      .filter((product) => product.productName.length > 0)
+      .sort((a, b) => a.productName.localeCompare(b.productName))
+  ), [products, warehouseItems]);
+
+  const availableProcurementProductVariants = useMemo(() => (
+    products
+      .filter((product) => product.productType !== 'service')
+      .flatMap((product) => {
+        const variants = product.variants?.length ? product.variants : [];
+        return variants.map((variant) => {
+          const variantName = Object.values(variant.variableValues ?? {})
+            .map((value) => value.trim())
+            .filter(Boolean)
+            .join(' / ');
+          const displayName = variantName ? `${product.name.trim()} - ${variantName}` : product.name.trim();
+          const stock = product.useGlobalStock ? (product.globalStock ?? variant.stock ?? 0) : (variant.stock ?? 0);
+          return {
+            productId: product.id,
+            variantId: variant.id,
+            productName: product.name.trim(),
+            variantName,
+            displayName,
+            category: product.categories?.[0]?.trim() ?? '',
+            sku: variant.sku?.trim() ?? '',
+            stock,
+            imageUrl: variant.imageUrl || product.imageUrl,
+          };
+        });
+      })
+      .filter((option) => option.displayName.length > 0)
+      .sort((a, b) => a.displayName.localeCompare(b.displayName))
+  ), [products]);
+
+  const availableVariantValuesByType = useMemo(() => {
+    const valuesByType = new Map<string, Set<string>>();
+
+    productVariables.forEach((variable) => {
+      const key = variable.name.trim().toLowerCase();
+      if (!key) return;
+      const existing = valuesByType.get(key) ?? new Set<string>();
+      variable.values.forEach((value) => {
+        const normalized = value.trim();
+        if (normalized) existing.add(normalized);
+      });
+      valuesByType.set(key, existing);
+    });
+
+    products.forEach((product) => {
+      product.variants.forEach((variant) => {
+        Object.entries(variant.variableValues ?? {}).forEach(([rawType, rawValue]) => {
+          const key = rawType.trim().toLowerCase();
+          const value = rawValue.trim();
+          if (!key || !value) return;
+          const existing = valuesByType.get(key) ?? new Set<string>();
+          existing.add(value);
+          valuesByType.set(key, existing);
+        });
+      });
+    });
+
+    return valuesByType;
+  }, [productVariables, products]);
+
+  const savedProcurementPropertyVariable = useMemo(
+    () => productVariables.find((variable) => variable.name.trim().toLowerCase() === 'product properties'),
+    [productVariables]
+  );
+
+  const procurementPropertyOptions = useMemo(() => {
+    const seen = new Set<string>();
+    return [...DEFAULT_PROCUREMENT_PROPERTY_OPTIONS, ...(savedProcurementPropertyVariable?.values ?? [])]
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .filter((value) => {
+        const key = value.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  }, [savedProcurementPropertyVariable]);
+
+  const persistProcurementPropertyOption = useCallback((rawValue: string) => {
+    const normalizedValue = rawValue.trim();
+    if (!normalizedValue) return;
+
+    const alreadyExists = procurementPropertyOptions.some(
+      (value) => value.trim().toLowerCase() === normalizedValue.toLowerCase()
+    );
+    if (alreadyExists) return;
+
+    if (savedProcurementPropertyVariable) {
+      updateProductVariable(savedProcurementPropertyVariable.id, {
+        values: [...savedProcurementPropertyVariable.values, normalizedValue],
+      });
+      return;
+    }
+
+    addProductVariable({
+      id: `product-props-${Date.now().toString(36)}`,
+      name: 'Product Properties',
+      values: [normalizedValue],
+    });
+  }, [addProductVariable, procurementPropertyOptions, savedProcurementPropertyVariable, updateProductVariable]);
+
+  const persistVariantValueOption = useCallback((variantType: string, rawValue: string) => {
+    const normalizedType = variantType.trim();
+    const normalizedValue = rawValue.trim();
+    if (!normalizedType || !normalizedValue) return;
+
+    const existingVariable = productVariables.find(
+      (variable) => variable.name.trim().toLowerCase() === normalizedType.toLowerCase()
+    );
+    if (!existingVariable) return;
+
+    const alreadyExists = existingVariable.values.some(
+      (value) => value.trim().toLowerCase() === normalizedValue.toLowerCase()
+    );
+    if (alreadyExists) return;
+
+    updateProductVariable(existingVariable.id, {
+      values: [...existingVariable.values, normalizedValue],
+    });
+  }, [productVariables, updateProductVariable]);
+
+  const existingSupplierBackfillNames = useMemo(() => {
+    const names = new Set<string>();
+    fixedCosts.forEach((cost) => {
+      const normalized = cost.supplierName?.trim();
+      if (normalized) names.add(normalized);
+    });
+    expenses.forEach((expense) => {
+      const merchant = extractMetadataValue(expense.description, 'merchant');
+      const normalized = merchant?.trim();
+      if (normalized) names.add(normalized);
+    });
+    procurements.forEach((procurement) => {
+      const normalized = procurement.supplierName?.trim();
+      if (normalized) names.add(normalized);
+    });
+    return Array.from(names);
+  }, [expenses, fixedCosts, procurements]);
+
   const createPoNumber = () => `PO-${Math.floor(1000 + Math.random() * 9000)}`;
 
-  const buildExpenseDescription = (
-    name: string,
-    merchant: string,
-    type: ExpenseType,
-    frequency: string,
-    note: string,
-    receiptPath?: string,
-    receiptName?: string,
-    lineItems?: ExpenseBreakdownLineItem[],
-    receipts?: ExpenseRequestReceipt[]
-  ) => {
-    const metadataChunks: string[] = [`[type:${type}]`];
-    if (merchant.trim()) {
-      metadataChunks.push(`[merchant:${sanitizeMetadata(merchant)}]`);
+const buildExpenseDescription = (
+  name: string,
+  merchant: string,
+  type: ExpenseType,
+  frequency: string,
+  note: string,
+  receiptPath?: string,
+  receiptName?: string,
+  lineItems?: ExpenseBreakdownLineItem[],
+  receipts?: ExpenseRequestReceipt[],
+  applyBankCharges?: boolean
+) => {
+  const metadataChunks: string[] = [`[type:${type}]`];
+  if (merchant.trim()) {
+    metadataChunks.push(`[merchant:${sanitizeMetadata(merchant)}]`);
     }
     if (type !== 'one-time') {
       metadataChunks.push(`[frequency:${sanitizeMetadata(frequency || 'Monthly')}]`);
@@ -1569,17 +2514,21 @@ export default function FinanceScreen() {
     if (receiptPath?.trim()) {
       metadataChunks.push(`[receipt_path:${sanitizeMetadata(receiptPath)}]`);
     }
-    if (receiptName?.trim()) {
-      metadataChunks.push(`[receipt_name:${sanitizeMetadata(receiptName)}]`);
-    }
-    if (lineItems && lineItems.length > 0) {
-      metadataChunks.push(`[line_items:${encodeMetadataJson(lineItems.map((line) => ({
+  if (receiptName?.trim()) {
+    metadataChunks.push(`[receipt_name:${sanitizeMetadata(receiptName)}]`);
+  }
+  if (typeof applyBankCharges === 'boolean') {
+    metadataChunks.push(`[apply_bank_charges:${applyBankCharges ? 'true' : 'false'}]`);
+  }
+  if (lineItems && lineItems.length > 0) {
+    metadataChunks.push(`[line_items:${encodeMetadataJson(lineItems.map((line) => ({
         label: line.label,
         amount: line.amount,
         category: line.category,
         kind: line.kind,
+        source: line.source ?? 'manual',
       })))}]`);
-    }
+  }
     if (receipts && receipts.length > 0) {
       metadataChunks.push(`[receipts:${encodeMetadataJson(receipts.map((receipt) => ({
         id: receipt.id,
@@ -1613,7 +2562,12 @@ export default function FinanceScreen() {
       match = metadataPattern.exec(source);
     }
 
-    metadataEntries.set('po', sanitizeMetadata(poNumber.trim().toUpperCase()));
+    const normalizedPoNumber = poNumber.trim().toUpperCase();
+    if (normalizedPoNumber) {
+      metadataEntries.set('po', sanitizeMetadata(normalizedPoNumber));
+    } else {
+      metadataEntries.delete('po');
+    }
     metadataEntries.set('status', sanitizeMetadata(status.toLowerCase()));
     metadataEntries.set('expected', sanitizeMetadata(receivedDate));
 
@@ -1663,8 +2617,33 @@ export default function FinanceScreen() {
       contactName: '',
       email: '',
       paymentTerms: '',
-    });
+    }, businessId);
   };
+
+  useEffect(() => {
+    if (existingSupplierBackfillNames.length === 0) return;
+    const existingNames = new Set(
+      financeSuppliers
+        .map((supplier) => supplier.name.trim().toLowerCase())
+        .filter(Boolean)
+    );
+    const missingNames = existingSupplierBackfillNames.filter(
+      (name) => !existingNames.has(name.trim().toLowerCase())
+    );
+    if (missingNames.length === 0) return;
+
+    missingNames.forEach((name) => {
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      addFinanceSupplier({
+        id: `finance-supplier-${slugify(trimmed) || Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+        name: trimmed,
+        contactName: '',
+        email: '',
+        paymentTerms: '',
+      }, businessId);
+    });
+  }, [addFinanceSupplier, businessId, existingSupplierBackfillNames, financeSuppliers]);
 
   const openSupplierComposer = () => {
     setEditingSupplierId(null);
@@ -1695,7 +2674,7 @@ export default function FinanceScreen() {
         contactName: supplierContactDraft.trim(),
         email: supplierEmailDraft.trim(),
         paymentTerms: supplierTermsDraft.trim(),
-      });
+      }, businessId);
       notifySettingsSaved('Supplier updated. Syncing changes.');
       setShowSupplierModal(false);
       return;
@@ -1706,7 +2685,7 @@ export default function FinanceScreen() {
       contactName: supplierContactDraft.trim(),
       email: supplierEmailDraft.trim(),
       paymentTerms: supplierTermsDraft.trim(),
-    });
+    }, businessId);
     notifySettingsSaved('Supplier added. Syncing changes.');
     setShowSupplierModal(false);
   };
@@ -1745,6 +2724,7 @@ export default function FinanceScreen() {
   const openStatusComposer = () => {
     setEditingStatusId(null);
     setStatusNameDraft('');
+    setStatusOrderDraft(String(effectiveProcurementStatusOptions.length + 1));
     setShowStatusModal(true);
   };
 
@@ -1753,14 +2733,21 @@ export default function FinanceScreen() {
     if (!option) return;
     setEditingStatusId(statusId);
     setStatusNameDraft(option.name);
+    setStatusOrderDraft(String(option.order));
     setShowStatusModal(true);
   };
 
   const saveStatusModal = () => {
     const normalizedName = statusNameDraft.trim();
+    const parsedOrder = Number.parseInt(statusOrderDraft.trim(), 10);
     if (!normalizedName) return;
+    if (!Number.isFinite(parsedOrder) || parsedOrder < 1) {
+      showSettingsToast('error', 'Enter a valid order number.');
+      return;
+    }
     if (editingStatusId) {
-      updateProcurementStatusOption(editingStatusId, { name: normalizedName });
+      updateProcurementStatusOption(editingStatusId, { name: normalizedName, order: parsedOrder });
+      persistFinanceSettings('Procurement status');
       notifySettingsSaved('Status updated. Syncing changes.');
       setShowStatusModal(false);
       return;
@@ -1768,8 +2755,9 @@ export default function FinanceScreen() {
     addProcurementStatusOption({
       id: `proc-status-${slugify(normalizedName) || Date.now().toString(36)}`,
       name: normalizedName,
-      order: effectiveProcurementStatusOptions.length + 1,
+      order: parsedOrder,
     });
+    persistFinanceSettings('Procurement status');
     notifySettingsSaved('Status added. Syncing changes.');
     setShowStatusModal(false);
   };
@@ -1835,10 +2823,12 @@ export default function FinanceScreen() {
     };
 
     if (editingFixedCostId) {
-      updateFixedCost(editingFixedCostId, next);
+      updateFixedCost(editingFixedCostId, next, businessId);
+      persistFinanceSettings('Fixed cost');
       notifySettingsSaved('Fixed cost updated. Syncing changes.');
     } else {
-      addFixedCost(next);
+      addFixedCost(next, businessId);
+      persistFinanceSettings('Fixed cost');
       notifySettingsSaved('Fixed cost added. Syncing changes.');
     }
 
@@ -1849,8 +2839,182 @@ export default function FinanceScreen() {
     setShowFixedCostFrequencyDropdown(false);
   };
 
+  const openSalaryTemplateComposer = () => {
+    setEditingSalaryTemplateId(null);
+    setSalaryTemplateNameDraft('');
+    setSalaryTemplateNotesDraft('');
+    setSalaryTemplateLinesDraft([createSalaryTemplateLineDraft()]);
+    setShowSalaryTemplateModal(true);
+  };
+
+  const openSalaryTemplateEditor = (templateId: string) => {
+    const template = salaryTemplates.find((item) => item.id === templateId);
+    if (!template) return;
+    setEditingSalaryTemplateId(template.id);
+    setSalaryTemplateNameDraft(template.name);
+    setSalaryTemplateNotesDraft(template.notes ?? '');
+    setSalaryTemplateLinesDraft(
+      template.lines.length > 0
+        ? template.lines.map((line) => createSalaryTemplateLineDraft(line.employeeName, formatMoneyDraftValue(line.amount)))
+        : [createSalaryTemplateLineDraft()]
+    );
+    setShowSalaryTemplateModal(true);
+  };
+
+  const saveSalaryTemplateModal = () => {
+    const normalizedName = salaryTemplateNameDraft.trim();
+    const normalizedLines = salaryTemplateLinesDraft
+      .map((line) => ({
+        id: line.id,
+        employeeName: line.employeeName.trim(),
+        amount: lineItemAmountToNumber(line.amount),
+      }))
+      .filter((line) => line.employeeName && line.amount > 0);
+    if (!normalizedName || normalizedLines.length === 0) return;
+
+    upsertExpenseCategoryName('Salaries & Wages');
+
+    const nextTemplate: SalaryTemplate = {
+      id: editingSalaryTemplateId ?? `salary-template-${Date.now().toString(36)}`,
+      name: normalizedName,
+      category: 'Salaries & Wages',
+      lines: normalizedLines,
+      notes: salaryTemplateNotesDraft.trim(),
+      createdAt: editingSalaryTemplateId
+        ? (salaryTemplates.find((item) => item.id === editingSalaryTemplateId)?.createdAt ?? new Date().toISOString())
+        : new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (editingSalaryTemplateId) {
+      updateSalaryTemplate(editingSalaryTemplateId, nextTemplate, businessId);
+      persistFinanceSettings('Salary template');
+      notifySettingsSaved('Salary template updated. Syncing changes.');
+    } else {
+      addSalaryTemplate(nextTemplate, businessId);
+      persistFinanceSettings('Salary template');
+      notifySettingsSaved('Salary template added. Syncing changes.');
+    }
+
+    setShowSalaryTemplateModal(false);
+    setEditingSalaryTemplateId(null);
+  };
+
+  const handleDeleteSalaryTemplate = (templateId: string) => {
+    deleteSalaryTemplate(templateId, businessId);
+    persistFinanceSettings('Salary template');
+    notifySettingsSaved('Salary template deleted. Syncing changes.');
+  };
+
+  const openSalaryRunModal = (templateId: string) => {
+    const template = salaryTemplates.find((item) => item.id === templateId);
+    if (!template) return;
+    const now = new Date();
+    setSalaryRunTemplateId(template.id);
+    setSalaryRunNameDraft(`${format(now, 'MMMM yyyy')} ${template.name}`);
+    setSalaryRunDateDraft(toInputDate(now.toISOString()));
+    setSalaryRunNoteDraft(template.notes ?? '');
+    setSalaryRunLinesDraft(
+      template.lines.map((line) => ({
+        id: line.id,
+        employeeName: line.employeeName,
+        amount: formatMoneyDraftValue(line.amount),
+      }))
+    );
+    setShowSalaryRunModal(true);
+  };
+
+  const openSalaryRunLauncher = () => {
+    if (salaryTemplates.length === 0) return;
+    if (salaryTemplates.length === 1) {
+      openSalaryRunModal(salaryTemplates[0].id);
+      return;
+    }
+    setShowSalaryTemplatePickerModal(true);
+  };
+
+  const openSalaryTemplatesSettings = () => {
+    setFinanceSettingsView('salary-templates');
+    selectTab('settings');
+  };
+
+  const saveSalaryRunModal = () => {
+    const normalizedName = salaryRunNameDraft.trim();
+    const normalizedLines = salaryRunComputedLines.filter((line) => line.employeeName.trim() && line.amountNumber > 0);
+    if (!normalizedName || normalizedLines.length === 0) return;
+
+    upsertExpenseCategoryName('Salaries & Wages');
+
+    const salaryLineItems: ExpenseBreakdownLineItem[] = [];
+    normalizedLines.forEach((line, index) => {
+      salaryLineItems.push({
+        id: `${line.id}-salary`,
+        label: `${line.employeeName.trim()} Salary`,
+        amount: line.amountNumber,
+        category: 'Salaries & Wages',
+        kind: index === 0 ? 'base' : 'charge',
+        source: 'manual',
+      });
+      if (line.bankChargeAmount > 0) {
+        salaryLineItems.push({
+          id: `${line.id}-bank-charge`,
+          label: `${line.employeeName.trim()} Bank Charges`,
+          amount: line.bankChargeAmount,
+          category: 'Salaries & Wages',
+          kind: 'charge',
+          source: 'manual',
+        });
+      }
+      if (line.stampDutyAmount > 0) {
+        salaryLineItems.push({
+          id: `${line.id}-stamp-duty`,
+          label: `${line.employeeName.trim()} Stamp Duty`,
+          amount: line.stampDutyAmount,
+          category: 'Salaries & Wages',
+          kind: 'charge',
+          source: 'manual',
+        });
+      }
+    });
+
+    const template = salaryTemplates.find((item) => item.id === salaryRunTemplateId);
+    const baseDescription = buildExpenseDescription(
+      normalizedName,
+      template?.name ?? 'Salary Run',
+      'recurring',
+      'Monthly',
+      salaryRunNoteDraft.trim(),
+      undefined,
+      undefined,
+      salaryLineItems,
+      undefined,
+      false
+    );
+    const description = `${baseDescription} [salary_run:true][salary_template:${sanitizeMetadata(template?.name ?? 'Salary Run')}][salary_employee_count:${normalizedLines.length}]`.trim();
+    const nextSalaryRunId = `salary-run-${Date.now().toString(36)}`;
+
+    addExpense({
+      id: nextSalaryRunId,
+      category: 'Salaries & Wages',
+      description,
+      amount: salaryRunTotalDebit,
+      date: salaryRunDateDraft,
+      createdAt: new Date().toISOString(),
+      createdBy: currentUserName,
+    }, businessId);
+
+    notifySettingsSaved('Salary run logged. Syncing changes.');
+    setShowSalaryRunModal(false);
+    setSalaryRunTemplateId(null);
+    setShowSalaryTemplatePickerModal(false);
+    setSalarySearchQuery('');
+    if (!isMobile) {
+      setSelectedExpenseId(nextSalaryRunId);
+    }
+  };
+
   const handleDeleteFinanceSupplier = (supplierId: string) => {
-    deleteFinanceSupplier(supplierId);
+    deleteFinanceSupplier(supplierId, businessId);
     notifySettingsSaved('Supplier deleted. Syncing changes.');
   };
 
@@ -1860,34 +3024,51 @@ export default function FinanceScreen() {
   };
 
   const handleDeleteFixedCost = (fixedCostId: string) => {
-    deleteFixedCost(fixedCostId);
+    deleteFixedCost(fixedCostId, businessId);
+    persistFinanceSettings('Fixed cost');
     notifySettingsSaved('Fixed cost deleted. Syncing changes.');
   };
 
   const handleDeleteProcurementStatusOption = (statusId: string) => {
     if (effectiveProcurementStatusOptions.length <= 1) return;
     deleteProcurementStatusOption(statusId);
+    persistFinanceSettings('Procurement status');
     notifySettingsSaved('Status deleted. Syncing changes.');
   };
 
-  const handleSaveFinanceRules = (rules: Partial<typeof financeRules>, message: string) => {
-    updateFinanceRules(rules);
-    notifySettingsSaved(message);
+  const handleSaveFinanceRules = async (rules: Partial<typeof financeRules>, message: string) => {
+    try {
+      await updateFinanceRules(rules, businessId);
+      notifySettingsSaved(message);
+    } catch (error) {
+      console.warn('Finance rules save failed:', error);
+      showSettingsToast('error', 'Finance setting could not sync. Please try again.');
+    }
   };
 
-  const handleDeleteBankChargeTier = (tierId: string) => {
+  const handleDeleteBankChargeTier = async (tierId: string) => {
     const nextTiers = financeRules.bankChargeTiers.filter((tier) => tier.id !== tierId);
-    handleSaveFinanceRules({ bankChargeTiers: nextTiers }, settingsSavedMessage('Transfer fee tier'));
+    await handleSaveFinanceRules({ bankChargeTiers: nextTiers }, settingsSavedMessage('Transfer fee tier'));
   };
 
-  const handleToggleRevenueRule = (ruleId: string, enabled: boolean) => {
-    updateRevenueRule(ruleId, { enabled });
-    notifySettingsSaved(settingsSavedMessage(`Gateway fee ${enabled ? 'enabled' : 'disabled'}`));
+  const handleToggleRevenueRule = async (ruleId: string, enabled: boolean) => {
+    try {
+      await updateRevenueRule(ruleId, { enabled }, businessId);
+      notifySettingsSaved(settingsSavedMessage(`Gateway fee ${enabled ? 'enabled' : 'disabled'}`));
+    } catch (error) {
+      console.warn('Gateway fee toggle failed:', error);
+      showSettingsToast('error', 'Gateway fee could not sync. Please try again.');
+    }
   };
 
-  const handleDeleteRevenueRule = (ruleId: string) => {
-    deleteRevenueRule(ruleId);
-    notifySettingsSaved(settingsSavedMessage('Gateway fee'));
+  const handleDeleteRevenueRule = async (ruleId: string) => {
+    try {
+      await deleteRevenueRule(ruleId, businessId);
+      notifySettingsSaved(settingsSavedMessage('Gateway fee'));
+    } catch (error) {
+      console.warn('Gateway fee delete failed:', error);
+      showSettingsToast('error', 'Gateway fee could not sync. Please try again.');
+    }
   };
 
   const downloadCsv = (fileName: string, csvData: string) => {
@@ -1919,9 +3100,12 @@ export default function FinanceScreen() {
     downloadCsv('fyll-expenses.csv', csv);
   };
 
-  const handleExportProcurementCsv = () => {
+  const handleExportProcurementCsv = (selectedPoNumber?: string) => {
     const headers = ['PO Number', 'Supplier', 'Status', 'Date Paid', 'Date Received', 'Total'];
-    const rows = visibleProcurementRows.map((row) => [
+    const rows = (selectedPoNumber
+      ? procurementRows.filter((row) => row.poNumber === selectedPoNumber)
+      : visibleProcurementRows
+    ).map((row) => [
       row.poNumber,
       row.supplier,
       row.status,
@@ -1931,6 +3115,92 @@ export default function FinanceScreen() {
     ]);
     const csv = [headers, ...rows].map((row) => row.map(escapeCsv).join(',')).join('\n');
     downloadCsv('fyll-procurement.csv', csv);
+  };
+
+  const handleExportProcurementProductsCsv = (selectedPoNumber?: string) => {
+    const headers = [
+      'PO Number',
+      'Product',
+      'Supplier',
+      'Date',
+      'Date Received',
+      'Ordered',
+      'Received',
+      'Product Cost',
+      'Service Fee',
+      'Shipping & Clearance',
+      'Logistics Fee',
+      'Additional Fee',
+      'Landed Unit Cost',
+      'Current Selling Price',
+      'Expected Profit',
+      'Line Total',
+      'Status',
+      'Source',
+      'Procurement Title',
+      'Variant',
+      'SKU',
+      'Created By',
+    ];
+    const selectedPoKey = selectedPoNumber?.trim().toUpperCase();
+    const exportLines = procurementOrderExportLines.filter((line) => {
+      if (selectedPoKey) return line.poNumber.trim().toUpperCase() === selectedPoKey;
+      return visibleProcurementRows.some((row) => row.poNumber === line.poNumber);
+    });
+    const rows = exportLines.map((line) => [
+      line.poNumber,
+      line.productName,
+      line.supplier,
+      line.dateLabel,
+      line.dateReceivedLabel,
+      line.qtyOrdered.toString(),
+      line.qtyReceived.toString(),
+      line.unitCost.toFixed(2),
+      line.serviceFee.toFixed(2),
+      line.shippingFee.toFixed(2),
+      line.deliveryFee.toFixed(2),
+      line.additionalFee.toFixed(2),
+      line.landedUnitCost.toFixed(2),
+      line.sellingPrice.toFixed(2),
+      line.expectedProfit.toFixed(2),
+      line.lineTotal.toFixed(2),
+      line.status,
+      line.sourceTag,
+      line.procurementTitle,
+      line.variantName,
+      line.sku,
+      line.createdBy,
+    ]);
+    if (rows.length === 0) {
+      showSettingsToast('error', selectedPoNumber ? 'This PO has no product order lines to export.' : 'No product order lines found for this export.');
+      return;
+    }
+    const csv = [headers, ...rows].map((row) => row.map(escapeCsv).join(',')).join('\n');
+    const suffix = selectedPoNumber ? `-${selectedPoNumber.replace(/[^a-z0-9-]+/gi, '-')}` : '';
+    downloadCsv(`fyll-procurement-products${suffix}.csv`, csv);
+  };
+
+  const openProcurementExportModal = () => {
+    if (Platform.OS !== 'web') return;
+    setProcurementExportSelectedId((current) => {
+      if (current === 'all') return current;
+      return procurementExportOptions.some((option) => option.id === current) ? current : 'all';
+    });
+    setShowProcurementExportPoPicker(false);
+    setProcurementExportPoSearch('');
+    setShowProcurementExportModal(true);
+  };
+
+  const handleChooseProcurementExport = (type: 'summary' | 'products') => {
+    setShowProcurementExportModal(false);
+    setShowProcurementExportPoPicker(false);
+    setProcurementExportPoSearch('');
+    const selectedId = procurementExportSelectedId === 'all' ? undefined : procurementExportSelectedId;
+    if (type === 'summary') {
+      handleExportProcurementCsv(selectedId);
+      return;
+    }
+    handleExportProcurementProductsCsv(selectedId);
   };
 
   const handleExportFixedCostsCsv = () => {
@@ -1955,6 +3225,8 @@ export default function FinanceScreen() {
     const periodLabel = overviewRangeOptions.find((option) => option.key === overviewRange)?.label ?? '';
     const rows = [
       ['Gross Revenue', overviewFinancials.totalRevenue.toFixed(2), periodLabel],
+      ['Other Income', overviewFinancials.totalOtherIncome.toFixed(2), periodLabel],
+      ['Total Cash In', overviewFinancials.totalCashIn.toFixed(2), periodLabel],
       ['Gateway Fees', (-overviewFinancials.totalGatewayFees).toFixed(2), periodLabel],
       ['Stamp Duty (₦50/order)', (-overviewFinancials.totalStampDuty).toFixed(2), periodLabel],
       ['Refunds', (-overviewFinancials.totalRefunds).toFixed(2), periodLabel],
@@ -1994,25 +3266,43 @@ export default function FinanceScreen() {
     setExpenseFrequencyDraft('Monthly');
     setExpenseNoteDraft('');
     setExpenseStatusDraft('paid');
+    setApplyBankCharges(true);
   };
 
-  const resetProcurementDraft = () => {
+  const resetOtherIncomeDraft = () => {
+    setEditingOtherIncomeId(null);
+    setOtherIncomeTitleDraft('');
+    setOtherIncomeSourceDraft('');
+    setOtherIncomeAmountDraft('');
+    setOtherIncomeDateDraft(toInputDate());
+    setOtherIncomeTypeDraft('grant');
+    setOtherIncomeNoteDraft('');
+    setShowOtherIncomeDatePicker(false);
+    setIsSavingOtherIncome(false);
+  };
+
+  const resetProcurementDraft = (mode: ProcurementMode = 'procurement') => {
     setProcurementModalMode('create');
     setEditingProcurementId(null);
+    setEditingProcurementItemIndex(null);
     setProcurementActionMenuId(null);
-    setPoNumberDraft(createPoNumber());
+    setProcurementDraftMode(mode);
+    setPoNumberDraft('');
     setPoTitleDraft('');
     setPoAttachmentsDraft([]);
     setPoStatusDraft(DEFAULT_PROCUREMENT_STATUSES[0]);
     setShowPoSupplierDropdown(false);
     setShowPoStatusDropdown(false);
+    setShowPoNumberDropdown(false);
+    setActiveProcurementProductLineId(null);
+    setActiveProcurementVariantLineId(null);
     setShowPoDatePicker(false);
     setShowPoReceivedDatePicker(false);
     setPoSupplierDraft('');
     setPoSupplierSearch('');
     setPoExpectedDateDraft(toInputDate());
     setPoReceivedDateDraft(toInputDate());
-    setPoPurchaseLines([{ id: `l${Date.now().toString(36)}`, description: '', amount: '' }]);
+    setPoPurchaseLines([createProcurementLineDraft()]);
     setPoNoteDraft('');
   };
 
@@ -2021,6 +3311,11 @@ export default function FinanceScreen() {
     resetExpenseDraft();
     setShowExpenseAiModal(false);
     setShowExpenseModal(true);
+  };
+
+  const openOtherIncomeComposer = () => {
+    resetOtherIncomeDraft();
+    setShowOtherIncomeModal(true);
   };
 
   const openAiModal = () => {
@@ -2033,11 +3328,35 @@ export default function FinanceScreen() {
     setShowExpenseAiModal(true);
   };
 
-  const openProcurementComposer = () => {
+  const openProcurementComposer = (mode: ProcurementMode = activeTab === 'costing' ? 'costing' : 'procurement') => {
     setProcurementModalMode('create');
-    resetProcurementDraft();
+    resetProcurementDraft(mode);
+    if (mode === 'procurement' && procurementChildPage === 'orders') {
+      setPoStatusDraft('Ordered');
+    }
     setShowProcurementModal(true);
   };
+
+  const addProcurementLineDraft = useCallback(() => {
+    setPoPurchaseLines((previous) => [...previous, createProcurementLineDraft({ quantityPurchased: '1', quantityReceived: '1' })]);
+  }, []);
+
+  const updateProcurementLineDraft = useCallback((
+    lineId: string,
+    patch: Partial<Omit<ProcurementLineDraft, 'id'>>
+  ) => {
+    setPoPurchaseLines((previous) => previous.map((line) => (
+      line.id === lineId ? { ...line, ...patch } : line
+    )));
+  }, []);
+
+  const removeProcurementLineDraft = useCallback((lineId: string) => {
+    setPoPurchaseLines((previous) => (
+      previous.length <= 1
+        ? previous
+        : previous.filter((line) => line.id !== lineId)
+    ));
+  }, []);
 
   const openExpenseEditor = useCallback((expenseId: string) => {
     const existingExpense = expenses.find((expense) => expense.id === expenseId);
@@ -2057,14 +3376,16 @@ export default function FinanceScreen() {
       existingExpense.category || (availableExpenseCategories[0] ?? 'General'),
       existingExpense.amount ?? 0
     );
-    setExpenseLineItems(parsedLineItems.map((line) => ({
+    const editableLineItems = stripSystemExpenseChargeLines(parsedLineItems);
+    setExpenseLineItems(editableLineItems.map((line) => ({
       id: line.id,
       label: line.label,
       amount: line.amount > 0 ? String(line.amount) : '',
       category: line.category,
       kind: line.kind,
     })));
-    const primaryLineCategory = parsedLineItems[0]?.category?.trim();
+    setApplyBankCharges(parseExpenseApplyBankCharges(existingExpense.description, parsedLineItems));
+    const primaryLineCategory = editableLineItems[0]?.category?.trim() || parsedLineItems[0]?.category?.trim();
     const resolvedCategory = primaryLineCategory || existingExpense.category || (availableExpenseCategories[0] ?? '');
     setExpenseCategory(resolvedCategory);
     setExpenseCategorySearch(resolvedCategory);
@@ -2084,6 +3405,21 @@ export default function FinanceScreen() {
     setExpenseStatusDraft(existingExpense.status ?? 'paid');
     setShowExpenseModal(true);
   }, [availableExpenseCategories, expenses]);
+
+  const openOtherIncomeEditor = useCallback((incomeId: string) => {
+    const existingIncome = otherIncomes.find((income) => income.id === incomeId);
+    if (!existingIncome) return;
+    setEditingOtherIncomeId(incomeId);
+    setOtherIncomeTitleDraft(existingIncome.title ?? '');
+    setOtherIncomeSourceDraft(existingIncome.source ?? '');
+    setOtherIncomeAmountDraft(String(existingIncome.amount ?? 0));
+    setOtherIncomeDateDraft(existingIncome.date || toInputDate());
+    setOtherIncomeTypeDraft(existingIncome.type ?? 'other-income');
+    setOtherIncomeNoteDraft(existingIncome.note ?? '');
+    setShowOtherIncomeDatePicker(false);
+    setIsSavingOtherIncome(false);
+    setShowOtherIncomeModal(true);
+  }, [otherIncomes]);
 
   useEffect(() => {
     if (!routeEditExpenseId) {
@@ -2118,14 +3454,16 @@ export default function FinanceScreen() {
         request.category || (availableExpenseCategories[0] ?? 'General'),
         request.amount ?? 0
       );
-    setExpenseLineItems(requestLineItems.map((line) => ({
+    const editableRequestLineItems = stripSystemExpenseChargeLines(requestLineItems as ExpenseBreakdownLineItem[]);
+    setExpenseLineItems(editableRequestLineItems.map((line) => ({
       id: line.id || `line-${Math.random().toString(36).slice(2, 8)}`,
       label: line.label,
       amount: line.amount > 0 ? String(line.amount) : '',
       category: line.category,
       kind: line.kind === 'charge' ? 'charge' : 'base',
     })));
-    const requestPrimaryCategory = requestLineItems[0]?.category?.trim();
+    setApplyBankCharges(request.applyBankCharges ?? parseExpenseApplyBankCharges(undefined, requestLineItems as ExpenseBreakdownLineItem[]));
+    const requestPrimaryCategory = editableRequestLineItems[0]?.category?.trim() || requestLineItems[0]?.category?.trim();
     const requestResolvedCategory = requestPrimaryCategory || request.category || (availableExpenseCategories[0] ?? '');
     setExpenseCategory(requestResolvedCategory);
     setExpenseCategorySearch(requestResolvedCategory);
@@ -2154,6 +3492,10 @@ export default function FinanceScreen() {
     setSelectedRefundOrderId(nextOrder?.id ?? null);
     setRefundAmountDraft(nextOrder ? String(Math.max(0, nextOrder.totalAmount - (nextOrder.refund?.amount ?? 0))) : '');
     setApplyRefundBankCharges(true);
+    setRefundBankChargeDraft('0');
+    setRefundStampDutyDraft('0');
+    setRefundBankChargeManuallyEdited(false);
+    setRefundStampDutyManuallyEdited(false);
     setRefundReasonDraft('');
     setRefundNoteDraft('');
     setRefundAttachmentDrafts([]);
@@ -2180,6 +3522,10 @@ export default function FinanceScreen() {
     setRefundOrderSearchQuery(`${request.orderNumber} ${request.customerName}`.trim());
     setRefundAmountDraft(String(request.amount ?? 0));
     setApplyRefundBankCharges(request.applyBankCharges ?? true);
+    setRefundBankChargeDraft(formatMoneyDraftValue(Math.max(0, request.bankChargeAmount ?? 0)));
+    setRefundStampDutyDraft(formatMoneyDraftValue(Math.max(0, request.stampDutyAmount ?? 0)));
+    setRefundBankChargeManuallyEdited(request.bankChargeAmount !== undefined);
+    setRefundStampDutyManuallyEdited(request.stampDutyAmount !== undefined);
     setRefundReasonDraft(request.reason ?? '');
     setRefundNoteDraft(request.note ?? '');
     setRefundAttachmentDrafts((request.attachments ?? []).map((attachment) => ({
@@ -2297,41 +3643,266 @@ export default function FinanceScreen() {
     setRefundProofAttachmentError('');
   };
 
-  const openProcurementEditor = useCallback((procurementId: string) => {
+  const openProcurementEditor = useCallback((procurementId: string, itemIndex?: number) => {
     const existingProcurement = procurements.find((procurement) => procurement.id === procurementId);
     if (!existingProcurement) return;
+    const shouldEditSingleOrderItem = activeTab === 'procurement' && procurementChildPage === 'orders' && typeof itemIndex === 'number';
 
     const createdAtMs = parseTimestamp(existingProcurement.createdAt) ?? Date.now();
     setProcurementModalMode('edit');
     setEditingProcurementId(procurementId);
+    setEditingProcurementItemIndex(shouldEditSingleOrderItem ? itemIndex : null);
     setProcurementActionMenuId(null);
+    setProcurementDraftMode(shouldEditSingleOrderItem ? 'procurement' : resolveProcurementMode(existingProcurement));
     setPoNumberDraft(resolveProcurementPONumber(existingProcurement));
     setPoTitleDraft(existingProcurement.title ?? '');
-    setPoAttachmentsDraft(existingProcurement.attachments ?? []);
-    setPoStatusDraft(inferProcurementStatus(existingProcurement));
+    setPoAttachmentsDraft((existingProcurement.attachments ?? []).filter((attachment) => {
+      const uri = attachment.uri?.trim() ?? '';
+      return Boolean(attachment.storagePath?.trim()) || !/^blob:/i.test(uri);
+    }));
+    const inferredStatus = inferProcurementStatus(existingProcurement);
+    const selectedOrderItem = shouldEditSingleOrderItem ? existingProcurement.items[itemIndex] : undefined;
+    setPoStatusDraft(shouldEditSingleOrderItem
+      ? normalizeProcurementOrderEditorStatus(selectedOrderItem?.status || inferredStatus)
+      : inferredStatus);
     setShowPoSupplierDropdown(false);
     setShowPoStatusDropdown(false);
+    setShowPoNumberDropdown(false);
     setShowPoDatePicker(false);
     setShowPoReceivedDatePicker(false);
     setPoSupplierDraft(existingProcurement.supplierName ?? '');
     setPoSupplierSearch(existingProcurement.supplierName ?? '');
     setPoExpectedDateDraft(resolveProcurementPaidDate(existingProcurement, createdAtMs));
     setPoReceivedDateDraft(resolveProcurementReceivedDate(existingProcurement, createdAtMs));
-    const existingLines = existingProcurement.items
-      .filter((item) => item.productId === 'manual' || /^manual-\d+$/.test(item.productId))
-      .map((item, i) => ({
-        id: `l${i}`,
-        description: item.productName || `Payment ${i + 1}`,
-        amount: String((item.costAtPurchase || 0) * (item.quantity || 1)),
-      }));
+    const shouldUseOrderLineEditor = activeTab === 'procurement' && procurementChildPage === 'orders';
+    const sourceItems = shouldEditSingleOrderItem
+      ? existingProcurement.items.filter((_, index) => index === itemIndex)
+      : existingProcurement.items;
+    const productById = new Map(products.map((product) => [product.id, product] as const));
+    const existingLines = sourceItems
+      .filter((item) => !isSystemProcurementChargeItem(item.productId))
+      .map((item) => {
+        if (shouldUseOrderLineEditor) {
+          const linkedProduct = item.inventoryProductId ? productById.get(item.inventoryProductId) : undefined;
+          const fallbackQuantity = item.quantity && item.quantity > 0 ? item.quantity : 1;
+          const quantityPurchased = item.quantity && item.quantity > 0
+            ? item.quantity
+            : (item.unitCost && item.unitCost > 0 ? Math.max(1, Math.round((item.costAtPurchase || 0) / item.unitCost)) : fallbackQuantity);
+          const unitCost = item.unitCost && item.unitCost > 0
+            ? item.unitCost
+            : (quantityPurchased > 0 ? (item.costAtPurchase || 0) / quantityPurchased : (item.costAtPurchase || 0));
+          return createProcurementLineDraft({
+            productId: item.inventoryProductId ?? item.productId,
+            variantId: item.variantId,
+            variantName: item.variantName ?? '',
+            productName: item.productName || 'Untitled line',
+            quantityPurchased: quantityPurchased > 0 ? String(quantityPurchased) : '',
+            quantityReceived: (item.quantityReceived ?? quantityPurchased) > 0 ? String(item.quantityReceived ?? quantityPurchased) : '',
+            unitCost: unitCost > 0 ? formatMoneyDraftValue(unitCost) : '',
+            serviceFee: (item.serviceFee ?? 0) > 0 ? formatMoneyDraftValue(item.serviceFee ?? 0) : '',
+            deliveryFee: (item.deliveryFee ?? 0) > 0 ? formatMoneyDraftValue(item.deliveryFee ?? 0) : '',
+            shippingClearanceFee: (item.shippingClearanceFee ?? 0) > 0 ? formatMoneyDraftValue(item.shippingClearanceFee ?? 0) : '',
+            additionalFee: (item.additionalFee ?? 0) > 0 ? formatMoneyDraftValue(item.additionalFee ?? 0) : '',
+            marginPercent: (item.targetMarginPercent ?? 0) > 0 ? formatMoneyDraftValue(item.targetMarginPercent ?? 0) : '',
+            currentSellingPrice: (item.currentSellingPrice ?? 0) > 0 ? formatMoneyDraftValue(item.currentSellingPrice ?? 0) : '',
+            paymentDate: item.paymentDate ?? '',
+            isNewProduct: item.isNewProduct ?? false,
+            isSample: item.isSample ?? false,
+            imageUrl: item.imageUrl || linkedProduct?.imageUrl,
+            properties: item.properties ?? [],
+          });
+        }
+        const lineTotal = normalizeProcurementMoneyValue(item.costAtPurchase);
+        return createProcurementLineDraft({
+          productId: item.inventoryProductId ?? item.productId,
+          variantId: item.variantId,
+          variantName: item.variantName ?? '',
+          productName: item.productName || 'Untitled line',
+          quantityPurchased: '1',
+          quantityReceived: '1',
+          unitCost: lineTotal > 0 ? formatMoneyDraftValue(lineTotal) : '',
+          serviceFee: '',
+          deliveryFee: '',
+          shippingClearanceFee: '',
+          additionalFee: '',
+          marginPercent: '',
+          currentSellingPrice: '',
+          paymentDate: item.paymentDate ?? '',
+          isSample: item.isSample ?? false,
+          properties: item.properties ?? [],
+        });
+      });
     setPoPurchaseLines(
       existingLines.length > 0
         ? existingLines
-        : [{ id: 'l0', description: '', amount: String(existingProcurement.totalCost ?? 0) }]
+        : [createProcurementLineDraft({ productName: 'General procurement', quantityPurchased: '1', quantityReceived: '1', unitCost: formatMoneyDraftValue(existingProcurement.totalCost ?? 0) })]
     );
     setPoNoteDraft(stripMetadata(existingProcurement.notes));
     setShowProcurementModal(true);
-  }, [procurements]);
+  }, [activeTab, procurementChildPage, procurements, products]);
+
+  const handleMoveProcurementItem = useCallback((sourceProcurementId: string, itemIndex: number, targetProcurementId: string) => {
+    const sourceProcurement = procurements.find((procurement) => procurement.id === sourceProcurementId);
+    const targetProcurement = procurements.find((procurement) => procurement.id === targetProcurementId);
+    if (!sourceProcurement || !targetProcurement || sourceProcurementId === targetProcurementId) return;
+    const item = sourceProcurement.items[itemIndex];
+    if (!item) return;
+
+    const itemCost = normalizeProcurementMoneyValue(item.costAtPurchase);
+    const remainingSourceItems = sourceProcurement.items.filter((_, index) => index !== itemIndex);
+
+    updateProcurement(targetProcurementId, {
+      items: [...targetProcurement.items, item],
+      totalCost: normalizeProcurementMoneyValue(targetProcurement.totalCost) + itemCost,
+    }, businessId);
+    updateProcurement(sourceProcurementId, {
+      items: remainingSourceItems,
+      totalCost: Math.max(0, normalizeProcurementMoneyValue(sourceProcurement.totalCost) - itemCost),
+    }, businessId);
+    showSettingsToast('success', `Item moved to ${targetProcurement.title?.trim() || resolveProcurementPONumber(targetProcurement)}.`);
+  }, [businessId, procurements, showSettingsToast, updateProcurement]);
+
+  const handleMergeProcurementInto = useCallback((sourceProcurementId: string, targetProcurementId: string) => {
+    const sourceProcurement = procurements.find((procurement) => procurement.id === sourceProcurementId);
+    const targetProcurement = procurements.find((procurement) => procurement.id === targetProcurementId);
+    if (!sourceProcurement || !targetProcurement || sourceProcurementId === targetProcurementId) return;
+
+    updateProcurement(targetProcurementId, {
+      items: [...targetProcurement.items, ...sourceProcurement.items],
+      totalCost: normalizeProcurementMoneyValue(targetProcurement.totalCost) + normalizeProcurementMoneyValue(sourceProcurement.totalCost),
+    }, businessId);
+    deleteProcurement(sourceProcurementId, businessId);
+    showSettingsToast('success', `Merged into ${targetProcurement.title?.trim() || resolveProcurementPONumber(targetProcurement)}. The old PO was moved to the recycle bin.`);
+  }, [businessId, deleteProcurement, procurements, showSettingsToast, updateProcurement]);
+
+  const openProcurementDuplicate = useCallback((procurementId: string, itemIndex?: number) => {
+    const existingProcurement = procurements.find((procurement) => procurement.id === procurementId);
+    if (!existingProcurement) return;
+
+    const cloneProcurementItem = (item: Procurement['items'][number], sourceIndex: number): Procurement['items'][number] => {
+      const quantity = Math.max(0, Math.floor(normalizeProcurementMoneyValue(item.quantity)));
+      const storedLineTotal = normalizeProcurementMoneyValue(item.costAtPurchase);
+      const unitCost = item.unitCost !== undefined
+        ? normalizeProcurementMoneyValue(item.unitCost)
+        : (quantity > 0 ? storedLineTotal / quantity : storedLineTotal);
+      const serviceFee = normalizeProcurementMoneyValue(item.serviceFee);
+      const deliveryFee = normalizeProcurementMoneyValue(item.deliveryFee);
+      const shippingClearanceFee = normalizeProcurementMoneyValue(item.shippingClearanceFee);
+      const additionalFee = normalizeProcurementMoneyValue(item.additionalFee);
+      const currentSellingPrice = normalizeProcurementMoneyValue(item.currentSellingPrice);
+      const targetMarginPercent = normalizeProcurementMoneyValue(item.targetMarginPercent);
+      const landedUnitCost = unitCost + serviceFee + deliveryFee + shippingClearanceFee + additionalFee;
+      const costAtPurchase = quantity * landedUnitCost;
+      const expectedProfit = currentSellingPrice > 0
+        ? quantity * (currentSellingPrice - landedUnitCost)
+        : normalizeProcurementMoneyValue(item.expectedProfit);
+
+      return {
+        productId: item.productId || `charge-payment-${sourceIndex}`,
+        variantId: item.variantId || `charge-payment-${sourceIndex}`,
+        quantity,
+        quantityReceived: 0,
+        costAtPurchase,
+        productName: item.productName,
+        variantName: item.variantName,
+        inventoryProductId: item.inventoryProductId,
+        unitCost,
+        serviceFee,
+        deliveryFee,
+        shippingClearanceFee,
+        additionalFee,
+        currentSellingPrice: currentSellingPrice > 0 ? currentSellingPrice : undefined,
+        targetMarginPercent: targetMarginPercent > 0 ? targetMarginPercent : undefined,
+        expectedProfit,
+        landedUnitCost,
+        status: item.status ?? inferProcurementStatus(existingProcurement),
+      };
+    };
+
+    const createDuplicatedProcurement = (
+      sourceItems: Procurement['items'],
+      options?: {
+        poNumber?: string;
+        titleSuffix?: string;
+        createdAt?: string;
+      }
+    ) => {
+      if (!sourceItems.length) return;
+
+      const createdAtMs = parseTimestamp(existingProcurement.createdAt) ?? Date.now();
+      const status = inferProcurementStatus(existingProcurement);
+      const receivedDate = resolveProcurementReceivedDate(existingProcurement, createdAtMs);
+      const paidDate = resolveProcurementPaidDate(existingProcurement, createdAtMs);
+      const nextItems: Procurement['items'] = sourceItems.map((item, sourceIndex) => cloneProcurementItem(item, sourceIndex));
+      if (!nextItems.length) return;
+
+      const nextPoNumber = options?.poNumber?.trim().toUpperCase() || resolveProcurementPONumber(existingProcurement);
+      const nextTotalCost = nextItems.reduce((sum, item) => sum + normalizeProcurementMoneyValue(item.costAtPurchase), 0);
+      const nextNotes = buildProcurementNotes(
+        stripMetadata(existingProcurement.notes),
+        nextPoNumber,
+        status,
+        receivedDate,
+        {
+          paid_date: paidDate,
+          received_date: receivedDate,
+          mode: resolveProcurementMode(existingProcurement),
+          requested_status: status,
+        },
+        existingProcurement.notes
+      );
+
+      addProcurement({
+        id: Math.random().toString(36).slice(2, 15),
+        title: existingProcurement.title
+          ? `${existingProcurement.title}${options?.titleSuffix ?? ''}`
+          : undefined,
+        supplierName: existingProcurement.supplierName,
+        totalCost: nextTotalCost,
+        createdAt: options?.createdAt ?? existingProcurement.createdAt,
+        items: nextItems,
+        attachments: existingProcurement.attachments?.map((attachment) => ({ ...attachment })),
+        notes: nextNotes,
+        createdBy: existingProcurement.createdBy || currentUserName,
+      }, businessId);
+    };
+
+    if (typeof itemIndex === 'number') {
+      const sourceItem = existingProcurement.items[itemIndex];
+      if (!sourceItem || isSystemProcurementChargeItem(sourceItem.productId)) return;
+
+      const duplicatedItem = cloneProcurementItem(sourceItem, itemIndex);
+      const nextItems = [
+        ...existingProcurement.items.slice(0, itemIndex + 1),
+        duplicatedItem,
+        ...existingProcurement.items.slice(itemIndex + 1),
+      ];
+      const nextTotalCost = normalizeProcurementMoneyValue(existingProcurement.totalCost)
+        + normalizeProcurementMoneyValue(duplicatedItem.costAtPurchase);
+
+      updateProcurement(procurementId, { items: nextItems, totalCost: nextTotalCost }, businessId);
+      showSettingsToast('success', 'Procurement row duplicated.');
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      return;
+    }
+
+    const originalPoNumber = resolveProcurementPONumber(existingProcurement);
+    const existingPoNumbers = new Set(procurements.map((procurement) => resolveProcurementPONumber(procurement).trim().toUpperCase()));
+    let copyNumber = 1;
+    let nextPoNumber = `${originalPoNumber}-COPY`;
+    while (existingPoNumbers.has(nextPoNumber.trim().toUpperCase())) {
+      copyNumber += 1;
+      nextPoNumber = `${originalPoNumber}-COPY-${copyNumber}`;
+    }
+    const sourceItems = existingProcurement.items.filter((item) => !isSystemProcurementChargeItem(item.productId));
+    createDuplicatedProcurement(sourceItems, {
+      poNumber: nextPoNumber,
+      titleSuffix: ' Copy',
+      createdAt: new Date().toISOString(),
+    });
+    showSettingsToast('success', 'Procurement row duplicated.');
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, [addProcurement, businessId, currentUserName, procurements, showSettingsToast]);
 
   useEffect(() => {
     if (!routeEditProcurementId) {
@@ -2343,7 +3914,10 @@ export default function FinanceScreen() {
     if (!exists) return;
 
     consumedRouteEditProcurementIdRef.current = routeEditProcurementId;
-    setActiveTab('procurement');
+    const nextSection = resolveProcurementMode(procurements.find((p) => p.id === routeEditProcurementId)!) === 'costing'
+      ? 'costing'
+      : 'procurement';
+    setActiveTab(nextSection);
     openProcurementEditor(routeEditProcurementId);
     router.setParams({ editProcurementId: '' } as any);
   }, [procurements, openProcurementEditor, routeEditProcurementId, router]);
@@ -2372,6 +3946,10 @@ export default function FinanceScreen() {
     } finally {
       setIsPickingPoFile(false);
     }
+  };
+
+  const removePoAttachmentDraft = (uri: string) => {
+    setPoAttachmentsDraft((previous) => previous.filter((attachment) => attachment.uri !== uri));
   };
 
   const pickExpenseReceipt = async () => {
@@ -2439,7 +4017,7 @@ export default function FinanceScreen() {
     return { storagePath, fileName: uploadName };
   };
 
-  const uploadProcurementAttachment = async (attachment: ProcurementAttachment): Promise<ProcurementAttachment> => {
+  const uploadProcurementAttachment = async (attachment: ProcurementAttachment): Promise<ProcurementAttachment | null> => {
     const existingStoragePath = attachment.storagePath?.trim();
     if (existingStoragePath) {
       return {
@@ -2469,13 +4047,22 @@ export default function FinanceScreen() {
       return attachment;
     }
 
-    const uploaded = await uploadBusinessAttachment({
-      businessId,
-      folder: 'finance/procurements',
-      uri: rawUri,
-      fileName: attachment.name,
-      mimeType: attachment.mimeType ?? null,
-    });
+    let uploaded: Awaited<ReturnType<typeof uploadBusinessAttachment>>;
+    try {
+      uploaded = await uploadBusinessAttachment({
+        businessId,
+        folder: 'finance/procurements',
+        uri: rawUri,
+        fileName: attachment.name,
+        mimeType: attachment.mimeType ?? null,
+      });
+    } catch (error) {
+      if (/^blob:/i.test(rawUri)) {
+        console.warn('Skipping stale procurement attachment blob:', error);
+        return null;
+      }
+      throw error;
+    }
 
     return {
       ...attachment,
@@ -2526,13 +4113,19 @@ export default function FinanceScreen() {
       upsertFinanceSupplierName(aiDraft.supplier);
     }
     if (aiDraft.lines && aiDraft.lines.length > 0) {
-      setPoPurchaseLines(aiDraft.lines.map((line, i) => ({
-        id: `ai-${i}-${Date.now().toString(36)}`,
-        description: line.description,
-        amount: String(line.amount),
+      setPoPurchaseLines(aiDraft.lines.map((line) => createProcurementLineDraft({
+        productName: line.description,
+        quantityPurchased: '1',
+        quantityReceived: '1',
+        unitCost: formatMoneyDraftValue(line.amount),
       })));
     } else if (aiDraft.totalCost > 0) {
-      setPoPurchaseLines([{ id: `ai-0-${Date.now().toString(36)}`, description: aiDraft.title || 'Payment', amount: String(aiDraft.totalCost) }]);
+      setPoPurchaseLines([createProcurementLineDraft({
+        productName: aiDraft.title || 'General procurement',
+        quantityPurchased: '1',
+        quantityReceived: '1',
+        unitCost: formatMoneyDraftValue(aiDraft.totalCost),
+      })]);
     }
     if (aiDraft.note) setPoNoteDraft(aiDraft.note);
     if (aiDraft.expectedDate) setPoReceivedDateDraft(aiDraft.expectedDate);
@@ -2675,8 +4268,12 @@ export default function FinanceScreen() {
       console.warn('Expense Fyll AI draft failed:', error);
       const message = error instanceof Error ? error.message.toLowerCase() : '';
       const isFormatError = message.includes('json') || message.includes('parse') || message.includes('structured');
+      const isUnsupportedFileError = message.includes('unsupported attachment type')
+        || (message.includes('mimetype') && message.includes('not supported'));
       setExpenseUploadError(
-        isFormatError
+        isUnsupportedFileError
+          ? 'Fyll AI supports images and PDFs only. Remove DOC/DOCX files and retry.'
+          : isFormatError
           ? 'Fyll AI returned an unreadable draft. Please retry.'
           : 'Fyll AI failed. Please check key/quota and retry.'
       );
@@ -2727,7 +4324,14 @@ export default function FinanceScreen() {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
       console.warn('Procurement Fyll AI draft failed:', error);
-      setExpenseUploadError('Fyll AI failed. Please check your Gemini API key and retry.');
+      const message = error instanceof Error ? error.message.toLowerCase() : '';
+      const isUnsupportedFileError = message.includes('unsupported attachment type')
+        || (message.includes('mimetype') && message.includes('not supported'));
+      setExpenseUploadError(
+        isUnsupportedFileError
+          ? 'Fyll AI supports images and PDFs only. Remove DOC/DOCX files and retry.'
+          : 'Fyll AI failed. Please check your Gemini API key and retry.'
+      );
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setIsGeneratingExpenseDraft(false);
@@ -2833,6 +4437,12 @@ export default function FinanceScreen() {
       const firstUploaded = uploadedReceipts[0];
       const receiptPath = firstUploaded?.storagePath ?? expenseReceiptPathDraft;
       const receiptName = firstUploaded?.fileName ?? expenseReceiptNameDraft;
+      const storedExpenseLineItems = buildStoredExpenseLineItems({
+        lineItems: normalizedExpenseLineItems,
+        fallbackCategory: normalizedCategory,
+        bankChargeAmount,
+        stampDutyAmount: expenseStampDuty,
+      });
       const existingReceiptsFromSource = editingExpenseRequestId
         ? (expenseRequests.find((request) => request.id === editingExpenseRequestId)?.receipts ?? [])
         : parseExpenseReceiptsFromDescription(
@@ -2848,8 +4458,9 @@ export default function FinanceScreen() {
         expenseNoteDraft,
         receiptPath,
         receiptName,
-        normalizedExpenseLineItems,
-        mergedReceipts
+        storedExpenseLineItems,
+        mergedReceipts,
+        applyBankCharges
       );
 
       upsertExpenseCategoryName(normalizedCategory);
@@ -2900,7 +4511,8 @@ export default function FinanceScreen() {
           type: expenseTypeDraft,
           frequency: expenseTypeDraft === 'one-time' ? 'Monthly' : expenseFrequencyDraft,
           note: expenseNoteDraft.trim(),
-          lineItems: normalizedExpenseLineItems,
+          applyBankCharges,
+          lineItems: storedExpenseLineItems,
           receipts: mergedReceipts,
           status: nextStatus,
           submittedByUserId: currentUserId,
@@ -2929,7 +4541,8 @@ export default function FinanceScreen() {
             type: expenseTypeDraft,
             frequency: expenseTypeDraft === 'one-time' ? 'Monthly' : expenseFrequencyDraft,
             note: expenseNoteDraft.trim(),
-            lineItems: normalizedExpenseLineItems,
+            applyBankCharges,
+            lineItems: storedExpenseLineItems,
             receipts: mergedReceipts,
             status: nextStatus,
             submittedByUserId: currentUserId,
@@ -2979,20 +4592,38 @@ export default function FinanceScreen() {
   };
 
   const handleSaveProcurementModal = async () => {
-    // PO number is auto-generated — not user-editable
-    const normalizedPo = poNumberDraft.trim().toUpperCase() || createPoNumber();
-    const normalizedSupplier = poSupplierDraft.trim();
+    const normalizedPo = poNumberDraft.trim().toUpperCase();
+    const normalizedSupplier = poSupplierDraft.trim() || 'Procurement';
     const normalizedRequestedStatus = poStatusDraft.trim() || effectiveProcurementStatusOptions[0]?.name || 'Draft';
-    const validLines = poPurchaseLines.filter((l) => parseFloat(l.amount) > 0);
-    const parsedTotal = validLines.reduce((sum, l) => sum + (parseFloat(l.amount) || 0), 0);
+    const shouldCaptureReceivedQuantity = shouldShowProcurementReceivedQuantity(normalizedRequestedStatus);
+    const validLines = validProcurementLines;
+    const parsedTotal = validLines.reduce((sum, line) => sum + line.lineTotal, 0);
+    const applyCharges = financeRules.bankChargeTiers.length > 0 || financeRules.incomingStampDuty > 0;
+    const procurementChargeBreakdown = validLines.reduce((acc, line) => {
+      const baseAmount = line.lineTotal;
+      const breakdown = getTransferChargeBreakdown({
+        baseAmount,
+        applyCharges,
+        tiers: financeRules.bankChargeTiers,
+        vatRate: financeRules.vatRate,
+        stampDutyAmount: financeRules.incomingStampDuty,
+      });
+      acc.fee += breakdown.fee * PROCUREMENT_TRANSFER_CHARGE_MULTIPLIER;
+      acc.vat += breakdown.vat * PROCUREMENT_TRANSFER_CHARGE_MULTIPLIER;
+      acc.stampDuty += breakdown.stampDuty;
+      acc.total += ((breakdown.fee + breakdown.vat) * PROCUREMENT_TRANSFER_CHARGE_MULTIPLIER) + breakdown.stampDuty;
+      return acc;
+    }, { fee: 0, vat: 0, stampDuty: 0, total: 0 });
+    const totalWithCharges = parsedTotal + procurementChargeBreakdown.total;
     const normalizedPaidDate = poExpectedDateDraft || toInputDate();
     const normalizedReceivedDate = poReceivedDateDraft || normalizedPaidDate;
-    if (!normalizedSupplier || parsedTotal <= 0) return;
+    if (parsedTotal <= 0) return;
 
     let finalizedAttachments: ProcurementAttachment[] | undefined;
     if (poAttachmentsDraft.length > 0) {
       try {
-        finalizedAttachments = await Promise.all(poAttachmentsDraft.map(uploadProcurementAttachment));
+        const uploadedAttachments = await Promise.all(poAttachmentsDraft.map(uploadProcurementAttachment));
+        finalizedAttachments = uploadedAttachments.filter((attachment): attachment is ProcurementAttachment => Boolean(attachment));
       } catch (error) {
         console.warn('Procurement attachment upload failed:', error);
         setExpenseUploadError('Could not upload procurement attachment(s). Please try again.');
@@ -3005,6 +4636,7 @@ export default function FinanceScreen() {
       ? procurements.find((procurement) => procurement.id === editingProcurementId)
       : null;
     const isSubmittingForApproval = !isFinanceApprover;
+    const procurementModeValue: ProcurementMode = procurementDraftMode === 'costing' ? 'costing' : 'procurement';
     const procurementLabel = poTitleDraft.trim() || normalizedPo;
     const shouldNotifyAdminsAboutSubmission = (
       isSubmittingForApproval
@@ -3016,6 +4648,7 @@ export default function FinanceScreen() {
     const extraMetadata = {
       paid_date: normalizedPaidDate,
       received_date: normalizedReceivedDate,
+      mode: procurementModeValue,
       ...(isSubmittingForApproval
         ? {
             approval_status: 'submitted',
@@ -3052,33 +4685,134 @@ export default function FinanceScreen() {
       });
     }
 
-    const nextItems = validLines.length > 0
-      ? validLines.map((line, i) => ({
-          productId: `manual-${i}`,
-          variantId: `manual-${i}`,
-          quantity: 0,
-          costAtPurchase: parseFloat(line.amount) || 0,
-          productName: line.description || `Payment ${i + 1}`,
-          variantName: '',
-        }))
+    const productNameLookup = new Map(
+      products.map((product) => [product.name.trim().toLowerCase(), product] as const)
+    );
+    const productIdLookup = new Map(products.map((product) => [product.id, product] as const));
+    const isProcurementOrderEditor = activeTab === 'procurement' && procurementChildPage === 'orders';
+    const isEditingSingleProcurementOrderItem = (
+      isProcurementOrderEditor
+      && procurementModalMode === 'edit'
+      && editingProcurementItemIndex !== null
+    );
+
+    const nextItems: Procurement['items'] = validLines.length > 0
+      ? validLines.map((line, i) => {
+          const matchedProduct = (line.productId ? productIdLookup.get(line.productId) : undefined)
+            ?? productNameLookup.get(line.productName.toLowerCase());
+          const matchedVariant = matchedProduct?.variants.find((variant) => variant.id === line.variantId);
+          const matchedVariantName = matchedVariant
+            ? Object.values(matchedVariant.variableValues ?? {}).map((value) => value.trim()).filter(Boolean).join(' / ')
+            : '';
+          const productId = matchedProduct?.id ?? line.productId ?? (isProcurementOrderEditor ? `manual-${i}` : `charge-payment-${i}`);
+          return {
+            productId,
+            variantId: matchedVariant?.id ?? line.variantId ?? `manual-${i}`,
+            quantity: line.quantityPurchased,
+            quantityReceived: shouldCaptureReceivedQuantity ? line.quantityReceived : 0,
+            unitCost: line.unitCost,
+            serviceFee: line.serviceFee,
+            deliveryFee: line.deliveryFee,
+            shippingClearanceFee: line.shippingClearanceFee,
+            additionalFee: line.additionalFee,
+            currentSellingPrice: line.currentSellingPrice > 0 ? line.currentSellingPrice : undefined,
+            targetMarginPercent: line.marginPercent > 0 ? line.marginPercent : undefined,
+            expectedProfit: line.expectedProfit,
+            landedUnitCost: line.landedUnitCost,
+            costAtPurchase: line.lineTotal,
+            productName: line.productName,
+            variantName: matchedProduct ? (line.variantName ?? matchedVariantName) : '',
+            inventoryProductId: matchedProduct?.id,
+            paymentDate: line.paymentDate || undefined,
+            isNewProduct: line.isNewProduct || !matchedProduct ? true : undefined,
+            isSample: line.isSample ? true : undefined,
+            imageUrl: line.imageUrl || undefined,
+            properties: line.properties.length > 0 ? line.properties : undefined,
+            status: isEditingSingleProcurementOrderItem
+              ? existingProcurement?.items[editingProcurementItemIndex]?.status
+              : undefined,
+          };
+        })
       : [{ productId: 'manual', variantId: 'manual', quantity: 0, costAtPurchase: parsedTotal, productName: '', variantName: '' }];
+
+    if (
+      procurementModalMode === 'edit'
+      && editingProcurementId
+      && existingProcurement
+      && isProcurementOrderEditor
+      && editingProcurementItemIndex !== null
+    ) {
+      const originalItem = existingProcurement.items[editingProcurementItemIndex];
+      const replacementDraft = nextItems[0];
+      if (!replacementDraft || !originalItem) return;
+      const replacementItem: Procurement['items'][number] = {
+        ...originalItem,
+        ...replacementDraft,
+        productId: replacementDraft.productId.startsWith('charge-') ? `manual-${editingProcurementItemIndex}` : replacementDraft.productId,
+        variantId: replacementDraft.variantId.startsWith('charge-') ? `manual-${editingProcurementItemIndex}` : replacementDraft.variantId,
+        quantityReceived: originalItem.quantityReceived ?? replacementDraft.quantityReceived,
+        status: originalItem.status ?? replacementDraft.status,
+      };
+      const mergedItems = existingProcurement.items.map((item, index) => (
+        index === editingProcurementItemIndex ? replacementItem : item
+      ));
+
+      updateProcurement(editingProcurementId, {
+        items: mergedItems,
+      }, businessId);
+      showSettingsToast('success', 'Procurement order updated.');
+
+      setShowProcurementModal(false);
+      setEditingProcurementId(null);
+      setEditingProcurementItemIndex(null);
+      setProcurementActionMenuId(null);
+      setShowPoNumberDropdown(false);
+      setShowPoSupplierDropdown(false);
+      setShowPoStatusDropdown(false);
+      setActiveProcurementProductLineId(null);
+      setActiveProcurementVariantLineId(null);
+      return;
+    }
+
+    const chargeSuffix = validLines.length > 1 ? ` (${validLines.length} transfers)` : '';
+    if (procurementChargeBreakdown.fee + procurementChargeBreakdown.vat > 0) {
+      nextItems.push({
+        productId: 'charge-transfer-fees',
+        variantId: 'charge-transfer-fees',
+        quantity: 0,
+        costAtPurchase: procurementChargeBreakdown.fee + procurementChargeBreakdown.vat,
+        productName: `Transfer fees${chargeSuffix}`,
+        variantName: '',
+      });
+    }
+    if (procurementChargeBreakdown.stampDuty > 0) {
+      nextItems.push({
+        productId: 'charge-stamp-duty',
+        variantId: 'charge-stamp-duty',
+        quantity: 0,
+        costAtPurchase: procurementChargeBreakdown.stampDuty,
+        productName: `Stamp duty${chargeSuffix}`,
+        variantName: '',
+      });
+    }
 
     if (procurementModalMode === 'edit' && editingProcurementId) {
       updateProcurement(editingProcurementId, {
         title: poTitleDraft.trim() || undefined,
         supplierName: normalizedSupplier,
         items: nextItems,
-        totalCost: parsedTotal,
+        totalCost: totalWithCharges,
         notes: nextNotes,
         attachments: finalizedAttachments && finalizedAttachments.length > 0 ? finalizedAttachments : undefined,
       }, businessId);
+      showSettingsToast('success', isSubmittingForApproval ? 'Procurement order submitted.' : 'Procurement order updated.');
       if (shouldNotifyAdminsAboutSubmission && businessId) {
         void sendThreadNotification({
           businessId,
           recipientUserIds: adminNotificationRecipientIds,
           senderUserId: currentUserId || null,
           authorName: currentUserName || 'Team Member',
-          body: `${currentUserName || 'A team member'} submitted a procurement request: ${procurementLabel} (${formatCurrency(parsedTotal)}).`,
+          body: `${currentUserName || 'A team member'} submitted a procurement request: ${procurementLabel} (${formatCurrency(totalWithCharges)}).`,
           entityType: null,
           entityDisplayName: procurementLabel,
           entityId: editingProcurementId,
@@ -3087,10 +4821,45 @@ export default function FinanceScreen() {
 
       setShowProcurementModal(false);
       setEditingProcurementId(null);
+      setEditingProcurementItemIndex(null);
       setProcurementActionMenuId(null);
+      setShowPoNumberDropdown(false);
       setShowPoSupplierDropdown(false);
       setShowPoStatusDropdown(false);
+      setActiveProcurementProductLineId(null);
+      setActiveProcurementVariantLineId(null);
       return;
+    }
+
+    if (isProcurementOrderEditor && normalizedPo) {
+      const matchingProcurement = (
+        procurements.find((candidate) => (
+          resolveProcurementPONumber(candidate) === normalizedPo
+          && Boolean(candidate.title?.trim())
+          && Boolean(candidate.supplierName?.trim())
+          && candidate.supplierName?.trim().toLowerCase() !== 'procurement'
+        ))
+        ?? procurements.find((candidate) => resolveProcurementPONumber(candidate) === normalizedPo)
+      );
+      if (matchingProcurement) {
+        const addedCost = nextItems.reduce((sum, item) => sum + normalizeProcurementMoneyValue(item.costAtPurchase), 0);
+        updateProcurement(matchingProcurement.id, {
+          items: [...matchingProcurement.items, ...nextItems],
+          totalCost: normalizeProcurementMoneyValue(matchingProcurement.totalCost) + addedCost,
+        }, businessId);
+        showSettingsToast('success', `Item added to ${matchingProcurement.title || normalizedPo}.`);
+
+        setShowProcurementModal(false);
+        setEditingProcurementId(null);
+        setEditingProcurementItemIndex(null);
+        setProcurementActionMenuId(null);
+        setShowPoNumberDropdown(false);
+        setShowPoSupplierDropdown(false);
+        setShowPoStatusDropdown(false);
+        setActiveProcurementProductLineId(null);
+        setActiveProcurementVariantLineId(null);
+        return;
+      }
     }
 
     const newProcurementId = Math.random().toString(36).slice(2, 15);
@@ -3099,19 +4868,20 @@ export default function FinanceScreen() {
       title: poTitleDraft.trim() || undefined,
       supplierName: normalizedSupplier,
       items: nextItems,
-      totalCost: parsedTotal,
+      totalCost: totalWithCharges,
       notes: nextNotes,
       createdAt: new Date().toISOString(),
       createdBy: currentUserName,
       attachments: finalizedAttachments && finalizedAttachments.length > 0 ? finalizedAttachments : undefined,
     }, businessId);
+    showSettingsToast('success', isSubmittingForApproval ? 'Procurement order submitted.' : 'Procurement order saved.');
     if (shouldNotifyAdminsAboutSubmission && businessId) {
       void sendThreadNotification({
         businessId,
         recipientUserIds: adminNotificationRecipientIds,
         senderUserId: currentUserId || null,
         authorName: currentUserName || 'Team Member',
-        body: `${currentUserName || 'A team member'} submitted a procurement request: ${procurementLabel} (${formatCurrency(parsedTotal)}).`,
+        body: `${currentUserName || 'A team member'} submitted a procurement request: ${procurementLabel} (${formatCurrency(totalWithCharges)}).`,
         entityType: null,
         entityDisplayName: procurementLabel,
         entityId: newProcurementId,
@@ -3120,9 +4890,13 @@ export default function FinanceScreen() {
 
     setShowProcurementModal(false);
     setEditingProcurementId(null);
+    setEditingProcurementItemIndex(null);
     setProcurementActionMenuId(null);
+    setShowPoNumberDropdown(false);
     setShowPoSupplierDropdown(false);
     setShowPoStatusDropdown(false);
+    setActiveProcurementProductLineId(null);
+    setActiveProcurementVariantLineId(null);
   };
 
   const overviewWindow = useMemo(() => {
@@ -3145,6 +4919,14 @@ export default function FinanceScreen() {
       };
     }
 
+    if (overviewRange === 'month') {
+      return {
+        startMs: new Date(now.getFullYear(), now.getMonth(), 1).getTime(),
+        endMs: nowMs + 1,
+        label: 'This Month',
+      };
+    }
+
     return {
       startMs: nowMs - (30 * 24 * 60 * 60 * 1000),
       endMs: nowMs + 1,
@@ -3156,13 +4938,17 @@ export default function FinanceScreen() {
     const nowMs = Date.now();
     const now = new Date(nowMs);
     if (range === '7d') return { startMs: nowMs - 7 * 24 * 60 * 60 * 1000, endMs: nowMs + 1, label: 'Last 7 days' };
+    if (range === 'month') return { startMs: new Date(now.getFullYear(), now.getMonth(), 1).getTime(), endMs: nowMs + 1, label: 'This Month' };
     if (range === 'year') return { startMs: new Date(now.getFullYear(), 0, 1).getTime(), endMs: nowMs + 1, label: 'This Year' };
     return { startMs: nowMs - 30 * 24 * 60 * 60 * 1000, endMs: nowMs + 1, label: 'Last 30 days' };
   }, []);
 
+  const revenuePeriodWindow = useMemo(() => calcPeriodWindow(revenuePeriod), [calcPeriodWindow, revenuePeriod]);
+  const otherIncomePeriodWindow = useMemo(() => calcPeriodWindow(otherIncomePeriod), [calcPeriodWindow, otherIncomePeriod]);
   const expensePeriodWindow = useMemo(() => calcPeriodWindow(expensePeriod), [calcPeriodWindow, expensePeriod]);
   const refundPeriodWindow = useMemo(() => calcPeriodWindow(refundPeriod), [calcPeriodWindow, refundPeriod]);
   const procurementPeriodWindow = useMemo(() => calcPeriodWindow(procurementPeriod), [calcPeriodWindow, procurementPeriod]);
+  const salaryPeriodWindow = useMemo(() => calcPeriodWindow(salaryPeriod), [calcPeriodWindow, salaryPeriod]);
 
   const nonFixedExpenses = useMemo(
     () => expenses.filter((expense) => !isFixedExpense(expense)),
@@ -3171,6 +4957,7 @@ export default function FinanceScreen() {
 
   const overviewFinancials = useMemo(() => {
     let totalRevenue = 0;
+    let totalOtherIncome = 0;
     let totalExpenses = 0;
     let totalProcurement = 0;
     let totalRefunds = 0;
@@ -3190,6 +4977,7 @@ export default function FinanceScreen() {
     orders.forEach((order) => {
       const timestamp = parseTimestamp(order.orderDate ?? order.createdAt);
       if (!isWithinOverviewWindow(timestamp)) return;
+      if (!isSaleOrder(order)) return;
       totalRevenue += order.totalAmount;
       // Stamp duty applies to bank transfer receipts at or above the threshold.
       if (order.totalAmount >= STAMP_DUTY_THRESHOLD && isBankTransferPaymentMethod(order.paymentMethod)) {
@@ -3213,6 +5001,7 @@ export default function FinanceScreen() {
     orders.forEach((order) => {
       const refundTimestamp = getRefundDate(order)?.getTime() ?? null;
       if (!isWithinOverviewWindow(refundTimestamp)) return;
+      if (!isSaleOrder(order)) return;
       totalRefunds += getRefundedAmount(order);
     });
 
@@ -3244,13 +5033,21 @@ export default function FinanceScreen() {
       expenseByCategory[categoryName] = (expenseByCategory[categoryName] ?? 0) + amount;
     });
 
+    otherIncomes.forEach((income) => {
+      const timestamp = parseTimestamp(income.date) ?? parseTimestamp(income.createdAt);
+      if (!isWithinOverviewWindow(timestamp)) return;
+      totalOtherIncome += Math.max(0, Number(income.amount) || 0);
+    });
+
     procurements.forEach((procurement) => {
+      if (!isProcurementRecord(procurement)) return;
       const timestamp = resolveProcurementPaidTimestamp(procurement);
       if (!isWithinOverviewWindow(timestamp)) return;
       totalProcurement += procurement.totalCost;
     });
 
     const netRevenue = totalRevenue - totalGatewayFees - totalStampDuty - totalRefunds;
+    const totalCashIn = totalRevenue + totalOtherIncome;
     const netProfit = netRevenue - (totalExpenses + totalProcurement);
     const expenseByCategoryRows = Object.entries(expenseByCategory)
       .sort(([, a], [, b]) => b - a)
@@ -3262,6 +5059,8 @@ export default function FinanceScreen() {
 
     return {
       totalRevenue,
+      totalOtherIncome,
+      totalCashIn,
       totalGatewayFees,
       totalStampDuty,
       totalRefunds,
@@ -3271,7 +5070,7 @@ export default function FinanceScreen() {
       netProfit,
       expenseByCategoryRows,
     };
-  }, [orders, nonFixedExpenses, fixedCosts, procurements, overviewWindow.endMs, overviewWindow.startMs, financeRules]);
+  }, [orders, nonFixedExpenses, fixedCosts, otherIncomes, procurements, overviewWindow.endMs, overviewWindow.startMs, financeRules]);
 
   const overviewComparison = useMemo(() => {
     const durationMs = overviewWindow.endMs - overviewWindow.startMs;
@@ -3281,6 +5080,7 @@ export default function FinanceScreen() {
     };
 
     let prevRevenue = 0;
+    let prevOtherIncome = 0;
     let prevExpenses = 0;
     let prevProcurement = 0;
     let prevGatewayFees = 0;
@@ -3299,6 +5099,7 @@ export default function FinanceScreen() {
     orders.forEach((order) => {
       const timestamp = parseTimestamp(order.orderDate ?? order.createdAt);
       if (!isWithinPreviousWindow(timestamp)) return;
+      if (!isSaleOrder(order)) return;
       prevRevenue += order.totalAmount;
       if (order.totalAmount >= STAMP_DUTY_THRESHOLD && isBankTransferPaymentMethod(order.paymentMethod)) {
         prevStampDuty += stampDutyPerOrder;
@@ -3320,6 +5121,7 @@ export default function FinanceScreen() {
     orders.forEach((order) => {
       const refundTimestamp = getRefundDate(order)?.getTime() ?? null;
       if (!isWithinPreviousWindow(refundTimestamp)) return;
+      if (!isSaleOrder(order)) return;
       prevRefunds += getRefundedAmount(order);
     });
 
@@ -3333,16 +5135,26 @@ export default function FinanceScreen() {
       prevExpenses += estimateFixedCostInWindow(cost, previousWindow.startMs, previousWindow.endMs);
     });
 
+    otherIncomes.forEach((income) => {
+      const timestamp = parseTimestamp(income.date) ?? parseTimestamp(income.createdAt);
+      if (!isWithinPreviousWindow(timestamp)) return;
+      prevOtherIncome += Math.max(0, Number(income.amount) || 0);
+    });
+
     procurements.forEach((procurement) => {
+      if (!isProcurementRecord(procurement)) return;
       const timestamp = resolveProcurementPaidTimestamp(procurement);
       if (!isWithinPreviousWindow(timestamp)) return;
       prevProcurement += procurement.totalCost;
     });
 
     const prevNetRevenue = prevRevenue - prevGatewayFees - prevStampDuty - prevRefunds;
+    const prevTotalCashIn = prevRevenue + prevOtherIncome;
     const prevNet = prevNetRevenue - (prevExpenses + prevProcurement);
 
     const revenueChange = calcPercentChange(overviewFinancials.totalRevenue, prevRevenue);
+    const otherIncomeChange = calcPercentChange(overviewFinancials.totalOtherIncome, prevOtherIncome);
+    const cashInChange = calcPercentChange(overviewFinancials.totalCashIn, prevTotalCashIn);
     const refundsChange = calcPercentChange(overviewFinancials.totalRefunds, prevRefunds);
     const expensesChange = calcPercentChange(overviewFinancials.totalExpenses, prevExpenses);
     const procurementChange = calcPercentChange(overviewFinancials.totalProcurement, prevProcurement);
@@ -3350,17 +5162,29 @@ export default function FinanceScreen() {
 
     return {
       revenue: { label: formatPercentChangeLabel(revenueChange), tone: resolveChangeTone(revenueChange) },
+      otherIncome: { label: formatPercentChangeLabel(otherIncomeChange), tone: resolveChangeTone(otherIncomeChange) },
+      cashIn: { label: formatPercentChangeLabel(cashInChange), tone: resolveChangeTone(cashInChange) },
       refunds: { label: formatPercentChangeLabel(refundsChange), tone: resolveChangeTone(refundsChange, { inverse: true }) },
       expenses: { label: formatPercentChangeLabel(expensesChange), tone: resolveChangeTone(expensesChange, { inverse: true }) },
       procurement: { label: formatPercentChangeLabel(procurementChange), tone: resolveChangeTone(procurementChange, { inverse: true }) },
       net: { label: formatPercentChangeLabel(netChange), tone: resolveChangeTone(netChange) },
     };
-  }, [orders, nonFixedExpenses, fixedCosts, procurements, overviewFinancials, overviewWindow.endMs, overviewWindow.startMs, financeRules]);
+  }, [orders, nonFixedExpenses, fixedCosts, otherIncomes, procurements, overviewFinancials, overviewWindow.endMs, overviewWindow.startMs, financeRules]);
 
   const overviewBreakdownRows = useMemo(() => ([
     {
       label: 'Gross Revenue',
       value: formatCurrency(overviewFinancials.totalRevenue),
+    },
+    {
+      label: 'Other Income',
+      value: formatCurrency(overviewFinancials.totalOtherIncome),
+      subValue: 'Grants, owner funding, loans, and other non-sales inflow',
+    },
+    {
+      label: 'Total Cash In',
+      value: formatCurrency(overviewFinancials.totalCashIn),
+      subValue: 'Gross revenue + other income',
     },
     {
       label: 'Gateway Fees',
@@ -3398,6 +5222,8 @@ export default function FinanceScreen() {
 
   const financeAiSummary = useMemo(() => {
     const grossRevenue = overviewFinancials.totalRevenue;
+    const otherIncome = overviewFinancials.totalOtherIncome;
+    const totalCashIn = overviewFinancials.totalCashIn;
     const netRevenue = overviewFinancials.netRevenue;
     const totalOutflow = overviewFinancials.totalExpenses + overviewFinancials.totalProcurement;
     const feeTotal = overviewFinancials.totalGatewayFees + overviewFinancials.totalStampDuty;
@@ -3428,7 +5254,9 @@ export default function FinanceScreen() {
     const statusLabel = normalizedScore >= 75 ? 'Strong' : normalizedScore >= 55 ? 'Stable' : 'Watch';
 
     let headline = `In ${overviewWindow.label.toLowerCase()}, your business has limited data for a confident trend read yet.`;
-    if (grossRevenue > 0 && overviewFinancials.netProfit < 0) {
+    if (grossRevenue <= 0 && otherIncome > 0) {
+      headline = `In ${overviewWindow.label.toLowerCase()}, cash came in from non-sales income. Keep that separate from trading performance.`;
+    } else if (grossRevenue > 0 && overviewFinancials.netProfit < 0) {
       headline = `In ${overviewWindow.label.toLowerCase()}, outflows are above revenue. Focus on reducing expense and procurement pressure.`;
     } else if (grossRevenue > 0 && (profitMargin < 0.1 || refundTotal > 0)) {
       headline = `In ${overviewWindow.label.toLowerCase()}, revenue is coming in but margins are tight after fees and operating outflows.`;
@@ -3441,6 +5269,13 @@ export default function FinanceScreen() {
       recommendations.push({
         id: 'kickstart-revenue',
         text: 'No revenue landed in this range. Expand active sales campaigns and confirm payment methods are tracked.',
+      });
+    }
+
+    if (otherIncome > 0) {
+      recommendations.push({
+        id: 'other-income-separation',
+        text: `Other income totals ${formatCurrency(otherIncome)}. Keep grants, capital injections, and loans separate from sales when reviewing performance.`,
       });
     }
 
@@ -3503,6 +5338,11 @@ export default function FinanceScreen() {
         value: formatSignedCurrency(overviewFinancials.netProfit),
         tone: overviewFinancials.netProfit >= 0 ? 'positive' : 'negative',
       },
+      {
+        label: 'Total Cash In',
+        value: formatCurrency(totalCashIn),
+        tone: totalCashIn > 0 ? 'positive' : 'neutral',
+      },
     ];
 
     return {
@@ -3527,12 +5367,12 @@ export default function FinanceScreen() {
   ], [financeAiSummary.keyMetrics, financeAiSummary.score, overviewFinancials.netProfit, overviewWindow.label]);
 
   const financeAiOpeningMessage = useMemo(
-    () => `${financeAiSummary.headline} Ask me anything about profit, fees, expenses, procurement, or what to do next.`,
+    () => `${financeAiSummary.headline} Ask me anything about profit, fees, procurement, other income, or what to do next.`,
     [financeAiSummary.headline]
   );
 
   const financeAiQuickPrompts = useMemo(
-    () => ['How is my profit?', 'Where am I leaking money?', 'What should I do this week?', 'Explain fee impact'],
+    () => ['How is my profit?', 'Where am I leaking money?', 'How much non-sales income came in?', 'Explain fee impact'],
     []
   );
 
@@ -3549,6 +5389,8 @@ export default function FinanceScreen() {
       };
     }
     const grossRevenue = overviewFinancials.totalRevenue;
+    const otherIncome = overviewFinancials.totalOtherIncome;
+    const totalCashIn = overviewFinancials.totalCashIn;
     const netRevenue = overviewFinancials.netRevenue;
     const expensesTotal = overviewFinancials.totalExpenses;
     const procurementTotal = overviewFinancials.totalProcurement;
@@ -3567,6 +5409,8 @@ export default function FinanceScreen() {
         headline: financeAiSummary.headline,
         metrics: [
           { label: 'Gross Revenue', value: formatCurrency(grossRevenue) },
+          { label: 'Other Income', value: formatCurrency(otherIncome) },
+          { label: 'Total Cash In', value: formatCurrency(totalCashIn) },
           { label: 'Gateway Fees', value: formatCurrency(overviewFinancials.totalGatewayFees) },
           { label: 'Stamp Duty', value: formatCurrency(overviewFinancials.totalStampDuty) },
           { label: 'Refunds', value: formatCurrency(refundTotal) },
@@ -3598,6 +5442,26 @@ export default function FinanceScreen() {
             value: `${margin.toFixed(1)}%`,
             hint: 'Net profit relative to gross revenue',
             tone: margin >= 10 ? 'positive' : margin >= 0 ? 'neutral' : 'negative',
+          },
+        ],
+      };
+    }
+
+    if (q.includes('grant') || q.includes('funding') || q.includes('capital') || q.includes('other income') || q.includes('cash in')) {
+      return {
+        text: `Non-sales cash in for ${overviewWindow.label.toLowerCase()} is ${formatCurrency(otherIncome)}. Total cash in is ${formatCurrency(totalCashIn)} when combined with gross revenue.`,
+        cards: [
+          {
+            title: 'Other Income',
+            value: formatCurrency(otherIncome),
+            hint: 'Grants, owner funding, loans, and other non-order inflow',
+            tone: otherIncome > 0 ? 'positive' : 'neutral',
+          },
+          {
+            title: 'Total Cash In',
+            value: formatCurrency(totalCashIn),
+            hint: 'Gross revenue plus other income',
+            tone: totalCashIn > 0 ? 'positive' : 'neutral',
           },
         ],
       };
@@ -3711,7 +5575,7 @@ export default function FinanceScreen() {
     }
 
     return {
-      text: `Snapshot for ${overviewWindow.label.toLowerCase()}: Gross ${formatCurrency(grossRevenue)}, Refunds ${formatCurrency(refundTotal)}, Net Revenue ${formatCurrency(netRevenue)}, Expenses ${formatCurrency(expensesTotal)}, Procurement ${formatCurrency(procurementTotal)}, Net Profit ${formatSignedCurrency(netProfit)}.`,
+      text: `Snapshot for ${overviewWindow.label.toLowerCase()}: Gross ${formatCurrency(grossRevenue)}, Other Income ${formatCurrency(otherIncome)}, Total Cash In ${formatCurrency(totalCashIn)}, Refunds ${formatCurrency(refundTotal)}, Net Revenue ${formatCurrency(netRevenue)}, Expenses ${formatCurrency(expensesTotal)}, Procurement ${formatCurrency(procurementTotal)}, Net Profit ${formatSignedCurrency(netProfit)}.`,
       cards: [],
     };
   }, [financeAiRecommendations, financeAiSummary.headline, financeRules.incomingStampDuty, overviewFinancials, overviewWindow.label]);
@@ -3727,6 +5591,12 @@ export default function FinanceScreen() {
         key: `${year}-${month + 1}`,
         label: date.toLocaleDateString('en-US', { month: 'short' }),
         revenue: 0,
+        otherIncome: 0,
+        totalCashIn: 0,
+        gatewayFees: 0,
+        stampDuty: 0,
+        refunds: 0,
+        netRevenue: 0,
         expenses: 0,
         procurement: 0,
         outflow: 0,
@@ -3747,12 +5617,40 @@ export default function FinanceScreen() {
       return `${date.getFullYear()}-${date.getMonth() + 1}`;
     };
 
+    const stampDutyPerOrder = financeRules.incomingStampDuty ?? 50;
+    const activeRules = (financeRules.revenueRules ?? []).filter((rule) => rule.enabled);
+
     orders.forEach((order) => {
       const timestamp = parseTimestamp(order.orderDate ?? order.createdAt);
       if (timestamp === null || timestamp < firstBucketDate || timestamp >= endDate) return;
+      if (!isSaleOrder(order)) return;
       const bucketIndex = bucketIndexByKey.get(toBucketKey(timestamp));
       if (bucketIndex === undefined) return;
       buckets[bucketIndex].revenue += order.totalAmount;
+      if (order.totalAmount >= STAMP_DUTY_THRESHOLD && isBankTransferPaymentMethod(order.paymentMethod)) {
+        buckets[bucketIndex].stampDuty += stampDutyPerOrder;
+      }
+      const orderPaymentMethod = (order.paymentMethod ?? '').toLowerCase().trim();
+      activeRules.forEach((rule) => {
+        const ruleChannel = rule.channel.toLowerCase().trim();
+        const appliesToAllPaymentMethods = (
+          ruleChannel === 'all payment methods'
+          || ruleChannel === 'all methods'
+          || ruleChannel === 'all channels'
+        );
+        if (appliesToAllPaymentMethods || (orderPaymentMethod.length > 0 && ruleChannel === orderPaymentMethod)) {
+          buckets[bucketIndex].gatewayFees += (order.totalAmount * rule.percentFee) / 100 + rule.flatFee;
+        }
+      });
+    });
+
+    orders.forEach((order) => {
+      const refundTimestamp = getRefundDate(order)?.getTime() ?? null;
+      if (refundTimestamp === null || refundTimestamp < firstBucketDate || refundTimestamp >= endDate) return;
+      if (!isSaleOrder(order)) return;
+      const bucketIndex = bucketIndexByKey.get(toBucketKey(refundTimestamp));
+      if (bucketIndex === undefined) return;
+      buckets[bucketIndex].refunds += getRefundedAmount(order);
     });
 
     nonFixedExpenses.forEach((expense) => {
@@ -3761,6 +5659,14 @@ export default function FinanceScreen() {
       const bucketIndex = bucketIndexByKey.get(toBucketKey(timestamp));
       if (bucketIndex === undefined) return;
       buckets[bucketIndex].expenses += expense.amount;
+    });
+
+    otherIncomes.forEach((income) => {
+      const timestamp = parseTimestamp(income.date) ?? parseTimestamp(income.createdAt);
+      if (timestamp === null || timestamp < firstBucketDate || timestamp >= endDate) return;
+      const bucketIndex = bucketIndexByKey.get(toBucketKey(timestamp));
+      if (bucketIndex === undefined) return;
+      buckets[bucketIndex].otherIncome += Math.max(0, Number(income.amount) || 0);
     });
 
     buckets.forEach((bucket) => {
@@ -3775,6 +5681,7 @@ export default function FinanceScreen() {
     });
 
     procurements.forEach((procurement) => {
+      if (!isProcurementRecord(procurement)) return;
       const timestamp = resolveProcurementPaidTimestamp(procurement);
       if (timestamp < firstBucketDate || timestamp >= endDate) return;
       const bucketIndex = bucketIndexByKey.get(toBucketKey(timestamp));
@@ -3783,14 +5690,18 @@ export default function FinanceScreen() {
     });
 
     return buckets.map((bucket) => {
-      const outflow = bucket.expenses + bucket.procurement;
+      const totalCashIn = bucket.revenue + bucket.otherIncome;
+      const netRevenue = bucket.revenue - bucket.gatewayFees - bucket.stampDuty - bucket.refunds;
+      const outflow = bucket.gatewayFees + bucket.stampDuty + bucket.refunds + bucket.expenses + bucket.procurement;
       return {
         ...bucket,
+        totalCashIn,
+        netRevenue,
         outflow,
-        net: bucket.revenue - outflow,
+        net: totalCashIn - outflow,
       };
     });
-  }, [orders, nonFixedExpenses, fixedCosts, procurements]);
+  }, [orders, nonFixedExpenses, fixedCosts, otherIncomes, procurements, financeRules]);
 
   const expensePeriodStats = useMemo(() => {
     let total = 0;
@@ -3804,17 +5715,51 @@ export default function FinanceScreen() {
     return { total, count };
   }, [nonFixedExpenses, expensePeriodWindow]);
 
+  const otherIncomePeriodStats = useMemo(() => {
+    let total = 0;
+    let count = 0;
+    let grants = 0;
+    let ownerContributions = 0;
+    let loans = 0;
+    otherIncomes.forEach((income) => {
+      const timestamp = parseTimestamp(income.date) ?? parseTimestamp(income.createdAt);
+      if (timestamp === null || timestamp < otherIncomePeriodWindow.startMs || timestamp >= otherIncomePeriodWindow.endMs) return;
+      const amount = Math.max(0, Number(income.amount) || 0);
+      total += amount;
+      count += 1;
+      if (income.type === 'grant') grants += amount;
+      if (income.type === 'owner-contribution') ownerContributions += amount;
+      if (income.type === 'loan') loans += amount;
+    });
+    return { total, count, grants, ownerContributions, loans };
+  }, [otherIncomes, otherIncomePeriodWindow]);
+
   const procurementPeriodStats = useMemo(() => {
     let total = 0;
     let count = 0;
+    const selectedMode: ProcurementMode = activeTab === 'costing' ? 'costing' : 'procurement';
     procurements.forEach((procurement) => {
+      if (resolveProcurementMode(procurement) !== selectedMode) return;
       const timestamp = resolveProcurementPaidTimestamp(procurement);
       if (timestamp < procurementPeriodWindow.startMs || timestamp >= procurementPeriodWindow.endMs) return;
       total += procurement.totalCost;
       count += 1;
     });
     return { total, count };
-  }, [procurements, procurementPeriodWindow]);
+  }, [activeTab, procurements, procurementPeriodWindow]);
+
+  const salaryPeriodStats = useMemo(() => {
+    let total = 0;
+    let count = 0;
+    nonFixedExpenses.forEach((expense) => {
+      if (!isSalaryExpense(expense)) return;
+      const timestamp = parseTimestamp(expense.date) ?? parseTimestamp(expense.createdAt);
+      if (timestamp === null || timestamp < salaryPeriodWindow.startMs || timestamp >= salaryPeriodWindow.endMs) return;
+      total += expense.amount;
+      count += 1;
+    });
+    return { total, count };
+  }, [nonFixedExpenses, salaryPeriodWindow]);
 
   const revenueTrendData = useMemo<LineChartDatum[]>(() => {
     return monthlyTrend.map((bucket) => ({
@@ -3835,9 +5780,265 @@ export default function FinanceScreen() {
     return monthlyTrend.map((bucket) => ({
       label: bucket.label,
       value: formatSignedCurrency(bucket.net),
-      subValue: `in ${formatCurrency(bucket.revenue)} | out ${formatCurrency(bucket.outflow)}`,
+      subValue: `in ${formatCurrency(bucket.totalCashIn)} | out ${formatCurrency(bucket.outflow)}`,
     }));
   }, [monthlyTrend]);
+
+  const revenueRows = useMemo<RevenueOrderRow[]>(() => {
+    const stampDutyPerOrder = financeRules.incomingStampDuty ?? 50;
+    const activeRules = (financeRules.revenueRules ?? []).filter((rule) => rule.enabled);
+    return orders
+      .map((order: Order) => {
+        const sortAt = parseTimestamp(order.orderDate ?? order.createdAt) ?? 0;
+        const paymentMethod = order.paymentMethod?.trim() || 'Unspecified';
+        const category = getOrderClassification(order);
+        const orderPaymentMethod = paymentMethod.toLowerCase();
+        const gatewayFees = activeRules.reduce((sum, rule) => {
+          const ruleChannel = rule.channel.toLowerCase().trim();
+          const appliesToAllPaymentMethods = (
+            ruleChannel === 'all payment methods'
+            || ruleChannel === 'all methods'
+            || ruleChannel === 'all channels'
+          );
+          if (!appliesToAllPaymentMethods && ruleChannel !== orderPaymentMethod) return sum;
+          return sum + ((order.totalAmount * rule.percentFee) / 100) + rule.flatFee;
+        }, 0);
+        const stampDuty = order.totalAmount >= STAMP_DUTY_THRESHOLD && isBankTransferPaymentMethod(order.paymentMethod)
+          ? stampDutyPerOrder
+          : 0;
+        const refundTimestamp = getRefundDate(order)?.getTime() ?? null;
+        const refundAmount = refundTimestamp !== null
+          && refundTimestamp >= revenuePeriodWindow.startMs
+          && refundTimestamp < revenuePeriodWindow.endMs
+          ? getRefundedAmount(order)
+          : 0;
+        return {
+          id: order.id,
+          orderNumber: order.orderNumber || order.websiteOrderReference || order.id.slice(-6).toUpperCase(),
+          customerName: order.customerName || 'Walk-in Customer',
+          category,
+          source: order.source?.trim() || 'Unspecified',
+          paymentMethod,
+          status: capitalizeDisplayValue(order.status || 'Unknown'),
+          grossAmount: order.totalAmount,
+          gatewayFees,
+          stampDuty,
+          refundAmount,
+          netAmount: order.totalAmount - gatewayFees - stampDuty - refundAmount,
+          date: new Date(sortAt || Date.now()).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+          }),
+          sortAt,
+        };
+      })
+      .filter((row) => row.sortAt >= revenuePeriodWindow.startMs && row.sortAt < revenuePeriodWindow.endMs)
+      .sort((a, b) => b.sortAt - a.sortAt);
+  }, [financeRules.incomingStampDuty, financeRules.revenueRules, orders, revenuePeriodWindow]);
+
+  const filteredRevenueRows = useMemo(() => {
+    const normalizedSearch = revenueSearchQuery.trim().toLowerCase();
+    const filtered = revenueRows.filter((row) => {
+      if (revenueOrderCategoryFilter !== 'all' && row.category !== revenueOrderCategoryFilter) return false;
+      if (revenuePaymentMethodFilter !== 'all' && row.paymentMethod !== revenuePaymentMethodFilter) return false;
+      if (revenueSourceFilter !== 'all' && row.source !== revenueSourceFilter) return false;
+      if (!normalizedSearch) return true;
+      const searchBlob = [
+        row.orderNumber,
+        row.customerName,
+        row.category,
+        row.source,
+        row.paymentMethod,
+        row.status,
+      ].join(' ').toLowerCase();
+      return searchBlob.includes(normalizedSearch);
+    });
+    return filtered.sort((left, right) => {
+      if (revenueSort === 'oldest') return left.sortAt - right.sortAt || right.grossAmount - left.grossAmount;
+      if (revenueSort === 'amount-high') return right.grossAmount - left.grossAmount || right.sortAt - left.sortAt;
+      if (revenueSort === 'amount-low') return left.grossAmount - right.grossAmount || right.sortAt - left.sortAt;
+      return right.sortAt - left.sortAt || right.grossAmount - left.grossAmount;
+    });
+  }, [revenueOrderCategoryFilter, revenuePaymentMethodFilter, revenueRows, revenueSearchQuery, revenueSort, revenueSourceFilter]);
+
+  const revenueCategoryOptions = useMemo(
+    () => Array.from(new Set(revenueRows.map((row) => row.category))).sort((a, b) => a.localeCompare(b)),
+    [revenueRows]
+  );
+
+  const revenuePaymentMethodOptions = useMemo(
+    () => Array.from(new Set(revenueRows.map((row) => row.paymentMethod))).sort((a, b) => a.localeCompare(b)),
+    [revenueRows]
+  );
+
+  const revenueSourceOptions = useMemo(
+    () => Array.from(new Set(revenueRows.map((row) => row.source))).sort((a, b) => a.localeCompare(b)),
+    [revenueRows]
+  );
+
+  const revenueFilterSortCount = useMemo(
+    () => (revenueSort !== 'newest' ? 1 : 0)
+      + (revenueOrderCategoryFilter !== 'Sale' ? 1 : 0)
+      + (revenuePaymentMethodFilter !== 'all' ? 1 : 0)
+      + (revenueSourceFilter !== 'all' ? 1 : 0),
+    [revenueOrderCategoryFilter, revenuePaymentMethodFilter, revenueSort, revenueSourceFilter]
+  );
+
+  const revenuePeriodStats = useMemo(() => {
+    let totalRefunds = 0;
+    orders.forEach((order) => {
+      const refundTimestamp = getRefundDate(order)?.getTime() ?? null;
+      if (refundTimestamp === null || refundTimestamp < revenuePeriodWindow.startMs || refundTimestamp >= revenuePeriodWindow.endMs) return;
+      if (revenueOrderCategoryFilter !== 'all' && getOrderClassification(order) !== revenueOrderCategoryFilter) return;
+      totalRefunds += getRefundedAmount(order);
+    });
+    const grossRevenue = filteredRevenueRows.reduce((sum, row) => sum + row.grossAmount, 0);
+    const totalGatewayFees = filteredRevenueRows.reduce((sum, row) => sum + row.gatewayFees, 0);
+    const totalStampDuty = filteredRevenueRows.reduce((sum, row) => sum + row.stampDuty, 0);
+    const netRevenue = grossRevenue - totalGatewayFees - totalStampDuty - totalRefunds;
+    return {
+      grossRevenue,
+      totalGatewayFees,
+      totalStampDuty,
+      totalRefunds,
+      netRevenue,
+      count: filteredRevenueRows.length,
+      averageOrderValue: filteredRevenueRows.length > 0 ? grossRevenue / filteredRevenueRows.length : 0,
+    };
+  }, [filteredRevenueRows, orders, revenueOrderCategoryFilter, revenuePeriodWindow]);
+
+  const revenueDeductionRows = useMemo(() => ([
+    { label: 'Gross Revenue', value: formatCurrency(revenuePeriodStats.grossRevenue), percentage: 100 },
+    {
+      label: 'Gateway Fees',
+      value: formatSignedCurrency(-revenuePeriodStats.totalGatewayFees),
+      percentage: revenuePeriodStats.grossRevenue > 0 ? Number(((revenuePeriodStats.totalGatewayFees / revenuePeriodStats.grossRevenue) * 100).toFixed(1)) : 0,
+    },
+    {
+      label: 'Stamp Duty',
+      value: formatSignedCurrency(-revenuePeriodStats.totalStampDuty),
+      percentage: revenuePeriodStats.grossRevenue > 0 ? Number(((revenuePeriodStats.totalStampDuty / revenuePeriodStats.grossRevenue) * 100).toFixed(1)) : 0,
+    },
+    {
+      label: 'Refunds',
+      value: formatSignedCurrency(-revenuePeriodStats.totalRefunds),
+      percentage: revenuePeriodStats.grossRevenue > 0 ? Number(((revenuePeriodStats.totalRefunds / revenuePeriodStats.grossRevenue) * 100).toFixed(1)) : 0,
+    },
+    {
+      label: 'Net Revenue',
+      value: formatCurrency(revenuePeriodStats.netRevenue),
+      percentage: revenuePeriodStats.grossRevenue > 0 ? Number(((revenuePeriodStats.netRevenue / revenuePeriodStats.grossRevenue) * 100).toFixed(1)) : 0,
+    },
+  ]), [revenuePeriodStats]);
+
+  const revenueSourceRows = useMemo(() => {
+    const sourceTotals = new Map<string, number>();
+    filteredRevenueRows.forEach((row) => {
+      sourceTotals.set(row.source, (sourceTotals.get(row.source) ?? 0) + row.grossAmount);
+    });
+    return Array.from(sourceTotals.entries())
+      .sort(([, a], [, b]) => b - a)
+      .map(([source, amount]) => ({
+        label: source,
+        value: formatCurrency(amount),
+        percentage: revenuePeriodStats.grossRevenue > 0 ? Number(((amount / revenuePeriodStats.grossRevenue) * 100).toFixed(1)) : 0,
+      }));
+  }, [filteredRevenueRows, revenuePeriodStats.grossRevenue]);
+
+  const revenuePaymentRows = useMemo(() => {
+    const paymentTotals = new Map<string, number>();
+    filteredRevenueRows.forEach((row) => {
+      paymentTotals.set(row.paymentMethod, (paymentTotals.get(row.paymentMethod) ?? 0) + row.grossAmount);
+    });
+    return Array.from(paymentTotals.entries())
+      .sort(([, a], [, b]) => b - a)
+      .map(([paymentMethod, amount]) => ({
+        label: paymentMethod,
+        value: formatCurrency(amount),
+        percentage: revenuePeriodStats.grossRevenue > 0 ? Number(((amount / revenuePeriodStats.grossRevenue) * 100).toFixed(1)) : 0,
+      }));
+  }, [filteredRevenueRows, revenuePeriodStats.grossRevenue]);
+
+  const revenueCategoryRows = useMemo(() => {
+    const categoryTotals = new Map<string, number>();
+    revenueRows.forEach((row) => {
+      categoryTotals.set(row.category, (categoryTotals.get(row.category) ?? 0) + row.grossAmount);
+    });
+    const totalGross = revenueRows.reduce((sum, row) => sum + row.grossAmount, 0);
+    return Array.from(categoryTotals.entries())
+      .sort(([, a], [, b]) => b - a)
+      .map(([category, amount]) => ({
+        label: category,
+        value: formatCurrency(amount),
+        percentage: totalGross > 0 ? Number(((amount / totalGross) * 100).toFixed(1)) : 0,
+      }));
+  }, [revenueRows]);
+
+  const revenuePeriodTrendData = useMemo<LineChartDatum[]>(() => {
+    const durationMs = Math.max(1, revenuePeriodWindow.endMs - revenuePeriodWindow.startMs);
+    const bucketCount = revenuePeriod === 'year' ? 12 : Math.min(8, Math.max(4, Math.ceil(durationMs / (4 * 24 * 60 * 60 * 1000))));
+    const bucketSize = durationMs / bucketCount;
+    const buckets = Array.from({ length: bucketCount }, (_, index) => {
+      const start = revenuePeriodWindow.startMs + index * bucketSize;
+      const end = index === bucketCount - 1 ? revenuePeriodWindow.endMs : revenuePeriodWindow.startMs + (index + 1) * bucketSize;
+      return {
+        key: `${index}-${Math.round(start)}`,
+        label: revenuePeriod === 'year'
+          ? format(new Date(start), 'MMM')
+          : format(new Date(start), 'MMM d'),
+        start,
+        end,
+        value: 0,
+      };
+    });
+    filteredRevenueRows.forEach((row) => {
+      const bucket = buckets.find((candidate) => row.sortAt >= candidate.start && row.sortAt < candidate.end);
+      if (bucket) bucket.value += row.grossAmount;
+    });
+    return buckets.map((bucket) => ({
+      key: bucket.key,
+      label: bucket.label,
+      value: bucket.value,
+    }));
+  }, [filteredRevenueRows, revenuePeriod, revenuePeriodWindow]);
+
+  const otherIncomeRows = useMemo<OtherIncomeRow[]>(() => {
+    return otherIncomes
+      .map((income) => {
+        const sortAt = parseTimestamp(income.date) ?? parseTimestamp(income.createdAt) ?? 0;
+        return {
+          id: income.id,
+          title: income.title?.trim() || 'Other income',
+          source: income.source?.trim() || 'Unspecified',
+          type: income.type,
+          amount: Math.max(0, Number(income.amount) || 0),
+          date: new Date(sortAt || Date.now()).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+          }),
+          note: income.note?.trim() || '',
+          sortAt,
+        };
+      })
+      .sort((a, b) => b.sortAt - a.sortAt || b.amount - a.amount);
+  }, [otherIncomes]);
+
+  const filteredOtherIncomeRows = useMemo(() => {
+    const normalizedSearch = otherIncomeSearchQuery.trim().toLowerCase();
+    return otherIncomeRows.filter((income) => {
+      if (income.sortAt < otherIncomePeriodWindow.startMs || income.sortAt >= otherIncomePeriodWindow.endMs) return false;
+      if (!normalizedSearch) return true;
+      const blob = [
+        income.title,
+        income.source,
+        formatOtherIncomeTypeLabel(income.type),
+        income.note ?? '',
+      ].join(' ').toLowerCase();
+      return blob.includes(normalizedSearch);
+    });
+  }, [otherIncomePeriodWindow.endMs, otherIncomePeriodWindow.startMs, otherIncomeRows, otherIncomeSearchQuery]);
 
   const expenseRows = useMemo<ExpenseRow[]>(() => {
     return nonFixedExpenses
@@ -3868,6 +6069,7 @@ export default function FinanceScreen() {
   const filteredExpenseRows = useMemo(() => {
     const normalizedSearch = expenseSearchQuery.trim().toLowerCase();
     const filtered = expenseRows.filter((expense) => {
+      if (expense.sortAt < expensePeriodWindow.startMs || expense.sortAt >= expensePeriodWindow.endMs) return false;
       if (expenseFilter !== 'all' && expense.type !== expenseFilter) return false;
       if (!normalizedSearch) return true;
 
@@ -3887,11 +6089,61 @@ export default function FinanceScreen() {
       if (expenseSort === 'amount-low') return left.amount - right.amount || right.sortAt - left.sortAt;
       return right.sortAt - left.sortAt || right.amount - left.amount;
     });
-  }, [expenseFilter, expenseRows, expenseSearchQuery, expenseSort]);
+  }, [expenseFilter, expensePeriodWindow, expenseRows, expenseSearchQuery, expenseSort]);
 
   const filteredExpensesTotal = useMemo(
     () => filteredExpenseRows.reduce((sum, expense) => sum + expense.amount, 0),
     [filteredExpenseRows]
+  );
+
+  const salaryRunRows = useMemo<SalaryRunRow[]>(() => {
+    return nonFixedExpenses
+      .filter((expense) => isSalaryExpense(expense))
+      .map((expense) => {
+        const sortAt = parseTimestamp(expense.date) ?? parseTimestamp(expense.createdAt) ?? 0;
+        const lineItems = parseExpenseLineItemsFromDescription(expense.description, expense.category, expense.amount);
+        const employeeCountFromMetadata = Number(extractMetadataValue(expense.description, 'salary_employee_count') ?? '');
+        const employeeCountFromLines = lineItems.filter((line) => line.label.trim().toLowerCase().endsWith(' salary')).length;
+        const employeeCount = Number.isFinite(employeeCountFromMetadata) && employeeCountFromMetadata > 0
+          ? employeeCountFromMetadata
+          : Math.max(employeeCountFromLines, 1);
+        const merchant = extractMetadataValue(expense.description, 'merchant') ?? '';
+        const templateName = extractMetadataValue(expense.description, 'salary_template') ?? merchant;
+        return {
+          id: expense.id,
+          name: stripMetadata(expense.description) || expense.description,
+          templateName: templateName.trim() || 'Salary Template',
+          employeeCount,
+          amount: expense.amount,
+          date: new Date(sortAt || Date.now()).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+          }),
+          createdBy: expense.createdBy || 'Team Member',
+          sortAt,
+        };
+      })
+      .sort((left, right) => right.sortAt - left.sortAt);
+  }, [nonFixedExpenses]);
+
+  const filteredSalaryRunRows = useMemo(() => {
+    const normalizedSearch = salarySearchQuery.trim().toLowerCase();
+    return salaryRunRows.filter((row) => {
+      if (row.sortAt < salaryPeriodWindow.startMs || row.sortAt >= salaryPeriodWindow.endMs) return false;
+      if (!normalizedSearch) return true;
+      const searchBlob = [
+        row.name,
+        row.templateName,
+        row.createdBy,
+      ].join(' ').toLowerCase();
+      return searchBlob.includes(normalizedSearch);
+    });
+  }, [salaryPeriodWindow, salaryRunRows, salarySearchQuery]);
+
+  const filteredSalaryTotal = useMemo(
+    () => filteredSalaryRunRows.reduce((sum, row) => sum + row.amount, 0),
+    [filteredSalaryRunRows]
   );
 
   const expenseRequestRows = useMemo<ExpenseRequestRow[]>(() => (
@@ -3927,6 +6179,8 @@ export default function FinanceScreen() {
   const filteredExpenseRequestRows = useMemo(() => {
     const normalizedSearch = expenseSearchQuery.trim().toLowerCase();
     const filtered = expenseRequestRows.filter((request) => {
+      const timestamp = request.dateAt || request.sortAt;
+      if (timestamp < expensePeriodWindow.startMs || timestamp >= expensePeriodWindow.endMs) return false;
       if (expenseRequestFilter !== 'all' && request.status !== expenseRequestFilter) return false;
       if (!normalizedSearch) return true;
       const searchBlob = [
@@ -3944,7 +6198,7 @@ export default function FinanceScreen() {
       if (expenseRequestSort === 'amount-low') return left.amount - right.amount || right.sortAt - left.sortAt;
       return right.sortAt - left.sortAt || right.amount - left.amount;
     });
-  }, [expenseRequestRows, expenseRequestFilter, expenseRequestSort, expenseSearchQuery]);
+  }, [expensePeriodWindow, expenseRequestRows, expenseRequestFilter, expenseRequestSort, expenseSearchQuery]);
 
   const isCurrentUserExpenseRequestRow = useCallback((row: ExpenseRequestRow) => {
     const normalizedCurrentUserId = currentUserId.trim();
@@ -4060,10 +6314,9 @@ export default function FinanceScreen() {
     [isFinanceApprover, refundRequestRows, isCurrentUserRefundRequestRow]
   );
 
-  const filteredRefundRequestRows = useMemo(() => {
+  const searchedRefundRequestRows = useMemo(() => {
     const normalizedSearch = refundSearchQuery.trim().toLowerCase();
     const filtered = visibleRefundRequestRows.filter((row) => {
-      if (refundRequestFilter !== 'all' && row.status !== refundRequestFilter) return false;
       if (!normalizedSearch) return true;
       const blob = [
         row.orderNumber,
@@ -4080,7 +6333,16 @@ export default function FinanceScreen() {
       if (refundSort === 'amount-low') return left.amount - right.amount || right.sortAt - left.sortAt;
       return right.sortAt - left.sortAt || right.amount - left.amount;
     });
-  }, [refundRequestFilter, refundSearchQuery, refundSort, visibleRefundRequestRows]);
+  }, [refundSearchQuery, refundSort, visibleRefundRequestRows]);
+
+  const filteredRefundRequestRows = useMemo(
+    () => searchedRefundRequestRows.filter((row) => {
+      const timestamp = row.dateAt || row.sortAt;
+      if (timestamp < refundPeriodWindow.startMs || timestamp >= refundPeriodWindow.endMs) return false;
+      return refundRequestFilter === 'all' || row.status === refundRequestFilter;
+    }),
+    [refundPeriodWindow, refundRequestFilter, searchedRefundRequestRows]
+  );
 
   const filteredRefundRequestsTotal = useMemo(
     () => filteredRefundRequestRows.reduce((sum, row) => sum + (row.status === 'void' ? 0 : row.amount), 0),
@@ -4107,6 +6369,11 @@ export default function FinanceScreen() {
   const pendingRefundApprovalRows = useMemo(
     () => refundRequestRows.filter((row) => row.status === 'submitted'),
     [refundRequestRows]
+  );
+
+  const filteredPendingRefundApprovalRows = useMemo(
+    () => searchedRefundRequestRows.filter((row) => row.status === 'submitted'),
+    [searchedRefundRequestRows]
   );
 
   const myPendingRefundRequestRows = useMemo(
@@ -4150,6 +6417,21 @@ export default function FinanceScreen() {
   }, [
     activeTab,
     filteredRefundRequestRows,
+    selectedRefundRequest,
+    selectedRefundRequestId,
+    showRefundRequestDetailModal,
+  ]);
+
+  useEffect(() => {
+    if (!isShowingWebRefundApprovals) return;
+    if (activeTab !== 'refunds') return;
+    if (showRefundRequestDetailModal && selectedRefundRequest) return;
+    if (selectedRefundRequestId && filteredPendingRefundApprovalRows.some((row) => row.id === selectedRefundRequestId)) return;
+    setSelectedRefundRequestId(filteredPendingRefundApprovalRows[0]?.id ?? null);
+  }, [
+    activeTab,
+    filteredPendingRefundApprovalRows,
+    isShowingWebRefundApprovals,
     selectedRefundRequest,
     selectedRefundRequestId,
     showRefundRequestDetailModal,
@@ -4207,6 +6489,36 @@ export default function FinanceScreen() {
     [expenseRequestRows]
   );
 
+  const filteredPendingExpenseApprovalRows = useMemo(() => {
+    const normalizedSearch = approvalQueueSearchQuery.trim().toLowerCase();
+    if (!normalizedSearch) return pendingExpenseApprovalRows;
+    return pendingExpenseApprovalRows.filter((row) => {
+      const blob = [
+        row.name,
+        row.category,
+        row.merchant,
+        row.submittedByName,
+        row.date,
+      ].join(' ').toLowerCase();
+      return blob.includes(normalizedSearch);
+    });
+  }, [approvalQueueSearchQuery, pendingExpenseApprovalRows]);
+
+  const expenseRowsForTable = isExpenseApprovalListMode ? filteredPendingExpenseApprovalRows : filteredExpenseRows;
+  const expenseTotalForToolbar = isExpenseApprovalListMode
+    ? expenseRowsForTable.reduce((sum, row) => sum + row.amount, 0)
+    : filteredExpensesTotal;
+  const expenseSearchValue = isExpenseApprovalListMode ? approvalQueueSearchQuery : expenseSearchQuery;
+  const setExpenseSearchValue = isExpenseApprovalListMode ? setApprovalQueueSearchQuery : setExpenseSearchQuery;
+  const expenseEmptyMessage = isExpenseApprovalListMode
+    ? (approvalQueueSearchQuery.trim() ? 'No matching expense requests' : 'No pending expense requests')
+    : 'No expenses found';
+
+  const otherIncomeTotalForToolbar = useMemo(
+    () => filteredOtherIncomeRows.reduce((sum, row) => sum + row.amount, 0),
+    [filteredOtherIncomeRows]
+  );
+
   const approvalWorkspaceRows = useMemo(() => {
     const query = approvalQueueSearchQuery.trim().toLowerCase();
     if (!query) return pendingExpenseApprovalRows;
@@ -4262,11 +6574,6 @@ export default function FinanceScreen() {
     if (!isExpenseApprovalWorkspaceActive) return;
     if (pendingExpenseApprovalRows.length === 0) {
       setApprovalWorkspaceSelectedId(null);
-      if (isWebDesktop) {
-        setExpenseWorkspaceView('list');
-      } else {
-        setShowExpenseApprovalWorkspace(false);
-      }
       return;
     }
     if (approvalWorkspaceRows.length === 0) {
@@ -4302,6 +6609,7 @@ export default function FinanceScreen() {
         const paidDate = resolveProcurementPaidDate(procurement, createdAtMs);
         const paidAtMs = parseFlexibleDateToTimestamp(paidDate) ?? createdAtMs;
         const receivedDate = resolveProcurementReceivedDate(procurement, createdAtMs);
+        const nonChargeLineCount = procurement.items.filter((item) => !isSystemProcurementChargeItem(item.productId)).length;
 
         return {
           id: procurement.id,
@@ -4316,8 +6624,9 @@ export default function FinanceScreen() {
           rejectionReason: resolveProcurementRejectionReason(procurement),
           paidDate,
           receivedDate,
-          total: procurement.totalCost,
-          lineCount: procurement.items.length,
+          total: resolveProcurementPaymentBreakdownTotal(procurement),
+          lineCount: nonChargeLineCount > 0 ? nonChargeLineCount : procurement.items.length,
+          mode: resolveProcurementMode(procurement),
           sortAt: paidAtMs,
         };
       })
@@ -4340,9 +6649,13 @@ export default function FinanceScreen() {
     return row.submittedByName.trim().toLowerCase() === normalizedCurrentName;
   }, [currentUserId, currentUserName]);
 
+  const selectedProcurementMode: ProcurementMode = activeTab === 'costing' ? 'costing' : 'procurement';
+
   const filteredProcurementRows = useMemo(() => {
     const normalizedSearch = procurementSearchQuery.trim().toLowerCase();
     const filtered = procurementRows.filter((procurement) => {
+      if (procurement.mode !== selectedProcurementMode) return false;
+      if (procurement.sortAt < procurementPeriodWindow.startMs || procurement.sortAt >= procurementPeriodWindow.endMs) return false;
       if (procurementFilter !== 'all' && procurement.status !== procurementFilter) return false;
       if (!normalizedSearch) return true;
 
@@ -4365,17 +6678,204 @@ export default function FinanceScreen() {
       if (procurementSort === 'amount-low') return left.total - right.total || right.sortAt - left.sortAt;
       return right.sortAt - left.sortAt || right.total - left.total;
     });
-  }, [procurementFilter, procurementRows, procurementSearchQuery, procurementSort]);
+  }, [procurementFilter, procurementPeriodWindow, procurementRows, procurementSearchQuery, procurementSort, selectedProcurementMode]);
 
   const visibleProcurementRows = useMemo(() => {
     if (isFinanceApprover) return filteredProcurementRows;
     if (!isManagerRole) return [];
     return filteredProcurementRows.filter((row) => isCurrentUserProcurementRow(row));
   }, [filteredProcurementRows, isCurrentUserProcurementRow, isFinanceApprover, isManagerRole]);
+  const procurementExportSourceRows = useMemo(() => {
+    const modeRows = procurementRows.filter((row) => row.mode === selectedProcurementMode);
+    if (isFinanceApprover) return modeRows;
+    if (!isManagerRole) return [];
+    return modeRows.filter((row) => isCurrentUserProcurementRow(row));
+  }, [isCurrentUserProcurementRow, isFinanceApprover, isManagerRole, procurementRows, selectedProcurementMode]);
+  const procurementOrderExportLines = useMemo<ProcurementExportLineRow[]>(() => {
+    const productById = new Map(products.map((product) => [product.id, product] as const));
+    const warehouseItemById = new Map(warehouseItems.map((item) => [item.id, item] as const));
+
+    return procurements
+      .filter((procurement) => resolveProcurementMode(procurement) === 'procurement')
+      .flatMap((procurement) => {
+        const createdAtMs = parseTimestamp(procurement.createdAt) ?? 0;
+        const poNumber = resolveProcurementPONumber(procurement);
+        const procurementStatus = inferProcurementStatus(procurement);
+        const dateLabel = formatPanelDate(procurement.createdAt);
+        const receivedDate = resolveProcurementReceivedDate(procurement, createdAtMs);
+
+        return procurement.items
+          .filter((item) => !isSystemProcurementChargeItem(item.productId))
+          .map((item, itemIndex) => {
+            const linkedProduct = item.inventoryProductId ? productById.get(item.inventoryProductId) : undefined;
+            const linkedVariant = linkedProduct?.variants.find((variant) => variant.id === item.variantId);
+            const linkedWarehouseItem = !linkedProduct ? warehouseItemById.get(item.productId) : undefined;
+            const variantName = item.variantName?.trim()
+              || (linkedVariant ? Object.values(linkedVariant.variableValues ?? {}).join(' / ').trim() : '')
+              || '';
+            const productName = item.productName?.trim()
+              || linkedProduct?.name
+              || linkedWarehouseItem?.name
+              || variantName
+              || 'Untitled item';
+            const displayProductName = variantName && productName !== variantName && !productName.toLowerCase().includes(variantName.toLowerCase())
+              ? `${productName} ${variantName}`
+              : productName;
+            const qtyOrdered = Math.max(0, Number(item.quantity ?? 0));
+            const qtyReceived = Math.max(0, Number(item.quantityReceived ?? 0));
+            const unitCost = Math.max(0, Number(item.unitCost ?? item.costAtPurchase ?? 0));
+            const serviceFee = Math.max(0, Number(item.serviceFee ?? 0));
+            const shippingFee = Math.max(0, Number(item.shippingClearanceFee ?? 0));
+            const deliveryFee = Math.max(0, Number(item.deliveryFee ?? 0));
+            const additionalFee = Math.max(0, Number(item.additionalFee ?? 0));
+            const landedUnitCost = Math.max(0, Number(item.landedUnitCost ?? (unitCost + serviceFee + shippingFee + deliveryFee + additionalFee)));
+            const sellingPrice = Math.max(0, Number(item.currentSellingPrice ?? 0));
+            const explicitExpectedProfit = Number(item.expectedProfit);
+            const expectedProfit = Number.isFinite(explicitExpectedProfit)
+              ? explicitExpectedProfit
+              : Math.max(0, sellingPrice - landedUnitCost) * qtyOrdered;
+            const autoStatus = qtyReceived <= 0
+              ? 'Ordered'
+              : qtyReceived >= qtyOrdered
+                ? 'Received'
+                : 'Partial';
+            const itemStatus = item.status?.trim() || (qtyReceived > 0 ? autoStatus : procurementStatus);
+
+            return {
+              procurementId: procurement.id,
+              itemIndex,
+              poNumber,
+              supplier: procurement.supplierName,
+              procurementTitle: procurement.title ?? '',
+              dateLabel,
+              dateReceivedLabel: formatPanelDate(receivedDate),
+              status: itemStatus,
+              productName: displayProductName,
+              variantName,
+              sku: linkedVariant?.sku ?? '',
+              qtyOrdered,
+              qtyReceived,
+              unitCost,
+              serviceFee,
+              shippingFee,
+              deliveryFee,
+              additionalFee,
+              landedUnitCost,
+              sellingPrice,
+              expectedProfit,
+              lineTotal: landedUnitCost * qtyOrdered,
+              sourceTag: linkedProduct ? 'product' : linkedWarehouseItem ? 'warehouse' : 'new product',
+              createdBy: procurement.createdBy ?? '',
+            };
+          });
+      })
+      .sort((left, right) => {
+        const leftDate = parseFlexibleDateToTimestamp(left.dateLabel) ?? 0;
+        const rightDate = parseFlexibleDateToTimestamp(right.dateLabel) ?? 0;
+        return rightDate - leftDate || left.poNumber.localeCompare(right.poNumber);
+      });
+  }, [procurements, products, warehouseItems]);
+  const procurementExportOptions = useMemo(() => {
+    const grouped = new Map<string, {
+      id: string;
+      label: string;
+      title: string;
+      supplier: string;
+      status: string;
+      paidDate: string;
+      receivedDate: string;
+      lineCount: number;
+      sortAt: number;
+    }>();
+
+    procurementOrderExportLines
+      .forEach((line) => {
+      const poNumber = line.poNumber.trim();
+      const current = grouped.get(poNumber);
+      const sortAt = parseFlexibleDateToTimestamp(line.dateLabel) ?? 0;
+      if (!current) {
+        grouped.set(poNumber, {
+          id: poNumber,
+          label: poNumber,
+          title: line.procurementTitle,
+          supplier: line.supplier,
+          status: line.status,
+          paidDate: line.dateLabel,
+          receivedDate: line.dateReceivedLabel,
+          lineCount: 1,
+          sortAt,
+        });
+        return;
+      }
+
+      current.lineCount += 1;
+      if (sortAt > current.sortAt) {
+        current.title = line.procurementTitle || current.title;
+        current.supplier = line.supplier || current.supplier;
+        current.status = line.status || current.status;
+        current.paidDate = line.dateLabel || current.paidDate;
+        current.receivedDate = line.dateReceivedLabel || current.receivedDate;
+        current.sortAt = sortAt;
+      }
+    });
+
+    return Array.from(grouped.values()).sort((left, right) => right.sortAt - left.sortAt);
+  }, [procurementOrderExportLines]);
+  const filteredProcurementExportOptions = useMemo(() => {
+    const query = procurementExportPoSearch.trim().toLowerCase();
+    if (!query) return procurementExportOptions;
+    return procurementExportOptions.filter((option) => [
+      option.label,
+      option.title,
+      option.supplier,
+      option.status,
+      option.paidDate,
+      option.receivedDate,
+    ].join(' ').toLowerCase().includes(query));
+  }, [procurementExportOptions, procurementExportPoSearch]);
+  const selectedProcurementExportOption = useMemo(
+    () => procurementExportOptions.find((option) => option.id === procurementExportSelectedId),
+    [procurementExportOptions, procurementExportSelectedId]
+  );
+
+  const newPoItemOptions = useMemo(() => {
+    const query = newPoItemSearch.trim().toLowerCase();
+    return procurements
+      .map((procurement) => ({
+        id: procurement.id,
+        poNumber: resolveProcurementPONumber(procurement),
+        title: procurement.title?.trim() || '',
+        supplier: procurement.supplierName?.trim() || 'Unknown supplier',
+        createdAtMs: parseTimestamp(procurement.createdAt) ?? 0,
+      }))
+      .filter((option) => {
+        if (!query) return true;
+        return [option.poNumber, option.title, option.supplier].join(' ').toLowerCase().includes(query);
+      })
+      .sort((a, b) => b.createdAtMs - a.createdAtMs);
+  }, [newPoItemSearch, procurements]);
+
+  const mergeProcurementOptions = useMemo(() => {
+    const query = mergeProcurementSearch.trim().toLowerCase();
+    return procurements
+      .filter((procurement) => procurement.id !== mergingProcurementId)
+      .map((procurement) => ({
+        id: procurement.id,
+        poNumber: resolveProcurementPONumber(procurement),
+        title: procurement.title?.trim() || '',
+        supplier: procurement.supplierName?.trim() || 'Unknown supplier',
+        createdAtMs: parseTimestamp(procurement.createdAt) ?? 0,
+      }))
+      .filter((option) => {
+        if (!query) return true;
+        return [option.poNumber, option.title, option.supplier].join(' ').toLowerCase().includes(query);
+      })
+      .sort((a, b) => b.createdAtMs - a.createdAtMs);
+  }, [mergeProcurementSearch, mergingProcurementId, procurements]);
 
   const managerSubmittedProcurementRows = useMemo(
-    () => procurementRows.filter((row) => isCurrentUserProcurementRow(row) && row.approvalStatus !== 'draft'),
-    [isCurrentUserProcurementRow, procurementRows]
+    () => procurementRows.filter((row) => row.mode === selectedProcurementMode && isCurrentUserProcurementRow(row) && row.approvalStatus !== 'draft'),
+    [isCurrentUserProcurementRow, procurementRows, selectedProcurementMode]
   );
 
   const managerSubmittedProcurementPeriodStats = useMemo(() => {
@@ -4390,9 +6890,32 @@ export default function FinanceScreen() {
   }, [managerSubmittedProcurementRows, procurementPeriodWindow]);
 
   const pendingProcurementApprovalRows = useMemo(
-    () => procurementRows.filter((row) => row.approvalStatus === 'submitted'),
+    () => procurementRows.filter((row) => row.mode === 'procurement' && row.approvalStatus === 'submitted'),
     [procurementRows]
   );
+
+  const filteredPendingProcurementApprovalRows = useMemo(() => {
+    const normalizedSearch = procurementQueueSearchQuery.trim().toLowerCase();
+    if (!normalizedSearch) return pendingProcurementApprovalRows;
+    return pendingProcurementApprovalRows.filter((row) => {
+      const blob = [
+        row.title,
+        row.poNumber,
+        row.supplier,
+        row.submittedByName,
+        row.receivedDate,
+      ].join(' ').toLowerCase();
+      return blob.includes(normalizedSearch);
+    });
+  }, [pendingProcurementApprovalRows, procurementQueueSearchQuery]);
+
+  const procurementListLabel = activeTab === 'costing' ? 'Costing' : 'Procurement';
+  const procurementRowsForTable = isShowingWebProcurementApprovals ? filteredPendingProcurementApprovalRows : visibleProcurementRows;
+  const procurementSearchValue = isShowingWebProcurementApprovals ? procurementQueueSearchQuery : procurementSearchQuery;
+  const setProcurementSearchValue = isShowingWebProcurementApprovals ? setProcurementQueueSearchQuery : setProcurementSearchQuery;
+  const procurementEmptyMessage = isShowingWebProcurementApprovals
+    ? 'No pending approvals found'
+    : `No ${procurementListLabel.toLowerCase()} entries found`;
 
   const procurementApprovalWorkspaceRows = useMemo(() => {
     const query = procurementQueueSearchQuery.trim().toLowerCase();
@@ -4421,7 +6944,6 @@ export default function FinanceScreen() {
     if (!isShowingWebProcurementApprovals) return;
     if (pendingProcurementApprovalRows.length === 0) {
       setProcurementWorkspaceSelectedId(null);
-      setProcurementWorkspaceView('list');
       return;
     }
     if (procurementApprovalWorkspaceRows.length === 0) {
@@ -4459,6 +6981,10 @@ export default function FinanceScreen() {
     () => visibleProcurementRows.reduce((sum, procurement) => sum + procurement.total, 0),
     [visibleProcurementRows]
   );
+
+  const procurementTotalForToolbar = isShowingWebProcurementApprovals
+    ? procurementRowsForTable.reduce((sum, procurement) => sum + procurement.total, 0)
+    : filteredProcurementTotal;
 
   const filteredSupplierRows = useMemo(() => {
     const query = supplierSearchQuery.trim().toLowerCase();
@@ -4571,9 +7097,28 @@ export default function FinanceScreen() {
     })
   ), [applyRefundBankCharges, financeRules.bankChargeTiers, financeRules.incomingStampDuty, financeRules.vatRate, refundBaseAmount]);
 
-  const refundBankChargeAmount = refundTransferCharges.fee + refundTransferCharges.vat;
-  const refundStampDuty = refundTransferCharges.stampDuty;
-  const refundTotalDebit = refundBaseAmount + refundTransferCharges.total;
+  const computedRefundBankChargeAmount = refundTransferCharges.fee + refundTransferCharges.vat;
+  const computedRefundStampDuty = refundTransferCharges.stampDuty;
+
+  useEffect(() => {
+    if (!refundBankChargeManuallyEdited) {
+      setRefundBankChargeDraft(formatMoneyDraftValue(computedRefundBankChargeAmount));
+    }
+  }, [computedRefundBankChargeAmount, refundBankChargeManuallyEdited]);
+
+  useEffect(() => {
+    if (!refundStampDutyManuallyEdited) {
+      setRefundStampDutyDraft(formatMoneyDraftValue(computedRefundStampDuty));
+    }
+  }, [computedRefundStampDuty, refundStampDutyManuallyEdited]);
+
+  const refundBankChargeAmount = applyRefundBankCharges
+    ? (refundBankChargeManuallyEdited ? lineItemAmountToNumber(refundBankChargeDraft) : computedRefundBankChargeAmount)
+    : 0;
+  const refundStampDuty = applyRefundBankCharges
+    ? (refundStampDutyManuallyEdited ? lineItemAmountToNumber(refundStampDutyDraft) : computedRefundStampDuty)
+    : 0;
+  const refundTotalDebit = refundBaseAmount + refundBankChargeAmount + refundStampDuty;
 
   const chargePreviewAmount = useMemo(
     () => lineItemAmountToNumber(chargePreviewAmountDraft),
@@ -4590,6 +7135,54 @@ export default function FinanceScreen() {
   const chargePreviewStampDuty = chargePreviewAmount >= STAMP_DUTY_THRESHOLD ? (financeRules.incomingStampDuty ?? 50) : 0;
   const chargePreviewTotalCharges = chargePreviewFee + chargePreviewVat + chargePreviewStampDuty;
   const chargePreviewTotalDebit = chargePreviewAmount + chargePreviewTotalCharges;
+
+  const salaryTemplateRows = useMemo(() => (
+    [...salaryTemplates]
+      .map((template) => ({
+        ...template,
+        employeeCount: template.lines.length,
+        totalBaseAmount: template.lines.reduce((sum, line) => sum + line.amount, 0),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  ), [salaryTemplates]);
+
+  const salaryRunComputedLines = useMemo(() => (
+    salaryRunLinesDraft
+      .map((line) => {
+        const amount = lineItemAmountToNumber(line.amount);
+        const charges = getTransferChargeBreakdown({
+          baseAmount: amount,
+          applyCharges: true,
+          tiers: financeRules.bankChargeTiers,
+          vatRate: financeRules.vatRate,
+          stampDutyAmount: financeRules.incomingStampDuty ?? 50,
+        });
+        return {
+          ...line,
+          amountNumber: amount,
+          bankChargeAmount: charges.fee + charges.vat,
+          stampDutyAmount: charges.stampDuty,
+          totalDebit: amount + charges.total,
+        };
+      })
+  ), [financeRules.bankChargeTiers, financeRules.incomingStampDuty, financeRules.vatRate, salaryRunLinesDraft]);
+
+  const salaryRunBaseTotal = useMemo(
+    () => salaryRunComputedLines.reduce((sum, line) => sum + line.amountNumber, 0),
+    [salaryRunComputedLines]
+  );
+  const salaryRunBankChargeTotal = useMemo(
+    () => salaryRunComputedLines.reduce((sum, line) => sum + line.bankChargeAmount, 0),
+    [salaryRunComputedLines]
+  );
+  const salaryRunStampDutyTotal = useMemo(
+    () => salaryRunComputedLines.reduce((sum, line) => sum + line.stampDutyAmount, 0),
+    [salaryRunComputedLines]
+  );
+  const salaryRunTotalDebit = useMemo(
+    () => salaryRunComputedLines.reduce((sum, line) => sum + line.totalDebit, 0),
+    [salaryRunComputedLines]
+  );
 
   useEffect(() => {
     const nextAmount = expenseLineItemsTotal > 0 ? String(expenseLineItemsTotal) : '';
@@ -4614,6 +7207,13 @@ export default function FinanceScreen() {
     && normalizedExpenseLineItems.length > 0
   );
 
+  const canSaveOtherIncome = Boolean(
+    otherIncomeTitleDraft.trim()
+    && otherIncomeSourceDraft.trim()
+    && Number.isFinite(Number(otherIncomeAmountDraft.replace(/,/g, '')))
+    && Number(otherIncomeAmountDraft.replace(/,/g, '')) > 0
+  );
+
   const editingExpenseRequest = useMemo(
     () => (editingExpenseRequestId
       ? expenseRequests.find((request) => request.id === editingExpenseRequestId) ?? null
@@ -4632,19 +7232,83 @@ export default function FinanceScreen() {
     && editingExpenseRequest?.status === 'draft'
   );
 
-  const canSaveProcurement = Boolean(
-    poSupplierDraft.trim()
-    && poPurchaseLines.some((l) => parseFloat(l.amount) > 0)
+  const computedProcurementLines = useMemo<ProcurementComputedLine[]>(
+    () => poPurchaseLines.map((line) => computeProcurementLine(line)),
+    [poPurchaseLines]
   );
+
+  const isPoItemDraftLine = (line: ProcurementLineDraft) => Boolean(line.productId) && !line.productId!.startsWith('charge-payment-');
+  const editablePaymentBreakdownLines = useMemo(
+    () => poPurchaseLines.filter((line) => !isPoItemDraftLine(line)),
+    [poPurchaseLines]
+  );
+  const readOnlyPoItemDraftLines = useMemo(
+    () => poPurchaseLines.filter((line) => isPoItemDraftLine(line)),
+    [poPurchaseLines]
+  );
+
+  const validProcurementLines = useMemo(
+    () => computedProcurementLines.filter((line) => line.isValid),
+    [computedProcurementLines]
+  );
+
+  const procurementSubtotal = useMemo(
+    () => validProcurementLines.reduce((sum, line) => sum + line.lineTotal, 0),
+    [validProcurementLines]
+  );
+
+  const procurementExpectedProfitTotal = useMemo(
+    () => validProcurementLines.reduce((sum, line) => sum + line.expectedProfit, 0),
+    [validProcurementLines]
+  );
+
+  const canSaveProcurement = Boolean(
+    validProcurementLines.length > 0
+  );
+  const procurementChargePreview = useMemo(() => {
+    const validLines = validProcurementLines;
+    if (validLines.length === 0) {
+      return { fee: 0, vat: 0, stampDuty: 0, total: 0, count: 0 };
+    }
+    const applyCharges = financeRules.bankChargeTiers.length > 0 || financeRules.incomingStampDuty > 0;
+    return validLines.reduce((acc, line) => {
+      const baseAmount = line.lineTotal;
+      const breakdown = getTransferChargeBreakdown({
+        baseAmount,
+        applyCharges,
+        tiers: financeRules.bankChargeTiers,
+        vatRate: financeRules.vatRate,
+        stampDutyAmount: financeRules.incomingStampDuty,
+      });
+      acc.fee += breakdown.fee * PROCUREMENT_TRANSFER_CHARGE_MULTIPLIER;
+      acc.vat += breakdown.vat * PROCUREMENT_TRANSFER_CHARGE_MULTIPLIER;
+      acc.stampDuty += breakdown.stampDuty;
+      acc.total += ((breakdown.fee + breakdown.vat) * PROCUREMENT_TRANSFER_CHARGE_MULTIPLIER) + breakdown.stampDuty;
+      return acc;
+    }, { fee: 0, vat: 0, stampDuty: 0, total: 0, count: validLines.length });
+  }, [financeRules.bankChargeTiers, financeRules.incomingStampDuty, financeRules.vatRate, validProcurementLines]);
 
   const canSaveSupplier = Boolean(supplierNameDraft.trim());
   const canSaveCategory = Boolean(categoryNameDraft.trim());
-  const canSaveProcurementStatus = Boolean(statusNameDraft.trim());
+  const canSaveProcurementStatus = Boolean(
+    statusNameDraft.trim()
+    && Number.isFinite(Number.parseInt(statusOrderDraft.trim(), 10))
+    && Number.parseInt(statusOrderDraft.trim(), 10) >= 1
+  );
   const canSaveFixedCost = Boolean(
     fixedCostNameDraft.trim()
     && fixedCostCategoryDraft.trim()
     && Number.isFinite(Number(fixedCostAmountDraft.replace(/,/g, '')))
     && Number(fixedCostAmountDraft.replace(/,/g, '')) > 0
+  );
+  const canSaveSalaryTemplate = Boolean(
+    salaryTemplateNameDraft.trim()
+    && salaryTemplateLinesDraft.some((line) => line.employeeName.trim() && lineItemAmountToNumber(line.amount) > 0)
+  );
+  const canSaveSalaryRun = Boolean(
+    salaryRunNameDraft.trim()
+    && salaryRunComputedLines.some((line) => line.employeeName.trim() && line.amountNumber > 0)
+    && salaryRunBaseTotal > 0
   );
 
   const selectedMobileExpense = useMemo(
@@ -4687,6 +7351,55 @@ export default function FinanceScreen() {
       : null),
     [mobileDetail, procurements]
   );
+  const selectedMobileProcurementPaymentRows = useMemo(
+    () => {
+      if (!selectedMobileProcurementRecord) return [];
+      return selectedMobileProcurementRecord.items
+        .filter((item) => !isSystemProcurementChargeItem(item.productId))
+        .map((item, index) => {
+          const product = products.find((entry) => entry.id === item.productId);
+          const variant = product?.variants.find((entry) => entry.id === item.variantId);
+          const resolvedName = product?.name;
+          const resolvedVariant = variant ? Object.values(variant.variableValues ?? {}).join(', ') : '';
+          const fallbackName = item.productId.startsWith('charge-payment-') ? `Payment ${index + 1}` : null;
+          const name = item.productName || resolvedName || fallbackName;
+          const variantLabel = item.variantName || resolvedVariant;
+          if (!name) return null;
+          return {
+            id: `${item.productId}-${item.variantId}-${index}`,
+            name: variantLabel ? `${name} — ${variantLabel}` : name,
+            total: item.costAtPurchase,
+            paymentDate: formatPanelDate(item.paymentDate),
+          };
+        })
+        .filter((row): row is { id: string; name: string; total: number; paymentDate: string } => row !== null);
+    },
+    [products, selectedMobileProcurementRecord]
+  );
+  const selectedMobileProcurementChargeTotals = useMemo(
+    () => {
+      if (!selectedMobileProcurementRecord) {
+        return { transfer: 0, stampDuty: 0, total: 0, count: 0 };
+      }
+      return selectedMobileProcurementRecord.items.reduce((acc, item) => {
+        if (!isSystemProcurementChargeItem(item.productId)) {
+          acc.count += 1;
+        }
+        if (item.productId === 'charge-transfer-fees') {
+          acc.transfer += item.costAtPurchase;
+        } else if (item.productId === 'charge-stamp-duty') {
+          acc.stampDuty += item.costAtPurchase;
+        }
+        acc.total = acc.transfer + acc.stampDuty;
+        return acc;
+      }, { transfer: 0, stampDuty: 0, total: 0, count: 0 });
+    },
+    [selectedMobileProcurementRecord]
+  );
+  const selectedMobileProcurementAttachments = useMemo(
+    () => selectedMobileProcurementRecord?.attachments ?? [],
+    [selectedMobileProcurementRecord]
+  );
 
   const selectedMobileSupplier = useMemo(
     () => (mobileDetail?.kind === 'supplier'
@@ -4721,15 +7434,559 @@ export default function FinanceScreen() {
     deleteExpense(expenseId, businessId);
   };
 
+  const handleSaveOtherIncome = async () => {
+    const amount = Number(otherIncomeAmountDraft.replace(/,/g, ''));
+    if (!otherIncomeTitleDraft.trim() || !otherIncomeSourceDraft.trim() || !Number.isFinite(amount) || amount <= 0) {
+      showSettingsToast('error', 'Enter a valid other income title, source, and amount.');
+      return;
+    }
+
+    const payload: OtherIncome = {
+      id: editingOtherIncomeId ?? `income-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      title: otherIncomeTitleDraft.trim(),
+      source: otherIncomeSourceDraft.trim(),
+      type: otherIncomeTypeDraft,
+      amount,
+      date: otherIncomeDateDraft,
+      note: otherIncomeNoteDraft.trim() || undefined,
+      createdAt: editingOtherIncomeId
+        ? (otherIncomes.find((income) => income.id === editingOtherIncomeId)?.createdAt ?? new Date().toISOString())
+        : new Date().toISOString(),
+      createdBy: editingOtherIncomeId
+        ? (otherIncomes.find((income) => income.id === editingOtherIncomeId)?.createdBy ?? currentUserName)
+        : currentUserName,
+    };
+
+    setIsSavingOtherIncome(true);
+    try {
+      if (editingOtherIncomeId) {
+        await updateOtherIncome(editingOtherIncomeId, payload, businessId);
+        showSettingsToast('success', 'Other income updated.');
+      } else {
+        await addOtherIncome(payload, businessId);
+        showSettingsToast('success', 'Other income added.');
+      }
+      setShowOtherIncomeModal(false);
+      resetOtherIncomeDraft();
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      console.warn('Other income save failed:', error);
+      showSettingsToast('error', 'Other income could not sync. Please try again.');
+    } finally {
+      setIsSavingOtherIncome(false);
+    }
+  };
+
+  const handleDeleteOtherIncome = async (incomeId: string) => {
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    try {
+      await deleteOtherIncome(incomeId, businessId);
+      setShowOtherIncomeModal(false);
+      resetOtherIncomeDraft();
+      showSettingsToast('success', 'Other income deleted.');
+    } catch (error) {
+      console.warn('Other income delete failed:', error);
+      showSettingsToast('error', 'Other income could not sync. Please try again.');
+    }
+  };
+
+  const handleUpdateExpenseStatus = (expenseId: string, status: ExpensePaymentStatus) => {
+    const expense = expenses.find((item) => item.id === expenseId);
+    if (!expense || expense.status === status) return;
+    updateExpense(expenseId, { status }, businessId);
+    showSettingsToast('success', 'Expense status updated.');
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
   const handleDeleteDraftExpenseRequest = (requestId: string) => {
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     deleteExpenseRequest(requestId, businessId);
   };
 
-  const handleDeleteProcurement = (procurementId: string) => {
+  const handleDeleteProcurement = (procurementId: string, itemIndex?: number) => {
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    if (typeof itemIndex === 'number') {
+      const procurement = procurements.find((item) => item.id === procurementId);
+      const itemToDelete = procurement?.items[itemIndex];
+      if (!procurement || !itemToDelete) return;
+
+      const nonChargeItems = procurement.items.filter((item) => !isSystemProcurementChargeItem(item.productId));
+      if (nonChargeItems.length <= 1 && !isSystemProcurementChargeItem(itemToDelete.productId)) {
+        deleteProcurement(procurementId, businessId);
+        return;
+      }
+
+      const nextItems = procurement.items.filter((_, index) => index !== itemIndex);
+      const nextTotalCost = nextItems.reduce((sum, item) => sum + normalizeProcurementMoneyValue(item.costAtPurchase), 0);
+      updateProcurement(procurementId, { items: nextItems, totalCost: nextTotalCost }, businessId);
+      showSettingsToast('success', 'Procurement row deleted.');
+      return;
+    }
     deleteProcurement(procurementId, businessId);
   };
+
+  const handleUpdateProcurementStatus = (procurementId: string, status: ProcurementStatus) => {
+    const procurement = procurements.find((item) => item.id === procurementId);
+    if (!procurement) return;
+    const createdAtMs = parseTimestamp(procurement.createdAt) ?? Date.now();
+    const nextStatus = status.trim();
+    if (!nextStatus || inferProcurementStatus(procurement).trim().toLowerCase() === nextStatus.toLowerCase()) return;
+
+    const receivedDate = resolveProcurementReceivedDate(procurement, createdAtMs);
+    const paidDate = resolveProcurementPaidDate(procurement, createdAtMs);
+    const nextNotes = buildProcurementNotes(
+      stripMetadata(procurement.notes),
+      resolveProcurementPONumber(procurement),
+      nextStatus,
+      receivedDate,
+      {
+        paid_date: paidDate,
+        received_date: receivedDate,
+        requested_status: nextStatus,
+      },
+      procurement.notes
+    );
+
+    updateProcurement(procurementId, { notes: nextNotes }, businessId);
+    showSettingsToast('success', 'Procurement status updated.');
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const handleUpdateProcurementOrderStatus = (procurementId: string, itemIndex: number, status: ProcurementOrderStatus) => {
+    const procurement = useFyllStore.getState().procurements.find((item) => item.id === procurementId);
+    if (!procurement) return;
+
+    const nextStatus = normalizeProcurementStatus(status) ?? status.trim();
+    if (!nextStatus) return;
+    const nextItems = procurement.items.map((item, index) => (
+      index === itemIndex ? { ...item, status: nextStatus } : item
+    ));
+    updateProcurement(procurementId, { items: nextItems }, businessId);
+    showSettingsToast('success', 'Procurement status updated.');
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const handleCreateProcurementOrderStatus = (statusName: string, color?: string) => {
+    const normalizedName = normalizeProcurementStatus(statusName);
+    if (!normalizedName) return;
+    const existingOption = effectiveProcurementStatusOptions.find(
+      (option) => option.name.trim().toLowerCase() === normalizedName.toLowerCase()
+    );
+    if (existingOption) {
+      if (color) {
+        updateProcurementStatusOption(existingOption.id, { color });
+        persistFinanceSettings('Procurement status');
+      }
+    } else {
+      addProcurementStatusOption({
+        id: `proc-status-${slugify(normalizedName) || Date.now().toString(36)}`,
+        name: normalizedName,
+        order: effectiveProcurementStatusOptions.length + 1,
+        color,
+      });
+      persistFinanceSettings('Procurement status');
+    }
+    showSettingsToast('success', 'Procurement status saved.');
+  };
+
+  const handleRenameProcurementOrderStatus = (previousStatusName: string, nextStatusName: string, color?: string) => {
+    const previousName = normalizeProcurementStatus(previousStatusName);
+    const normalizedName = normalizeProcurementStatus(nextStatusName);
+    if (!previousName || !normalizedName) return;
+
+    const existingOption = effectiveProcurementStatusOptions.find(
+      (option) => option.name.trim().toLowerCase() === previousName.toLowerCase()
+    );
+    if (existingOption) {
+      updateProcurementStatusOption(existingOption.id, { name: normalizedName, color });
+      persistFinanceSettings('Procurement status');
+    } else {
+      handleCreateProcurementOrderStatus(normalizedName, color);
+    }
+
+    procurements.forEach((procurement) => {
+      if (inferProcurementStatus(procurement).trim().toLowerCase() !== previousName.toLowerCase()) return;
+      const createdAtMs = parseTimestamp(procurement.createdAt) ?? Date.now();
+      const receivedDate = resolveProcurementReceivedDate(procurement, createdAtMs);
+      const paidDate = resolveProcurementPaidDate(procurement, createdAtMs);
+      const nextNotes = buildProcurementNotes(
+        stripMetadata(procurement.notes),
+        resolveProcurementPONumber(procurement),
+        normalizedName,
+        receivedDate,
+        {
+          paid_date: paidDate,
+          received_date: receivedDate,
+          requested_status: normalizedName,
+        },
+        procurement.notes
+      );
+      updateProcurement(procurement.id, { notes: nextNotes }, businessId);
+    });
+
+    showSettingsToast('success', 'Procurement status updated.');
+  };
+
+  const handleUpdateProcurementOrderReceived = (updates: ProcurementReceivedUpdate[]) => {
+    const updatesByProcurementId = updates.reduce<Record<string, ProcurementReceivedUpdate[]>>((acc, update) => {
+      acc[update.procurementId] = [...(acc[update.procurementId] ?? []), update];
+      return acc;
+    }, {});
+    const inventoryMovements: Array<{
+      productId: string;
+      variantId: string;
+      quantityDelta: number;
+      performedBy?: string;
+      sourceType: 'procurement_receipt';
+      sourceLabel?: string;
+      note?: string;
+      procurementId?: string;
+      procurementItemIndex?: number;
+    }> = [];
+    const existingProcurementReceiptLogs = new Set(
+      useFyllStore.getState().restockLogs
+        .filter((log) => log.sourceType === 'procurement_receipt' && log.procurementId && typeof log.procurementItemIndex === 'number')
+        .map((log) => `${log.procurementId}:${log.procurementItemIndex}`)
+    );
+
+    Object.entries(updatesByProcurementId).forEach(([procurementId, procurementUpdates]) => {
+      const procurement = procurements.find((item) => item.id === procurementId);
+      if (!procurement) return;
+      const procurementPoNumber = resolveProcurementPONumber(procurement);
+
+      const nextItems = procurement.items.map((item, index) => {
+        const itemUpdate = procurementUpdates.find((update) => update.itemIndex === index);
+        if (!itemUpdate) return item;
+        const confirmedQty = Math.max(0, itemUpdate.quantityReceived);
+        const previousQuantityReceived = Math.max(0, Number(item.quantityReceived ?? 0));
+        const previousIsSample = Boolean(item.isSample);
+        const nextIsSample = Boolean(itemUpdate.isSample);
+        const nextQuantityReceived = confirmedQty; // Replace the PO record
+        const orderedQuantity = Math.max(0, Number(item.quantity ?? 0));
+        const nextItemStatus: ProcurementStatus = nextQuantityReceived <= 0
+          ? 'Ordered'
+          : nextQuantityReceived >= orderedQuantity
+            ? 'Received'
+            : 'Partial';
+        const receiptLogKey = `${procurementId}:${index}`;
+        const hasExistingReceiptLog = existingProcurementReceiptLogs.has(receiptLogKey);
+        const previousInventoryQuantity = previousIsSample
+          ? 0
+          : hasExistingReceiptLog
+            ? previousQuantityReceived
+            : 0;
+        const nextInventoryQuantity = nextIsSample ? 0 : nextQuantityReceived;
+        const movementQuantity = nextInventoryQuantity - previousInventoryQuantity;
+        if (movementQuantity !== 0) {
+          const linkedProductId = item.inventoryProductId || item.productId;
+          const linkedProduct = products.find((product) => product.id === linkedProductId);
+          const linkedVariant = linkedProduct?.variants.find((candidate) => candidate.id === item.variantId)
+            ?? linkedProduct?.variants[0];
+          if (linkedProduct && linkedVariant) {
+            inventoryMovements.push({
+              productId: linkedProduct.id,
+              variantId: linkedVariant.id,
+              quantityDelta: movementQuantity,
+              performedBy: currentUserName,
+              sourceType: 'procurement_receipt',
+              sourceLabel: procurementPoNumber,
+              note: `Procurement receipt · ${procurementPoNumber}`,
+              procurementId,
+              procurementItemIndex: index,
+            });
+          }
+        }
+        return {
+          ...item,
+          quantityReceived: nextQuantityReceived,
+          isSample: nextIsSample,
+          status: nextItemStatus,
+        };
+      });
+      const trackedItems = nextItems.filter((item) => !isSystemProcurementChargeItem(item.productId));
+      const totalOrdered = trackedItems.reduce((sum, item) => sum + Math.max(0, Number(item.quantity ?? 0)), 0);
+      const totalReceived = trackedItems.reduce((sum, item) => sum + Math.max(0, Number(item.quantityReceived ?? 0)), 0);
+      const nextStatus: ProcurementStatus = totalReceived <= 0
+        ? 'Ordered'
+        : totalReceived >= totalOrdered
+          ? 'Received'
+          : 'Partial';
+      const createdAtMs = parseTimestamp(procurement.createdAt) ?? Date.now();
+      const paidDate = resolveProcurementPaidDate(procurement, createdAtMs);
+      const receivedDate = procurementUpdates[0]?.dateReceived || toInputDate();
+      const nextNotes = buildProcurementNotes(
+        stripMetadata(procurement.notes),
+        resolveProcurementPONumber(procurement),
+        nextStatus,
+        receivedDate,
+        {
+          paid_date: paidDate,
+          received_date: receivedDate,
+          requested_status: nextStatus,
+        },
+        procurement.notes
+      );
+
+      updateProcurement(procurementId, { notes: nextNotes, items: nextItems }, businessId);
+    });
+    if (inventoryMovements.length > 0) {
+      void recordInventoryStockMovement(inventoryMovements, businessId).catch((error) => {
+        console.warn('Procurement inventory stock sync failed:', error);
+        showSettingsToast('error', 'Received quantity saved, but inventory stock sync failed.');
+      });
+    }
+    showSettingsToast('success', 'Received quantity updated.');
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const handleUpdateProcurementOrderProduct = (
+    procurementId: string,
+    itemIndex: number,
+    selection: ProcurementProductSelection
+  ) => {
+    const procurement = procurements.find((item) => item.id === procurementId);
+    if (!procurement) return;
+
+    const normalizedName = selection.productName.trim();
+    if (!normalizedName) return;
+
+    const normalizedQuery = normalizedName.toLowerCase();
+    const exactVariantMatch = products
+      .flatMap((product) => product.variants.map((variant) => {
+        const variantName = Object.values(variant.variableValues ?? {}).join(' / ');
+        const displayName = variantName ? `${product.name} ${variantName}` : product.name;
+        return { product, variant, variantName, displayName };
+      }))
+      .find(({ product, variant, variantName, displayName }) => (
+        product.id === selection.productId
+        && (!selection.variantId || variant.id === selection.variantId)
+      ) || (
+        displayName.trim().toLowerCase() === normalizedQuery
+        || variantName.trim().toLowerCase() === normalizedQuery
+        || (variant.sku ?? '').trim().toLowerCase() === normalizedQuery
+      ));
+    const matchedProduct = exactVariantMatch?.product
+      ?? (selection.productId
+        ? products.find((product) => product.id === selection.productId)
+        : products.find((product) => product.name.trim().toLowerCase() === normalizedQuery));
+    const matchedVariant = exactVariantMatch?.variant
+      ?? matchedProduct?.variants.find((variant) => variant.id === selection.variantId)
+      ?? matchedProduct?.variants[0];
+    const matchedVariantName = selection.variantName?.trim()
+      || exactVariantMatch?.variantName
+      || (matchedVariant ? Object.values(matchedVariant.variableValues ?? {}).join(' / ') : '');
+    const nextProductName = matchedProduct?.name ?? normalizedName;
+    const nextProductId = matchedProduct?.id ?? selection.productId ?? `manual-${itemIndex}`;
+    const nextVariantId = matchedVariant?.id ?? selection.variantId ?? `manual-${itemIndex}`;
+    const nextItems = procurement.items.map((item, index) => {
+      if (index !== itemIndex) return item;
+      return {
+        ...item,
+        productId: nextProductId,
+        variantId: nextVariantId,
+        inventoryProductId: matchedProduct?.id ?? selection.productId,
+        productName: nextProductName,
+        variantName: matchedProduct || selection.productId ? matchedVariantName : '',
+        imageUrl: selection.imageUrl ?? item.imageUrl,
+        isNewProduct: selection.isNewProduct ?? item.isNewProduct,
+      };
+    });
+
+    updateProcurement(procurementId, { items: nextItems }, businessId);
+    showSettingsToast('success', 'Procurement product updated.');
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const handleUpdateProcurementOrderPoNumber = (procurementId: string, poNumber: string, itemIndex?: number) => {
+    const procurement = procurements.find((item) => item.id === procurementId);
+    if (!procurement) return;
+
+    const normalizedPoNumber = poNumber.trim().toUpperCase();
+    if (!normalizedPoNumber) return;
+
+    if (resolveProcurementPONumber(procurement).trim().toUpperCase() === normalizedPoNumber) return;
+
+    const createdAtMs = parseTimestamp(procurement.createdAt) ?? Date.now();
+    const currentStatus = inferProcurementStatus(procurement);
+    const receivedDate = resolveProcurementReceivedDate(procurement, createdAtMs);
+    const paidDate = resolveProcurementPaidDate(procurement, createdAtMs);
+    const nextNotes = buildProcurementNotes(
+      stripMetadata(procurement.notes),
+      normalizedPoNumber,
+      currentStatus,
+      receivedDate,
+      {
+        paid_date: paidDate,
+        received_date: receivedDate,
+        requested_status: currentStatus,
+      },
+      procurement.notes
+    );
+
+    updateProcurement(procurementId, { notes: nextNotes }, businessId);
+    showSettingsToast('success', 'PO number updated.');
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const handleUpdateProcurementOrderDate = (procurementId: string, date: string) => {
+    const procurement = procurements.find((item) => item.id === procurementId);
+    if (!procurement) return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date.trim())) return;
+
+    const previousTimestamp = parseTimestamp(procurement.createdAt);
+    const previousDate = previousTimestamp ? new Date(previousTimestamp) : new Date();
+    const [year, month, day] = date.trim().split('-').map((part) => Number(part));
+    const nextDate = new Date(previousDate);
+    nextDate.setFullYear(year, month - 1, day);
+    if (Number.isNaN(nextDate.getTime())) return;
+
+    updateProcurement(procurementId, { createdAt: nextDate.toISOString() }, businessId);
+    showSettingsToast('success', 'Procurement date updated.');
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const handleUpdateProcurementOrderItemFee = useCallback((
+    procurementId: string,
+    itemIndex: number,
+    field: 'unitCost' | 'serviceFee' | 'shippingClearanceFee' | 'deliveryFee',
+    value: number,
+  ) => {
+    const procurement = useFyllStore.getState().procurements.find((item) => item.id === procurementId);
+    if (!procurement) return;
+    const nextItems = procurement.items.map((item, index) => {
+      if (index !== itemIndex) return item;
+      const updated = { ...item, [field]: value };
+      const unitCost = Math.max(0, Number(field === 'unitCost' ? value : (item.unitCost ?? item.costAtPurchase ?? 0)));
+      const serviceFee = Math.max(0, Number(field === 'serviceFee' ? value : (item.serviceFee ?? 0)));
+      const shippingFee = Math.max(0, Number(field === 'shippingClearanceFee' ? value : (item.shippingClearanceFee ?? 0)));
+      const deliveryFee = Math.max(0, Number(field === 'deliveryFee' ? value : (item.deliveryFee ?? 0)));
+      const additionalFee = Math.max(0, Number(item.additionalFee ?? 0));
+      updated.landedUnitCost = unitCost + serviceFee + shippingFee + deliveryFee + additionalFee;
+      updated.costAtPurchase = Math.max(0, Number(item.quantity ?? 0)) * updated.landedUnitCost;
+      return updated;
+    });
+    const nextTotalCost = nextItems.reduce((sum, item) => sum + Math.max(0, Number(item.costAtPurchase ?? 0)), 0);
+    updateProcurement(procurementId, { items: nextItems, totalCost: nextTotalCost }, businessId);
+  }, [updateProcurement, businessId]);
+
+  const handleCreateInventoryProductFromOrder = useCallback(async (data: {
+    name: string;
+    variantType?: string;
+    variants: { name: string; price: number; imageUri?: string | null }[];
+    isNewProduct?: boolean;
+    imageUri?: string;
+  }): Promise<{ productId: string; variantId?: string; variantName?: string; imageUrl?: string }> => {
+    const productId = Math.random().toString(36).slice(2, 15);
+    const productName = data.name.trim();
+    const variants = data.variants.map((v, index) => {
+      const variantName = v.name.trim();
+      const sku = variantName ? `${productName} - ${variantName}` : `${productName} - ${String(index + 1).padStart(2, '0')}`;
+      return {
+        id: Math.random().toString(36).slice(2, 15),
+        sku,
+        barcode: '',
+        variableValues: data.variantType ? { [data.variantType]: variantName } : {},
+        stock: 0,
+        sellingPrice: v.price,
+        imageUrl: v.imageUri ?? undefined,
+      };
+    });
+    const preparedMedia = await prepareProductMediaForPersistence({
+      businessId,
+      productId,
+      imageUrl: data.imageUri,
+      variants,
+    });
+    await addProduct({
+      id: productId,
+      name: productName,
+      description: '',
+      categories: [],
+      variants: preparedMedia.variants,
+      lowStockThreshold: 5,
+      createdAt: new Date().toISOString(),
+      productType: 'product',
+      createdBy: currentUserName,
+      imageUrl: preparedMedia.imageUrl,
+    }, businessId);
+    const firstVariant = preparedMedia.variants[0];
+    const firstVariantName = firstVariant
+      ? Object.values(firstVariant.variableValues ?? {}).map((value) => value.trim()).filter(Boolean).join(' / ')
+      : undefined;
+    return {
+      productId,
+      variantId: firstVariant?.id,
+      variantName: firstVariantName,
+      imageUrl: firstVariant?.imageUrl ?? preparedMedia.imageUrl,
+    };
+  }, [addProduct, businessId, currentUserName]);
+
+  const handleSaveQC = useCallback((procurementId: string, itemIndex: number, qcImageUri: string, qcCheckedProperties: string[] = [], qcCheckedQualityChecks: string[] = [], quantityReceived?: number, dateReceived?: string) => {
+    const procurement = useFyllStore.getState().procurements.find((p) => p.id === procurementId);
+    if (!procurement) return;
+    const nextItems = procurement.items.map((item, index) => {
+      if (index !== itemIndex) return item;
+      const receivedQuantity = typeof quantityReceived === 'number' && Number.isFinite(quantityReceived)
+        ? Math.max(0, quantityReceived)
+        : Math.max(0, Number(item.quantityReceived ?? 0));
+      const orderedQuantity = Math.max(0, Number(item.quantity ?? 0));
+      const nextItemStatus: ProcurementStatus = receivedQuantity <= 0
+        ? 'Ordered'
+        : receivedQuantity >= orderedQuantity
+          ? 'Received'
+          : 'Partial';
+      return {
+        ...item,
+        quantityReceived: receivedQuantity,
+        status: nextItemStatus,
+        qcImageUri,
+        qcConfirmedAt: new Date().toISOString(),
+        qcCheckedProperties,
+        qcCheckedQualityChecks,
+      };
+    });
+    const trackedItems = nextItems.filter((item) => !isSystemProcurementChargeItem(item.productId));
+    const totalOrdered = trackedItems.reduce((sum, item) => sum + Math.max(0, Number(item.quantity ?? 0)), 0);
+    const totalReceived = trackedItems.reduce((sum, item) => sum + Math.max(0, Number(item.quantityReceived ?? 0)), 0);
+    const nextStatus: ProcurementStatus = totalReceived <= 0
+      ? 'Ordered'
+      : totalReceived >= totalOrdered
+        ? 'Received'
+        : 'Partial';
+    const createdAtMs = parseTimestamp(procurement.createdAt) ?? Date.now();
+    const paidDate = resolveProcurementPaidDate(procurement, createdAtMs);
+    const receivedDate = dateReceived || resolveProcurementReceivedDate(procurement, createdAtMs);
+    const nextNotes = buildProcurementNotes(
+      stripMetadata(procurement.notes),
+      resolveProcurementPONumber(procurement),
+      nextStatus,
+      receivedDate,
+      {
+        paid_date: paidDate,
+        received_date: receivedDate,
+        requested_status: nextStatus,
+      },
+      procurement.notes
+    );
+    updateProcurement(procurementId, { items: nextItems, notes: nextNotes }, businessId);
+  }, [updateProcurement, businessId]);
+
+  const handleUpdateProcurementOrderQtyOrdered = useCallback((
+    procurementId: string,
+    itemIndex: number,
+    qty: number,
+  ) => {
+    const procurement = useFyllStore.getState().procurements.find((item) => item.id === procurementId);
+    if (!procurement) return;
+    const nextItems = procurement.items.map((item, index) => {
+      if (index !== itemIndex) return item;
+      const unitCost = Math.max(0, Number(item.unitCost ?? item.costAtPurchase ?? 0));
+      const landedUnitCost = Math.max(0, Number(item.landedUnitCost ?? unitCost));
+      return { ...item, quantity: qty, costAtPurchase: qty * (landedUnitCost || unitCost) };
+    });
+    const nextTotalCost = nextItems.reduce((sum, item) => sum + Math.max(0, Number(item.costAtPurchase ?? 0)), 0);
+    updateProcurement(procurementId, { items: nextItems, totalCost: nextTotalCost }, businessId);
+  }, [updateProcurement, businessId]);
 
   const handleOpenExpenseReceipt = async (storagePath: string) => {
     const normalizedPath = storagePath.trim();
@@ -4807,7 +8064,8 @@ export default function FinanceScreen() {
       request.receipts?.[0]?.storagePath,
       request.receipts?.[0]?.fileName,
       request.lineItems as ExpenseBreakdownLineItem[] | undefined,
-      request.receipts
+      request.receipts,
+      request.applyBankCharges
     );
 
     addExpense({
@@ -5002,15 +8260,15 @@ export default function FinanceScreen() {
     const effectiveRequestedDate = canModifyFinancialFields
       ? toIsoDate(refundRequestedDate)
       : (existingRequest?.requestedDate ?? toIsoDate(refundRequestedDate));
-    const transferBreakdown = getTransferChargeBreakdown({
-      baseAmount: effectiveAmount,
-      applyCharges: applyRefundBankCharges,
-      tiers: financeRules.bankChargeTiers,
-      vatRate: financeRules.vatRate,
-      stampDutyAmount: financeRules.incomingStampDuty ?? 50,
-    });
-    const bankChargeValue = applyRefundBankCharges ? (transferBreakdown.fee + transferBreakdown.vat) : 0;
-    const stampDutyValue = applyRefundBankCharges ? transferBreakdown.stampDuty : 0;
+    const applyBankChargesValue = canModifyFinancialFields
+      ? applyRefundBankCharges
+      : (existingRequest?.applyBankCharges ?? false);
+    const bankChargeValue = canModifyFinancialFields
+      ? refundBankChargeAmount
+      : Math.max(0, existingRequest?.bankChargeAmount ?? 0);
+    const stampDutyValue = canModifyFinancialFields
+      ? refundStampDuty
+      : Math.max(0, existingRequest?.stampDutyAmount ?? 0);
     const totalDebitValue = effectiveAmount + bankChargeValue + stampDutyValue;
     const baseAppliedAmount = Math.max(0, (targetOrder.refund?.amount ?? 0) - existingPaidAmount);
     const refundType = canModifyFinancialFields
@@ -5056,7 +8314,7 @@ export default function FinanceScreen() {
         ? (refundPaymentReferenceDraft.trim() || existingRequest?.paymentReference)
         : undefined,
       proofAttachments: nextStatus === 'paid' ? existingRequest?.proofAttachments : undefined,
-      applyBankCharges: applyRefundBankCharges,
+      applyBankCharges: applyBankChargesValue,
       bankChargeAmount: bankChargeValue,
       stampDutyAmount: stampDutyValue,
       totalDebitAmount: totalDebitValue,
@@ -5420,6 +8678,101 @@ export default function FinanceScreen() {
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
   };
 
+  const handleUpdateRefundRequestStatus = async (requestId: string, status: RefundRequestStatus) => {
+    const request = refundRequests.find((item) => item.id === requestId);
+    if (!request || request.status === status) return;
+
+    const canManageRequest = isFinanceApprover || isCurrentUserRefundRequestOwner(request);
+    if (!canManageRequest) {
+      showSettingsToast('error', 'Only the request owner or admin can update this refund.');
+      return;
+    }
+
+    if (status === 'paid') {
+      if (request.status !== 'approved') {
+        showSettingsToast('error', 'Approve the refund before marking it paid.');
+        return;
+      }
+      await handleMarkRefundRequestPaid(requestId, refundPaymentReferenceDraft);
+      return;
+    }
+
+    if (status === 'void') {
+      await handleVoidRefundRequest(requestId, refundAdminNoteDraft);
+      return;
+    }
+
+    const nowIso = new Date().toISOString();
+    const updates: Partial<RefundRequest> = {
+      status,
+      updatedAt: nowIso,
+    };
+
+    if (request.status === 'paid') {
+      if (!businessId) {
+        showSettingsToast('error', 'Business not available for this refund.');
+        return;
+      }
+      const order = orders.find((item) => item.id === request.orderId);
+      if (!order) {
+        showSettingsToast('error', 'Linked order not found for this refund.');
+        return;
+      }
+      try {
+        const orderUpdates = applyVoidedRefundRequestToOrder(order, request);
+        await updateOrder(order.id, {
+          ...orderUpdates,
+          updatedBy: currentUserName,
+          updatedAt: nowIso,
+        }, businessId);
+      } catch (error) {
+        console.warn('Refund status rollback failed:', error);
+        showSettingsToast('error', 'Could not reverse the paid refund on the order.');
+        return;
+      }
+      updates.paidAt = undefined;
+      updates.paidByUserId = undefined;
+      updates.paidByName = undefined;
+      updates.paymentReference = undefined;
+      updates.proofAttachments = undefined;
+    }
+
+    if (status === 'submitted') {
+      updates.submittedAt = request.submittedAt ?? nowIso;
+      updates.rejectionReason = undefined;
+    }
+
+    if (status === 'approved') {
+      updates.reviewedByUserId = currentUserId;
+      updates.reviewedByName = currentUserName;
+      updates.reviewedAt = nowIso;
+      updates.rejectionReason = undefined;
+    }
+
+    if (status === 'rejected') {
+      updates.reviewedByUserId = currentUserId;
+      updates.reviewedByName = currentUserName;
+      updates.reviewedAt = nowIso;
+      updates.rejectionReason = request.rejectionReason || 'Rejected by approver';
+    }
+
+    if (status === 'draft') {
+      updates.submittedAt = undefined;
+      updates.rejectionReason = request.rejectionReason?.startsWith('Voided:') ? undefined : request.rejectionReason;
+    }
+
+    try {
+      await updateRefundRequest(requestId, updates, businessId);
+    } catch (error) {
+      console.warn('Refund request status update failed:', error);
+      showSettingsToast('error', 'Could not update refund status.');
+      return;
+    }
+
+    showSettingsToast('success', 'Refund status updated.');
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
   const handleDeleteRefundRequest = async (requestId: string) => {
     const request = refundRequests.find((item) => item.id === requestId);
     if (!request) return;
@@ -5615,16 +8968,25 @@ export default function FinanceScreen() {
         helperTone: 'neutral' as const,
         trendLabel: overviewComparison.revenue.label,
         trendTone: overviewComparison.revenue.tone,
-        onPress: () => handleOpenFinanceDetail('/finance/revenue'),
+        onPress: () => selectTab('revenue'),
       },
       {
-        label: 'Refunds',
-        value: formatSignedCurrency(-overviewFinancials.totalRefunds),
-        helper: overviewFinancials.totalRefunds > 0 ? 'Paid back to customers' : '',
+        label: 'Other Income',
+        value: formatCurrency(overviewFinancials.totalOtherIncome),
+        helper: overviewFinancials.totalOtherIncome > 0 ? 'Grants, owner funding, loans, and non-sales inflow' : '',
         helperTone: 'neutral' as const,
-        trendLabel: overviewComparison.refunds.label,
-        trendTone: overviewComparison.refunds.tone,
-        onPress: () => selectTab('refunds'),
+        trendLabel: overviewComparison.otherIncome.label,
+        trendTone: overviewComparison.otherIncome.tone,
+        onPress: () => selectTab('other-income'),
+      },
+      {
+        label: 'Total Cash In',
+        value: formatCurrency(overviewFinancials.totalCashIn),
+        helper: '',
+        helperTone: 'neutral' as const,
+        trendLabel: overviewComparison.cashIn.label,
+        trendTone: overviewComparison.cashIn.tone,
+        onPress: () => selectTab('other-income'),
       },
       {
         label: 'Total Expenses',
@@ -5662,7 +9024,7 @@ export default function FinanceScreen() {
         <View className="mt-4" style={{ gap: 12 }}>
           <View style={{ flexDirection: 'row', gap: 12 }}>
             {firstRowCards.map((card) => (
-              <FinanceMetricCard
+              <FinanceMetricCard loading={shouldShowFinanceSkeleton}
                 key={card.label}
                 label={card.label}
                 value={card.value}
@@ -5680,7 +9042,7 @@ export default function FinanceScreen() {
           </View>
           <View style={{ flexDirection: 'row', gap: 12 }}>
             {secondRowCards.map((card) => (
-              <FinanceMetricCard
+              <FinanceMetricCard loading={shouldShowFinanceSkeleton}
                 key={card.label}
                 label={card.label}
                 value={card.value}
@@ -5703,15 +9065,15 @@ export default function FinanceScreen() {
     return (
       <View className="mt-6">
         <View className="mb-3">
-          <FinanceMetricCard {...cards[0]} trendPlacement="right" compactTrend={isCompactLayout} valueFontSize={20} onPress={cards[0].onPress} colors={colors} />
+          <FinanceMetricCard loading={shouldShowFinanceSkeleton} {...cards[0]} trendPlacement="right" compactTrend={isCompactLayout} valueFontSize={20} onPress={cards[0].onPress} colors={colors} />
         </View>
         <View className="flex-row mb-3" style={{ gap: 12 }}>
-          <FinanceMetricCard {...cards[1]} trendPlacement="right" compactTrend={isCompactLayout} valueFontSize={18} onPress={cards[1].onPress} colors={colors} />
-          <FinanceMetricCard {...cards[2]} trendPlacement="right" compactTrend={isCompactLayout} valueFontSize={18} onPress={cards[2].onPress} colors={colors} />
+          <FinanceMetricCard loading={shouldShowFinanceSkeleton} {...cards[1]} trendPlacement="right" compactTrend={isCompactLayout} valueFontSize={18} onPress={cards[1].onPress} colors={colors} />
+          <FinanceMetricCard loading={shouldShowFinanceSkeleton} {...cards[2]} trendPlacement="right" compactTrend={isCompactLayout} valueFontSize={18} onPress={cards[2].onPress} colors={colors} />
         </View>
         <View className="flex-row" style={{ gap: 12 }}>
-          <FinanceMetricCard {...cards[3]} trendPlacement="right" compactTrend={isCompactLayout} valueFontSize={18} onPress={cards[3].onPress} colors={colors} />
-          <FinanceMetricCard {...cards[4]} trendPlacement="right" compactTrend={isCompactLayout} valueFontSize={18} onPress={cards[4].onPress} colors={colors} />
+          <FinanceMetricCard loading={shouldShowFinanceSkeleton} {...cards[3]} trendPlacement="right" compactTrend={isCompactLayout} valueFontSize={18} onPress={cards[3].onPress} colors={colors} />
+          <FinanceMetricCard loading={shouldShowFinanceSkeleton} {...cards[4]} trendPlacement="right" compactTrend={isCompactLayout} valueFontSize={18} onPress={cards[4].onPress} colors={colors} />
         </View>
       </View>
     );
@@ -5779,7 +9141,7 @@ export default function FinanceScreen() {
         <>
           {periodPills}
           <View className="mt-4" style={{ flexDirection: 'row', gap: 12 }}>
-            <FinanceMetricCard
+            <FinanceMetricCard loading={shouldShowFinanceSkeleton}
               label="Expense Total"
               value={formatCurrency(expensePeriodStats.total)}
               helper={expensePeriodWindow.label}
@@ -5789,7 +9151,7 @@ export default function FinanceScreen() {
               valueFontSize={24}
               colors={colors}
             />
-            <FinanceMetricCard
+            <FinanceMetricCard loading={shouldShowFinanceSkeleton}
               label="Entries"
               value={expensePeriodStats.count.toLocaleString()}
               helper={expensePeriodWindow.label}
@@ -5807,7 +9169,7 @@ export default function FinanceScreen() {
     if (isMobile) {
       return (
         <View className="mt-4" style={{ flexDirection: 'row', gap: 12 }}>
-          <FinanceMetricCard
+          <FinanceMetricCard loading={shouldShowFinanceSkeleton}
             label="Expense Total"
             value={formatCurrency(expensePeriodStats.total)}
             helper={expensePeriodWindow.label}
@@ -5817,7 +9179,7 @@ export default function FinanceScreen() {
             valueFontSize={20}
             colors={colors}
           />
-          <FinanceMetricCard
+          <FinanceMetricCard loading={shouldShowFinanceSkeleton}
             label="Entries"
             value={expensePeriodStats.count.toLocaleString()}
             helper={expensePeriodWindow.label}
@@ -5835,7 +9197,7 @@ export default function FinanceScreen() {
       <>
         {periodPills}
         <View className="mt-4" style={{ flexDirection: 'row', gap: 12 }}>
-          <FinanceMetricCard
+          <FinanceMetricCard loading={shouldShowFinanceSkeleton}
             label="Expense Total"
             value={formatCurrency(expensePeriodStats.total)}
             helper={expensePeriodWindow.label}
@@ -5845,7 +9207,7 @@ export default function FinanceScreen() {
             valueFontSize={20}
             colors={colors}
           />
-          <FinanceMetricCard
+          <FinanceMetricCard loading={shouldShowFinanceSkeleton}
             label="Entries"
             value={expensePeriodStats.count.toLocaleString()}
             helper={expensePeriodWindow.label}
@@ -5882,7 +9244,7 @@ export default function FinanceScreen() {
         <>
           {periodPills}
           <View className="mt-4" style={{ flexDirection: 'row', gap: 12 }}>
-            <FinanceMetricCard
+            <FinanceMetricCard loading={shouldShowFinanceSkeleton}
               label="Expense Total"
               value={formatCurrency(mySubmittedExpenseRequestPeriodStats.total)}
               helper={expensePeriodWindow.label}
@@ -5892,7 +9254,7 @@ export default function FinanceScreen() {
               valueFontSize={24}
               colors={colors}
             />
-            <FinanceMetricCard
+            <FinanceMetricCard loading={shouldShowFinanceSkeleton}
               label="Entries"
               value={mySubmittedExpenseRequestPeriodStats.count.toLocaleString()}
               helper={expensePeriodWindow.label}
@@ -5910,7 +9272,7 @@ export default function FinanceScreen() {
     if (isMobile) {
       return (
         <View className="mt-4" style={{ flexDirection: 'row', gap: 12 }}>
-          <FinanceMetricCard
+          <FinanceMetricCard loading={shouldShowFinanceSkeleton}
             label="Expense Total"
             value={formatCurrency(mySubmittedExpenseRequestPeriodStats.total)}
             helper={expensePeriodWindow.label}
@@ -5920,7 +9282,7 @@ export default function FinanceScreen() {
             valueFontSize={20}
             colors={colors}
           />
-          <FinanceMetricCard
+          <FinanceMetricCard loading={shouldShowFinanceSkeleton}
             label="Entries"
             value={mySubmittedExpenseRequestPeriodStats.count.toLocaleString()}
             helper={expensePeriodWindow.label}
@@ -5938,7 +9300,7 @@ export default function FinanceScreen() {
       <>
         {periodPills}
         <View className="mt-4" style={{ flexDirection: 'row', gap: 12 }}>
-          <FinanceMetricCard
+          <FinanceMetricCard loading={shouldShowFinanceSkeleton}
             label="Expense Total"
             value={formatCurrency(mySubmittedExpenseRequestPeriodStats.total)}
             helper={expensePeriodWindow.label}
@@ -5948,7 +9310,7 @@ export default function FinanceScreen() {
             valueFontSize={20}
             colors={colors}
           />
-          <FinanceMetricCard
+          <FinanceMetricCard loading={shouldShowFinanceSkeleton}
             label="Entries"
             value={mySubmittedExpenseRequestPeriodStats.count.toLocaleString()}
             helper={expensePeriodWindow.label}
@@ -5968,15 +9330,14 @@ export default function FinanceScreen() {
     return (
       <Pressable
         onPress={() => openExpenseApprovalWorkspace()}
-        disabled={rows.length === 0}
         className="mt-4 rounded-2xl p-4"
-        style={{ ...colors.getCardStyle(), opacity: rows.length === 0 ? 0.6 : 1 }}
+        style={colors.getCardStyle()}
       >
         <View className="flex-row items-center justify-between" style={{ gap: 12 }}>
           <View style={{ flex: 1 }}>
             <Text style={{ color: colors.text.primary }} className="text-base font-semibold">Pending Approvals</Text>
             <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1">
-              Tap to open all pending expense approvals.
+              {rows.length === 0 ? 'No pending expense requests right now.' : 'Tap to open all pending expense approvals.'}
             </Text>
           </View>
           <View
@@ -5990,6 +9351,470 @@ export default function FinanceScreen() {
             }}
           >
             <Text style={{ color: pendingBadgeText, fontSize: 12, fontWeight: '700' }}>{rows.length > 9 ? '9+' : rows.length}</Text>
+          </View>
+        </View>
+      </Pressable>
+    );
+  };
+
+  const renderRevenueTopCards = () => {
+    const periodPills = (
+      <View style={{ marginTop: isWebDesktop ? 0 : 16 }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
+          {overviewRangeOptions.map((option) => (
+            <FinanceFilterPill
+              key={option.key}
+              label={option.label}
+              active={revenuePeriod === option.key}
+              onPress={() => setRevenuePeriod(option.key)}
+              colors={colors}
+            />
+          ))}
+        </ScrollView>
+      </View>
+    );
+
+    const cards = (
+      <View className="mt-4" style={{ flexDirection: 'row', gap: 12 }}>
+        <FinanceMetricCard loading={shouldShowFinanceSkeleton}
+          label="Gross Revenue"
+          value={formatCurrency(revenuePeriodStats.grossRevenue)}
+          helper={revenuePeriodWindow.label}
+          helperTone="neutral"
+          trendPlacement="right"
+          compactTrend={isCompactLayout}
+          valueFontSize={isWebDesktop ? 24 : 20}
+          colors={colors}
+        />
+        <FinanceMetricCard loading={shouldShowFinanceSkeleton}
+          label="Net Revenue"
+          value={formatCurrency(revenuePeriodStats.netRevenue)}
+          helper="After fees, stamp duty, refunds"
+          helperTone={revenuePeriodStats.netRevenue >= 0 ? 'positive' : 'negative'}
+          trendPlacement="right"
+          compactTrend={isCompactLayout}
+          valueFontSize={isWebDesktop ? 24 : 20}
+          colors={colors}
+        />
+      </View>
+    );
+
+    if (isMobile) return cards;
+    return (
+      <>
+        {periodPills}
+        {cards}
+        <View className="mt-4" style={{ flexDirection: 'row', gap: 12 }}>
+          <FinanceMetricCard loading={shouldShowFinanceSkeleton}
+            label="Orders"
+            value={revenuePeriodStats.count.toLocaleString()}
+            helper={revenuePeriodWindow.label}
+            helperTone="neutral"
+            trendPlacement="right"
+            compactTrend={isCompactLayout}
+            valueFontSize={isWebDesktop ? 24 : 20}
+            colors={colors}
+          />
+          <FinanceMetricCard loading={shouldShowFinanceSkeleton}
+            label="Average Order"
+            value={formatCurrency(revenuePeriodStats.averageOrderValue)}
+            helper="Gross revenue / orders"
+            helperTone="neutral"
+            trendPlacement="right"
+            compactTrend={isCompactLayout}
+            valueFontSize={isWebDesktop ? 24 : 20}
+            colors={colors}
+          />
+        </View>
+      </>
+    );
+  };
+
+  const revenueSortLabel = expenseSortOptions.find((option) => option.key === revenueSort)?.label ?? 'Newest first';
+
+  const renderRevenue = () => (
+    <View style={isWebDesktop ? { maxWidth: 1440, width: '100%', alignSelf: 'flex-start' } : undefined}>
+      <View style={{ marginTop: financeSectionTopMargin }}>
+        {!isWebDesktop ? (
+          <View>
+            <Text style={{ color: colors.text.primary }} className="text-2xl font-bold">Revenue</Text>
+            <Text style={{ color: colors.text.tertiary }} className="text-sm mt-1">Track sales intake, deductions, and net revenue</Text>
+          </View>
+        ) : null}
+
+        {renderRevenueTopCards()}
+
+        <View className="mt-4" style={isWebDesktop ? { flexDirection: 'row', gap: 12, alignItems: 'stretch' } : { gap: 12 }}>
+          <View
+            style={[
+              isWebDesktop ? { flex: 1, minHeight: 320 } : undefined,
+              colors.getCardStyle(),
+            ]}
+            className="rounded-2xl p-5"
+          >
+            <Text style={{ color: colors.text.primary }} className="text-lg font-bold mb-4">Revenue trend</Text>
+            <InteractiveLineChart
+              data={revenuePeriodTrendData}
+              height={isWebDesktop ? 220 : 220}
+              lineColor={colors.bar}
+              gridColor={colors.divider}
+              textColor={colors.text.tertiary}
+              formatYLabel={formatAxisCurrency}
+            />
+          </View>
+          <View
+            style={[
+              isWebDesktop ? { flex: 1, minHeight: 320 } : undefined,
+              colors.getCardStyle(),
+            ]}
+            className="rounded-2xl p-5"
+          >
+            <Text style={{ color: colors.text.primary }} className="text-lg font-bold mb-4">Revenue deductions</Text>
+            <View className="flex-row items-center pb-3 mb-2" style={{ borderBottomWidth: 1, borderBottomColor: colors.divider }}>
+              <Text style={{ color: colors.text.tertiary }} className="text-xs font-medium flex-1">Metric</Text>
+              <Text style={{ color: colors.text.tertiary }} className="text-xs font-medium text-right">Amount</Text>
+              <Text style={{ color: colors.text.tertiary }} className="text-xs font-medium text-right w-14 ml-3">Share</Text>
+            </View>
+            <View style={{ flex: 1, justifyContent: 'space-between' }}>
+              {revenueDeductionRows.map((row, index) => (
+                <View
+                  key={`${row.label}-${index}`}
+                  className="flex-row items-center"
+                  style={{
+                    paddingVertical: 10,
+                    borderBottomWidth: index < revenueDeductionRows.length - 1 ? 1 : 0,
+                    borderBottomColor: colors.divider,
+                  }}
+                >
+                  <Text style={{ color: colors.text.primary }} className="text-sm font-medium flex-1" numberOfLines={1}>
+                    {row.label}
+                  </Text>
+                  <Text style={{ color: colors.text.primary }} className="text-sm font-semibold text-right" numberOfLines={1}>
+                    {row.value}
+                  </Text>
+                  <View className="ml-3 w-14 items-end">
+                    <View className="px-2 py-0.5 rounded" style={{ backgroundColor: colors.bg.input }}>
+                      <Text style={{ color: colors.text.secondary }} className="text-xs font-medium">
+                        {row.percentage}%
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </View>
+        </View>
+
+        <View className="mt-4" style={isWebDesktop ? { flexDirection: 'row', gap: 12, alignItems: 'stretch' } : { gap: 12 }}>
+          <View style={isWebDesktop ? { flex: 1 } : undefined}>
+            <BreakdownTable
+              title="Revenue by source"
+              data={revenueSourceRows}
+              columns={{ label: 'Source', value: 'Amount', percentage: 'Share' }}
+              emptyMessage="No source revenue in this range"
+              containerStyle={isWebDesktop ? { minHeight: 300 } : undefined}
+            />
+          </View>
+          <View style={isWebDesktop ? { flex: 1 } : undefined}>
+            <BreakdownTable
+              title="Revenue by payment method"
+              data={revenuePaymentRows}
+              columns={{ label: 'Method', value: 'Amount', percentage: 'Share' }}
+              emptyMessage="No payment revenue in this range"
+              containerStyle={isWebDesktop ? { minHeight: 300 } : undefined}
+            />
+          </View>
+        </View>
+
+        <View className="mt-4">
+          <BreakdownTable
+            title="Revenue by order category"
+            data={revenueCategoryRows}
+            columns={{ label: 'Category', value: 'Amount', percentage: 'Share' }}
+            emptyMessage="No category revenue in this range"
+            containerStyle={isWebDesktop ? { minHeight: 220 } : undefined}
+          />
+        </View>
+
+        <View className="mt-4">
+          <View className="flex-row items-center" style={{ gap: 12 }}>
+            <View
+              className="flex-row items-center rounded-full px-3"
+              style={{
+                height: 40,
+                width: isWebDesktop ? 320 : undefined,
+                flex: isWebDesktop ? undefined : 1,
+                backgroundColor: 'transparent',
+                borderWidth: 1,
+                borderColor: colors.divider,
+              }}
+            >
+              <Search size={15} color={colors.text.muted} strokeWidth={2} />
+              <TextInput
+                value={revenueSearchQuery}
+                onChangeText={setRevenueSearchQuery}
+                placeholder="Search revenue"
+                placeholderTextColor={colors.text.muted}
+                style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 14 }}
+              />
+            </View>
+            {isWebDesktop ? <View style={{ flex: 1 }} /> : null}
+            <Pressable
+              onPress={() => setShowRevenueFilterSheet(true)}
+              className="rounded-full flex-row items-center justify-center"
+              style={{
+                minWidth: isWebDesktop ? 148 : 40,
+                height: 40,
+                paddingHorizontal: isWebDesktop ? 14 : 0,
+                borderWidth: 1,
+                borderColor: revenueFilterSortCount > 0 ? colors.bar : colors.divider,
+                gap: 8,
+              }}
+            >
+              <Filter size={17} color={revenueFilterSortCount > 0 ? colors.bar : colors.text.tertiary} strokeWidth={2} />
+              {isWebDesktop ? (
+                <Text style={{ color: revenueFilterSortCount > 0 ? colors.bar : colors.text.secondary }} className="text-sm font-semibold" numberOfLines={1}>
+                  {revenueFilterSortCount > 0 ? `${revenueFilterSortCount} active` : revenueSortLabel}
+                </Text>
+              ) : null}
+            </Pressable>
+          </View>
+
+          <View className="mt-4 rounded-2xl overflow-hidden" style={{ borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card }}>
+            {isWebDesktop ? (
+              <View
+                style={{
+                  height: 52,
+                  paddingHorizontal: 22,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  borderBottomWidth: 1,
+                  borderBottomColor: colors.divider,
+                }}
+              >
+                <Text style={{ color: colors.text.tertiary, width: '13%', fontSize: 10, fontWeight: '700', letterSpacing: 0.7, textTransform: 'uppercase' }} numberOfLines={1}>Order</Text>
+                <Text style={{ color: colors.text.tertiary, width: '16%', fontSize: 10, fontWeight: '700', letterSpacing: 0.7, textTransform: 'uppercase' }} numberOfLines={1}>Customer</Text>
+                <Text style={{ color: colors.text.tertiary, width: '12%', fontSize: 10, fontWeight: '700', letterSpacing: 0.7, textTransform: 'uppercase' }} numberOfLines={1}>Source</Text>
+                <Text style={{ color: colors.text.tertiary, width: '13%', fontSize: 10, fontWeight: '700', letterSpacing: 0.7, textTransform: 'uppercase' }} numberOfLines={1}>Payment</Text>
+                <Text style={{ color: colors.text.tertiary, width: '11%', fontSize: 10, fontWeight: '700', letterSpacing: 0.7, textTransform: 'uppercase' }} numberOfLines={1}>Date</Text>
+                <Text style={{ color: colors.text.tertiary, width: '9%', fontSize: 10, fontWeight: '700', letterSpacing: 0.7, textAlign: 'left', textTransform: 'uppercase' }} numberOfLines={1}>Gross</Text>
+                <Text style={{ color: colors.text.tertiary, width: '8%', fontSize: 10, fontWeight: '700', letterSpacing: 0.7, textAlign: 'left', textTransform: 'uppercase' }} numberOfLines={1}>Fees</Text>
+                <Text style={{ color: colors.text.tertiary, width: '8%', fontSize: 10, fontWeight: '700', letterSpacing: 0.7, textAlign: 'left', textTransform: 'uppercase' }} numberOfLines={1}>Refund</Text>
+                <Text style={{ color: colors.text.tertiary, width: '10%', fontSize: 10, fontWeight: '700', letterSpacing: 0.7, textAlign: 'left', textTransform: 'uppercase' }} numberOfLines={1}>Net</Text>
+              </View>
+            ) : null}
+
+            {filteredRevenueRows.length === 0 ? (
+              <View className="items-center justify-center px-4 py-10">
+                <Text style={{ color: colors.text.primary }} className="text-base font-semibold">No revenue in this range</Text>
+                <Text style={{ color: colors.text.tertiary }} className="text-sm mt-1 text-center">
+                  Orders that match the selected period will show here.
+                </Text>
+              </View>
+            ) : filteredRevenueRows.map((row, index) => {
+              const feeTotal = row.gatewayFees + row.stampDuty;
+              return (
+                <Pressable
+                  key={row.id}
+                  onPress={() => openOrderInWorkspace(row.id)}
+                  className={isWebDesktop ? undefined : 'px-4'}
+                  style={{
+                    minHeight: isWebDesktop ? 64 : undefined,
+                    paddingHorizontal: isWebDesktop ? 22 : undefined,
+                    paddingVertical: isWebDesktop ? 0 : 14,
+                    flexDirection: isWebDesktop ? 'row' : undefined,
+                    alignItems: isWebDesktop ? 'center' : undefined,
+                    borderBottomWidth: index === filteredRevenueRows.length - 1 ? 0 : 1,
+                    borderBottomColor: colors.divider,
+                  }}
+                >
+                  {isWebDesktop ? (
+                    <>
+                      <Text style={{ color: colors.text.primary, width: '13%', fontSize: 12, fontWeight: '700' }} numberOfLines={1}>{row.orderNumber}</Text>
+                      <Text style={{ color: colors.text.secondary, width: '16%', fontSize: 12, fontWeight: '500' }} numberOfLines={1}>{row.customerName}</Text>
+                      <Text style={{ color: colors.text.secondary, width: '12%', fontSize: 12, fontWeight: '500' }} numberOfLines={1}>{`${row.category} · ${row.source}`}</Text>
+                      <Text style={{ color: colors.text.secondary, width: '13%', fontSize: 12, fontWeight: '500' }} numberOfLines={1}>{row.paymentMethod}</Text>
+                      <Text style={{ color: colors.text.secondary, width: '11%', fontSize: 12, fontWeight: '500' }} numberOfLines={1}>{row.date}</Text>
+                      <Text style={{ color: colors.text.primary, width: '9%', fontSize: 12, fontWeight: '700', textAlign: 'left' }} numberOfLines={1}>{formatCurrency(row.grossAmount)}</Text>
+                      <Text style={{ color: feeTotal > 0 ? colors.danger : colors.text.muted, width: '8%', fontSize: 12, fontWeight: '700', textAlign: 'left' }} numberOfLines={1}>{formatSignedCurrency(-feeTotal)}</Text>
+                      <Text style={{ color: row.refundAmount > 0 ? colors.danger : colors.text.muted, width: '8%', fontSize: 12, fontWeight: '700', textAlign: 'left' }} numberOfLines={1}>{formatSignedCurrency(-row.refundAmount)}</Text>
+                      <Text style={{ color: colors.text.primary, width: '10%', fontSize: 12, fontWeight: '700', textAlign: 'left' }} numberOfLines={1}>{formatCurrency(row.netAmount)}</Text>
+                    </>
+                  ) : (
+                    <View className="flex-row items-start justify-between" style={{ gap: 12 }}>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={{ color: colors.text.primary }} className="text-base font-semibold" numberOfLines={1}>{row.orderNumber}</Text>
+                        <Text style={{ color: colors.text.secondary }} className="text-sm mt-1" numberOfLines={1}>{row.customerName}</Text>
+                        <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1" numberOfLines={1}>{row.category} · {row.source} · {row.paymentMethod}</Text>
+                      </View>
+                      <View style={{ alignItems: 'flex-end', minWidth: 116 }}>
+                        <Text style={{ color: colors.text.primary }} className="text-base font-semibold" numberOfLines={1}>{formatCurrency(row.grossAmount)}</Text>
+                        <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1" numberOfLines={1}>
+                          Net {formatCurrency(row.netAmount)} · Refund {formatSignedCurrency(-row.refundAmount)}
+                        </Text>
+                      </View>
+                    </View>
+                  )}
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      </View>
+    </View>
+  );
+
+  const renderSalaryTopCards = () => {
+    const periodPills = (
+      <View style={{ marginTop: isWebDesktop ? 0 : 16 }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
+          {overviewRangeOptions.map((option) => (
+            <FinanceFilterPill
+              key={option.key}
+              label={option.label}
+              active={salaryPeriod === option.key}
+              onPress={() => setSalaryPeriod(option.key)}
+              colors={colors}
+            />
+          ))}
+        </ScrollView>
+      </View>
+    );
+
+    if (isWebDesktop) {
+      return (
+        <>
+          {periodPills}
+          <View className="mt-4" style={{ flexDirection: 'row', gap: 12 }}>
+            <FinanceMetricCard loading={shouldShowFinanceSkeleton}
+              label="Salary Total"
+              value={formatCurrency(salaryPeriodStats.total)}
+              helper={salaryPeriodWindow.label}
+              helperTone="neutral"
+              trendPlacement="right"
+              compactTrend={isCompactLayout}
+              valueFontSize={24}
+              colors={colors}
+            />
+            <FinanceMetricCard loading={shouldShowFinanceSkeleton}
+              label="Runs"
+              value={salaryPeriodStats.count.toLocaleString()}
+              helper={salaryPeriodWindow.label}
+              helperTone="neutral"
+              trendPlacement="right"
+              compactTrend={isCompactLayout}
+              valueFontSize={24}
+              colors={colors}
+            />
+          </View>
+        </>
+      );
+    }
+
+    if (isMobile) {
+      return (
+        <View className="mt-4" style={{ flexDirection: 'row', gap: 12 }}>
+          <FinanceMetricCard loading={shouldShowFinanceSkeleton}
+            label="Salary Total"
+            value={formatCurrency(salaryPeriodStats.total)}
+            helper={salaryPeriodWindow.label}
+            helperTone="neutral"
+            trendPlacement="right"
+            compactTrend={isCompactLayout}
+            valueFontSize={20}
+            colors={colors}
+          />
+          <FinanceMetricCard loading={shouldShowFinanceSkeleton}
+            label="Runs"
+            value={salaryPeriodStats.count.toLocaleString()}
+            helper={salaryPeriodWindow.label}
+            helperTone="neutral"
+            trendPlacement="right"
+            compactTrend={isCompactLayout}
+            valueFontSize={20}
+            colors={colors}
+          />
+        </View>
+      );
+    }
+
+    return (
+      <>
+        {periodPills}
+        <View className="mt-4" style={{ flexDirection: 'row', gap: 12 }}>
+          <FinanceMetricCard loading={shouldShowFinanceSkeleton}
+            label="Salary Total"
+            value={formatCurrency(salaryPeriodStats.total)}
+            helper={salaryPeriodWindow.label}
+            helperTone="neutral"
+            trendPlacement="right"
+            compactTrend={isCompactLayout}
+            valueFontSize={20}
+            colors={colors}
+          />
+          <FinanceMetricCard loading={shouldShowFinanceSkeleton}
+            label="Runs"
+            value={salaryPeriodStats.count.toLocaleString()}
+            helper={salaryPeriodWindow.label}
+            helperTone="neutral"
+            trendPlacement="right"
+            compactTrend={isCompactLayout}
+            valueFontSize={20}
+            colors={colors}
+          />
+        </View>
+      </>
+    );
+  };
+
+  const renderSalaryTemplateActionCard = () => {
+    const canRunSalary = salaryTemplates.length > 0;
+    const badgeLabel = canRunSalary
+      ? (salaryTemplates.length > 99 ? '99+' : String(salaryTemplates.length))
+      : '0';
+
+    return (
+      <Pressable
+        onPress={() => {
+          if (canRunSalary) {
+            openSalaryRunLauncher();
+            return;
+          }
+          if (isFinanceApprover) {
+            openSalaryTemplatesSettings();
+          }
+        }}
+        disabled={!canRunSalary && !isFinanceApprover}
+        className="mt-4 rounded-2xl p-4"
+        style={{ ...colors.getCardStyle(), opacity: !canRunSalary && !isFinanceApprover ? 0.6 : 1 }}
+      >
+        <View className="flex-row items-center justify-between" style={{ gap: 12 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: colors.text.primary }} className="text-base font-semibold">
+              {canRunSalary ? 'Run Salary' : 'Salary Templates'}
+            </Text>
+            <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1">
+              {canRunSalary
+                ? 'Tap to choose a template and start this month’s salary run.'
+                : isFinanceApprover
+                  ? 'Tap to open salary templates and set up payroll.'
+                  : 'An admin needs to create a salary template before payroll can be run.'}
+            </Text>
+          </View>
+          <View
+            className="rounded-full items-center justify-center"
+            style={{
+              minWidth: 30,
+              height: 30,
+              paddingHorizontal: 8,
+              borderWidth: 1,
+              borderColor: pendingBadgeBorder,
+              backgroundColor: pendingBadgeBg,
+            }}
+          >
+            <Text style={{ color: pendingBadgeText, fontSize: 12, fontWeight: '700' }}>
+              {badgeLabel}
+            </Text>
           </View>
         </View>
       </Pressable>
@@ -6155,6 +9980,24 @@ export default function FinanceScreen() {
             </View>
           </View>
 
+          {/* Breakdown */}
+          {approvalWorkspaceLineItems.length > 0 ? (
+            <View style={{ borderRadius: 20, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, padding: 20 }}>
+              <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 14 }}>Expense Breakdown</Text>
+              <View style={{ gap: 12 }}>
+                {approvalWorkspaceLineItems.map((line) => (
+                  <View key={line.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '500' }}>{line.label}</Text>
+                      <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 2 }}>{line.category}</Text>
+                    </View>
+                    <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }}>{formatCurrency(line.amount)}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          ) : null}
+
           {/* Evidence */}
           <View style={{ borderRadius: 20, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, padding: 20 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
@@ -6190,24 +10033,6 @@ export default function FinanceScreen() {
               </View>
             )}
           </View>
-
-          {/* Breakdown (if multi-line) */}
-          {approvalWorkspaceLineItems.length > 1 ? (
-            <View style={{ borderRadius: 20, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, padding: 20 }}>
-              <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 14 }}>Expense Breakdown</Text>
-              <View style={{ gap: 12 }}>
-                {approvalWorkspaceLineItems.map((line) => (
-                  <View key={line.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '500' }}>{line.label}</Text>
-                      <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 2 }}>{line.category}</Text>
-                    </View>
-                    <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }}>{formatCurrency(line.amount)}</Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-          ) : null}
         </ScrollView>
       );
 
@@ -6316,6 +10141,22 @@ export default function FinanceScreen() {
               <Text style={{ color: colors.text.primary, fontSize: 20, fontWeight: '800', marginTop: 2 }}>{formatCurrency(totalDeductionForSelected)}</Text>
             </View>
           </View>
+          {approvalWorkspaceLineItems.length > 0 ? (
+            <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, padding: 16 }}>
+              <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 12 }}>Expense Breakdown</Text>
+              <View style={{ gap: 12 }}>
+                {approvalWorkspaceLineItems.map((line) => (
+                  <View key={line.id} style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '500' }}>{line.label}</Text>
+                      <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 2 }}>{line.category}</Text>
+                    </View>
+                    <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }}>{formatCurrency(line.amount)}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          ) : null}
           <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, padding: 16 }}>
             <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 12 }}>Proof of Payment</Text>
             {(req.receipts ?? []).length === 0 ? (
@@ -6875,6 +10716,14 @@ export default function FinanceScreen() {
     const requestTotalDebit = Number.isFinite(request.totalDebitAmount ?? NaN)
       ? Math.max(0, request.totalDebitAmount ?? 0)
       : request.amount + requestBankChargeAmount + requestStampDutyAmount;
+    const refundBreakdownRows = [
+      { label: 'Refund Amount', value: formatCurrency(request.amount) },
+      ...(request.applyBankCharges ? [
+        { label: 'NIP Fee + VAT', value: formatCurrency(requestBankChargeAmount) },
+        { label: 'Stamp Duty', value: formatCurrency(requestStampDutyAmount) },
+      ] : []),
+      { label: 'Total Debit', value: formatCurrency(requestTotalDebit), emphasize: true },
+    ];
 
     return (
       <>
@@ -6883,54 +10732,113 @@ export default function FinanceScreen() {
           style={isPanel ? { flex: 1 } : (isWebDesktop ? { maxHeight: 560 } : { flex: 1 })}
           contentContainerStyle={{ paddingTop: isPanel ? 0 : 18, paddingBottom: 12, gap: 14 }}
         >
-          <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.input, padding: 16, gap: 8 }}>
-            <View className="flex-row items-center justify-between" style={{ gap: 12 }}>
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: colors.text.primary, fontSize: 18, fontWeight: '400' }}>{request.orderNumber}</Text>
-                <Text style={{ color: colors.text.secondary, fontSize: 13, marginTop: 2 }}>{request.customerName}</Text>
+          <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, overflow: 'hidden' }}>
+            <View style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: colors.divider }}>
+              <View className="flex-row items-start justify-between" style={{ gap: 12 }}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
+                    Refund
+                  </Text>
+                  <Pressable
+                    onPress={() => openOrderInWorkspace(request.orderId)}
+                    style={{ alignSelf: 'flex-start', maxWidth: '100%' }}
+                  >
+                    <Text style={{ color: colors.text.primary, fontSize: isPanel ? 18 : 20, fontWeight: '600', lineHeight: isPanel ? 22 : 24 }} numberOfLines={1}>
+                      {request.orderNumber}
+                    </Text>
+                  </Pressable>
+                  <Text style={{ color: colors.text.secondary, fontSize: 13, marginTop: 4 }} numberOfLines={1}>
+                    {capitalizeDisplayValue(request.customerName)}
+                  </Text>
+                </View>
+                <StatusBadge label={capitalizeDisplayValue(formatRefundRequestStatusLabel(request))} colors={colors} maxWidth={140} />
               </View>
-              <StatusBadge label={formatRefundRequestStatusLabel(request)} colors={colors} maxWidth={140} />
+              <Text style={{ color: colors.text.primary, fontSize: isPanel ? 30 : 36, fontWeight: '500', marginTop: 14 }}>
+                {formatCurrency(request.amount)}
+              </Text>
+              <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 6 }}>
+                Requested on {new Date(request.requestedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+              </Text>
             </View>
-            <Text style={{ color: colors.text.primary, fontSize: 22, fontWeight: '500' }}>{formatCurrency(request.amount)}</Text>
-            <Text style={{ color: colors.text.tertiary, fontSize: 12 }}>
-              Requested on {new Date(request.requestedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-            </Text>
+            <View style={{ flexDirection: 'row' }}>
+              <View style={{ flex: 1, paddingHorizontal: 16, paddingVertical: 14 }}>
+                <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }}>Customer</Text>
+                <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600', marginTop: 4 }} numberOfLines={1}>
+                  {capitalizeDisplayValue(request.customerName)}
+                </Text>
+              </View>
+              <View style={{ width: 1, backgroundColor: colors.divider }} />
+              <View style={{ flex: 1, paddingHorizontal: 16, paddingVertical: 14 }}>
+                <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }}>Refund Type</Text>
+                <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600', marginTop: 4 }} numberOfLines={1}>
+                  {request.refundType === 'full' ? 'Full refund' : 'Partial refund'}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, padding: 16 }}>
+            <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>Status</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {refundRequestStatusOptions.map((option) => {
+                const isSelected = request.status === option.key;
+                return (
+                  <Pressable
+                    key={option.key}
+                    onPress={() => {
+                      void handleUpdateRefundRequestStatus(request.id, option.key);
+                    }}
+                    style={{
+                      height: 34,
+                      paddingHorizontal: 12,
+                      borderRadius: 999,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: isSelected ? colors.bg.input : 'transparent',
+                      borderWidth: 1,
+                      borderColor: isSelected ? colors.text.primary : colors.divider,
+                    }}
+                  >
+                    <Text style={{ color: isSelected ? colors.text.primary : colors.text.secondary, fontSize: 12, fontWeight: '600' }}>{option.label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+
+          <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, overflow: 'hidden' }}>
+            <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12 }}>
+              <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 }}>Payment Breakdown</Text>
+            </View>
+            <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
+              {refundBreakdownRows.map((row, index) => (
+                <View
+                  key={row.label}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    paddingVertical: 8,
+                    borderBottomWidth: index === refundBreakdownRows.length - 1 ? 0 : 1,
+                    borderBottomColor: colors.divider,
+                    gap: 12,
+                  }}
+                >
+                  <Text style={{ color: colors.text.tertiary, fontSize: 13 }}>{row.label}</Text>
+                  <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: row.emphasize ? '700' : '600', textAlign: 'right' }}>
+                    {row.value}
+                  </Text>
+                </View>
+              ))}
+            </View>
           </View>
 
           <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, padding: 16, gap: 10 }}>
             <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 }}>Request Details</Text>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
-              <Text style={{ color: colors.text.tertiary, fontSize: 13 }}>Refund Type</Text>
-              <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }}>
-                {request.refundType === 'full' ? 'Full refund' : 'Partial refund'}
-              </Text>
-            </View>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
               <Text style={{ color: colors.text.tertiary, fontSize: 13 }}>Bank Charges</Text>
               <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }}>
                 {request.applyBankCharges ? 'Applied' : 'Not applied'}
-              </Text>
-            </View>
-            {request.applyBankCharges ? (
-              <>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
-                  <Text style={{ color: colors.text.tertiary, fontSize: 13 }}>NIP Fee + VAT</Text>
-                  <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }}>
-                    {formatCurrency(requestBankChargeAmount)}
-                  </Text>
-                </View>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
-                  <Text style={{ color: colors.text.tertiary, fontSize: 13 }}>Stamp Duty</Text>
-                  <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }}>
-                    {formatCurrency(requestStampDutyAmount)}
-                  </Text>
-                </View>
-              </>
-            ) : null}
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
-              <Text style={{ color: colors.text.tertiary, fontSize: 13 }}>Total Debit</Text>
-              <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '700' }}>
-                {formatCurrency(requestTotalDebit)}
               </Text>
             </View>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
@@ -7364,7 +11272,7 @@ export default function FinanceScreen() {
           <>
             {periodPills}
             <View className="mt-4" style={{ flexDirection: 'row', gap: 12 }}>
-              <FinanceMetricCard
+              <FinanceMetricCard loading={shouldShowFinanceSkeleton}
                 label="Refund Total"
                 value={formatCurrency(refundPeriodStats.total)}
                 helper={refundPeriodWindow.label}
@@ -7374,7 +11282,7 @@ export default function FinanceScreen() {
                 valueFontSize={24}
                 colors={colors}
               />
-              <FinanceMetricCard
+              <FinanceMetricCard loading={shouldShowFinanceSkeleton}
                 label="Entries"
                 value={refundPeriodStats.count.toLocaleString()}
                 helper={refundPeriodWindow.label}
@@ -7392,7 +11300,7 @@ export default function FinanceScreen() {
       if (isMobile) {
         return (
           <View className="mt-4" style={{ flexDirection: 'row', gap: 12 }}>
-            <FinanceMetricCard
+            <FinanceMetricCard loading={shouldShowFinanceSkeleton}
               label="Refund Total"
               value={formatCurrency(refundPeriodStats.total)}
               helper={refundPeriodWindow.label}
@@ -7402,7 +11310,7 @@ export default function FinanceScreen() {
               valueFontSize={20}
               colors={colors}
             />
-            <FinanceMetricCard
+            <FinanceMetricCard loading={shouldShowFinanceSkeleton}
               label="Entries"
               value={refundPeriodStats.count.toLocaleString()}
               helper={refundPeriodWindow.label}
@@ -7420,7 +11328,7 @@ export default function FinanceScreen() {
         <>
           {periodPills}
           <View className="mt-4" style={{ flexDirection: 'row', gap: 12 }}>
-            <FinanceMetricCard
+            <FinanceMetricCard loading={shouldShowFinanceSkeleton}
               label="Refund Total"
               value={formatCurrency(refundPeriodStats.total)}
               helper={refundPeriodWindow.label}
@@ -7430,7 +11338,7 @@ export default function FinanceScreen() {
               valueFontSize={20}
               colors={colors}
             />
-            <FinanceMetricCard
+            <FinanceMetricCard loading={shouldShowFinanceSkeleton}
               label="Entries"
               value={refundPeriodStats.count.toLocaleString()}
               helper={refundPeriodWindow.label}
@@ -7446,6 +11354,11 @@ export default function FinanceScreen() {
     };
 
     const visiblePendingCount = isFinanceApprover ? pendingRefundApprovalRows.length : myPendingRefundRequestRows.length;
+    const isWebFinanceApproverRefunds = isFinanceApprover && isWebDesktop;
+    const refundRowsForTable = isShowingWebRefundApprovals ? filteredPendingRefundApprovalRows : filteredRefundRequestRows;
+    const refundTotalForToolbar = isShowingWebRefundApprovals
+      ? refundRowsForTable.reduce((sum, row) => sum + (row.status === 'void' ? 0 : row.amount), 0)
+      : filteredRefundRequestsTotal;
 
     return (
       <View style={{ marginTop: activeTab === 'refunds' ? financeSectionTopMargin : 24 }}>
@@ -7459,7 +11372,7 @@ export default function FinanceScreen() {
             </View>
             {canCreateRefundRequest ? (
               <Pressable
-                onPress={() => {
+                onPress={async () => {
                   void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                   openRefundRequestComposer();
                 }}
@@ -7475,60 +11388,107 @@ export default function FinanceScreen() {
 
         {renderRefundRequestTopCards()}
 
-        <Pressable
-          onPress={() => {
-            if (!isFinanceApprover) {
-              const hasSubmittedRefunds = myPendingRefundRequestRows.some((row) => row.status === 'submitted');
-              const hasApprovedRefunds = myPendingRefundRequestRows.some((row) => row.status === 'approved');
-              setRefundRequestFilter(hasSubmittedRefunds ? 'submitted' : hasApprovedRefunds ? 'approved' : 'all');
-              return;
-            }
+        {!isWebFinanceApproverRefunds ? (
+          <Pressable
+            onPress={() => {
+              if (!isFinanceApprover) {
+                const hasSubmittedRefunds = myPendingRefundRequestRows.some((row) => row.status === 'submitted');
+                const hasApprovedRefunds = myPendingRefundRequestRows.some((row) => row.status === 'approved');
+                setRefundRequestFilter(hasSubmittedRefunds ? 'submitted' : hasApprovedRefunds ? 'approved' : 'all');
+                return;
+              }
 
-            const hasSubmittedRefunds = pendingRefundApprovalRows.some((row) => row.status === 'submitted');
-            if (hasSubmittedRefunds) {
-              setRefundRequestFilter('submitted');
-              return;
-            }
+              const hasSubmittedRefunds = pendingRefundApprovalRows.some((row) => row.status === 'submitted');
+              if (hasSubmittedRefunds) {
+                setRefundRequestFilter('submitted');
+                return;
+              }
 
-            const hasApprovedRefunds = pendingRefundApprovalRows.some((row) => row.status === 'approved');
-            setRefundRequestFilter(hasApprovedRefunds ? 'approved' : 'all');
-          }}
-          disabled={visiblePendingCount === 0}
-          className="mt-4 rounded-2xl p-4"
-          style={{ ...colors.getCardStyle(), opacity: visiblePendingCount === 0 ? 0.6 : 1 }}
-        >
-          <View className="flex-row items-center justify-between" style={{ gap: 12 }}>
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: colors.text.primary }} className="text-base font-semibold">
-                {isFinanceApprover ? 'Pending Refund Approvals' : 'My Pending Refunds'}
-              </Text>
-              <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1">
-                {isFinanceApprover
-                  ? 'Refund requests waiting for admin approval.'
-                  : 'Refund requests waiting for admin review or payout completion.'}
-              </Text>
+              const hasApprovedRefunds = pendingRefundApprovalRows.some((row) => row.status === 'approved');
+              setRefundRequestFilter(hasApprovedRefunds ? 'approved' : 'all');
+            }}
+            disabled={visiblePendingCount === 0}
+            className="mt-4 rounded-2xl p-4"
+            style={{ ...colors.getCardStyle(), opacity: visiblePendingCount === 0 ? 0.6 : 1 }}
+          >
+            <View className="flex-row items-center justify-between" style={{ gap: 12 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.text.primary }} className="text-base font-semibold">
+                  {isFinanceApprover ? 'Pending Refund Approvals' : 'My Pending Refunds'}
+                </Text>
+                <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1">
+                  {isFinanceApprover
+                    ? 'Refund requests waiting for admin approval.'
+                    : 'Refund requests waiting for admin review or payout completion.'}
+                </Text>
+              </View>
+              <View
+                className="rounded-full items-center justify-center"
+                style={{
+                  width: 30,
+                  height: 30,
+                  borderWidth: 1,
+                  borderColor: pendingBadgeBorder,
+                  backgroundColor: pendingBadgeBg,
+                }}
+              >
+                <Text style={{ color: pendingBadgeText, fontSize: 13, fontWeight: '700' }}>
+                  {visiblePendingCount > 9 ? '9+' : visiblePendingCount}
+                </Text>
+              </View>
             </View>
-            <View
-              className="rounded-full items-center justify-center"
+          </Pressable>
+        ) : null}
+
+        {isWebFinanceApproverRefunds ? (
+          <View className="flex-row items-center" style={{ gap: 8, marginTop: financeSectionControlsMargin }}>
+            <Pressable
+              onPress={() => setRefundWorkspaceView('list')}
+              className="rounded-full px-4 flex-row items-center justify-center"
               style={{
-                width: 30,
-                height: 30,
+                height: 36,
                 borderWidth: 1,
-                borderColor: pendingBadgeBorder,
-                backgroundColor: pendingBadgeBg,
+                borderColor: refundWorkspaceView === 'list' ? colors.bar : colors.divider,
+                backgroundColor: refundWorkspaceView === 'list' ? colors.bar : 'transparent',
               }}
             >
-              <Text style={{ color: pendingBadgeText, fontSize: 13, fontWeight: '700' }}>
-                {visiblePendingCount > 9 ? '9+' : visiblePendingCount}
+              <Text style={{ color: refundWorkspaceView === 'list' ? colors.bg.screen : colors.text.secondary }} className="text-sm font-semibold">
+                Refunds
               </Text>
-            </View>
+            </Pressable>
+            <Pressable
+              onPress={() => setRefundWorkspaceView('approvals')}
+              className="rounded-full px-3.5 flex-row items-center justify-center"
+              style={{
+                height: 36,
+                borderWidth: 1,
+                borderColor: refundWorkspaceView === 'approvals' ? pendingBadgeBorder : colors.divider,
+                backgroundColor: refundWorkspaceView === 'approvals' ? pendingBadgeBg : 'transparent',
+                gap: 8,
+              }}
+            >
+              <Text
+                style={{ color: refundWorkspaceView === 'approvals' ? pendingBadgeText : colors.text.secondary }}
+                className="text-sm font-semibold"
+              >
+                Pending Approvals
+              </Text>
+              <View
+                className="rounded-full items-center justify-center"
+                style={{
+                  minWidth: 22,
+                  height: 22,
+                  paddingHorizontal: 6,
+                  backgroundColor: pendingBadgeSolid,
+                }}
+              >
+                <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '700' }}>
+                  {pendingRefundApprovalRows.length > 99 ? '99+' : pendingRefundApprovalRows.length}
+                </Text>
+              </View>
+            </Pressable>
           </View>
-        </Pressable>
-
-        {renderTotalsInfoNote(
-          'Top cards use the selected period. Amount beside filter icon sums the visible refund list after search and filters.',
-          financeSectionControlsMargin
-        )}
+        ) : null}
 
         {isWebDesktop ? (
           <View className="flex-row items-center" style={{ gap: 12, marginTop: financeSectionControlsMargin }}>
@@ -7553,7 +11513,7 @@ export default function FinanceScreen() {
             </View>
             <View style={{ flex: 1 }} />
             <Text style={{ color: colors.text.primary }} className="text-lg font-semibold">
-              {formatCurrency(filteredRefundRequestsTotal)}
+              {formatCurrency(refundTotalForToolbar)}
             </Text>
             <View style={{ position: 'relative' }}>
               {refundRequestFilterSortCount > 0 ? (
@@ -7725,7 +11685,7 @@ export default function FinanceScreen() {
           </View>
         )}
 
-        {!isMobile ? (
+        {!isMobile && !isWebDesktop ? (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, marginTop: 10 }}>
             {refundRequestFilterOptions.map((option) => (
               <FinanceFilterPill
@@ -7767,15 +11727,15 @@ export default function FinanceScreen() {
             </View>
           ) : null}
 
-          {filteredRefundRequestRows.length === 0 ? (
+              {refundRowsForTable.length === 0 ? (
             <View className="items-center justify-center py-12">
               <Text style={{ color: colors.text.tertiary }} className="text-base">No refund requests found</Text>
             </View>
-          ) : filteredRefundRequestRows.map((row, index) => {
+          ) : refundRowsForTable.map((row, index) => {
             return (
               <Pressable
                 key={row.id}
-                onPress={() => {
+                onPress={async () => {
                   openRefundRequestDetail(row.id, { modal: !isWebDesktop });
                 }}
                 style={{
@@ -7820,7 +11780,7 @@ export default function FinanceScreen() {
                         {row.orderNumber}
                       </Text>
                       <Text style={{ color: colors.text.secondary }} className="text-sm mt-1" numberOfLines={1}>
-                        {`${row.customerName} · ${row.refundType === 'full' ? 'Full refund' : 'Partial refund'}`}
+                        {`${capitalizeDisplayValue(row.customerName)} · ${row.refundType === 'full' ? 'Full refund' : 'Partial refund'}`}
                       </Text>
                     </View>
                     <View style={{ alignItems: 'flex-end', minWidth: 120 }}>
@@ -7828,7 +11788,7 @@ export default function FinanceScreen() {
                         {formatCurrency(row.amount)}
                       </Text>
                       <View className="flex-row items-center mt-1" style={{ gap: 6 }}>
-                        <StatusBadge label={formatRefundRequestStatusLabel(row)} colors={colors} compact maxWidth={92} />
+                        <StatusBadge label={capitalizeDisplayValue(formatRefundRequestStatusLabel(row))} colors={colors} compact maxWidth={92} />
                         <Text style={{ color: colors.text.secondary }} className="text-xs" numberOfLines={1}>
                           {row.requestedDate}
                         </Text>
@@ -7912,11 +11872,6 @@ export default function FinanceScreen() {
             </View>
           </View>
         </Pressable>
-        {renderTotalsInfoNote(
-          'Top cards use the selected period. Amount beside filter icon sums your visible requests after search and filters.',
-          financeSectionControlsMargin
-        )}
-
         {isWebDesktop ? (
           <View className="flex-row items-center" style={{ gap: 12, marginTop: financeSectionControlsMargin }}>
             <View
@@ -8278,6 +12233,8 @@ export default function FinanceScreen() {
   );
 
   const renderProcurementTopCards = () => {
+    const isCostingSection = activeTab === 'costing';
+    const totalLabel = isCostingSection ? 'Costing Total' : 'Procurement Total';
     const cardStats = isFinanceApprover ? procurementPeriodStats : managerSubmittedProcurementPeriodStats;
     const periodPills = (
       <View style={{ marginTop: isWebDesktop ? 0 : 16 }}>
@@ -8300,8 +12257,8 @@ export default function FinanceScreen() {
         <>
           {periodPills}
           <View className="mt-4" style={{ flexDirection: 'row', gap: 12 }}>
-            <FinanceMetricCard
-              label="Procurement Total"
+            <FinanceMetricCard loading={shouldShowFinanceSkeleton}
+              label={totalLabel}
               value={formatCurrency(cardStats.total)}
               helper={procurementPeriodWindow.label}
               helperTone="neutral"
@@ -8310,7 +12267,7 @@ export default function FinanceScreen() {
               valueFontSize={24}
               colors={colors}
             />
-            <FinanceMetricCard
+            <FinanceMetricCard loading={shouldShowFinanceSkeleton}
               label="Entries"
               value={cardStats.count.toLocaleString()}
               helper={procurementPeriodWindow.label}
@@ -8328,8 +12285,8 @@ export default function FinanceScreen() {
     if (isMobile) {
       return (
         <View className="mt-4" style={{ flexDirection: 'row', gap: 12 }}>
-          <FinanceMetricCard
-            label="Procurement Total"
+          <FinanceMetricCard loading={shouldShowFinanceSkeleton}
+            label={totalLabel}
             value={formatCurrency(cardStats.total)}
             helper={procurementPeriodWindow.label}
             helperTone="neutral"
@@ -8338,7 +12295,7 @@ export default function FinanceScreen() {
             valueFontSize={20}
             colors={colors}
           />
-          <FinanceMetricCard
+          <FinanceMetricCard loading={shouldShowFinanceSkeleton}
             label="Entries"
             value={cardStats.count.toLocaleString()}
             helper={procurementPeriodWindow.label}
@@ -8356,8 +12313,8 @@ export default function FinanceScreen() {
       <>
         {periodPills}
         <View className="mt-4" style={{ flexDirection: 'row', gap: 12 }}>
-          <FinanceMetricCard
-            label="Procurement Total"
+          <FinanceMetricCard loading={shouldShowFinanceSkeleton}
+            label={totalLabel}
             value={formatCurrency(cardStats.total)}
             helper={procurementPeriodWindow.label}
             helperTone="neutral"
@@ -8366,7 +12323,7 @@ export default function FinanceScreen() {
             valueFontSize={20}
             colors={colors}
           />
-          <FinanceMetricCard
+          <FinanceMetricCard loading={shouldShowFinanceSkeleton}
             label="Entries"
             value={cardStats.count.toLocaleString()}
             helper={procurementPeriodWindow.label}
@@ -8409,7 +12366,7 @@ export default function FinanceScreen() {
 
           <View style={[{ flex: 1 }, colors.getCardStyle()]} className="rounded-2xl p-5">
             <Text style={{ color: colors.text.primary }} className="text-lg font-bold mb-4">
-              Outflow trend (expenses + procurement)
+              Total outflow trend
             </Text>
             <SalesBarChart
               data={outflowTrendData}
@@ -8425,7 +12382,7 @@ export default function FinanceScreen() {
         <View className="mt-4" style={{ flexDirection: 'row', gap: 12 }}>
           <View style={{ flex: 1 }}>
             <BreakdownTable
-              title="Monthly net snapshot"
+              title="Monthly cash snapshot"
               data={monthlySnapshotRows}
               columns={{ label: 'Month', value: 'Net' }}
             />
@@ -8466,7 +12423,7 @@ export default function FinanceScreen() {
 
         <View className="mt-4 rounded-2xl p-5" style={colors.getCardStyle()}>
           <Text style={{ color: colors.text.primary }} className="text-lg font-bold mb-4">
-            Outflow trend (expenses + procurement)
+            Total outflow trend
           </Text>
           <SalesBarChart
             data={outflowTrendData}
@@ -8489,13 +12446,199 @@ export default function FinanceScreen() {
 
         <View className="mt-4">
           <BreakdownTable
-            title="Monthly net snapshot"
+            title="Monthly cash snapshot"
             data={monthlySnapshotRows}
             columns={{ label: 'Month', value: 'Net' }}
           />
         </View>
       </>
     )
+  );
+
+  const renderOtherIncome = () => (
+    <View style={isWebDesktop ? { maxWidth: 1440, width: '100%', alignSelf: 'flex-start' } : undefined}>
+      <View style={{ marginTop: financeSectionTopMargin }}>
+        {!isWebDesktop ? (
+          <View className="flex-row items-start justify-between" style={{ gap: 12 }}>
+            <View style={{ flex: 1, paddingRight: 12 }}>
+              <Text style={{ color: colors.text.primary }} className="text-2xl font-bold">Other Income</Text>
+              <Text style={{ color: colors.text.tertiary }} className="text-sm mt-1">Track grants, owner funding, loans, and non-sales cash inflow</Text>
+            </View>
+            <Pressable
+              onPress={() => {
+                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                openOtherIncomeComposer();
+              }}
+              className="rounded-full active:opacity-80 px-3.5 flex-row items-center"
+              style={{ height: 40, backgroundColor: colors.bar }}
+            >
+              <Plus size={18} color={colors.bg.screen} strokeWidth={2.5} />
+              <Text style={{ color: colors.bg.screen }} className="font-semibold ml-1.5 text-sm">Add Income</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
+        <View style={{ marginTop: isWebDesktop ? 0 : 16 }}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
+            {overviewRangeOptions.map((option) => (
+              <FinanceFilterPill
+                key={option.key}
+                label={option.label}
+                active={otherIncomePeriod === option.key}
+                onPress={() => setOtherIncomePeriod(option.key)}
+                colors={colors}
+              />
+            ))}
+          </ScrollView>
+        </View>
+
+        <View className="mt-4" style={{ gap: 12 }}>
+          <View style={{ flexDirection: isWebDesktop ? 'row' : 'column', gap: 12 }}>
+            <FinanceMetricCard loading={shouldShowFinanceSkeleton}
+              label="Other Income"
+              value={formatCurrency(otherIncomePeriodStats.total)}
+              helper={otherIncomePeriodWindow.label}
+              helperTone="neutral"
+              valueFontSize={isWebDesktop ? 24 : 20}
+              colors={colors}
+            />
+            <FinanceMetricCard loading={shouldShowFinanceSkeleton}
+              label="Entries"
+              value={String(otherIncomePeriodStats.count)}
+              helper={otherIncomePeriodWindow.label}
+              helperTone="neutral"
+              valueFontSize={isWebDesktop ? 24 : 20}
+              colors={colors}
+            />
+          </View>
+          <View style={{ flexDirection: isWebDesktop ? 'row' : 'column', gap: 12 }}>
+            <FinanceMetricCard loading={shouldShowFinanceSkeleton}
+              label="Grant Inflow"
+              value={formatCurrency(otherIncomePeriodStats.grants)}
+              helper={otherIncomePeriodWindow.label}
+              helperTone="neutral"
+              valueFontSize={isWebDesktop ? 22 : 18}
+              colors={colors}
+            />
+            <FinanceMetricCard loading={shouldShowFinanceSkeleton}
+              label="Owner Funding"
+              value={formatCurrency(otherIncomePeriodStats.ownerContributions)}
+              helper={otherIncomePeriodWindow.label}
+              helperTone="neutral"
+              valueFontSize={isWebDesktop ? 22 : 18}
+              colors={colors}
+            />
+          </View>
+        </View>
+
+        <View style={{ gap: 10, marginTop: financeSectionControlsMargin }}>
+          <View className="flex-row items-center" style={{ gap: 10 }}>
+            <View
+              className="flex-row items-center rounded-full px-3"
+              style={{
+                flex: 1,
+                height: 40,
+                backgroundColor: 'transparent',
+                borderWidth: 1,
+                borderColor: colors.divider,
+              }}
+            >
+              <Search size={15} color={colors.text.muted} strokeWidth={2} />
+              <TextInput
+                value={otherIncomeSearchQuery}
+                onChangeText={setOtherIncomeSearchQuery}
+                placeholder="Search other income"
+                placeholderTextColor={colors.text.muted}
+                style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 14 }}
+              />
+            </View>
+            {!isMobile ? (
+              <Text style={{ color: colors.text.primary }} className="text-xl font-semibold">
+                {formatCurrency(otherIncomeTotalForToolbar)}
+              </Text>
+            ) : null}
+          </View>
+          {isMobile ? (
+            <Text style={{ color: colors.text.primary }} className="text-xl font-semibold">
+              {formatCurrency(otherIncomeTotalForToolbar)}
+            </Text>
+          ) : null}
+        </View>
+
+        <View
+          style={{
+            marginTop: financeSectionBodyMargin,
+            borderWidth: 1,
+            borderColor: colors.divider,
+            borderRadius: 16,
+            overflow: 'visible',
+            backgroundColor: colors.bg.card,
+            width: '100%',
+          }}
+        >
+          {isWebDesktop ? (
+            <View style={{ borderBottomWidth: 1, borderBottomColor: colors.divider }}>
+              <View className="grid grid-cols-12 items-center px-3 py-3" style={{ columnGap: 12 } as any}>
+                <Text style={{ color: colors.text.muted }} className="col-span-3 text-xs font-semibold uppercase">Title</Text>
+                <Text style={{ color: colors.text.muted }} className="col-span-3 text-xs font-semibold uppercase">Source</Text>
+                <Text style={{ color: colors.text.muted }} className="col-span-2 text-xs font-semibold uppercase">Type</Text>
+                <Text style={{ color: colors.text.muted }} className="col-span-2 text-xs font-semibold uppercase">Date</Text>
+                <Text style={{ color: colors.text.muted, textAlign: 'right' }} className="col-span-2 text-xs font-semibold uppercase">Amount</Text>
+              </View>
+            </View>
+          ) : null}
+
+          {filteredOtherIncomeRows.length === 0 ? (
+            <View className="items-center justify-center py-12">
+              <Text style={{ color: colors.text.tertiary }} className="text-base">No other income found</Text>
+            </View>
+          ) : filteredOtherIncomeRows.map((income, index) => (
+            <Pressable
+              key={income.id}
+              onPress={() => openOtherIncomeEditor(income.id)}
+              style={{
+                borderBottomWidth: index === filteredOtherIncomeRows.length - 1 ? 0 : 1,
+                borderBottomColor: colors.divider,
+              }}
+            >
+              {isWebDesktop ? (
+                <View className="grid grid-cols-12 items-center px-3 py-3.5" style={{ columnGap: 12 } as any}>
+                  <Text style={{ color: colors.text.primary }} className="col-span-3 text-sm font-normal" numberOfLines={1}>
+                    {income.title}
+                  </Text>
+                  <Text style={{ color: colors.text.secondary }} className="col-span-3 text-sm" numberOfLines={1}>
+                    {income.source}
+                  </Text>
+                  <View className="col-span-2" style={{ paddingRight: 8 }}>
+                    <StatusBadge label={formatOtherIncomeTypeLabel(income.type)} colors={colors} maxWidth={132} />
+                  </View>
+                  <Text style={{ color: colors.text.secondary }} className="col-span-2 text-sm" numberOfLines={1}>
+                    {income.date}
+                  </Text>
+                  <Text style={{ color: colors.text.primary, textAlign: 'right' }} className="col-span-2 text-sm font-normal" numberOfLines={1}>
+                    {formatCurrency(income.amount)}
+                  </Text>
+                </View>
+              ) : (
+                <View className="px-4 py-4">
+                  <View className="flex-row items-start justify-between" style={{ gap: 12 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: colors.text.primary }} className="text-base font-semibold">{income.title}</Text>
+                      <Text style={{ color: colors.text.secondary }} className="text-sm mt-1">{income.source}</Text>
+                    </View>
+                    <Text style={{ color: colors.text.primary }} className="text-base font-semibold">{formatCurrency(income.amount)}</Text>
+                  </View>
+                  <View className="flex-row items-center mt-3" style={{ gap: 8 }}>
+                    <StatusBadge label={formatOtherIncomeTypeLabel(income.type)} colors={colors} maxWidth={132} />
+                    <Text style={{ color: colors.text.tertiary, fontSize: 12 }}>{income.date}</Text>
+                  </View>
+                </View>
+              )}
+            </Pressable>
+          ))}
+        </View>
+      </View>
+    </View>
   );
 
   const renderExpenses = () => (
@@ -8541,7 +12684,13 @@ export default function FinanceScreen() {
               </Text>
             </Pressable>
             <Pressable
-              onPress={() => openExpenseApprovalWorkspace()}
+              onPress={() => {
+                setExpenseWorkspaceView('approvals');
+                setSelectedExpenseId(null);
+                setApprovalWorkspaceSelectedId(pendingExpenseApprovalRows[0]?.id ?? null);
+                setApprovalQueueSearchQuery('');
+                setApprovalInfoRequestNote('');
+              }}
               className="rounded-full px-3.5 flex-row items-center justify-center"
               style={{
                 height: 36,
@@ -8574,11 +12723,6 @@ export default function FinanceScreen() {
           </View>
         ) : null}
         {isFinanceApprover && !isWebDesktop ? renderOwnerExpenseApprovalQueue() : null}
-        {renderTotalsInfoNote(
-          'Top cards use the selected period. Amount beside filter icon sums the visible list after search and filters.',
-          financeSectionControlsMargin
-        )}
-
             {isWebDesktop ? (
               <View className="flex-row items-center" style={{ gap: 12, marginTop: financeSectionControlsMargin }}>
                 <View
@@ -8593,16 +12737,16 @@ export default function FinanceScreen() {
                 >
                   <Search size={15} color={colors.text.muted} strokeWidth={2} />
                   <TextInput
-                    value={expenseSearchQuery}
-                    onChangeText={setExpenseSearchQuery}
-                    placeholder="Search expenses"
+                    value={expenseSearchValue}
+                    onChangeText={setExpenseSearchValue}
+                    placeholder={isExpenseApprovalListMode ? 'Search pending approvals' : 'Search expenses'}
                     placeholderTextColor={colors.text.muted}
                     style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 14 }}
                   />
                 </View>
                 <View style={{ flex: 1 }} />
                 <Text style={{ color: colors.text.primary }} className="text-xl font-semibold">
-                  {formatCurrency(filteredExpensesTotal)}
+                  {formatCurrency(expenseTotalForToolbar)}
                 </Text>
                 <View style={{ position: 'relative' }}>
                   {expenseFilterSortCount > 0 ? (
@@ -8658,9 +12802,9 @@ export default function FinanceScreen() {
                   >
                     <Search size={15} color={colors.text.muted} strokeWidth={2} />
                     <TextInput
-                      value={expenseSearchQuery}
-                      onChangeText={setExpenseSearchQuery}
-                      placeholder="Search expenses"
+                      value={expenseSearchValue}
+                      onChangeText={setExpenseSearchValue}
+                      placeholder={isExpenseApprovalListMode ? 'Search pending approvals' : 'Search expenses'}
                       placeholderTextColor={colors.text.muted}
                       style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 14 }}
                     />
@@ -8719,20 +12863,20 @@ export default function FinanceScreen() {
                       borderColor: colors.divider,
                     }}
                   >
-                    <Search size={15} color={colors.text.muted} strokeWidth={2} />
-                    <TextInput
-                      value={expenseSearchQuery}
-                      onChangeText={setExpenseSearchQuery}
-                      placeholder="Search expenses"
-                      placeholderTextColor={colors.text.muted}
-                      style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 14 }}
-                    />
-                  </View>
-                  <Text style={{ color: colors.text.primary }} className="text-xl font-semibold">
-                    {formatCurrency(filteredExpensesTotal)}
-                  </Text>
-                  <View style={{ position: 'relative' }}>
-                    {expenseFilterSortCount > 0 ? (
+                  <Search size={15} color={colors.text.muted} strokeWidth={2} />
+                  <TextInput
+                    value={expenseSearchValue}
+                    onChangeText={setExpenseSearchValue}
+                    placeholder={isExpenseApprovalListMode ? 'Search pending approvals' : 'Search expenses'}
+                    placeholderTextColor={colors.text.muted}
+                    style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 14 }}
+                  />
+                </View>
+                <Text style={{ color: colors.text.primary }} className="text-xl font-semibold">
+                  {formatCurrency(expenseTotalForToolbar)}
+                </Text>
+                <View style={{ position: 'relative' }}>
+                  {expenseFilterSortCount > 0 ? (
                       <View
                         className="rounded-full items-center justify-center"
                         style={{
@@ -8787,94 +12931,175 @@ export default function FinanceScreen() {
             {isWebDesktop ? (
               <View style={{ borderBottomWidth: 1, borderBottomColor: colors.divider }}>
                 <View className="grid grid-cols-12 items-center px-3 py-3" style={{ columnGap: 12 } as any}>
-                  <Text style={{ color: colors.text.muted }} className="col-span-2 text-xs font-semibold uppercase">Name</Text>
-                  <Text style={{ color: colors.text.muted }} className="col-span-2 text-xs font-semibold uppercase">Supplier/Merchant</Text>
-                  <Text style={{ color: colors.text.muted }} className="col-span-2 text-xs font-semibold uppercase">Category</Text>
-                  <Text style={{ color: colors.text.muted }} className="col-span-2 text-xs font-semibold uppercase">Type</Text>
-                  <Text style={{ color: colors.text.muted }} className="col-span-2 text-xs font-semibold uppercase">Date</Text>
-                  <Text style={{ color: colors.text.muted, textAlign: 'right' }} className="col-span-1 text-xs font-semibold uppercase">Amount</Text>
-                  <View className="col-span-1" />
+                  {isExpenseApprovalListMode ? (
+                    <>
+                      <Text style={{ color: colors.text.muted }} className="col-span-2 text-xs font-semibold uppercase">Name</Text>
+                      <Text style={{ color: colors.text.muted }} className="col-span-2 text-xs font-semibold uppercase">Supplier/Merchant</Text>
+                      <Text style={{ color: colors.text.muted }} className="col-span-2 text-xs font-semibold uppercase">Category</Text>
+                      <Text style={{ color: colors.text.muted }} className="col-span-2 text-xs font-semibold uppercase">Submitted By</Text>
+                      <Text style={{ color: colors.text.muted }} className="col-span-1 text-xs font-semibold uppercase">Date</Text>
+                      <Text style={{ color: colors.text.muted, textAlign: 'right' }} className="col-span-1 text-xs font-semibold uppercase">Amount</Text>
+                      <View className="col-span-2" />
+                    </>
+                  ) : (
+                    <>
+                      <Text style={{ color: colors.text.muted }} className="col-span-2 text-xs font-semibold uppercase">Name</Text>
+                      <Text style={{ color: colors.text.muted }} className="col-span-2 text-xs font-semibold uppercase">Supplier/Merchant</Text>
+                      <Text style={{ color: colors.text.muted }} className="col-span-2 text-xs font-semibold uppercase">Category</Text>
+                      <Text style={{ color: colors.text.muted }} className="col-span-2 text-xs font-semibold uppercase">Type</Text>
+                      <Text style={{ color: colors.text.muted }} className="col-span-2 text-xs font-semibold uppercase">Date</Text>
+                      <Text style={{ color: colors.text.muted, textAlign: 'right' }} className="col-span-1 text-xs font-semibold uppercase">Amount</Text>
+                      <View className="col-span-1" />
+                    </>
+                  )}
                 </View>
               </View>
             ) : null}
 
-            {filteredExpenseRows.length === 0 ? (
+            {expenseRowsForTable.length === 0 ? (
               <View className="items-center justify-center py-12">
-                <Text style={{ color: colors.text.tertiary }} className="text-base">No expenses found</Text>
+                <Text style={{ color: colors.text.tertiary }} className="text-base">{expenseEmptyMessage}</Text>
               </View>
-            ) : filteredExpenseRows.map((expense, index) => (
+            ) : expenseRowsForTable.map((expense, index) => (
               <Pressable
                 key={expense.id}
                 onPress={() => {
+                  if (isExpenseApprovalListMode) {
+                    setApprovalDetailRequestId(expense.id);
+                    return;
+                  }
                   if (isMobile) {
                     router.push({ pathname: '/expense/[id]', params: { id: expense.id } } as any);
                   } else {
                     setSelectedExpenseId(expense.id);
                   }
                 }}
-                style={{
-                  borderBottomWidth: index === filteredExpenseRows.length - 1 ? 0 : 1,
+              style={{
+                  borderBottomWidth: index === expenseRowsForTable.length - 1 ? 0 : 1,
                   borderBottomColor: colors.divider,
                   position: 'relative',
                   zIndex: expenseActionMenuId === expense.id ? 40 : 1,
-                  backgroundColor: selectedExpenseId === expense.id ? colors.bg.input : 'transparent',
-                  borderLeftWidth: selectedExpenseId === expense.id ? 3 : 0,
+                  backgroundColor: !isExpenseApprovalListMode && selectedExpenseId === expense.id ? colors.bg.input : 'transparent',
+                  borderLeftWidth: !isExpenseApprovalListMode && selectedExpenseId === expense.id ? 3 : 0,
                   borderLeftColor: colors.bar,
                 }}
               >
                 {isWebDesktop ? (
                   <View className="grid grid-cols-12 items-center px-3 py-3.5" style={{ columnGap: 12 } as any}>
-                    <View className="col-span-2 flex-row items-center" style={{ gap: 8, minWidth: 0 }}>
-                      <Receipt size={16} color={colors.text.tertiary} strokeWidth={2} />
-                      <View style={{ minWidth: 0, flex: 1 }}>
-                        <Text style={{ color: colors.text.primary }} className="text-sm font-normal" numberOfLines={1} ellipsizeMode="tail">
-                          {expense.name}
+                    {isExpenseApprovalListMode ? (
+                      <>
+                        <View className="col-span-2" style={{ minWidth: 0 }}>
+                          <Text style={{ color: colors.text.primary }} className="text-sm font-semibold" numberOfLines={1}>
+                            {expense.name}
+                          </Text>
+                        </View>
+
+                        <Text style={{ color: colors.text.secondary }} className="col-span-2 text-sm" numberOfLines={1}>
+                          {expense.merchant || '—'}
                         </Text>
-                      </View>
-                    </View>
 
-                    <Text style={{ color: colors.text.secondary }} className="col-span-2 text-sm" numberOfLines={1}>
-                      {expense.merchant || '—'}
-                    </Text>
+                        <Text style={{ color: colors.text.secondary }} className="col-span-2 text-sm" numberOfLines={1}>
+                          {expense.category}
+                        </Text>
 
-                    <Text style={{ color: colors.text.secondary }} className="col-span-2 text-sm" numberOfLines={1}>
-                      {expense.category}
-                    </Text>
+                        <Text style={{ color: colors.text.secondary }} className="col-span-2 text-sm" numberOfLines={1}>
+                          {(expense as ExpenseRequestRow).submittedByName || 'Team Member'}
+                        </Text>
 
-                    <View className="col-span-2" style={{ paddingRight: 8 }}>
-                      <StatusBadge label={formatExpenseTypeLabel(expense.type)} colors={colors} maxWidth={112} />
-                    </View>
+                        <Text style={{ color: colors.text.secondary }} className="col-span-1 text-sm" numberOfLines={1}>
+                          {expense.date}
+                        </Text>
 
-                    <Text style={{ color: colors.text.secondary }} className="col-span-2 text-sm" numberOfLines={1}>
-                      {expense.date}
-                    </Text>
+                        <View className="col-span-1 items-end" style={{ minWidth: 0 }}>
+                          <Text
+                            style={{ color: colors.text.primary, textAlign: 'right', width: '100%' }}
+                            className="text-sm font-semibold"
+                            numberOfLines={1}
+                          >
+                            {formatCurrency(expense.amount)}
+                          </Text>
+                        </View>
 
-                    <Text style={{ color: colors.text.primary, textAlign: 'right' }} className="col-span-1 text-sm font-normal" numberOfLines={1}>
-                      {formatCurrency(expense.amount)}
-                    </Text>
+                        <View className="col-span-2 items-end">
+                          <View className="flex-row items-center justify-end" style={{ gap: 6, width: '100%' }}>
+                            <Pressable
+                              onPress={(event) => {
+                                event.stopPropagation();
+                                handleRejectExpenseRequest(expense.id);
+                              }}
+                              className="rounded-full px-2.5 items-center justify-center"
+                              style={{ height: 30, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.input }}
+                            >
+                              <Text style={{ color: colors.danger, fontSize: 12, fontWeight: '600' }}>Reject</Text>
+                            </Pressable>
+                            <Pressable
+                              onPress={(event) => {
+                                event.stopPropagation();
+                                handleApproveExpenseRequest(expense.id);
+                              }}
+                              className="rounded-full px-2.5 items-center justify-center"
+                              style={{ height: 30, backgroundColor: colors.bar }}
+                            >
+                              <Text style={{ color: colors.bg.screen, fontSize: 12, fontWeight: '700' }}>Approve</Text>
+                            </Pressable>
+                          </View>
+                        </View>
+                      </>
+                    ) : (
+                      <>
+                        <View className="col-span-2 flex-row items-center" style={{ gap: 8, minWidth: 0 }}>
+                          <Receipt size={16} color={colors.text.tertiary} strokeWidth={2} />
+                          <View style={{ minWidth: 0, flex: 1 }}>
+                            <Text style={{ color: colors.text.primary }} className="text-sm font-normal" numberOfLines={1} ellipsizeMode="tail">
+                              {expense.name}
+                            </Text>
+                          </View>
+                        </View>
 
-                    <View className="col-span-1 items-end">
-                      <Pressable
-                        onPress={(event) => {
-                          event.stopPropagation();
-                          setExpenseActionMenuId((current) => (current === expense.id ? null : expense.id));
-                        }}
-                        className="p-1.5 rounded-md"
-                        style={{ backgroundColor: expenseActionMenuId === expense.id ? colors.bg.input : 'transparent' }}
-                      >
-                        <MoreVertical size={16} color={colors.text.tertiary} strokeWidth={2} />
-                      </Pressable>
-                    </View>
+                        <Text style={{ color: colors.text.secondary }} className="col-span-2 text-sm" numberOfLines={1}>
+                          {expense.merchant || '—'}
+                        </Text>
+
+                        <Text style={{ color: colors.text.secondary }} className="col-span-2 text-sm" numberOfLines={1}>
+                          {expense.category}
+                        </Text>
+
+                        <View className="col-span-2" style={{ paddingRight: 8 }}>
+                          <StatusBadge label={formatExpenseTypeLabel(expense.type)} colors={colors} maxWidth={112} />
+                        </View>
+
+                        <Text style={{ color: colors.text.secondary }} className="col-span-2 text-sm" numberOfLines={1}>
+                          {expense.date}
+                        </Text>
+
+                        <Text style={{ color: colors.text.primary, textAlign: 'right' }} className="col-span-1 text-sm font-normal" numberOfLines={1}>
+                          {formatCurrency(expense.amount)}
+                        </Text>
+
+                        <View className="col-span-1 items-end">
+                          <Pressable
+                            onPress={(event) => {
+                              event.stopPropagation();
+                              setExpenseActionMenuId((current) => (current === expense.id ? null : expense.id));
+                            }}
+                            className="p-1.5 rounded-md"
+                            style={{ backgroundColor: expenseActionMenuId === expense.id ? colors.bg.input : 'transparent' }}
+                          >
+                            <MoreVertical size={16} color={colors.text.tertiary} strokeWidth={2} />
+                          </Pressable>
+                        </View>
+                      </>
+                    )}
                   </View>
                 ) : (
                   <View style={{ paddingHorizontal: 12, paddingVertical: 12 }}>
                     <View className="flex-row items-start justify-between" style={{ gap: 12 }}>
                       <View style={{ flex: 1, minWidth: 0 }}>
                         <Text style={{ color: colors.text.primary }} className="text-base font-normal" numberOfLines={1}>
-                          {expense.name}
+                          {capitalizeDisplayValue(expense.name)}
                         </Text>
                         <Text style={{ color: colors.text.secondary }} className="text-sm mt-1" numberOfLines={1}>
-                          {expense.category}
+                          {capitalizeDisplayValue(expense.category)}
                         </Text>
                       </View>
                       <View style={{ alignItems: 'flex-end', minWidth: 120 }}>
@@ -8933,9 +13158,9 @@ export default function FinanceScreen() {
             ))}
           </View>
 
-          {!isMobile && expenseActionMenuId ? (
-            <Pressable
-              onPress={() => setExpenseActionMenuId(null)}
+      {!isMobile && expenseActionMenuId ? (
+        <Pressable
+          onPress={() => setExpenseActionMenuId(null)}
               style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, zIndex: 25 }}
             />
           ) : null}
@@ -8943,13 +13168,104 @@ export default function FinanceScreen() {
     </View>
   );
 
-  const renderProcurement = () => (
+  const renderProcurement = () => {
+    const isCostingSection = activeTab === 'costing';
+    const showChildNav = isWebDesktop && !isCostingSection;
+    const showChildWorkspace = activeTab === 'procurement' && procurementChildPage !== 'overview';
+
+    if (showChildWorkspace) {
+      return (
+        <View style={{ maxWidth: 1440, width: '100%', alignSelf: 'flex-start' }}>
+          <ProcurementOrdersWorkspace
+            colors={colors}
+            procurements={procurements}
+            products={products}
+            warehouseItems={warehouseItems}
+            statusOptions={effectiveProcurementStatusOptions}
+            activeSection={procurementChildPage}
+            onNewOrder={() => openProcurementComposer('procurement')}
+            onEdit={openProcurementEditor}
+            onDuplicate={openProcurementDuplicate}
+            onDelete={handleDeleteProcurement}
+            onMoveItem={handleMoveProcurementItem}
+            onStatusChange={handleUpdateProcurementOrderStatus}
+            onCreateStatus={handleCreateProcurementOrderStatus}
+            onRenameStatus={handleRenameProcurementOrderStatus}
+            onReceivedChange={handleUpdateProcurementOrderReceived}
+            onProductChange={handleUpdateProcurementOrderProduct}
+            onPoNumberChange={handleUpdateProcurementOrderPoNumber}
+            onDateChange={handleUpdateProcurementOrderDate}
+            onItemFeeChange={handleUpdateProcurementOrderItemFee}
+            onQtyOrderedChange={handleUpdateProcurementOrderQtyOrdered}
+            onCreateInventoryProduct={handleCreateInventoryProductFromOrder}
+            onSaveQC={handleSaveQC}
+            productVariables={productVariables}
+            isMobile={isMobile}
+            loading={shouldShowFinanceSkeleton}
+          />
+        </View>
+      );
+    }
+    const sectionTitle = isCostingSection ? 'Costing' : 'Procurement';
+    const sectionSubtitle = isCostingSection
+      ? 'Track landed costs and margins separately from purchase orders'
+      : 'Manage purchase orders and supplier spend';
+    const createLabel = isCostingSection ? 'New Costing' : 'New PO';
+    const searchPlaceholder = isShowingWebProcurementApprovals
+      ? 'Search pending approvals'
+      : (isCostingSection ? 'Search costing' : 'Search procurement');
+    const renderProcurementTableSkeleton = () => (
+      <View>
+        {Array.from({ length: isWebDesktop ? 8 : 5 }).map((_, index) => (
+          <View
+            key={`procurement-skeleton-${index}`}
+            style={{
+              borderBottomWidth: index === (isWebDesktop ? 7 : 4) ? 0 : 1,
+              borderBottomColor: colors.divider,
+              paddingHorizontal: 12,
+              paddingVertical: isWebDesktop ? 14 : 12,
+            }}
+          >
+            {isWebDesktop ? (
+              <View className="flex-row items-center" style={{ gap: 12 }}>
+                {[1.45, 1.45, 1.45, 1.45, 0.78, 0.78, 0.78].map((flexValue, segmentIndex) => (
+                  <View
+                    key={`procurement-skeleton-cell-${index}-${segmentIndex}`}
+                    style={{
+                      flex: flexValue,
+                      height: segmentIndex === 3 ? 24 : 12,
+                      borderRadius: segmentIndex === 3 ? 999 : 6,
+                      backgroundColor: colors.bg.input,
+                      opacity: segmentIndex === 0 ? 0.88 : 0.66,
+                    }}
+                  />
+                ))}
+                <View style={{ flex: 0.78 }} />
+              </View>
+            ) : (
+              <View className="flex-row items-center justify-between" style={{ gap: 12 }}>
+                <View style={{ flex: 1, gap: 8 }}>
+                  <View style={{ width: '58%', height: 14, borderRadius: 7, backgroundColor: colors.bg.input, opacity: 0.86 }} />
+                  <View style={{ width: '78%', height: 11, borderRadius: 6, backgroundColor: colors.bg.input, opacity: 0.62 }} />
+                </View>
+                <View style={{ width: 92, gap: 8, alignItems: 'flex-end' }}>
+                  <View style={{ width: 82, height: 14, borderRadius: 7, backgroundColor: colors.bg.input, opacity: 0.78 }} />
+                  <View style={{ width: 64, height: 18, borderRadius: 999, backgroundColor: colors.bg.input, opacity: 0.58 }} />
+                </View>
+              </View>
+            )}
+          </View>
+        ))}
+      </View>
+    );
+
+    return (
     <View style={isWebDesktop ? { maxWidth: 1440, width: '100%', alignSelf: 'flex-start' } : undefined}>
       <View style={{ marginTop: financeSectionTopMargin }}>
         {!isWebDesktop ? (
           <View className="flex-row items-start justify-between" style={{ gap: 12 }}>
             <View style={{ flex: 1, paddingRight: 12 }}>
-              <Text style={{ color: colors.text.primary }} className="text-2xl font-bold">Procurement</Text>
+              <Text style={{ color: colors.text.primary }} className="text-2xl font-bold">{sectionTitle}</Text>
               <Text
                 style={{
                   color: colors.text.tertiary,
@@ -8958,7 +13274,7 @@ export default function FinanceScreen() {
                 }}
                 className="text-sm mt-1"
               >
-                Manage purchase orders and supplier spend
+                {sectionSubtitle}
               </Text>
             </View>
 
@@ -8966,22 +13282,22 @@ export default function FinanceScreen() {
               <Pressable
                 onPress={() => {
                   void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  openProcurementComposer();
+                  openProcurementComposer(isCostingSection ? 'costing' : 'procurement');
                 }}
                 className="rounded-full active:opacity-80 px-3.5 flex-row items-center"
                 style={{ height: 40, backgroundColor: colors.bar }}
               >
                 <Plus size={18} color={colors.bg.screen} strokeWidth={2.5} />
-                <Text style={{ color: colors.bg.screen }} className="font-semibold ml-1.5 text-sm">New PO</Text>
+                <Text style={{ color: colors.bg.screen }} className="font-semibold ml-1.5 text-sm">{createLabel}</Text>
               </Pressable>
             ) : null}
           </View>
         ) : null}
 
         {renderProcurementTopCards()}
-        {isFinanceApprover && !isWebDesktop ? renderOwnerProcurementApprovalQueue() : null}
+        {isFinanceApprover && !isCostingSection && !isWebDesktop ? renderOwnerProcurementApprovalQueue() : null}
 
-        {isFinanceApprover && isWebDesktop ? (
+        {isFinanceApprover && !isCostingSection && isWebDesktop ? (
           <View className="flex-row items-center" style={{ gap: 8, marginTop: financeSectionControlsMargin }}>
             <Pressable
               onPress={() => setProcurementWorkspaceView('list')}
@@ -8994,7 +13310,7 @@ export default function FinanceScreen() {
               }}
             >
               <Text style={{ color: procurementWorkspaceView === 'list' ? colors.bg.screen : colors.text.secondary }} className="text-sm font-semibold">
-                Procurement
+                {sectionTitle}
               </Text>
             </Pressable>
             <Pressable
@@ -9022,13 +13338,8 @@ export default function FinanceScreen() {
             </Pressable>
           </View>
         ) : null}
-        {renderTotalsInfoNote(
-          'Top cards use the selected period by Date Paid. Amount beside filter icon sums the visible list after search and filters.',
-          financeSectionControlsMargin
-        )}
-
         {isWebDesktop ? (
-          <View className="flex-row items-center" style={{ gap: 12, marginTop: isFinanceApprover ? 8 : financeSectionControlsMargin }}>
+          <View className="flex-row items-center" style={{ gap: 12, marginTop: financeSectionControlsMargin }}>
             <View
               className="flex-row items-center rounded-full px-3"
               style={{
@@ -9041,17 +13352,21 @@ export default function FinanceScreen() {
             >
               <Search size={15} color={colors.text.muted} strokeWidth={2} />
               <TextInput
-                value={procurementSearchQuery}
-                onChangeText={setProcurementSearchQuery}
-                placeholder="Search procurement"
+                value={procurementSearchValue}
+                onChangeText={setProcurementSearchValue}
+                placeholder={searchPlaceholder}
                 placeholderTextColor={colors.text.muted}
                 style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 14 }}
               />
             </View>
             <View style={{ flex: 1 }} />
-            <Text style={{ color: colors.text.primary }} className="text-xl font-semibold">
-              {formatCurrency(filteredProcurementTotal)}
-            </Text>
+            {shouldShowFinanceSkeleton ? (
+              <View style={{ width: 96, height: 20, borderRadius: 10, backgroundColor: colors.bg.input, opacity: 0.78 }} />
+            ) : (
+              <Text style={{ color: colors.text.primary }} className="text-xl font-semibold">
+                {formatCurrency(procurementTotalForToolbar)}
+              </Text>
+            )}
             <View style={{ position: 'relative' }}>
               {procurementFilterSortCount > 0 ? (
                 <View
@@ -9106,9 +13421,9 @@ export default function FinanceScreen() {
               >
                 <Search size={15} color={colors.text.muted} strokeWidth={2} />
                 <TextInput
-                  value={procurementSearchQuery}
-                  onChangeText={setProcurementSearchQuery}
-                  placeholder="Search procurement"
+                  value={procurementSearchValue}
+                  onChangeText={setProcurementSearchValue}
+                  placeholder={searchPlaceholder}
                   placeholderTextColor={colors.text.muted}
                   style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 14 }}
                 />
@@ -9169,16 +13484,20 @@ export default function FinanceScreen() {
               >
                 <Search size={15} color={colors.text.muted} strokeWidth={2} />
                 <TextInput
-                  value={procurementSearchQuery}
-                  onChangeText={setProcurementSearchQuery}
-                  placeholder="Search procurement"
+                  value={procurementSearchValue}
+                  onChangeText={setProcurementSearchValue}
+                  placeholder={searchPlaceholder}
                   placeholderTextColor={colors.text.muted}
                   style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 14 }}
                 />
               </View>
-              <Text style={{ color: colors.text.primary }} className="text-xl font-semibold">
-                {formatCurrency(filteredProcurementTotal)}
-              </Text>
+              {shouldShowFinanceSkeleton ? (
+                <View style={{ width: 92, height: 20, borderRadius: 10, backgroundColor: colors.bg.input, opacity: 0.78 }} />
+              ) : (
+                <Text style={{ color: colors.text.primary }} className="text-xl font-semibold">
+                  {formatCurrency(procurementTotalForToolbar)}
+                </Text>
+              )}
               <View style={{ position: 'relative' }}>
                 {procurementFilterSortCount > 0 ? (
                   <View
@@ -9231,99 +13550,182 @@ export default function FinanceScreen() {
           overflow: 'visible',
           backgroundColor: colors.bg.card,
           width: '100%',
+          position: 'relative',
         }}
       >
         {isWebDesktop ? (
           <View style={{ borderBottomWidth: 1, borderBottomColor: colors.divider }}>
             <View className="grid grid-cols-12 items-center px-3 py-3" style={{ columnGap: 12 } as any}>
-              <Text style={{ color: colors.text.muted }} className="col-span-2 text-xs font-semibold uppercase">PO Number</Text>
-              <Text style={{ color: colors.text.muted }} className="col-span-2 text-xs font-semibold uppercase">Name</Text>
-              <Text style={{ color: colors.text.muted }} className="col-span-2 text-xs font-semibold uppercase">Supplier</Text>
-              <Text style={{ color: colors.text.muted }} className="col-span-2 text-xs font-semibold uppercase">Status</Text>
-              <Text style={{ color: colors.text.muted }} className="col-span-1 text-xs font-semibold uppercase">Date Paid</Text>
-              <Text style={{ color: colors.text.muted }} className="col-span-1 text-xs font-semibold uppercase">Date Received</Text>
-              <Text style={{ color: colors.text.muted, textAlign: 'right' }} className="col-span-1 text-xs font-semibold uppercase">Total</Text>
-              <View className="col-span-1" />
+              {isShowingWebProcurementApprovals ? (
+                <>
+                  <Text style={{ color: colors.text.muted }} className="col-span-2 text-xs font-semibold uppercase">PO Number</Text>
+                  <Text style={{ color: colors.text.muted }} className="col-span-2 text-xs font-semibold uppercase">Name</Text>
+                  <Text style={{ color: colors.text.muted }} className="col-span-2 text-xs font-semibold uppercase">Supplier</Text>
+                  <Text style={{ color: colors.text.muted }} className="col-span-2 text-xs font-semibold uppercase">Submitted By</Text>
+                  <Text style={{ color: colors.text.muted }} className="col-span-2 text-xs font-semibold uppercase">Date Received</Text>
+                  <Text style={{ color: colors.text.muted, textAlign: 'right' }} className="col-span-1 text-xs font-semibold uppercase">Total</Text>
+                  <View className="col-span-1" />
+                </>
+              ) : (
+                <>
+                  <Text style={{ color: colors.text.muted }} className="col-span-2 text-xs font-semibold uppercase">PO Number</Text>
+                  <Text style={{ color: colors.text.muted }} className="col-span-2 text-xs font-semibold uppercase">Name</Text>
+                  <Text style={{ color: colors.text.muted }} className="col-span-2 text-xs font-semibold uppercase">Supplier</Text>
+                  <Text style={{ color: colors.text.muted }} className="col-span-2 text-xs font-semibold uppercase">Status</Text>
+                  <Text style={{ color: colors.text.muted }} className="col-span-1 text-xs font-semibold uppercase">Date Paid</Text>
+                  <Text style={{ color: colors.text.muted }} className="col-span-1 text-xs font-semibold uppercase">Date Received</Text>
+                  <Text style={{ color: colors.text.muted, textAlign: 'right' }} className="col-span-1 text-xs font-semibold uppercase">Total</Text>
+                  <View className="col-span-1" />
+                </>
+              )}
             </View>
           </View>
         ) : null}
 
-        {visibleProcurementRows.length === 0 ? (
+        {!isMobile && isFinanceApprover && procurementActionMenuId ? (
+          <Pressable
+            onPress={() => setProcurementActionMenuId(null)}
+            style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, zIndex: 25 }}
+          />
+        ) : null}
+
+        {shouldShowFinanceSkeleton ? (
+          renderProcurementTableSkeleton()
+        ) : procurementRowsForTable.length === 0 ? (
           <View className="items-center justify-center py-12">
-            <Text style={{ color: colors.text.tertiary }} className="text-base">No procurements found</Text>
+            <Text style={{ color: colors.text.tertiary }} className="text-base">{procurementEmptyMessage}</Text>
           </View>
-        ) : visibleProcurementRows.map((procurement, index) => (
+        ) : procurementRowsForTable.map((procurement, index) => (
           <Pressable
             key={procurement.id}
             onPress={() => {
+              if (isShowingWebProcurementApprovals) return;
               if (isMobile) {
-                router.push({ pathname: '/procurement/[id]', params: { id: procurement.id } } as any);
+                router.push({ pathname: '/procurement/[id]', params: { id: procurement.id, section: activeTab } } as any);
                 return;
               }
               setSelectedProcurementId((prev) => prev === procurement.id ? null : procurement.id);
               setProcurementActionMenuId(null);
             }}
             style={{
-              borderBottomWidth: index === visibleProcurementRows.length - 1 ? 0 : 1,
+              borderBottomWidth: index === procurementRowsForTable.length - 1 ? 0 : 1,
               borderBottomColor: colors.divider,
               position: 'relative',
               zIndex: procurementActionMenuId === procurement.id ? 40 : 1,
-              backgroundColor: selectedProcurementId === procurement.id ? colors.bg.input : 'transparent',
-              borderLeftWidth: selectedProcurementId === procurement.id ? 3 : 0,
+              backgroundColor: !isShowingWebProcurementApprovals && selectedProcurementId === procurement.id ? colors.bg.input : 'transparent',
+              borderLeftWidth: !isShowingWebProcurementApprovals && selectedProcurementId === procurement.id ? 3 : 0,
               borderLeftColor: colors.bar,
             }}
           >
             {isWebDesktop ? (
               <View className="grid grid-cols-12 items-center px-3 py-3.5" style={{ columnGap: 12 } as any}>
-                <View className="col-span-2 flex-row items-center" style={{ gap: 8 }}>
-                  <Truck size={16} color={colors.text.tertiary} strokeWidth={2} />
-                  <Text style={{ color: colors.text.primary }} className="text-sm font-normal" numberOfLines={1}>
-                    {procurement.poNumber}
-                  </Text>
-                </View>
+                {isShowingWebProcurementApprovals ? (
+                  <>
+                    <View className="col-span-2 flex-row items-center" style={{ gap: 8 }}>
+                      <Truck size={16} color={colors.text.tertiary} strokeWidth={2} />
+                      <Text style={{ color: colors.text.primary }} className="text-sm font-normal" numberOfLines={1}>
+                        {procurement.poNumber}
+                      </Text>
+                    </View>
 
-                <Text style={{ color: procurement.title ? colors.text.primary : colors.text.muted }} className="col-span-2 text-sm" numberOfLines={1}>
-                  {procurement.title || '—'}
-                </Text>
+                    <Text style={{ color: procurement.title ? colors.text.primary : colors.text.muted }} className="col-span-2 text-sm" numberOfLines={1}>
+                      {procurement.title || '—'}
+                    </Text>
 
-                <Text style={{ color: colors.text.secondary }} className="col-span-2 text-sm" numberOfLines={1}>
-                  {procurement.supplier}
-                </Text>
+                    <Text style={{ color: colors.text.secondary }} className="col-span-2 text-sm" numberOfLines={1}>
+                      {procurement.supplier}
+                    </Text>
 
-                <View className="col-span-2" style={{ paddingRight: 8 }}>
-                  <StatusBadge
-                    label={procurement.status}
-                    colors={colors}
-                    maxWidth={116}
-                  />
-                </View>
+                    <Text style={{ color: colors.text.secondary }} className="col-span-2 text-sm" numberOfLines={1}>
+                      {'submittedByName' in procurement ? procurement.submittedByName : 'Team Member'}
+                    </Text>
 
-                <Text style={{ color: colors.text.secondary }} className="col-span-1 text-sm" numberOfLines={1}>
-                  {procurement.paidDate}
-                </Text>
+                    <Text style={{ color: colors.text.secondary }} className="col-span-2 text-sm" numberOfLines={1}>
+                      {procurement.receivedDate}
+                    </Text>
 
-                <Text style={{ color: colors.text.secondary }} className="col-span-1 text-sm" numberOfLines={1}>
-                  {procurement.receivedDate}
-                </Text>
+                    <Text style={{ color: colors.text.primary, textAlign: 'right' }} className="col-span-1 text-sm font-semibold" numberOfLines={1}>
+                      {formatCurrency(procurement.total)}
+                    </Text>
 
-                <Text style={{ color: colors.text.primary, textAlign: 'right' }} className="col-span-1 text-sm font-normal" numberOfLines={1}>
-                  {formatCurrency(procurement.total)}
-                </Text>
+                    <View className="col-span-1 items-end">
+                      <View className="flex-row items-center" style={{ gap: 6 }}>
+                        <Pressable
+                          onPress={(event) => {
+                            event.stopPropagation();
+                            handleRejectProcurementRequest(procurement.id);
+                          }}
+                          className="rounded-full px-2.5 items-center justify-center"
+                          style={{ height: 30, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.input }}
+                        >
+                          <Text style={{ color: colors.danger, fontSize: 12, fontWeight: '600' }}>Reject</Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={(event) => {
+                            event.stopPropagation();
+                            handleApproveProcurementRequest(procurement.id);
+                          }}
+                          className="rounded-full px-2.5 items-center justify-center"
+                          style={{ height: 30, backgroundColor: colors.bar }}
+                        >
+                          <Text style={{ color: colors.bg.screen, fontSize: 12, fontWeight: '700' }}>Approve</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    <View className="col-span-2 flex-row items-center" style={{ gap: 8 }}>
+                      <Truck size={16} color={colors.text.tertiary} strokeWidth={2} />
+                      <Text style={{ color: colors.text.primary }} className="text-sm font-normal" numberOfLines={1}>
+                        {procurement.poNumber}
+                      </Text>
+                    </View>
 
-                <View className="col-span-1 items-end">
-                  {isFinanceApprover ? (
-                    <Pressable
-                      onPress={(event) => {
-                        event.stopPropagation();
-                        setProcurementActionMenuId((current) => (current === procurement.id ? null : procurement.id));
-                      }}
-                      className="p-1.5 rounded-md"
-                      style={{ backgroundColor: procurementActionMenuId === procurement.id ? colors.bg.input : 'transparent' }}
-                    >
-                      <MoreVertical size={16} color={colors.text.tertiary} strokeWidth={2} />
-                    </Pressable>
-                  ) : null}
-                </View>
+                    <Text style={{ color: procurement.title ? colors.text.primary : colors.text.muted }} className="col-span-2 text-sm" numberOfLines={1}>
+                      {procurement.title || '—'}
+                    </Text>
+
+                    <Text style={{ color: colors.text.secondary }} className="col-span-2 text-sm" numberOfLines={1}>
+                      {procurement.supplier}
+                    </Text>
+
+                    <View className="col-span-2" style={{ paddingRight: 8 }}>
+                      <StatusBadge
+                        label={procurement.status}
+                        colors={colors}
+                        maxWidth={116}
+                      />
+                    </View>
+
+                    <Text style={{ color: colors.text.secondary }} className="col-span-1 text-sm" numberOfLines={1}>
+                      {procurement.paidDate}
+                    </Text>
+
+                    <Text style={{ color: colors.text.secondary }} className="col-span-1 text-sm" numberOfLines={1}>
+                      {procurement.receivedDate}
+                    </Text>
+
+                    <Text style={{ color: colors.text.primary, textAlign: 'right' }} className="col-span-1 text-sm font-normal" numberOfLines={1}>
+                      {formatCurrency(procurement.total)}
+                    </Text>
+
+                    <View className="col-span-1 items-end">
+                      {isFinanceApprover ? (
+                        <Pressable
+                          onPress={(event) => {
+                            event.stopPropagation();
+                            setProcurementActionMenuId((current) => (current === procurement.id ? null : procurement.id));
+                          }}
+                          className="p-1.5 rounded-md"
+                          style={{ backgroundColor: procurementActionMenuId === procurement.id ? colors.bg.input : 'transparent' }}
+                        >
+                          <MoreVertical size={16} color={colors.text.tertiary} strokeWidth={2} />
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  </>
+                )}
               </View>
             ) : (
               <View style={{ paddingHorizontal: 12, paddingVertical: 12 }}>
@@ -9332,10 +13734,10 @@ export default function FinanceScreen() {
                     {procurement.title ? (
                       <>
                         <Text style={{ color: colors.text.primary, flex: 1 }} className="text-base font-normal" numberOfLines={1}>
-                          {procurement.title}
+                          {capitalizeDisplayValue(procurement.title)}
                         </Text>
                         <Text style={{ color: colors.text.muted }} className="text-xs mt-0.5" numberOfLines={1}>
-                          {procurement.poNumber} · {procurement.supplier}
+                          {procurement.poNumber} · {capitalizeDisplayValue(procurement.supplier)}
                         </Text>
                       </>
                     ) : (
@@ -9344,7 +13746,7 @@ export default function FinanceScreen() {
                           {procurement.poNumber}
                         </Text>
                         <Text style={{ color: colors.text.secondary }} className="text-sm mt-1" numberOfLines={1}>
-                          {procurement.supplier}
+                          {capitalizeDisplayValue(procurement.supplier)}
                         </Text>
                       </>
                     )}
@@ -9354,7 +13756,7 @@ export default function FinanceScreen() {
                       {formatCurrency(procurement.total)}
                     </Text>
                     <View className="flex-row items-center mt-1" style={{ gap: 6 }}>
-                      <StatusBadge label={procurement.status} colors={colors} compact maxWidth={92} />
+                      <StatusBadge label={capitalizeDisplayValue(procurement.status)} colors={colors} compact maxWidth={92} />
                       <Text style={{ color: colors.text.secondary }} className="text-xs" numberOfLines={1}>
                         {procurement.paidDate}
                       </Text>
@@ -9393,6 +13795,18 @@ export default function FinanceScreen() {
                   onPress={(event) => {
                     event.stopPropagation();
                     setProcurementActionMenuId(null);
+                    setMergeProcurementSearch('');
+                    setMergingProcurementId(procurement.id);
+                  }}
+                  className="px-3 py-2.5"
+                  style={{ borderBottomWidth: 1, borderBottomColor: colors.divider }}
+                >
+                  <Text style={{ color: colors.text.primary }} className="text-sm font-medium">Merge into another PO</Text>
+                </Pressable>
+                <Pressable
+                  onPress={(event) => {
+                    event.stopPropagation();
+                    setProcurementActionMenuId(null);
                     handleDeleteProcurement(procurement.id);
                   }}
                   className="px-3 py-2.5"
@@ -9405,12 +13819,190 @@ export default function FinanceScreen() {
         ))}
       </View>
 
-      {!isMobile && isFinanceApprover && procurementActionMenuId ? (
-        <Pressable
-          onPress={() => setProcurementActionMenuId(null)}
-          style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, zIndex: 25 }}
-        />
-      ) : null}
+    </View>
+  );
+  };
+
+  const renderSalary = () => (
+    <View style={isWebDesktop ? { maxWidth: 1440, width: '100%', alignSelf: 'flex-start' } : undefined}>
+      <View style={{ marginTop: financeSectionTopMargin }}>
+        {!isWebDesktop ? (
+          <View className="flex-row items-start justify-between" style={{ gap: 12 }}>
+            <View style={{ flex: 1, paddingRight: 12 }}>
+              <Text style={{ color: colors.text.primary }} className="text-2xl font-bold">Salary</Text>
+              <Text style={{ color: colors.text.tertiary }} className="text-sm mt-1">Run monthly payroll and review saved salary runs</Text>
+            </View>
+            {salaryTemplates.length > 0 ? (
+              <View className="flex-row items-center" style={{ gap: 8 }}>
+                <Pressable
+                  onPress={() => {
+                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    openSalaryRunLauncher();
+                  }}
+                  className="rounded-full active:opacity-80 px-3.5 flex-row items-center"
+                  style={{ height: 40, backgroundColor: colors.bar }}
+                >
+                  <Plus size={18} color={colors.bg.screen} strokeWidth={2.5} />
+                  <Text style={{ color: colors.bg.screen }} className="font-semibold ml-1.5 text-sm">Run Salary</Text>
+                </Pressable>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
+        {renderSalaryTopCards()}
+        {!isWebDesktop ? renderSalaryTemplateActionCard() : null}
+        <View className={isWebDesktop ? 'mt-4' : 'mt-5'} style={{ gap: 12 }}>
+        {!isMobile ? (
+          <View style={{ flexDirection: isWebDesktop ? 'row' : 'column', gap: 12, alignItems: isWebDesktop ? 'center' : undefined }}>
+            <View
+              className="flex-row items-center rounded-full px-3"
+              style={{
+                height: 40,
+                flex: 1,
+                backgroundColor: 'transparent',
+                borderWidth: 1,
+                borderColor: colors.divider,
+              }}
+            >
+              <Search size={15} color={colors.text.muted} strokeWidth={2} />
+              <TextInput
+                value={salarySearchQuery}
+                onChangeText={setSalarySearchQuery}
+                placeholder="Search salary runs"
+                placeholderTextColor={colors.text.muted}
+                style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 14 }}
+              />
+            </View>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={{ color: colors.text.primary, fontSize: 20, fontWeight: '700' }}>{formatCurrency(filteredSalaryTotal)}</Text>
+              <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 2 }}>
+                {salaryPeriodStats.count} {salaryPeriodStats.count === 1 ? 'run' : 'runs'} in {salaryPeriodWindow.label.toLowerCase()}
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
+        {salaryTemplates.length === 0 ? (
+          <View
+            className="rounded-2xl items-center justify-center px-6 py-8"
+            style={{ borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card }}
+          >
+            <Text style={{ color: colors.text.primary, fontSize: 16, fontWeight: '700' }}>No salary templates yet</Text>
+            <Text style={{ color: colors.text.tertiary, fontSize: 13, lineHeight: 19, marginTop: 6, textAlign: 'center' }}>
+              {isFinanceApprover
+                ? 'Create a salary template in Finance Settings, then come back here to run payroll.'
+                : 'An admin needs to create a salary template before you can run payroll from this tab.'}
+            </Text>
+            {isFinanceApprover ? (
+              <Pressable
+                onPress={openSalaryTemplatesSettings}
+                className="rounded-full px-4 mt-4"
+                style={{ height: 40, backgroundColor: colors.bar, justifyContent: 'center' }}
+              >
+                <Text style={{ color: colors.bg.screen, fontSize: 13, fontWeight: '700' }}>Open Salary Templates</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
+
+        <View
+          style={{
+            borderWidth: 1,
+            borderColor: colors.divider,
+            borderRadius: 16,
+            overflow: 'hidden',
+            backgroundColor: colors.bg.card,
+            width: '100%',
+          }}
+        >
+          {isWebDesktop ? (
+            <View style={{ borderBottomWidth: 1, borderBottomColor: colors.divider }}>
+              <View className="grid grid-cols-12 items-center px-3 py-3" style={{ columnGap: 12 } as any}>
+                <Text style={{ color: colors.text.muted }} className="col-span-3 text-xs font-semibold uppercase">Run</Text>
+                <Text style={{ color: colors.text.muted }} className="col-span-3 text-xs font-semibold uppercase">Template</Text>
+                <Text style={{ color: colors.text.muted }} className="col-span-2 text-xs font-semibold uppercase">Employees</Text>
+                <Text style={{ color: colors.text.muted }} className="col-span-2 text-xs font-semibold uppercase">Date</Text>
+                <Text style={{ color: colors.text.muted, textAlign: 'right' }} className="col-span-2 text-xs font-semibold uppercase">Total</Text>
+              </View>
+            </View>
+          ) : null}
+
+          {filteredSalaryRunRows.length === 0 ? (
+            <View className="items-center justify-center py-12">
+              <Text style={{ color: colors.text.tertiary }} className="text-base">No salary runs found</Text>
+            </View>
+          ) : filteredSalaryRunRows.map((row, index) => (
+            <Pressable
+              key={row.id}
+              onPress={() => {
+                if (isMobile) {
+                  router.push({ pathname: '/expense/[id]', params: { id: row.id } } as any);
+                  return;
+                }
+                setSelectedExpenseId(row.id);
+              }}
+              style={{
+                borderBottomWidth: index === filteredSalaryRunRows.length - 1 ? 0 : 1,
+                borderBottomColor: colors.divider,
+                backgroundColor: selectedExpenseId === row.id ? colors.bg.input : 'transparent',
+                borderLeftWidth: selectedExpenseId === row.id ? 3 : 0,
+                borderLeftColor: colors.bar,
+              }}
+            >
+              {isWebDesktop ? (
+                <View className="grid grid-cols-12 items-center px-3 py-3.5" style={{ columnGap: 12 } as any}>
+                  <View className="col-span-3 flex-row items-center" style={{ gap: 8, minWidth: 0 }}>
+                    <User size={16} color={colors.text.tertiary} strokeWidth={2} />
+                    <View style={{ minWidth: 0, flex: 1 }}>
+                      <Text style={{ color: colors.text.primary }} className="text-sm font-normal" numberOfLines={1}>
+                        {capitalizeDisplayValue(row.name)}
+                      </Text>
+                      <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 2 }} numberOfLines={1}>
+                        {capitalizeDisplayValue(row.createdBy)}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={{ color: colors.text.secondary }} className="col-span-3 text-sm" numberOfLines={1}>
+                    {capitalizeDisplayValue(row.templateName)}
+                  </Text>
+                  <Text style={{ color: colors.text.secondary }} className="col-span-2 text-sm" numberOfLines={1}>
+                    {row.employeeCount} {row.employeeCount === 1 ? 'employee' : 'employees'}
+                  </Text>
+                  <Text style={{ color: colors.text.secondary }} className="col-span-2 text-sm" numberOfLines={1}>
+                    {row.date}
+                  </Text>
+                  <Text style={{ color: colors.text.primary, textAlign: 'right' }} className="col-span-2 text-sm font-normal" numberOfLines={1}>
+                    {formatCurrency(row.amount)}
+                  </Text>
+                </View>
+              ) : (
+                <View style={{ paddingHorizontal: 12, paddingVertical: 12 }}>
+                  <View className="flex-row items-start justify-between" style={{ gap: 12 }}>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={{ color: colors.text.primary }} className="text-base font-normal" numberOfLines={1}>
+                        {capitalizeDisplayValue(row.name)}
+                      </Text>
+                      <Text style={{ color: colors.text.secondary }} className="text-sm mt-1" numberOfLines={1}>
+                        {capitalizeDisplayValue(row.templateName)} · {row.employeeCount} {row.employeeCount === 1 ? 'employee' : 'employees'}
+                      </Text>
+                    </View>
+                    <View style={{ alignItems: 'flex-end', minWidth: 132 }}>
+                      <Text style={{ color: colors.text.primary }} className="text-base font-normal" numberOfLines={1}>
+                        {formatCurrency(row.amount)}
+                      </Text>
+                      <Text style={{ color: colors.text.secondary }} className="text-xs mt-1" numberOfLines={1}>
+                        {row.date}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              )}
+            </Pressable>
+          ))}
+        </View>
+      </View>
+      </View>
     </View>
   );
 
@@ -9441,6 +14033,12 @@ export default function FinanceScreen() {
             label="Fixed Costs"
             active={financeSettingsView === 'fixed-costs'}
             onPress={() => setFinanceSettingsView('fixed-costs')}
+            colors={colors}
+          />
+          <FinanceFilterPill
+            label="Salary Templates"
+            active={financeSettingsView === 'salary-templates'}
+            onPress={() => setFinanceSettingsView('salary-templates')}
             colors={colors}
           />
           <FinanceFilterPill
@@ -9771,6 +14369,63 @@ export default function FinanceScreen() {
                   </>
                 )}
               </Pressable>
+            ))}
+          </View>
+        </>
+      ) : null}
+
+      {financeSettingsView === 'salary-templates' ? (
+        <>
+          <View className="mt-5" style={{ gap: 10 }}>
+            <Text style={{ color: colors.text.secondary }} className="text-sm">
+              Save recurring salary templates and generate a monthly salary run with per-employee charges.
+            </Text>
+            <Pressable
+              onPress={openSalaryTemplateComposer}
+              className="rounded-full active:opacity-80 px-4 flex-row items-center self-start"
+              style={{ height: 42, backgroundColor: colors.bar, alignSelf: 'flex-start' }}
+            >
+              <Plus size={18} color={colors.bg.screen} strokeWidth={2.5} />
+              <Text style={{ color: colors.bg.screen }} className="font-semibold ml-1.5 text-sm">Add Salary Template</Text>
+            </Pressable>
+          </View>
+
+          <View className="mt-4 rounded-2xl" style={{ borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, overflow: 'hidden' }}>
+            {salaryTemplateRows.length === 0 ? (
+              <View className="py-10 items-center">
+                <Text style={{ color: colors.text.tertiary }} className="text-sm">No salary templates yet</Text>
+              </View>
+            ) : salaryTemplateRows.map((template, index) => (
+              <View
+                key={template.id}
+                className="px-4 py-4"
+                style={{ borderBottomWidth: index === salaryTemplateRows.length - 1 ? 0 : 1, borderBottomColor: colors.divider }}
+              >
+                <View className="flex-row items-start justify-between" style={{ gap: 12 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.text.primary, fontSize: 15, fontWeight: '700' }}>{template.name}</Text>
+                    <Text style={{ color: colors.text.secondary, fontSize: 12, marginTop: 4 }}>
+                      {template.employeeCount} employees · {formatCurrency(template.totalBaseAmount)} base payroll
+                    </Text>
+                    {template.notes ? (
+                      <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 6 }} numberOfLines={2}>
+                        {template.notes}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <View className="flex-row items-center" style={{ gap: 6 }}>
+                    <Pressable onPress={() => openSalaryRunModal(template.id)} style={{ height: 34, borderRadius: 999, paddingHorizontal: 12, backgroundColor: colors.bar, alignItems: 'center', justifyContent: 'center' }}>
+                      <Text style={{ color: colors.bg.screen, fontSize: 12, fontWeight: '700' }}>Run</Text>
+                    </Pressable>
+                    <Pressable className="p-1.5" onPress={() => openSalaryTemplateEditor(template.id)}>
+                      <Pencil size={16} color={colors.text.tertiary} strokeWidth={2} />
+                    </Pressable>
+                    <Pressable className="p-1.5" onPress={() => handleDeleteSalaryTemplate(template.id)}>
+                      <Trash2 size={16} color={colors.danger} strokeWidth={2} />
+                    </Pressable>
+                  </View>
+                </View>
+              </View>
             ))}
           </View>
         </>
@@ -10213,12 +14868,20 @@ export default function FinanceScreen() {
               <Text style={{ color: colors.text.primary }} className="ml-2 text-sm font-semibold">Export Expenses CSV</Text>
             </Pressable>
             <Pressable
-              onPress={handleExportProcurementCsv}
+              onPress={() => handleExportProcurementCsv()}
               className="rounded-xl px-4 flex-row items-center"
               style={{ height: 42, borderWidth: 1, borderColor: colors.divider }}
             >
               <Download size={16} color={colors.text.tertiary} strokeWidth={2} />
-              <Text style={{ color: colors.text.primary }} className="ml-2 text-sm font-semibold">Export Procurement CSV</Text>
+              <Text style={{ color: colors.text.primary }} className="ml-2 text-sm font-semibold">Export Procurement Summary CSV</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => handleExportProcurementProductsCsv()}
+              className="rounded-xl px-4 flex-row items-center"
+              style={{ height: 42, borderWidth: 1, borderColor: colors.divider }}
+            >
+              <Download size={16} color={colors.text.tertiary} strokeWidth={2} />
+              <Text style={{ color: colors.text.primary }} className="ml-2 text-sm font-semibold">Export Procurement Products CSV</Text>
             </Pressable>
             <Pressable
               onPress={handleExportFixedCostsCsv}
@@ -10244,8 +14907,17 @@ export default function FinanceScreen() {
 
   const renderActiveSection = () => {
     if (!isFinanceApprover) {
-      if (activeTab === 'procurement' && isManagerRole) {
+      if (activeTab === 'other-income' && canManageOtherIncome) {
+        return renderOtherIncome();
+      }
+      if (activeTab === 'procurement') {
         return renderProcurement();
+      }
+      if (activeTab === 'costing' && isManagerRole) {
+        return renderProcurement();
+      }
+      if (activeTab === 'salary' && isManagerRole) {
+        return renderSalary();
       }
       if (activeTab === 'refunds') {
         return renderRefunds();
@@ -10260,7 +14932,7 @@ export default function FinanceScreen() {
           {renderOverviewTopCards()}
           {renderOverviewExpenseRequestsBadgeCard()}
           {renderTotalsInfoNote(
-            'In this period: Net Revenue = Gross Revenue - gateway fees - stamp duty - refunds. Net Profit = Net Revenue - Expenses - Procurement.',
+            'In this period: Total Cash In = Gross Revenue + Other Income. Net Revenue = Gross Revenue - gateway fees - stamp duty - refunds. Net Profit = Net Revenue - Expenses - Procurement.',
             isWebDesktop ? 12 : 16
           )}
           {renderOverview()}
@@ -10272,12 +14944,28 @@ export default function FinanceScreen() {
       return renderExpenses();
     }
 
+    if (activeTab === 'revenue') {
+      return renderRevenue();
+    }
+
+    if (activeTab === 'other-income') {
+      return renderOtherIncome();
+    }
+
     if (activeTab === 'refunds') {
       return renderRefunds();
     }
 
     if (activeTab === 'procurement') {
       return renderProcurement();
+    }
+
+    if (activeTab === 'costing') {
+      return renderProcurement();
+    }
+
+    if (activeTab === 'salary') {
+      return renderSalary();
     }
 
     return renderFinanceSettings();
@@ -10303,7 +14991,7 @@ export default function FinanceScreen() {
   return (
     <View className="flex-1" style={{ backgroundColor: colors.bg.screen }}>
       <SafeAreaView className="flex-1" edges={['top']}>
-        {(showFinanceTopHeader || !isWebDesktop) && !isDesktopExpenseSplitView && !isDesktopRefundSplitView && !isDesktopProcurementSplitView ? (
+        {(showFinanceTopHeader || !isWebDesktop) && !isDesktopExpenseSplitView && !isDesktopRefundSplitView && !isDesktopProcurementSplitView && !isDesktopCostingSplitView && !isDesktopSalarySplitView ? (
           <View
             style={isWebDesktop ? {
               paddingHorizontal: webDesktopGutterPad,
@@ -10312,39 +15000,55 @@ export default function FinanceScreen() {
             } : undefined}
           >
             <View
-              className="px-5 pt-6 pb-2"
+              className={isWebDesktop ? 'px-5 pt-5 pb-4' : 'px-5 pt-6 pb-2'}
               style={isWebDesktop ? {
                 maxWidth: 1440,
                 width: '100%',
                 alignSelf: 'flex-start',
                 minHeight: desktopFinanceHeaderMinHeight,
                 justifyContent: 'center',
-              } : undefined}
+              } : (isMobile && isProcurementOrdersPage ? { paddingBottom: 24 } : undefined)}
             >
               {showFinanceTopHeader ? (
                 <>
-                  <View className="flex-row items-start justify-between" style={{ gap: 12 }}>
+                  <View className="flex-row items-start justify-between" style={{ gap: 12, flexWrap: 'nowrap', alignItems: isMobile && isProcurementOrdersPage ? 'center' : 'flex-start' }}>
                     <View style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
                       <Text style={{ color: colors.text.primary, ...pageHeadingStyle }}>{financeHeaderTitle}</Text>
-                      <Text style={{ color: colors.text.tertiary }} className="text-sm mt-1">{financeHeaderSubtitle}</Text>
+                      {isMobile && isProcurementOrdersPage ? null : (
+                        <Text style={{ color: colors.text.tertiary }} className="text-sm mt-1">{financeHeaderSubtitle}</Text>
+                      )}
                     </View>
                     <View className="flex-row items-center" style={{ gap: 8, marginTop: 2 }}>
-                      {canAccessFinance && (isWebDesktop || activeTab === 'overview') ? (
-                        <FyllAiButton
-                          label={isWebDesktop ? 'Fyll AI Finance' : 'Fyll AI'}
-                          onPress={() => setShowFinanceAiPanel(true)}
-                          height={40}
-                          borderRadius={20}
-                          iconSize={14}
-                          textSize={13}
-                          horizontalPadding={12}
-                        />
+                      {isProcurementOrdersPage ? (
+                        <>
+                          {isWebDesktop ? (
+                            <Pressable
+                              onPress={openProcurementExportModal}
+                              className="rounded-full active:opacity-80 px-3.5 flex-row items-center"
+                              style={{ height: 40, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.input }}
+                            >
+                              <Download size={16} color={colors.text.secondary} strokeWidth={2} />
+                              <Text style={{ color: colors.text.secondary }} className="font-semibold ml-1.5 text-sm">Export Table CSV</Text>
+                            </Pressable>
+                          ) : null}
+                          {canCreateProcurementRequest ? (
+                            <Pressable
+                              onPress={() => {
+                                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                                setNewPoItemSearch('');
+                                setShowNewPoItemPicker(true);
+                              }}
+                              className="rounded-full active:opacity-80 px-3.5 flex-row items-center"
+                              style={{ height: 40, backgroundColor: colors.bar }}
+                            >
+                              <Plus size={18} color={colors.bg.screen} strokeWidth={2.5} />
+                              <Text style={{ color: colors.bg.screen }} className="font-semibold ml-1.5 text-sm">New PO Item</Text>
+                            </Pressable>
+                          ) : null}
+                        </>
                       ) : null}
 
-                    {canCreateExpenseRequest && (
-                        activeTab === 'expenses'
-                        || activeTab === 'procurement'
-                      ) ? (
+                      {isMobile && !isProcurementChildHeaderPage && (isFinanceApprover || isManagerRole) ? (
                         <FyllAiButton
                           label="Fyll AI Draft"
                           onPress={() => {
@@ -10373,6 +15077,20 @@ export default function FinanceScreen() {
                         </Pressable>
                       ) : null}
 
+                      {isWebDesktop && activeTab === 'other-income' && canManageOtherIncome ? (
+                        <Pressable
+                          onPress={() => {
+                            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                            openOtherIncomeComposer();
+                          }}
+                          className="rounded-full active:opacity-80 px-3.5 flex-row items-center"
+                          style={{ height: 40, backgroundColor: colors.bar }}
+                        >
+                          <Plus size={18} color={colors.bg.screen} strokeWidth={2.5} />
+                          <Text style={{ color: colors.bg.screen }} className="font-semibold ml-1.5 text-sm">Add Income</Text>
+                        </Pressable>
+                      ) : null}
+
                       {isWebDesktop && activeTab === 'refunds' && canCreateRefundRequest ? (
                         <Pressable
                           onPress={() => {
@@ -10387,17 +15105,33 @@ export default function FinanceScreen() {
                         </Pressable>
                       ) : null}
 
-                      {isWebDesktop && activeTab === 'procurement' && canCreateProcurementRequest ? (
+                      {isWebDesktop && !isProcurementChildHeaderPage && (activeTab === 'procurement' || activeTab === 'costing') && canCreateProcurementRequest ? (
                         <Pressable
                           onPress={() => {
                             void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                            openProcurementComposer();
+                            openProcurementComposer(activeTab === 'costing' ? 'costing' : 'procurement');
                           }}
                           className="rounded-full active:opacity-80 px-3.5 flex-row items-center"
                           style={{ height: 40, backgroundColor: colors.bar }}
                         >
                           <Plus size={18} color={colors.bg.screen} strokeWidth={2.5} />
-                          <Text style={{ color: colors.bg.screen }} className="font-semibold ml-1.5 text-sm">New PO</Text>
+                          <Text style={{ color: colors.bg.screen }} className="font-semibold ml-1.5 text-sm">
+                            {activeTab === 'costing' ? 'New Costing' : 'New PO'}
+                          </Text>
+                        </Pressable>
+                      ) : null}
+
+                      {isWebDesktop && activeTab === 'salary' && salaryTemplates.length > 0 ? (
+                        <Pressable
+                          onPress={() => {
+                            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                            openSalaryRunLauncher();
+                          }}
+                          className="rounded-full active:opacity-80 px-3.5 flex-row items-center"
+                          style={{ height: 40, backgroundColor: colors.bar }}
+                        >
+                          <Plus size={18} color={colors.bg.screen} strokeWidth={2.5} />
+                          <Text style={{ color: colors.bg.screen }} className="font-semibold ml-1.5 text-sm">Run Salary</Text>
                         </Pressable>
                       ) : null}
                     </View>
@@ -10405,7 +15139,7 @@ export default function FinanceScreen() {
                 </>
               ) : null}
 
-              {!isWebDesktop ? (
+              {false && !isWebDesktop ? (
                 <View style={{ marginTop: 16 }}>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
                     {visibleTabOptions.map((tab) => {
@@ -10444,27 +15178,39 @@ export default function FinanceScreen() {
                 </View>
               ) : null}
 
-              {isMobile && (isFinanceApprover || isManagerRole) && (activeTab === 'expenses' || activeTab === 'refunds' || activeTab === 'procurement') ? (
+              {isMobile && !isProcurementChildHeaderPage && (isFinanceApprover || isManagerRole) && (activeTab === 'revenue' || activeTab === 'other-income' || activeTab === 'expenses' || activeTab === 'refunds' || activeTab === 'procurement' || activeTab === 'costing' || activeTab === 'salary') ? (
                 <View className="mt-4" style={{ paddingBottom: 10 }}>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingVertical: 2 }}>
                     {overviewRangeOptions.map((option) => {
-                      const isActive = activeTab === 'expenses'
-                        ? expensePeriod === option.key
-                        : activeTab === 'refunds'
-                          ? refundPeriod === option.key
-                        : procurementPeriod === option.key;
+                      const isActive = activeTab === 'revenue'
+                        ? revenuePeriod === option.key
+                        : activeTab === 'other-income'
+                          ? otherIncomePeriod === option.key
+                        : activeTab === 'expenses'
+                          ? expensePeriod === option.key
+                          : activeTab === 'refunds'
+                            ? refundPeriod === option.key
+                            : activeTab === 'procurement' || activeTab === 'costing'
+                              ? procurementPeriod === option.key
+                              : salaryPeriod === option.key;
                       return (
                         <FinanceFilterPill
                           key={option.key}
                           label={option.label}
                           active={isActive}
                           onPress={() => {
-                            if (activeTab === 'expenses') {
+                            if (activeTab === 'revenue') {
+                              setRevenuePeriod(option.key);
+                            } else if (activeTab === 'other-income') {
+                              setOtherIncomePeriod(option.key);
+                            } else if (activeTab === 'expenses') {
                               setExpensePeriod(option.key);
                             } else if (activeTab === 'refunds') {
                               setRefundPeriod(option.key);
-                            } else {
+                            } else if (activeTab === 'procurement' || activeTab === 'costing') {
                               setProcurementPeriod(option.key);
+                            } else {
+                              setSalaryPeriod(option.key);
                             }
                           }}
                           colors={colors}
@@ -10479,30 +15225,9 @@ export default function FinanceScreen() {
         ) : null}
 
         {!isMobile && activeTab === 'expenses' && (isFinanceApprover || Boolean(selectedExpenseId)) ? (
-          isShowingWebExpenseApprovals ? (
-            // Full-height approval workspace — no ScrollView, fills entire content area
-            <View style={{ flex: 1, paddingHorizontal: isWebDesktop ? webDesktopGutterPad : 0, paddingBottom: 16 }}>
-              <View style={{ flex: 1, maxWidth: 1440, width: '100%', paddingHorizontal: 20 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12 }}>
-                  <Pressable
-                    onPress={() => setExpenseWorkspaceView('list')}
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, height: 34, borderRadius: 100, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card }}
-                  >
-                    <ChevronLeft size={15} color={colors.text.secondary} strokeWidth={2.5} />
-                    <Text style={{ color: colors.text.secondary, fontSize: 13, fontWeight: '600' }}>Back to Expenses</Text>
-                  </Pressable>
-                </View>
-                <View style={{ flex: 1 }}>
-                  {renderExpenseApprovalWorkspacePanels()}
-                </View>
-              </View>
-            </View>
-          ) : (
-            // Normal split view for expense list — header lives inside left column on desktop
-            <View style={{ flex: 1, flexDirection: 'row' }}>
+          <View style={{ flex: 1, flexDirection: 'row' }}>
               <View style={{ flex: 1, flexDirection: 'column' }}>
-                {/* Finance page header inside the left column (desktop only) */}
-                {isWebDesktop ? (
+                {isWebDesktop && !isShowingWebExpenseApprovals ? (
                   <View style={{ paddingHorizontal: webDesktopGutterPad, borderBottomWidth: 1, borderBottomColor: colors.divider }}>
                     <View
                       className="px-5 pt-5 pb-4"
@@ -10517,7 +15242,10 @@ export default function FinanceScreen() {
                           {canCreateExpenseRequest ? (
                             <FyllAiButton
                               label="Fyll AI Draft"
-                              onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); openAiModal(); }}
+                              onPress={() => {
+                                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                openAiModal();
+                              }}
                               height={40}
                               borderRadius={20}
                               iconSize={14}
@@ -10527,7 +15255,10 @@ export default function FinanceScreen() {
                           ) : null}
                           {canCreateExpenseRequest ? (
                             <Pressable
-                              onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); openExpenseComposer(); }}
+                              onPress={() => {
+                                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                                openExpenseComposer();
+                              }}
                               className="rounded-full active:opacity-80 px-3.5 flex-row items-center"
                               style={{ height: 40, backgroundColor: colors.bar }}
                             >
@@ -10553,7 +15284,7 @@ export default function FinanceScreen() {
                   {renderActiveSection()}
                 </ScrollView>
               </View>
-              {selectedExpenseId ? (
+              {expenseWorkspaceView === 'list' && selectedExpenseId ? (
                 <View style={{ width: splitDetailPanelWidth, borderLeftWidth: 1, borderLeftColor: colors.divider }}>
                   <ExpenseDetailPanel
                     expenseId={selectedExpenseId}
@@ -10565,11 +15296,10 @@ export default function FinanceScreen() {
                 </View>
               ) : null}
             </View>
-          )
         ) : !isMobile && activeTab === 'refunds' && isDesktopRefundSplitView ? (
           <View style={{ flex: 1, flexDirection: 'row' }}>
             <View style={{ flex: 1, flexDirection: 'column' }}>
-              {isWebDesktop ? (
+              {isWebDesktop && !isShowingWebProcurementApprovals ? (
                 <View style={{ paddingHorizontal: webDesktopGutterPad, borderBottomWidth: 1, borderBottomColor: colors.divider }}>
                   <View
                     className="px-5 pt-5 pb-4"
@@ -10616,26 +15346,8 @@ export default function FinanceScreen() {
               {renderRefundRequestDetailPanel()}
             </View>
           </View>
-        ) :!isMobile && activeTab === 'procurement' && isShowingWebProcurementApprovals ? (
-          // Full-height procurement approval workspace
-          <View style={{ flex: 1, paddingHorizontal: isWebDesktop ? webDesktopGutterPad : 0, paddingBottom: 16 }}>
-            <View style={{ flex: 1, maxWidth: 1440, width: '100%', paddingHorizontal: 20 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12 }}>
-                <Pressable
-                  onPress={() => setProcurementWorkspaceView('list')}
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, height: 34, borderRadius: 100, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card }}
-                >
-                  <ChevronLeft size={15} color={colors.text.secondary} strokeWidth={2.5} />
-                  <Text style={{ color: colors.text.secondary, fontSize: 13, fontWeight: '600' }}>Back to Procurement</Text>
-                </Pressable>
-              </View>
-              <View style={{ flex: 1 }}>
-                {renderProcurementApprovalWorkspacePanels()}
-              </View>
-            </View>
-          </View>
-        ) :!isMobile && activeTab === 'procurement' && (isFinanceApprover || Boolean(selectedProcurementId)) ? (
-          // Split view for procurement tab on tablet/desktop — header lives inside left column
+        ) :!isMobile && (activeTab === 'procurement' || activeTab === 'costing') && (isFinanceApprover || Boolean(selectedProcurementId)) ? (
+          // Split view for procurement/costing tab on tablet/desktop — header lives inside left column
           <View style={{ flex: 1, flexDirection: 'row' }}>
             <View style={{ flex: 1, flexDirection: 'column' }}>
               {/* Finance page header inside the left column (desktop only) */}
@@ -10651,7 +15363,34 @@ export default function FinanceScreen() {
                         <Text style={{ color: colors.text.tertiary }} className="text-sm mt-1">{financeHeaderSubtitle}</Text>
                       </View>
                       <View className="flex-row items-center" style={{ gap: 8, marginTop: 2 }}>
-                        {canCreateExpenseRequest ? (
+                        {isProcurementOrdersPage ? (
+                          <>
+                            <Pressable
+                              onPress={openProcurementExportModal}
+                              className="rounded-full active:opacity-80 px-3.5 flex-row items-center"
+                              style={{ height: 40, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.input }}
+                            >
+                              <Download size={16} color={colors.text.secondary} strokeWidth={2} />
+                              <Text style={{ color: colors.text.secondary }} className="font-semibold ml-1.5 text-sm">Export Table CSV</Text>
+                            </Pressable>
+                            {canCreateProcurementRequest ? (
+                              <Pressable
+                                onPress={() => {
+                                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                                  setNewPoItemSearch('');
+                                  setShowNewPoItemPicker(true);
+                                }}
+                                className="rounded-full active:opacity-80 px-3.5 flex-row items-center"
+                                style={{ height: 40, backgroundColor: colors.bar }}
+                              >
+                                <Plus size={18} color={colors.bg.screen} strokeWidth={2.5} />
+                                <Text style={{ color: colors.bg.screen }} className="font-semibold ml-1.5 text-sm">New PO Item</Text>
+                              </Pressable>
+                            ) : null}
+                          </>
+                        ) : null}
+
+                        {!isProcurementChildHeaderPage && canCreateExpenseRequest ? (
                           <FyllAiButton
                             label="Fyll AI Draft"
                             onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); openAiModal(); }}
@@ -10662,14 +15401,19 @@ export default function FinanceScreen() {
                             horizontalPadding={12}
                           />
                         ) : null}
-                        {canCreateProcurementRequest ? (
+                        {!isProcurementChildHeaderPage && canCreateProcurementRequest ? (
                           <Pressable
-                            onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); openProcurementComposer(); }}
+                            onPress={() => {
+                              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                              openProcurementComposer(activeTab === 'costing' ? 'costing' : 'procurement');
+                            }}
                             className="rounded-full active:opacity-80 px-3.5 flex-row items-center"
                             style={{ height: 40, backgroundColor: colors.bar }}
                           >
                             <Plus size={18} color={colors.bg.screen} strokeWidth={2.5} />
-                            <Text style={{ color: colors.bg.screen }} className="font-semibold ml-1.5 text-sm">New PO</Text>
+                            <Text style={{ color: colors.bg.screen }} className="font-semibold ml-1.5 text-sm">
+                              {activeTab === 'costing' ? 'New Costing' : 'New PO'}
+                            </Text>
                           </Pressable>
                         ) : null}
                       </View>
@@ -10686,21 +15430,94 @@ export default function FinanceScreen() {
                   paddingTop: isWebDesktop ? 20 : 0,
                   paddingBottom: tabBarHeight + 24,
                 }}
-              >
-                {renderActiveSection()}
-              </ScrollView>
-            </View>
-            {selectedProcurementId ? (
-              <View style={{ width: splitDetailPanelWidth, borderLeftWidth: 1, borderLeftColor: colors.divider }}>
-                <ProcurementDetailPanel
-                  procurementId={selectedProcurementId}
+                >
+                  {renderActiveSection()}
+                </ScrollView>
+              </View>
+              {procurementWorkspaceView === 'list' && activeTab === 'costing' && selectedProcurementId ? (
+                <View style={{ width: splitDetailPanelWidth, borderLeftWidth: 1, borderLeftColor: colors.divider }}>
+                  <ProcurementDetailPanel
+                    procurementId={selectedProcurementId}
                   compact={isDetailPanelCompact}
+                  statusOptions={effectiveProcurementStatusOptions.map((option) => option.name)}
                   onClose={() => setSelectedProcurementId(null)}
                   onEdit={(id) => { openProcurementEditor(id); setSelectedProcurementId(null); }}
                   onDelete={(id) => { handleDeleteProcurement(id); setSelectedProcurementId(null); }}
-                />
+                  onMerge={(id) => { setMergeProcurementSearch(''); setMergingProcurementId(id); }}
+                  onStatusChange={handleUpdateProcurementStatus}
+                  />
               </View>
             ) : null}
+              {procurementWorkspaceView === 'list' && activeTab === 'procurement' && procurementChildPage === 'overview' && selectedProcurementId ? (
+                <View style={{ width: splitDetailPanelWidth, borderLeftWidth: 1, borderLeftColor: colors.divider }}>
+                  <ProcurementDetailPanel
+                    procurementId={selectedProcurementId}
+                  compact={isDetailPanelCompact}
+                  statusOptions={effectiveProcurementStatusOptions.map((option) => option.name)}
+                  onClose={() => setSelectedProcurementId(null)}
+                  onEdit={(id) => { openProcurementEditor(id); setSelectedProcurementId(null); }}
+                  onDelete={(id) => { handleDeleteProcurement(id); setSelectedProcurementId(null); }}
+                  onMerge={(id) => { setMergeProcurementSearch(''); setMergingProcurementId(id); }}
+                  onStatusChange={handleUpdateProcurementStatus}
+                  />
+              </View>
+            ) : null}
+          </View>
+        ) : !isMobile && activeTab === 'salary' && Boolean(selectedExpenseId) ? (
+          <View style={{ flex: 1, flexDirection: 'row' }}>
+            <View style={{ flex: 1, flexDirection: 'column' }}>
+              {isWebDesktop ? (
+                <View style={{ paddingHorizontal: webDesktopGutterPad, borderBottomWidth: 1, borderBottomColor: colors.divider }}>
+                  <View
+                    className="px-5 pt-5 pb-4"
+                    style={{ maxWidth: 1440, width: '100%', minHeight: desktopFinanceHeaderMinHeight, justifyContent: 'center' }}
+                  >
+                    <View className="flex-row items-start justify-between" style={{ gap: 12 }}>
+                      <View style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
+                        <Text style={{ color: colors.text.primary, ...pageHeadingStyle }}>{financeHeaderTitle}</Text>
+                        <Text style={{ color: colors.text.tertiary }} className="text-sm mt-1">{financeHeaderSubtitle}</Text>
+                      </View>
+                      <View className="flex-row items-center" style={{ gap: 8, marginTop: 2 }}>
+                        {salaryTemplates.length > 0 ? (
+                          <Pressable
+                            onPress={() => {
+                              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                              openSalaryRunLauncher();
+                            }}
+                            className="rounded-full active:opacity-80 px-3.5 flex-row items-center"
+                            style={{ height: 40, backgroundColor: colors.bar }}
+                          >
+                            <Plus size={18} color={colors.bg.screen} strokeWidth={2.5} />
+                            <Text style={{ color: colors.bg.screen }} className="font-semibold ml-1.5 text-sm">Run Salary</Text>
+                          </Pressable>
+                        ) : null}
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              ) : null}
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                style={{ flex: 1, maxWidth: selectedExpenseId ? undefined : 1440 }}
+                contentContainerStyle={{
+                  paddingLeft: 20 + (isWebDesktop ? webDesktopGutterPad : 0),
+                  paddingRight: 20,
+                  paddingTop: isWebDesktop ? 20 : 0,
+                  paddingBottom: tabBarHeight + 24,
+                }}
+              >
+                {renderSalary()}
+              </ScrollView>
+            </View>
+            <View style={{ width: splitDetailPanelWidth, borderLeftWidth: 1, borderLeftColor: colors.divider }}>
+              <ExpenseDetailPanel
+                expenseId={selectedExpenseId!}
+                compact={isDetailPanelCompact}
+                onClose={() => setSelectedExpenseId(null)}
+                onEdit={(id) => { openExpenseEditor(id); setSelectedExpenseId(null); }}
+                onDelete={(id) => { handleDeleteExpense(id); setSelectedExpenseId(null); }}
+              />
+            </View>
           </View>
         ) : (
           <View style={[{ flex: 1 }, isWebDesktop ? { paddingHorizontal: webDesktopGutterPad, alignItems: 'flex-start' } : undefined]}>
@@ -10710,7 +15527,7 @@ export default function FinanceScreen() {
               style={isWebDesktop ? { flex: 1, maxWidth: 1440, width: '100%', alignSelf: 'flex-start' } : undefined}
               contentContainerStyle={{
                 paddingHorizontal: 20,
-                paddingTop: isWebDesktop && (activeTab === 'expenses' || activeTab === 'refunds' || activeTab === 'procurement') ? 20 : isWebDesktop ? 12 : 0,
+                paddingTop: isWebDesktop && (activeTab === 'revenue' || activeTab === 'expenses' || activeTab === 'refunds' || activeTab === 'procurement' || activeTab === 'costing' || activeTab === 'salary') ? 20 : isWebDesktop ? 12 : 0,
                 paddingBottom: tabBarHeight + 24,
               }}
             >
@@ -10719,6 +15536,216 @@ export default function FinanceScreen() {
           </View>
         )}
       </SafeAreaView>
+
+      <Modal
+        visible={showRevenueFilterSheet}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowRevenueFilterSheet(false)}
+      >
+        <Pressable
+          className="flex-1 justify-end"
+          style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
+          onPress={() => setShowRevenueFilterSheet(false)}
+        >
+          <Pressable
+            onPress={(event) => event.stopPropagation()}
+            className="rounded-t-3xl"
+            style={{
+              backgroundColor: colors.bg.screen,
+              maxHeight: '78%',
+              width: '100%',
+            }}
+          >
+            <View className="items-center py-3">
+              <View className="w-10 h-1 rounded-full" style={{ backgroundColor: colors.divider }} />
+            </View>
+
+            <View
+              className="flex-row items-center justify-between px-5 pb-4"
+              style={{ borderBottomWidth: 0.5, borderBottomColor: colors.divider }}
+            >
+              <View>
+                <Text style={{ color: colors.text.primary }} className="font-bold text-lg">
+                  Filter & Sort Revenue
+                </Text>
+                <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1">
+                  Control which revenue rows show in the table.
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => setShowRevenueFilterSheet(false)}
+                className="w-8 h-8 rounded-full items-center justify-center active:opacity-50"
+                style={{ backgroundColor: colors.bg.input }}
+              >
+                <X size={18} color={colors.text.tertiary} strokeWidth={2} />
+              </Pressable>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View className="px-5 pt-4 pb-2">
+                <Text style={{ color: colors.text.muted }} className="text-xs font-semibold uppercase tracking-wider mb-3">
+                  Sort By
+                </Text>
+
+                {expenseSortOptions.map((option) => {
+                  const isActive = revenueSort === option.key;
+                  const iconNode = option.key === 'newest' || option.key === 'oldest'
+                    ? <Clock size={18} color={isActive ? colors.bar : colors.text.muted} strokeWidth={2} />
+                    : option.key === 'amount-low'
+                      ? <TrendingDown size={18} color={isActive ? colors.bar : colors.text.muted} strokeWidth={2} />
+                      : <TrendingUp size={18} color={isActive ? colors.bar : colors.text.muted} strokeWidth={2} />;
+                  return (
+                    <Pressable
+                      key={option.key}
+                      onPress={() => {
+                        void Haptics.selectionAsync();
+                        setRevenueSort(option.key);
+                      }}
+                      className="flex-row items-center py-3 active:opacity-70"
+                    >
+                      {iconNode}
+                      <View className="flex-1 ml-3">
+                        <Text style={{ color: colors.text.primary }} className="font-medium text-sm">{option.label}</Text>
+                      </View>
+                      {isActive ? (
+                        <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: colors.bar }}>
+                          <Check size={12} color={colors.bg.screen} strokeWidth={3} />
+                        </View>
+                      ) : null}
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <View className="px-5 pt-4" style={{ borderTopWidth: 0.5, borderTopColor: colors.divider, marginTop: 8 }}>
+                <Text style={{ color: colors.text.muted }} className="text-xs font-semibold uppercase tracking-wider mb-3">
+                  Order Category
+                </Text>
+
+                {['all', ...revenueCategoryOptions].map((option) => {
+                  const isAll = option === 'all';
+                  const isActive = revenueOrderCategoryFilter === option;
+                  return (
+                    <Pressable
+                      key={`category-${option}`}
+                      onPress={() => {
+                        void Haptics.selectionAsync();
+                        setRevenueOrderCategoryFilter(option);
+                      }}
+                      className="flex-row items-center py-3 active:opacity-70"
+                    >
+                      <Tag size={18} color={isActive ? colors.bar : colors.text.muted} strokeWidth={2} />
+                      <View className="flex-1 ml-3">
+                        <Text style={{ color: colors.text.primary }} className="font-medium text-sm">
+                          {isAll ? 'All categories' : option}
+                        </Text>
+                      </View>
+                      {isActive ? (
+                        <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: colors.bar }}>
+                          <Check size={12} color={colors.bg.screen} strokeWidth={3} />
+                        </View>
+                      ) : null}
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <View className="px-5 pt-4" style={{ borderTopWidth: 0.5, borderTopColor: colors.divider, marginTop: 8 }}>
+                <Text style={{ color: colors.text.muted }} className="text-xs font-semibold uppercase tracking-wider mb-3">
+                  Payment Method
+                </Text>
+
+                {['all', ...revenuePaymentMethodOptions].map((option) => {
+                  const isAll = option === 'all';
+                  const isActive = revenuePaymentMethodFilter === option;
+                  return (
+                    <Pressable
+                      key={`payment-${option}`}
+                      onPress={() => {
+                        void Haptics.selectionAsync();
+                        setRevenuePaymentMethodFilter(option);
+                      }}
+                      className="flex-row items-center py-3 active:opacity-70"
+                    >
+                      <Banknote size={18} color={isActive ? colors.bar : colors.text.muted} strokeWidth={2} />
+                      <View className="flex-1 ml-3">
+                        <Text style={{ color: colors.text.primary }} className="font-medium text-sm">
+                          {isAll ? 'All payment methods' : option}
+                        </Text>
+                      </View>
+                      {isActive ? (
+                        <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: colors.bar }}>
+                          <Check size={12} color={colors.bg.screen} strokeWidth={3} />
+                        </View>
+                      ) : null}
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <View className="px-5 pt-4" style={{ borderTopWidth: 0.5, borderTopColor: colors.divider, marginTop: 8 }}>
+                <Text style={{ color: colors.text.muted }} className="text-xs font-semibold uppercase tracking-wider mb-3">
+                  Source
+                </Text>
+
+                {['all', ...revenueSourceOptions].map((option) => {
+                  const isAll = option === 'all';
+                  const isActive = revenueSourceFilter === option;
+                  return (
+                    <Pressable
+                      key={`source-${option}`}
+                      onPress={() => {
+                        void Haptics.selectionAsync();
+                        setRevenueSourceFilter(option);
+                      }}
+                      className="flex-row items-center py-3 active:opacity-70"
+                    >
+                      <ShoppingCart size={18} color={isActive ? colors.bar : colors.text.muted} strokeWidth={2} />
+                      <View className="flex-1 ml-3">
+                        <Text style={{ color: colors.text.primary }} className="font-medium text-sm">
+                          {isAll ? 'All sources' : option}
+                        </Text>
+                      </View>
+                      {isActive ? (
+                        <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: colors.bar }}>
+                          <Check size={12} color={colors.bg.screen} strokeWidth={3} />
+                        </View>
+                      ) : null}
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <View className="px-5 py-4" style={{ gap: 10 }}>
+                <Pressable
+                  onPress={() => {
+                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    setRevenueSort('newest');
+                    setRevenueOrderCategoryFilter('Sale');
+                    setRevenuePaymentMethodFilter('all');
+                    setRevenueSourceFilter('all');
+                  }}
+                  className="rounded-xl items-center justify-center"
+                  style={{ height: 42, backgroundColor: colors.bg.input, borderWidth: 1, borderColor: colors.divider }}
+                >
+                  <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">Clear filters</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => {
+                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    setShowRevenueFilterSheet(false);
+                  }}
+                  className="rounded-xl items-center justify-center active:opacity-80"
+                  style={{ height: 50, backgroundColor: colors.bar }}
+                >
+                  <Text style={{ color: colors.bg.screen }} className="font-semibold">Apply</Text>
+                </Pressable>
+              </View>
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <Modal
         visible={showExpenseFilterSheet}
@@ -11329,6 +16356,35 @@ export default function FinanceScreen() {
                     </View>
                   </View>
 
+                  {selectedMobileExpenseRecord ? (
+                    <View className="rounded-2xl p-4" style={colors.getCardStyle()}>
+                      <Text style={{ color: colors.text.tertiary }} className="text-xs uppercase font-semibold mb-3">Status</Text>
+                      <View className="flex-row flex-wrap" style={{ gap: 8 }}>
+                        {expensePaymentStatusOptions.map((option) => {
+                          const isSelected = selectedMobileExpenseRecord.status === option.key;
+                          return (
+                            <Pressable
+                              key={option.key}
+                              onPress={() => handleUpdateExpenseStatus(selectedMobileExpenseRecord.id, option.key)}
+                              style={{
+                                height: 34,
+                                paddingHorizontal: 12,
+                                borderRadius: 999,
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                backgroundColor: isSelected ? option.bg : colors.bg.input,
+                                borderWidth: 1,
+                                borderColor: isSelected ? option.color : colors.divider,
+                              }}
+                            >
+                              <Text style={{ color: isSelected ? option.color : colors.text.secondary, fontSize: 12, fontWeight: '600' }}>{option.label}</Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  ) : null}
+
                   <View className="rounded-2xl p-4" style={colors.getCardStyle()}>
                     <Text style={{ color: colors.text.tertiary }} className="text-xs uppercase font-semibold mb-3">Payment Breakdown</Text>
                     {selectedMobileExpenseLineItems.map((line, index) => (
@@ -11353,16 +16409,34 @@ export default function FinanceScreen() {
                   </View>
 
                   <View className="rounded-2xl p-4" style={colors.getCardStyle()}>
-                    <View className="flex-row items-center justify-between">
-                      <View style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
-                        <Text style={{ color: colors.text.tertiary }} className="text-xs uppercase font-semibold mb-1">Supplier / Merchant</Text>
-                        <Text style={{ color: colors.text.primary }} className="text-lg font-semibold">{selectedMobileExpense.merchant || '-'}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 28 }}>
+                      <View style={{ width: 128, flexShrink: 0 }}>
+                        <Text style={{ color: colors.text.tertiary }} className="text-xs uppercase font-semibold">
+                          Supplier / Merchant
+                        </Text>
                       </View>
-                      <StatusBadge label={formatExpenseTypeLabel(selectedMobileExpense.type)} colors={colors} compact maxWidth={120} />
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 8, flex: 1, minWidth: 0 }}>
+                        <Text
+                          style={{ color: colors.text.primary, fontSize: 13, fontWeight: '500', flexShrink: 1, textAlign: 'right' }}
+                          numberOfLines={1}
+                        >
+                          {selectedMobileExpense.merchant || '-'}
+                        </Text>
+                        <StatusBadge label={formatExpenseTypeLabel(selectedMobileExpense.type)} colors={colors} compact maxWidth={102} />
+                      </View>
                     </View>
-                    <View className="mt-3 pt-3" style={{ borderTopWidth: 1, borderTopColor: colors.divider }}>
-                      <Text style={{ color: colors.text.tertiary }} className="text-xs uppercase font-semibold mb-1">Primary Category</Text>
-                      <Text style={{ color: colors.text.primary }} className="text-lg font-semibold">{selectedMobileExpense.category}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 28, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.divider }}>
+                      <View style={{ width: 128, flexShrink: 0 }}>
+                        <Text style={{ color: colors.text.tertiary }} className="text-xs uppercase font-semibold">
+                          Primary Category
+                        </Text>
+                      </View>
+                      <Text
+                        style={{ color: colors.text.primary, fontSize: 13, fontWeight: '500', flex: 1, textAlign: 'right' }}
+                        numberOfLines={1}
+                      >
+                        {selectedMobileExpense.category}
+                      </Text>
                     </View>
                   </View>
 
@@ -11441,6 +16515,33 @@ export default function FinanceScreen() {
                   </View>
 
                   <View className="rounded-2xl p-4" style={colors.getCardStyle()}>
+                    <Text style={{ color: colors.text.tertiary }} className="text-xs uppercase font-semibold mb-3">Status</Text>
+                    <View className="flex-row flex-wrap" style={{ gap: 8 }}>
+                      {effectiveProcurementStatusOptions.map((option) => {
+                        const isSelected = selectedMobileProcurement.status.trim().toLowerCase() === option.name.trim().toLowerCase();
+                        return (
+                          <Pressable
+                            key={option.id}
+                            onPress={() => handleUpdateProcurementStatus(selectedMobileProcurement.id, option.name)}
+                            style={{
+                              height: 34,
+                              paddingHorizontal: 12,
+                              borderRadius: 999,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              backgroundColor: isSelected ? colors.bg.input : 'transparent',
+                              borderWidth: 1,
+                              borderColor: isSelected ? colors.text.primary : colors.divider,
+                            }}
+                          >
+                            <Text style={{ color: isSelected ? colors.text.primary : colors.text.secondary, fontSize: 12, fontWeight: '600' }}>{option.name}</Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
+
+                  <View className="rounded-2xl p-4" style={colors.getCardStyle()}>
                     <View className="flex-row items-center justify-between">
                       <View style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
                         <Text style={{ color: colors.text.tertiary }} className="text-xs uppercase font-semibold mb-1">Supplier</Text>
@@ -11465,6 +16566,97 @@ export default function FinanceScreen() {
                     <View className="rounded-2xl p-4" style={colors.getCardStyle()}>
                       <Text style={{ color: colors.text.tertiary }} className="text-xs uppercase font-semibold mb-1">Notes</Text>
                       <Text style={{ color: colors.text.primary }} className="text-sm">{stripMetadata(selectedMobileProcurementRecord.notes) || '-'}</Text>
+                    </View>
+                  ) : null}
+                  {selectedMobileProcurementPaymentRows.length > 0 ? (
+                    <View className="rounded-2xl overflow-hidden" style={colors.getCardStyle()}>
+                      <View className="px-4 pt-4 pb-3">
+                        <Text style={{ color: colors.text.tertiary }} className="text-xs uppercase font-semibold">Payment Breakdown</Text>
+                      </View>
+                      {selectedMobileProcurementPaymentRows.map((item, index) => (
+                        <View
+                          key={item.id}
+                          className="px-4 py-3"
+                          style={{ borderTopWidth: 1, borderTopColor: colors.divider }}
+                        >
+                          <View className="flex-row items-center justify-between" style={{ gap: 10 }}>
+                            <View className="flex-row items-center" style={{ gap: 6, flex: 1, minWidth: 0, paddingRight: 12 }}>
+                              <Package size={13} color={colors.text.tertiary} strokeWidth={2} />
+                              <Text style={{ color: colors.text.secondary, fontSize: 13, flex: 1 }} numberOfLines={1}>
+                                {capitalizeDisplayValue(item.name || `Payment ${index + 1}`)}
+                              </Text>
+                            </View>
+                            <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600', textAlign: 'right' }}>
+                              {formatCurrency(item.total)}
+                            </Text>
+                          </View>
+                          {item.paymentDate ? (
+                            <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 4, marginLeft: 19 }}>
+                              Paid {item.paymentDate}
+                            </Text>
+                          ) : null}
+                        </View>
+                      ))}
+                      {selectedMobileProcurementChargeTotals.total > 0 ? (
+                        <View className="px-4 pt-3 pb-4" style={{ borderTopWidth: 1, borderTopColor: colors.divider }}>
+                          {selectedMobileProcurementChargeTotals.transfer > 0 ? (
+                            <View className="flex-row items-center justify-between">
+                              <Text style={{ color: colors.text.tertiary, fontSize: 12 }}>
+                                Transfer fees{selectedMobileProcurementChargeTotals.count > 1 ? ` (${selectedMobileProcurementChargeTotals.count}x)` : ''}
+                              </Text>
+                              <Text style={{ color: colors.text.secondary, fontSize: 13, fontWeight: '600' }}>
+                                {formatCurrency(selectedMobileProcurementChargeTotals.transfer)}
+                              </Text>
+                            </View>
+                          ) : null}
+                          {selectedMobileProcurementChargeTotals.stampDuty > 0 ? (
+                            <View className="flex-row items-center justify-between" style={{ marginTop: selectedMobileProcurementChargeTotals.transfer > 0 ? 6 : 0 }}>
+                              <Text style={{ color: colors.text.tertiary, fontSize: 12 }}>Stamp duty</Text>
+                              <Text style={{ color: colors.text.secondary, fontSize: 13, fontWeight: '600' }}>
+                                {formatCurrency(selectedMobileProcurementChargeTotals.stampDuty)}
+                              </Text>
+                            </View>
+                          ) : null}
+                        </View>
+                      ) : null}
+                    </View>
+                  ) : null}
+                  {selectedMobileProcurementAttachments.length > 0 ? (
+                    <View className="rounded-2xl p-4" style={colors.getCardStyle()}>
+                      <Text style={{ color: colors.text.tertiary }} className="text-xs uppercase font-semibold mb-3">Attachments</Text>
+                      <View style={{ gap: 8 }}>
+                        {selectedMobileProcurementAttachments.map((attachment, index) => (
+                          <Pressable
+                            key={`${attachment.storagePath ?? attachment.uri}-${index}`}
+                            onPress={() => {
+                              void openAttachmentPath(attachment.storagePath ?? attachment.uri).catch((error) => {
+                                console.warn('Open procurement attachment failed:', error);
+                                void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                              });
+                            }}
+                            className="rounded-xl flex-row items-center px-3"
+                            style={{
+                              minHeight: 52,
+                              borderWidth: 1,
+                              borderColor: colors.divider,
+                              backgroundColor: colors.bg.input,
+                            }}
+                          >
+                            <View
+                              className="rounded-lg items-center justify-center"
+                              style={{ width: 36, height: 36, backgroundColor: colors.bg.screen, borderWidth: 1, borderColor: colors.divider }}
+                            >
+                              <FileText size={16} color={colors.text.tertiary} strokeWidth={2} />
+                            </View>
+                            <View style={{ flex: 1, minWidth: 0, marginLeft: 10 }}>
+                              <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '500' }} numberOfLines={1}>
+                                {attachment.name}
+                              </Text>
+                            </View>
+                            <Download size={16} color={colors.text.muted} strokeWidth={2} />
+                          </Pressable>
+                        ))}
+                      </View>
                     </View>
                   ) : null}
 
@@ -11562,6 +16754,29 @@ export default function FinanceScreen() {
                   <View className="rounded-2xl p-4" style={colors.getCardStyle()}>
                     <Text style={{ color: colors.text.tertiary }} className="text-xs uppercase font-semibold mb-1">Order</Text>
                     <Text style={{ color: colors.text.primary }} className="text-sm">#{selectedMobileStatus.order}</Text>
+                  </View>
+                  <View className="flex-row" style={{ gap: 10 }}>
+                    <Pressable
+                      onPress={() => {
+                        const statusId = selectedMobileStatus.id;
+                        setMobileDetail(null);
+                        openStatusEditor(statusId);
+                      }}
+                      className="flex-1 rounded-xl"
+                      style={{ height: 44, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.divider }}
+                    >
+                      <Text style={{ color: colors.text.secondary }} className="font-semibold">Edit</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => {
+                        handleDeleteProcurementStatusOption(selectedMobileStatus.id);
+                        setMobileDetail(null);
+                      }}
+                      className="flex-1 rounded-xl"
+                      style={{ height: 44, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.danger }}
+                    >
+                      <Text style={{ color: '#FFFFFF' }} className="font-semibold">Delete</Text>
+                    </Pressable>
                   </View>
                 </View>
               ) : null}
@@ -12228,20 +17443,67 @@ export default function FinanceScreen() {
                     <>
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                         <Text style={{ color: colors.text.tertiary, fontSize: 13 }}>
-                          NIP fee + VAT ({(financeRules.vatRate * 100).toFixed(0)}%)
+                          Bank charges
                         </Text>
-                        <Text style={{ color: colors.text.secondary, fontSize: 13, fontWeight: '600' }}>
-                          {formatCurrency(refundBankChargeAmount)}
+                        <Text style={{ color: colors.text.muted, fontSize: 12 }}>
+                          Auto-filled from transfer fee tiers + VAT ({(financeRules.vatRate * 100).toFixed(0)}%)
                         </Text>
                       </View>
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+
+                      <TextInput
+                        value={refundBankChargeDraft}
+                        onChangeText={(value) => {
+                          setRefundBankChargeDraft(value);
+                          setRefundBankChargeManuallyEdited(true);
+                        }}
+                        placeholder="0"
+                        keyboardType="decimal-pad"
+                        placeholderTextColor={colors.text.muted}
+                        editable={!isEditingPaidRefundRequest}
+                        style={{
+                          height: 48,
+                          borderRadius: 12,
+                          borderWidth: 1,
+                          borderColor: formFieldBorder,
+                          backgroundColor: formFieldBg,
+                          color: colors.text.primary,
+                          paddingHorizontal: 14,
+                          fontSize: 14,
+                          opacity: isEditingPaidRefundRequest ? 0.7 : 1,
+                        }}
+                      />
+
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
                         <Text style={{ color: colors.text.tertiary, fontSize: 13 }}>
                           {`Stamp duty (CBN, ≥${STAMP_DUTY_THRESHOLD_LABEL})`}
                         </Text>
-                        <Text style={{ color: colors.text.secondary, fontSize: 13, fontWeight: '600' }}>
-                          {formatCurrency(refundStampDuty)}
+                        <Text style={{ color: colors.text.muted, fontSize: 12 }}>
+                          Edit if bank debit differs
                         </Text>
                       </View>
+
+                      <TextInput
+                        value={refundStampDutyDraft}
+                        onChangeText={(value) => {
+                          setRefundStampDutyDraft(value);
+                          setRefundStampDutyManuallyEdited(true);
+                        }}
+                        placeholder="0"
+                        keyboardType="decimal-pad"
+                        placeholderTextColor={colors.text.muted}
+                        editable={!isEditingPaidRefundRequest}
+                        style={{
+                          height: 48,
+                          borderRadius: 12,
+                          borderWidth: 1,
+                          borderColor: formFieldBorder,
+                          backgroundColor: formFieldBg,
+                          color: colors.text.primary,
+                          paddingHorizontal: 14,
+                          fontSize: 14,
+                          opacity: isEditingPaidRefundRequest ? 0.7 : 1,
+                        }}
+                      />
                     </>
                   ) : (
                     <Text style={{ color: colors.text.muted, fontSize: 12 }}>
@@ -12638,7 +17900,8 @@ export default function FinanceScreen() {
                     setRefundDetailActionMenuOpen(false);
                     setShowRefundRequestDetailModal(false);
                   }}
-                  style={{ width: 38, height: 38, borderRadius: 19, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.input, alignItems: 'center', justifyContent: 'center' }}
+                  className={isWebDesktop ? '' : 'p-1 -ml-1'}
+                  style={isWebDesktop ? { width: 38, height: 38, borderRadius: 19, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.input, alignItems: 'center', justifyContent: 'center' } : undefined}
                 >
                   <ArrowLeft size={20} color={colors.text.secondary} strokeWidth={2.4} />
                 </Pressable>
@@ -12648,6 +17911,310 @@ export default function FinanceScreen() {
             </View>
 
             {selectedRefundRequest ? renderRefundRequestDetailBody(selectedRefundRequest, 'modal') : null}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={showOtherIncomeModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setShowOtherIncomeModal(false);
+          resetOtherIncomeDraft();
+        }}
+      >
+        <Pressable
+          className={isWebDesktop ? 'flex-1 items-center justify-center' : 'flex-1'}
+          style={{ backgroundColor: isWebDesktop ? 'rgba(0, 0, 0, 0.6)' : colors.bg.screen }}
+          onPress={() => {
+            setShowOtherIncomeModal(false);
+            resetOtherIncomeDraft();
+          }}
+        >
+          <Pressable
+            onPress={(event) => event.stopPropagation()}
+            style={{
+              width: isWebDesktop ? '92%' : '100%',
+              maxWidth: isWebDesktop ? 620 : undefined,
+              height: isWebDesktop ? undefined : '100%',
+              borderRadius: isWebDesktop ? 20 : 0,
+              borderWidth: 1,
+              borderColor: colors.divider,
+              backgroundColor: colors.bg.card,
+              overflow: 'visible',
+              padding: isWebDesktop ? 20 : 16,
+              paddingTop: isWebDesktop ? 20 : insets.top + 16,
+            }}
+          >
+            <View className="flex-row items-center justify-between">
+              <View style={{ flex: 1, paddingRight: 16 }}>
+                <Text style={{ color: colors.text.primary }} className="text-xl font-bold">
+                  {editingOtherIncomeId ? 'Edit Other Income' : 'Add Other Income'}
+                </Text>
+                <Text style={{ color: colors.text.tertiary, marginTop: 4 }} className="text-sm">
+                  Record grants, owner funding, loans, and other non-order cash inflow.
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => {
+                  setShowOtherIncomeModal(false);
+                  resetOtherIncomeDraft();
+                }}
+                className="rounded-full items-center justify-center"
+                style={{ backgroundColor: colors.bg.input, width: 40, height: 40 }}
+              >
+                <X size={20} color={colors.text.secondary} strokeWidth={2.5} />
+              </Pressable>
+            </View>
+
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              style={isWebDesktop ? { maxHeight: 620 } : { flex: 1 }}
+              contentContainerStyle={{ paddingBottom: 12 }}
+            >
+              <View className="mt-5" style={{ gap: 14 }}>
+                <View>
+                  <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Title</Text>
+                  <TextInput
+                    value={otherIncomeTitleDraft}
+                    onChangeText={setOtherIncomeTitleDraft}
+                    placeholder="e.g. BOI Grant"
+                    placeholderTextColor={colors.text.muted}
+                    style={{
+                      height: 52,
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: formFieldBorder,
+                      backgroundColor: formFieldBg,
+                      color: colors.text.primary,
+                      paddingHorizontal: 14,
+                      fontSize: 15,
+                    }}
+                  />
+                </View>
+
+                <View>
+                  <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Source</Text>
+                  <TextInput
+                    value={otherIncomeSourceDraft}
+                    onChangeText={setOtherIncomeSourceDraft}
+                    placeholder="e.g. Bank of Industry"
+                    placeholderTextColor={colors.text.muted}
+                    style={{
+                      height: 52,
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: formFieldBorder,
+                      backgroundColor: formFieldBg,
+                      color: colors.text.primary,
+                      paddingHorizontal: 14,
+                      fontSize: 15,
+                    }}
+                  />
+                </View>
+
+                <View>
+                  <Text style={{ color: colors.text.tertiary }} className="text-xs mb-2">Type</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    {otherIncomeTypeOptions.map((option) => {
+                      const active = otherIncomeTypeDraft === option;
+                      return (
+                        <Pressable
+                          key={option}
+                          onPress={() => setOtherIncomeTypeDraft(option)}
+                          className="rounded-full px-3.5 py-2 active:opacity-80"
+                          style={{
+                            borderWidth: 1,
+                            borderColor: active ? colors.bar : colors.divider,
+                            backgroundColor: active ? colors.bar : colors.bg.input,
+                          }}
+                        >
+                          <Text
+                            style={{ color: active ? colors.bg.screen : colors.text.secondary }}
+                            className="text-sm font-semibold"
+                          >
+                            {formatOtherIncomeTypeLabel(option)}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                <View style={{ flexDirection: isMobile ? 'column' : 'row', gap: 12 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Amount</Text>
+                    <TextInput
+                      value={otherIncomeAmountDraft}
+                      onChangeText={setOtherIncomeAmountDraft}
+                      placeholder="0"
+                      keyboardType="decimal-pad"
+                      placeholderTextColor={colors.text.muted}
+                      style={{
+                        height: 52,
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        borderColor: formFieldBorder,
+                        backgroundColor: formFieldBg,
+                        color: colors.text.primary,
+                        paddingHorizontal: 14,
+                        fontSize: 15,
+                      }}
+                    />
+                  </View>
+
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Date</Text>
+                    {Platform.OS === 'web' ? (
+                      <View
+                        style={{
+                          height: 52,
+                          borderRadius: 12,
+                          borderWidth: 1,
+                          borderColor: formFieldBorder,
+                          backgroundColor: formFieldBg,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          paddingHorizontal: 14,
+                        }}
+                      >
+                        <Calendar size={18} color={colors.text.tertiary} strokeWidth={2} />
+                        <input
+                          className="finance-date-input"
+                          type="date"
+                          value={otherIncomeDateDraft}
+                          onChange={(e: any) => setOtherIncomeDateDraft(e.target.value)}
+                          style={{
+                            flex: 1,
+                            border: 'none',
+                            outline: 'none',
+                            background: 'transparent',
+                            color: colors.text.primary,
+                            fontSize: 15,
+                            marginLeft: 10,
+                            fontFamily: 'inherit',
+                            colorScheme: isDarkMode ? 'dark' : 'light',
+                          }}
+                        />
+                      </View>
+                    ) : (
+                      <Pressable
+                        onPress={() => setShowOtherIncomeDatePicker(true)}
+                        style={{
+                          height: 52,
+                          borderRadius: 12,
+                          borderWidth: 1,
+                          borderColor: formFieldBorder,
+                          backgroundColor: formFieldBg,
+                          paddingHorizontal: 14,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <Calendar size={18} color={colors.text.tertiary} strokeWidth={2} />
+                        <Text style={{ color: colors.text.primary, fontSize: 15, marginLeft: 10 }}>
+                          {otherIncomeDateDraft || 'Select date'}
+                        </Text>
+                      </Pressable>
+                    )}
+                    {showOtherIncomeDatePicker && Platform.OS !== 'web' ? (
+                      <DateTimePicker
+                        value={otherIncomeDateDraft ? new Date(otherIncomeDateDraft + 'T00:00:00') : new Date()}
+                        mode="date"
+                        display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                        onChange={(_event: any, selectedDate?: Date) => {
+                          setShowOtherIncomeDatePicker(Platform.OS === 'ios');
+                          if (selectedDate) {
+                            setOtherIncomeDateDraft(selectedDate.toISOString().split('T')[0]);
+                          }
+                        }}
+                      />
+                    ) : null}
+                  </View>
+                </View>
+
+                <View>
+                  <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Note</Text>
+                  <TextInput
+                    value={otherIncomeNoteDraft}
+                    onChangeText={setOtherIncomeNoteDraft}
+                    placeholder="Optional context for this inflow"
+                    placeholderTextColor={colors.text.muted}
+                    multiline
+                    textAlignVertical="top"
+                    style={{
+                      minHeight: 116,
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: formFieldBorder,
+                      backgroundColor: formFieldBg,
+                      color: colors.text.primary,
+                      paddingHorizontal: 14,
+                      paddingVertical: 14,
+                      fontSize: 15,
+                    }}
+                  />
+                </View>
+              </View>
+            </ScrollView>
+
+            <View className="flex-row items-center justify-between mt-4" style={{ gap: 10 }}>
+              <View style={{ minWidth: 80 }}>
+                {editingOtherIncomeId ? (
+                  <Pressable
+                    onPress={() => handleDeleteOtherIncome(editingOtherIncomeId)}
+                    className="rounded-full px-4"
+                    style={{
+                      height: 44,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderWidth: 1,
+                      borderColor: colors.danger,
+                    }}
+                  >
+                    <Text style={{ color: colors.danger }} className="font-semibold">Delete</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+
+              <View className="flex-row items-center justify-end" style={{ gap: 10, flex: 1 }}>
+                <Pressable
+                  onPress={() => {
+                    setShowOtherIncomeModal(false);
+                    resetOtherIncomeDraft();
+                  }}
+                  className="rounded-full px-5"
+                  style={{
+                    height: 44,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderWidth: 1,
+                    borderColor: colors.divider,
+                  }}
+                >
+                  <Text style={{ color: colors.text.secondary }} className="font-semibold">Cancel</Text>
+                </Pressable>
+                <Pressable
+                  disabled={!canSaveOtherIncome || isSavingOtherIncome}
+                  onPress={() => { void handleSaveOtherIncome(); }}
+                  className="rounded-full px-5"
+                  style={{
+                    height: 44,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: canSaveOtherIncome && !isSavingOtherIncome ? colors.bar : colors.bg.input,
+                  }}
+                >
+                  <Text
+                    style={{ color: canSaveOtherIncome && !isSavingOtherIncome ? colors.bg.screen : colors.text.muted }}
+                    className="font-semibold"
+                  >
+                    {isSavingOtherIncome ? 'Saving…' : editingOtherIncomeId ? 'Update' : 'Save'}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
           </Pressable>
         </Pressable>
       </Modal>
@@ -13625,46 +19192,74 @@ export default function FinanceScreen() {
         visible={showProcurementModal}
         transparent
         animationType="none"
-        onRequestClose={() => {
-          setShowProcurementModal(false);
+          onRequestClose={() => {
+            setShowProcurementModal(false);
+            setEditingProcurementItemIndex(null);
+            setShowPoNumberDropdown(false);
           setShowPoSupplierDropdown(false);
           setShowPoStatusDropdown(false);
+          setActiveProcurementProductLineId(null);
+          setActiveProcurementVariantLineId(null);
         }}
       >
         <Pressable
-          className={isWebDesktop ? 'flex-1 items-center justify-center' : 'flex-1'}
+          className={isWebDesktop ? 'flex-1 items-end justify-center' : 'flex-1'}
           style={{ backgroundColor: isWebDesktop ? 'rgba(0, 0, 0, 0.6)' : colors.bg.screen }}
           onPress={() => {
             setShowProcurementModal(false);
+            setEditingProcurementItemIndex(null);
+            setShowPoNumberDropdown(false);
             setShowPoSupplierDropdown(false);
             setShowPoStatusDropdown(false);
+            setActiveProcurementProductLineId(null);
+            setActiveProcurementVariantLineId(null);
           }}
         >
           <Pressable
             onPress={(event) => event.stopPropagation()}
             style={{
-              width: isWebDesktop ? '92%' : '100%',
-              maxWidth: isWebDesktop ? 760 : undefined,
-              height: isWebDesktop ? undefined : '100%',
-              borderRadius: isWebDesktop ? 20 : 0,
+              width: isWebDesktop ? 520 : '100%',
+              maxWidth: isWebDesktop ? '92%' : undefined,
+              height: '100%',
+              borderTopLeftRadius: isWebDesktop ? 18 : 0,
+              borderBottomLeftRadius: isWebDesktop ? 18 : 0,
               borderWidth: 1,
               borderColor: colors.divider,
               backgroundColor: colors.bg.card,
               overflow: 'visible',
-              padding: isWebDesktop ? 20 : 16,
-              paddingTop: isWebDesktop ? 20 : insets.top + 16,
+              padding: 0,
+              paddingTop: isWebDesktop ? 0 : insets.top,
             }}
           >
-            <View className="flex-row items-center justify-between">
-              <Text style={{ color: colors.text.primary }} className="text-lg font-bold">
-                {procurementModalMode === 'edit' ? 'Edit Purchase Order' : 'New Purchase Order'}
-              </Text>
+            <View
+              className="flex-row items-center justify-between"
+              style={{
+                paddingHorizontal: 24,
+                paddingVertical: 22,
+                borderBottomWidth: 1,
+                borderBottomColor: colors.divider,
+              }}
+            >
+              <View style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
+                <Text style={{ color: colors.text.primary, fontSize: 21, fontWeight: '700' }}>
+                  {procurementDraftMode === 'costing'
+                    ? (procurementModalMode === 'edit' ? 'Edit Costing Entry' : 'New Costing Entry')
+                    : (procurementModalMode === 'edit' ? 'Edit Procurement Order' : 'New Procurement Order')}
+                </Text>
+                <Text style={{ color: colors.text.muted, fontSize: 14, marginTop: 4 }}>
+                  Line item - does not affect inventory stock
+                </Text>
+              </View>
               <Pressable
                 onPress={() => {
                   setShowProcurementModal(false);
                   setEditingProcurementId(null);
+                  setEditingProcurementItemIndex(null);
+                  setShowPoNumberDropdown(false);
                   setShowPoSupplierDropdown(false);
                   setShowPoStatusDropdown(false);
+                  setActiveProcurementProductLineId(null);
+                  setActiveProcurementVariantLineId(null);
                 }}
                 className="rounded-full items-center justify-center"
                 style={{ backgroundColor: colors.bg.input, width: 40, height: 40 }}
@@ -13675,782 +19270,1111 @@ export default function FinanceScreen() {
 
             <ScrollView
               showsVerticalScrollIndicator={false}
-              style={isWebDesktop ? { maxHeight: 620 } : { flex: 1 }}
-              contentContainerStyle={{ paddingBottom: 12, overflow: 'visible' }}
+              style={{ flex: 1 }}
+              contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 28, overflow: 'visible' }}
             >
             <View className="mt-5" style={{ gap: 14, overflow: 'visible' }}>
-              <View style={{ flexDirection: isMobile ? 'column' : 'row', gap: 12 }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Procurement Name</Text>
+              {procurementDraftMode === 'procurement' ? (
+                <View style={{ position: 'relative', zIndex: showPoNumberDropdown ? 7000 : 1 }}>
+                  <Text style={{ color: colors.text.tertiary, fontSize: 10, marginBottom: 5, letterSpacing: 1, textTransform: 'uppercase' }}>
+                    PO Number
+                  </Text>
                   <TextInput
-                    value={poTitleDraft}
-                    onChangeText={setPoTitleDraft}
-                    placeholder="e.g. March Glasses Procurement"
+                    value={poNumberDraft}
+                    onFocus={() => {
+                      setShowPoNumberDropdown(true);
+                      setShowPoSupplierDropdown(false);
+                      setShowPoStatusDropdown(false);
+                      setActiveProcurementProductLineId(null);
+                    }}
+                    onChangeText={(text) => {
+                      setPoNumberDraft(text.toUpperCase());
+                      setShowPoNumberDropdown(true);
+                    }}
+                    placeholder="Search saved PO numbers..."
+                    autoCapitalize="characters"
                     placeholderTextColor={colors.text.muted}
                     style={{
-                      height: 52,
-                      borderRadius: 12,
+                      height: 48,
+                      borderRadius: 10,
                       borderWidth: 1,
                       borderColor: formFieldBorder,
                       backgroundColor: formFieldBg,
                       color: colors.text.primary,
-                      paddingHorizontal: 14,
+                      paddingHorizontal: 12,
                       fontSize: 15,
                     }}
                   />
-                </View>
-                {!isMobile ? (
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Date Paid</Text>
-                  {Platform.OS === 'web' ? (
-                    <View
-                      style={{
-                        height: 52,
-                        borderRadius: 12,
-                        borderWidth: 1,
-                        borderColor: formFieldBorder,
-                        backgroundColor: formFieldBg,
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        paddingHorizontal: 14,
-                      }}
-                    >
-                      <Calendar size={18} color={colors.text.tertiary} strokeWidth={2} />
-                      <input
-                        className="finance-date-input"
-                        type="date"
-                        value={poExpectedDateDraft}
-                        onChange={(e: any) => setPoExpectedDateDraft(e.target.value)}
-                        style={{
-                          flex: 1,
-                          border: 'none',
-                          outline: 'none',
-                          background: 'transparent',
-                          color: colors.text.primary,
-                          fontSize: 15,
-                          marginLeft: 10,
-                          fontFamily: 'inherit',
-                          colorScheme: isDarkMode ? 'dark' : 'light',
-                        }}
-                      />
-                    </View>
-                  ) : (
-                    <Pressable
-                      onPress={() => setShowPoDatePicker(true)}
-                      style={{
-                        height: 52,
-                        borderRadius: 12,
-                        borderWidth: 1,
-                        borderColor: formFieldBorder,
-                        backgroundColor: formFieldBg,
-                        paddingHorizontal: 14,
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                      }}
-                    >
-                      <Calendar size={18} color={colors.text.tertiary} strokeWidth={2} />
-                      <Text style={{ color: colors.text.primary, fontSize: 15, marginLeft: 10 }}>
-                        {poExpectedDateDraft || 'Select date'}
-                      </Text>
-                    </Pressable>
-                  )}
-                  {showPoDatePicker && Platform.OS !== 'web' ? (
-                    <DateTimePicker
-                      value={poExpectedDateDraft ? new Date(poExpectedDateDraft + 'T00:00:00') : new Date()}
-                      mode="date"
-                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                      onChange={(_event: any, selectedDate?: Date) => {
-                        setShowPoDatePicker(Platform.OS === 'ios');
-                        if (selectedDate) {
-                          setPoExpectedDateDraft(selectedDate.toISOString().split('T')[0]);
-                        }
-                      }}
-                    />
-                  ) : null}
-                </View>
-                ) : null}
-                {!isMobile ? (
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Date Received</Text>
-                  {Platform.OS === 'web' ? (
-                    <View
-                      style={{
-                        height: 52,
-                        borderRadius: 12,
-                        borderWidth: 1,
-                        borderColor: formFieldBorder,
-                        backgroundColor: formFieldBg,
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        paddingHorizontal: 14,
-                      }}
-                    >
-                      <Calendar size={18} color={colors.text.tertiary} strokeWidth={2} />
-                      <input
-                        className="finance-date-input"
-                        type="date"
-                        value={poReceivedDateDraft}
-                        onChange={(e: any) => setPoReceivedDateDraft(e.target.value)}
-                        style={{
-                          flex: 1,
-                          border: 'none',
-                          outline: 'none',
-                          background: 'transparent',
-                          color: colors.text.primary,
-                          fontSize: 15,
-                          marginLeft: 10,
-                          fontFamily: 'inherit',
-                          colorScheme: isDarkMode ? 'dark' : 'light',
-                        }}
-                      />
-                    </View>
-                  ) : (
-                    <Pressable
-                      onPress={() => setShowPoReceivedDatePicker(true)}
-                      style={{
-                        height: 52,
-                        borderRadius: 12,
-                        borderWidth: 1,
-                        borderColor: formFieldBorder,
-                        backgroundColor: formFieldBg,
-                        paddingHorizontal: 14,
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                      }}
-                    >
-                      <Calendar size={18} color={colors.text.tertiary} strokeWidth={2} />
-                      <Text style={{ color: colors.text.primary, fontSize: 15, marginLeft: 10 }}>
-                        {poReceivedDateDraft || 'Select date'}
-                      </Text>
-                    </Pressable>
-                  )}
-                  {showPoReceivedDatePicker && Platform.OS !== 'web' ? (
-                    <DateTimePicker
-                      value={poReceivedDateDraft ? new Date(poReceivedDateDraft + 'T00:00:00') : new Date()}
-                      mode="date"
-                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                      onChange={(_event: any, selectedDate?: Date) => {
-                        setShowPoReceivedDatePicker(Platform.OS === 'ios');
-                        if (selectedDate) {
-                          setPoReceivedDateDraft(selectedDate.toISOString().split('T')[0]);
-                        }
-                      }}
-                    />
-                  ) : null}
-                </View>
-                ) : null}
-              </View>
-
-              <View
-                style={{
-                  flexDirection: isMobile ? 'column' : 'row',
-                  gap: 12,
-                  zIndex: showPoSupplierDropdown || showPoStatusDropdown ? 2200 : 1,
-                }}
-              >
-                <View style={{ flex: isMobile ? undefined : 1, width: '100%', position: 'relative', zIndex: showPoSupplierDropdown ? 2300 : 1 }}>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Supplier</Text>
-                  <Pressable
-                    onPress={() => {
-                      setShowPoSupplierDropdown((prev) => !prev);
-                      setShowPoStatusDropdown(false);
-                      setPoSupplierSearch(poSupplierDraft);
-                    }}
-                    style={{
-                      height: 52,
-                      borderRadius: 12,
-                      borderWidth: 1,
-                      borderColor: showPoSupplierDropdown ? formFieldActiveBorder : formFieldBorder,
-                      backgroundColor: formFieldBg,
-                      paddingHorizontal: 14,
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                    }}
-                  >
-                    <Text
-                      numberOfLines={1}
-                      style={{ color: poSupplierDraft ? colors.text.primary : colors.text.muted, flex: 1, marginRight: 8, fontSize: 15 }}
-                    >
-                      {poSupplierDraft || 'Select or search supplier'}
-                    </Text>
-                    <ChevronDown size={16} color={colors.text.tertiary} strokeWidth={2} />
-                  </Pressable>
-
-                  {showPoSupplierDropdown ? (
+                  <Text style={{ color: colors.text.muted, fontSize: 12, marginTop: 6 }}>
+                    This PO number groups linked items in Goods Received.
+                  </Text>
+                  {showPoNumberDropdown && filteredProcurementPoNumbers.length > 0 ? (
                     <View
                       style={{
                         position: 'absolute',
-                        top: 78,
+                        top: 73,
                         left: 0,
                         right: 0,
                         borderRadius: 10,
                         borderWidth: 1,
                         borderColor: colors.divider,
                         backgroundColor: colors.bg.card,
-                        zIndex: 3200,
                         overflow: 'hidden',
-                        maxHeight: 240,
-                        elevation: 40,
+                        zIndex: 8000,
+                        elevation: 50,
                       }}
                     >
-                      <View style={{ padding: 10, borderBottomWidth: 1, borderBottomColor: colors.divider }}>
-                        <TextInput
-                          value={poSupplierSearch}
-                          onChangeText={setPoSupplierSearch}
-                          placeholder="Search supplier..."
-                          placeholderTextColor={colors.text.muted}
-                          style={{
-                            height: 40,
-                            borderRadius: 10,
-                            borderWidth: 1,
-                            borderColor: formFieldBorder,
-                            backgroundColor: formFieldBg,
-                            color: colors.text.primary,
-                            paddingHorizontal: 12,
-                            fontSize: 14,
-                          }}
-                        />
-                      </View>
-                      <ScrollView showsVerticalScrollIndicator={false}>
-                        {filteredProcurementSuppliers.map((supplier) => (
-                          <Pressable
-                            key={supplier}
-                            onPress={() => {
-                              setPoSupplierDraft(supplier);
-                              setPoSupplierSearch(supplier);
-                              setShowPoSupplierDropdown(false);
-                            }}
-                            style={{
-                              paddingHorizontal: 12,
-                              paddingVertical: 10,
-                              borderBottomWidth: 1,
-                              borderBottomColor: colors.divider,
-                              backgroundColor: poSupplierDraft === supplier ? colors.bg.input : colors.bg.card,
-                            }}
-                          >
-                            <Text style={{ color: colors.text.primary, fontSize: 15 }} className="font-medium">{supplier}</Text>
-                          </Pressable>
-                        ))}
-                        {poSupplierSearch.trim() && !availableProcurementSuppliers.some(
-                          (supplier) => supplier.toLowerCase() === poSupplierSearch.trim().toLowerCase()
-                        ) ? (
-                          <Pressable
-                            onPress={() => {
-                              const customSupplier = poSupplierSearch.trim();
-                              upsertFinanceSupplierName(customSupplier);
-                              setPoSupplierDraft(customSupplier);
-                              setPoSupplierSearch(customSupplier);
-                              setShowPoSupplierDropdown(false);
-                            }}
-                            style={{
-                              paddingHorizontal: 12,
-                              paddingVertical: 10,
-                              borderBottomWidth: 1,
-                              borderBottomColor: colors.divider,
-                              backgroundColor: colors.bg.card,
-                            }}
-                          >
-                            <Text style={{ color: colors.text.primary, fontSize: 15 }} className="font-medium">
-                              Use "{poSupplierSearch.trim()}"
-                            </Text>
-                          </Pressable>
-                        ) : null}
-                        {filteredProcurementSuppliers.length === 0 && !poSupplierSearch.trim() ? (
-                          <View style={{ paddingHorizontal: 12, paddingVertical: 12 }}>
-                            <Text style={{ color: colors.text.muted }} className="text-sm">No suppliers yet</Text>
-                          </View>
-                        ) : null}
-                      </ScrollView>
-                    </View>
-                  ) : null}
-                </View>
-
-                {!isMobile ? (
-                <View style={{ flex: 1, width: '100%', position: 'relative', zIndex: showPoStatusDropdown ? 2300 : 1 }}>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Status</Text>
-                  <>
-                    <Pressable
-                      onPress={() => {
-                        setShowPoStatusDropdown((prev) => !prev);
-                        setShowPoSupplierDropdown(false);
-                      }}
-                      style={{
-                        height: 52,
-                        borderRadius: 12,
-                        borderWidth: 1,
-                        borderColor: showPoStatusDropdown ? formFieldActiveBorder : formFieldBorder,
-                        backgroundColor: formFieldBg,
-                        paddingHorizontal: 14,
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                      }}
-                    >
-                      <Text
-                        numberOfLines={1}
-                        style={{ color: colors.text.primary, flex: 1, marginRight: 8, fontSize: 15 }}
-                      >
-                        {poStatusDraft}
-                      </Text>
-                      <ChevronDown size={16} color={colors.text.tertiary} strokeWidth={2} />
-                    </Pressable>
-
-                    {showPoStatusDropdown ? (
-                      <View
-                        style={{
-                          position: 'absolute',
-                          top: 78,
-                          left: 0,
-                          right: 0,
-                          borderRadius: 10,
-                          borderWidth: 1,
-                          borderColor: colors.divider,
-                          backgroundColor: colors.bg.card,
-                          zIndex: 3200,
-                          overflow: 'hidden',
-                          maxHeight: 220,
-                          elevation: 40,
-                        }}
-                      >
-                        <ScrollView showsVerticalScrollIndicator={false}>
-                          {procurementFilterOptions
-                            .filter((option) => option.key !== 'all')
-                            .map((option) => (
-                              <Pressable
-                                key={option.key}
-                                onPress={() => {
-                                  setPoStatusDraft(option.key as ProcurementStatus);
-                                  setShowPoStatusDropdown(false);
-                                }}
-                                style={{
-                                  paddingHorizontal: 12,
-                                  paddingVertical: 10,
-                                  borderBottomWidth: 1,
-                                  borderBottomColor: colors.divider,
-                                  backgroundColor: poStatusDraft === option.key ? colors.bg.input : colors.bg.card,
-                                }}
-                              >
-                                <Text style={{ color: colors.text.primary, fontSize: 15 }} className="font-medium">
-                                  {option.label}
-                                </Text>
-                              </Pressable>
-                            ))}
-                        </ScrollView>
-                      </View>
-                    ) : null}
-                  </>
-                </View>
-                ) : null}
-              </View>
-
-              {isMobile ? (
-                <View>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Date Paid</Text>
-                  {Platform.OS === 'web' ? (
-                    <View
-                      style={{
-                        height: 52,
-                        borderRadius: 12,
-                        borderWidth: 1,
-                        borderColor: formFieldBorder,
-                        backgroundColor: formFieldBg,
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        paddingHorizontal: 14,
-                      }}
-                    >
-                      <Calendar size={18} color={colors.text.tertiary} strokeWidth={2} />
-                      <input
-                        className="finance-date-input"
-                        type="date"
-                        value={poExpectedDateDraft}
-                        onChange={(e: any) => setPoExpectedDateDraft(e.target.value)}
-                        style={{
-                          flex: 1,
-                          border: 'none',
-                          outline: 'none',
-                          background: 'transparent',
-                          color: colors.text.primary,
-                          fontSize: 15,
-                          marginLeft: 10,
-                          fontFamily: 'inherit',
-                          colorScheme: isDarkMode ? 'dark' : 'light',
-                        }}
-                      />
-                    </View>
-                  ) : (
-                    <Pressable
-                      onPress={() => setShowPoDatePicker(true)}
-                      style={{
-                        height: 52,
-                        borderRadius: 12,
-                        borderWidth: 1,
-                        borderColor: formFieldBorder,
-                        backgroundColor: formFieldBg,
-                        paddingHorizontal: 14,
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                      }}
-                    >
-                      <Calendar size={18} color={colors.text.tertiary} strokeWidth={2} />
-                      <Text style={{ color: colors.text.primary, fontSize: 15, marginLeft: 10 }}>
-                        {poExpectedDateDraft || 'Select date'}
-                      </Text>
-                    </Pressable>
-                  )}
-                  {showPoDatePicker && Platform.OS !== 'web' ? (
-                    <DateTimePicker
-                      value={poExpectedDateDraft ? new Date(poExpectedDateDraft + 'T00:00:00') : new Date()}
-                      mode="date"
-                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                      onChange={(_event: any, selectedDate?: Date) => {
-                        setShowPoDatePicker(Platform.OS === 'ios');
-                        if (selectedDate) {
-                          setPoExpectedDateDraft(selectedDate.toISOString().split('T')[0]);
-                        }
-                      }}
-                    />
-                  ) : null}
-                </View>
-              ) : null}
-
-              {/* Purchase Lines */}
-              <View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }}>Purchase Lines</Text>
-                  {!isMobile ? (
-                    <Pressable
-                      onPress={() => setPoPurchaseLines((prev) => [...prev, { id: `l${Date.now().toString(36)}`, description: '', amount: '' }])}
-                      style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: colors.bg.input, borderWidth: 1, borderColor: colors.divider }}
-                    >
-                      <Plus size={12} color={colors.text.secondary} strokeWidth={2.5} />
-                      <Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '600' }}>Add Line</Text>
-                    </Pressable>
-                  ) : null}
-                </View>
-
-                {poPurchaseLines.map((line, index) => (
-                  <View key={line.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                    <TextInput
-                      value={line.description}
-                      onChangeText={(text) => setPoPurchaseLines((prev) => prev.map((l) => l.id === line.id ? { ...l, description: text } : l))}
-                      placeholder={`Line ${index + 1} description`}
-                      placeholderTextColor={colors.text.muted}
-                      style={{
-                        flex: 1,
-                        height: 46,
-                        borderRadius: 10,
-                        borderWidth: 1,
-                        borderColor: formFieldBorder,
-                        backgroundColor: formFieldBg,
-                        color: colors.text.primary,
-                        paddingHorizontal: 12,
-                        fontSize: 14,
-                      }}
-                    />
-                    <TextInput
-                      value={line.amount}
-                      onChangeText={(text) => setPoPurchaseLines((prev) => prev.map((l) => l.id === line.id ? { ...l, amount: text } : l))}
-                      placeholder="0.00"
-                      keyboardType="decimal-pad"
-                      placeholderTextColor={colors.text.muted}
-                      style={{
-                        width: 100,
-                        height: 46,
-                        borderRadius: 10,
-                        borderWidth: 1,
-                        borderColor: formFieldBorder,
-                        backgroundColor: formFieldBg,
-                        color: colors.text.primary,
-                        paddingHorizontal: 12,
-                        fontSize: 14,
-                      }}
-                    />
-                    {poPurchaseLines.length > 1 && (
-                      <Pressable
-                        onPress={() => setPoPurchaseLines((prev) => prev.filter((l) => l.id !== line.id))}
-                        style={{ width: 36, height: 46, alignItems: 'center', justifyContent: 'center' }}
-                      >
-                        <X size={16} color="#EF4444" strokeWidth={2} />
-                      </Pressable>
-                    )}
-                  </View>
-                ))}
-
-                {poPurchaseLines.some((l) => parseFloat(l.amount) > 0) && (
-                  <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 6, paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.divider, marginTop: 2 }}>
-                    <Text style={{ color: colors.text.muted, fontSize: 13 }}>Total:</Text>
-                    <Text style={{ color: colors.text.primary, fontSize: 15, fontWeight: '700' }}>
-                      {formatCurrency(poPurchaseLines.reduce((sum, l) => sum + (parseFloat(l.amount) || 0), 0))}
-                    </Text>
-                  </View>
-                )}
-
-                {isMobile ? (
-                  <View style={{ alignItems: 'center', marginTop: 10 }}>
-                    <Pressable
-                      onPress={() => setPoPurchaseLines((prev) => [...prev, { id: `l${Date.now().toString(36)}`, description: '', amount: '' }])}
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: 6,
-                        minWidth: 140,
-                        height: 36,
-                        paddingHorizontal: 14,
-                        borderRadius: 999,
-                        backgroundColor: colors.bg.input,
-                        borderWidth: 1,
-                        borderColor: colors.divider,
-                      }}
-                    >
-                      <Plus size={14} color={colors.text.secondary} strokeWidth={2.5} />
-                      <Text style={{ color: colors.text.secondary, fontSize: 13, fontWeight: '600' }}>Add Line</Text>
-                    </Pressable>
-                  </View>
-                ) : null}
-              </View>
-
-              {!isMobile ? (
-                <View>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Notes (optional)</Text>
-                  <TextInput
-                    value={poNoteDraft}
-                    onChangeText={setPoNoteDraft}
-                    placeholder="Optional notes..."
-                    placeholderTextColor={colors.text.muted}
-                    multiline
-                    numberOfLines={3}
-                    style={{
-                      minHeight: 84,
-                      borderRadius: 12,
-                      borderWidth: 1,
-                      borderColor: formFieldBorder,
-                      backgroundColor: formFieldBg,
-                      color: colors.text.primary,
-                      paddingHorizontal: 14,
-                      paddingTop: 12,
-                      textAlignVertical: 'top',
-                      fontSize: 15,
-                    }}
-                  />
-                </View>
-              ) : null}
-
-              {/* Attachments */}
-              <View>
-                <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase tracking-wider mb-2">Attachments</Text>
-                {poAttachmentsDraft.length === 0 ? (
-                  <Pressable
-                    onPress={pickPoAttachment}
-                    disabled={isPickingPoFile}
-                    className="rounded-2xl items-center justify-center"
-                    style={{
-                      paddingVertical: 28,
-                      borderWidth: 1.5,
-                      borderColor: colors.divider,
-                      borderStyle: 'dashed',
-                    }}
-                  >
-                    <View
-                      className="rounded-full items-center justify-center mb-3"
-                      style={{ width: 48, height: 48, backgroundColor: colors.bg.input, borderWidth: 1, borderColor: colors.divider }}
-                    >
-                      <Paperclip size={22} color={colors.text.tertiary} strokeWidth={2} />
-                    </View>
-                    <Text style={{ color: colors.text.primary }} className="text-base font-semibold">
-                      {isPickingPoFile ? 'Picking...' : 'Attach Files'}
-                    </Text>
-                    <Text style={{ color: colors.text.muted, marginTop: 4 }} className="text-sm">Tap to attach invoices, receipts, or docs</Text>
-                  </Pressable>
-                ) : (
-                  <View style={{ gap: 10 }}>
-                    {poAttachmentsDraft.map((att) => (
-                      <View
-                        key={att.uri}
-                        className="rounded-xl flex-row items-center px-3"
-                        style={{ height: 52, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.input }}
-                      >
-                        <View className="rounded-lg items-center justify-center" style={{ width: 36, height: 36, backgroundColor: colors.bg.screen, borderWidth: 1, borderColor: colors.divider }}>
-                          {att.mimeType?.startsWith('image/') ? (
-                            <ImageIcon size={16} color={colors.text.tertiary} strokeWidth={1.5} />
-                          ) : (
-                            <FileText size={16} color={colors.text.tertiary} strokeWidth={2} />
-                          )}
-                        </View>
-                        <View style={{ flex: 1, minWidth: 0, marginLeft: 10 }}>
-                          <Text numberOfLines={1} style={{ color: colors.text.primary, fontSize: 14 }} className="font-medium">{att.name}</Text>
-                        </View>
+                      {filteredProcurementPoNumbers.map((entry) => (
                         <Pressable
-                          onPress={() => setPoAttachmentsDraft((prev) => prev.filter((a) => a.uri !== att.uri))}
-                          className="rounded-md items-center justify-center ml-2"
-                          style={{ width: 30, height: 30 }}
-                        >
-                          <X size={16} color={colors.text.tertiary} strokeWidth={2} />
-                        </Pressable>
-                      </View>
-                    ))}
-                    <Pressable
-                      onPress={pickPoAttachment}
-                      disabled={isPickingPoFile}
-                      className="rounded-xl items-center justify-center"
-                      style={{
-                        height: 44,
-                        borderWidth: 1,
-                        borderColor: colors.divider,
-                        borderStyle: 'dashed',
-                      }}
-                    >
-                      <Text style={{ color: colors.text.secondary }} className="text-sm font-semibold">
-                        {isPickingPoFile ? 'Picking...' : '+ Add Another File'}
-                      </Text>
-                    </Pressable>
-                  </View>
-                )}
-              </View>
-
-              {isMobile ? (
-                <View>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Date Received</Text>
-                  {Platform.OS === 'web' ? (
-                    <View
-                      style={{
-                        height: 52,
-                        borderRadius: 12,
-                        borderWidth: 1,
-                        borderColor: formFieldBorder,
-                        backgroundColor: formFieldBg,
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        paddingHorizontal: 14,
-                      }}
-                    >
-                      <Calendar size={18} color={colors.text.tertiary} strokeWidth={2} />
-                      <input
-                        className="finance-date-input"
-                        type="date"
-                        value={poReceivedDateDraft}
-                        onChange={(e: any) => setPoReceivedDateDraft(e.target.value)}
-                        style={{
-                          flex: 1,
-                          border: 'none',
-                          outline: 'none',
-                          background: 'transparent',
-                          color: colors.text.primary,
-                          fontSize: 15,
-                          marginLeft: 10,
-                          fontFamily: 'inherit',
-                          colorScheme: isDarkMode ? 'dark' : 'light',
-                        }}
-                      />
-                    </View>
-                  ) : (
-                    <Pressable
-                      onPress={() => setShowPoReceivedDatePicker(true)}
-                      style={{
-                        height: 52,
-                        borderRadius: 12,
-                        borderWidth: 1,
-                        borderColor: formFieldBorder,
-                        backgroundColor: formFieldBg,
-                        paddingHorizontal: 14,
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                      }}
-                    >
-                      <Calendar size={18} color={colors.text.tertiary} strokeWidth={2} />
-                      <Text style={{ color: colors.text.primary, fontSize: 15, marginLeft: 10 }}>
-                        {poReceivedDateDraft || 'Select date'}
-                      </Text>
-                    </Pressable>
-                  )}
-                  {showPoReceivedDatePicker && Platform.OS !== 'web' ? (
-                    <DateTimePicker
-                      value={poReceivedDateDraft ? new Date(poReceivedDateDraft + 'T00:00:00') : new Date()}
-                      mode="date"
-                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                      onChange={(_event: any, selectedDate?: Date) => {
-                        setShowPoReceivedDatePicker(Platform.OS === 'ios');
-                        if (selectedDate) {
-                          setPoReceivedDateDraft(selectedDate.toISOString().split('T')[0]);
-                        }
-                      }}
-                    />
-                  ) : null}
-                </View>
-              ) : null}
-
-              {isMobile ? (
-                <View>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Status</Text>
-                  <View style={{ gap: 8 }}>
-                    {effectiveProcurementStatusOptions.map((option) => {
-                      const isSelected = poStatusDraft.trim().toLowerCase() === option.name.trim().toLowerCase();
-                      const tone = getStatusTone(option.name, colors);
-                      return (
-                        <Pressable
-                          key={option.id}
+                          key={entry.poNumber}
                           onPress={() => {
-                            setPoStatusDraft(option.name);
-                            setShowPoSupplierDropdown(false);
-                            setShowPoStatusDropdown(false);
+                            setPoNumberDraft(entry.poNumber);
+                            setShowPoNumberDropdown(false);
                           }}
-                          className="rounded-full px-3.5"
                           style={{
-                            width: '100%',
-                            minHeight: 38,
+                            paddingHorizontal: 12,
+                            paddingVertical: 10,
+                            borderBottomWidth: 1,
+                            borderBottomColor: colors.divider,
+                            backgroundColor: colors.bg.card,
+                            flexDirection: 'row',
                             alignItems: 'center',
-                            justifyContent: 'center',
-                            backgroundColor: tone.bg,
-                            borderWidth: isSelected ? 1.5 : 1,
-                            borderColor: isSelected ? tone.text : colors.divider,
+                            justifyContent: 'space-between',
+                            gap: 12,
                           }}
                         >
-                          <Text style={{ color: tone.text, fontSize: 13, fontWeight: isSelected ? '700' : '600' }}>
-                            {option.name}
+                          <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600', flex: 1 }} numberOfLines={1}>
+                            {entry.poNumber}
+                          </Text>
+                          <Text style={{ color: colors.text.muted, fontSize: 11 }} numberOfLines={1}>
+                            {entry.dateLabel}
                           </Text>
                         </Pressable>
+                      ))}
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
+
+              {/* Supplier field */}
+              {!isProcurementOrdersPage ? (
+              <View style={{ position: 'relative', zIndex: showPoSupplierDropdown ? 6500 : 1 }}>
+                <Text style={{ color: colors.text.tertiary, fontSize: 10, marginBottom: 5, letterSpacing: 1, textTransform: 'uppercase' }}>
+                  Supplier
+                </Text>
+                <Pressable
+                  onPress={() => {
+                    setShowPoSupplierDropdown((prev) => !prev);
+                    setShowPoNumberDropdown(false);
+                    setShowPoStatusDropdown(false);
+                    setActiveProcurementProductLineId(null);
+                    setPoSupplierSearch(poSupplierDraft);
+                  }}
+                  style={{
+                    height: 48,
+                    borderTopLeftRadius: 10,
+                    borderTopRightRadius: 10,
+                    borderBottomLeftRadius: showPoSupplierDropdown ? 0 : 10,
+                    borderBottomRightRadius: showPoSupplierDropdown ? 0 : 10,
+                    borderWidth: 1,
+                    borderColor: showPoSupplierDropdown ? formFieldActiveBorder : formFieldBorder,
+                    backgroundColor: formFieldBg,
+                    paddingHorizontal: 12,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <Text numberOfLines={1} style={{ color: poSupplierDraft ? colors.text.primary : colors.text.muted, flex: 1, marginRight: 8, fontSize: 15 }}>
+                    {poSupplierDraft || 'Select or enter supplier'}
+                  </Text>
+                  <ChevronDown size={16} color={showPoSupplierDropdown ? formFieldActiveBorder : colors.text.tertiary} strokeWidth={2} />
+                </Pressable>
+                {showPoSupplierDropdown ? (
+                  <View style={{ borderWidth: 1, borderTopWidth: 0, borderColor: formFieldActiveBorder, borderBottomLeftRadius: 10, borderBottomRightRadius: 10, backgroundColor: colors.bg.card, overflow: 'hidden', maxHeight: 220 }}>
+                    <View style={{ padding: 10, borderBottomWidth: 1, borderBottomColor: colors.divider }}>
+                      <TextInput
+                        value={poSupplierSearch}
+                        onChangeText={setPoSupplierSearch}
+                        placeholder="Search supplier..."
+                        placeholderTextColor={colors.text.muted}
+                        autoFocus
+                        style={{ height: 40, borderRadius: 10, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, color: colors.text.primary, paddingHorizontal: 12, fontSize: 14 }}
+                      />
+                    </View>
+                    <ScrollView showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                      <Pressable
+                        onPress={() => { setPoSupplierDraft(''); setPoSupplierSearch(''); setShowPoSupplierDropdown(false); }}
+                        style={{ paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.divider, backgroundColor: poSupplierDraft === '' ? colors.bg.input : colors.bg.card, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+                      >
+                        <Text style={{ color: colors.text.muted, fontSize: 14 }}>No supplier (optional)</Text>
+                        {poSupplierDraft === '' ? <Check size={14} color={colors.bar} strokeWidth={2.5} /> : null}
+                      </Pressable>
+                      {filteredProcurementSuppliers.map((supplier) => (
+                        <Pressable
+                          key={supplier}
+                          onPress={() => { setPoSupplierDraft(supplier); setPoSupplierSearch(supplier); setShowPoSupplierDropdown(false); }}
+                          style={{ paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.divider, backgroundColor: poSupplierDraft === supplier ? colors.bg.input : colors.bg.card, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+                        >
+                          <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '500' }}>{supplier}</Text>
+                          {poSupplierDraft === supplier ? <Check size={14} color={colors.bar} strokeWidth={2.5} /> : null}
+                        </Pressable>
+                      ))}
+                      {poSupplierSearch.trim() && !availableProcurementSuppliers.some((s) => s.toLowerCase() === poSupplierSearch.trim().toLowerCase()) ? (
+                        <Pressable
+                          onPress={() => { const s = poSupplierSearch.trim(); setPoSupplierDraft(s); setPoSupplierSearch(s); setShowPoSupplierDropdown(false); }}
+                          style={{ paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.divider }}
+                        >
+                          <Text style={{ color: colors.bar, fontSize: 14, fontWeight: '500' }}>Use "{poSupplierSearch.trim()}"</Text>
+                        </Pressable>
+                      ) : null}
+                      {filteredProcurementSuppliers.length === 0 && !poSupplierSearch.trim() ? (
+                        <View style={{ paddingHorizontal: 14, paddingVertical: 12 }}>
+                          <Text style={{ color: colors.text.muted, fontSize: 13 }}>No suppliers yet</Text>
+                        </View>
+                      ) : null}
+                    </ScrollView>
+                  </View>
+                ) : null}
+              </View>
+              ) : null}
+
+              {/* Name / Title */}
+              {!isProcurementOrdersPage ? (
+              <View>
+                <Text style={{ color: colors.text.tertiary, fontSize: 10, marginBottom: 5, letterSpacing: 1, textTransform: 'uppercase' }}>Name</Text>
+                <TextInput
+                  value={poTitleDraft}
+                  onChangeText={setPoTitleDraft}
+                  placeholder="e.g. Fabric Purchase"
+                  placeholderTextColor={colors.text.muted}
+                  style={{ height: 48, borderRadius: 10, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, color: colors.text.primary, paddingHorizontal: 12, fontSize: 15 }}
+                />
+              </View>
+              ) : null}
+
+              {/* Status */}
+              {!isProcurementOrdersPage ? (
+              <View style={{ position: 'relative', zIndex: showPoStatusDropdown ? 4000 : 1 }}>
+                <Text style={{ color: colors.text.tertiary, fontSize: 10, marginBottom: 5, letterSpacing: 1, textTransform: 'uppercase' }}>Status</Text>
+                <Pressable
+                  onPress={() => {
+                    setShowPoStatusDropdown((prev) => !prev);
+                    setShowPoSupplierDropdown(false);
+                    setShowPoNumberDropdown(false);
+                  }}
+                  style={{
+                    height: 48,
+                    borderTopLeftRadius: 10,
+                    borderTopRightRadius: 10,
+                    borderBottomLeftRadius: showPoStatusDropdown ? 0 : 10,
+                    borderBottomRightRadius: showPoStatusDropdown ? 0 : 10,
+                    borderWidth: 1,
+                    borderColor: showPoStatusDropdown ? formFieldActiveBorder : formFieldBorder,
+                    backgroundColor: formFieldBg,
+                    paddingHorizontal: 12,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <Text numberOfLines={1} style={{ color: colors.text.primary, flex: 1, marginRight: 8, fontSize: 15 }}>{poStatusDraft}</Text>
+                  <ChevronDown size={16} color={showPoStatusDropdown ? formFieldActiveBorder : colors.text.tertiary} strokeWidth={2} />
+                </Pressable>
+                {showPoStatusDropdown ? (
+                  <View style={{ borderWidth: 1, borderTopWidth: 0, borderColor: formFieldActiveBorder, borderBottomLeftRadius: 10, borderBottomRightRadius: 10, backgroundColor: colors.bg.card, overflow: 'hidden', maxHeight: 220 }}>
+                    <ScrollView showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                      {procurementFilterOptions.filter((option) => option.key !== 'all').map((option) => (
+                        <Pressable
+                          key={option.key}
+                          onPress={() => { setPoStatusDraft(option.key as ProcurementStatus); setShowPoStatusDropdown(false); }}
+                          style={{ paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.divider, backgroundColor: poStatusDraft === option.key ? colors.bg.input : colors.bg.card, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+                        >
+                          <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '500' }}>{option.label}</Text>
+                          {poStatusDraft === option.key ? <Check size={14} color={colors.bar} strokeWidth={2.5} /> : null}
+                        </Pressable>
+                      ))}
+                    </ScrollView>
+                  </View>
+                ) : null}
+              </View>
+              ) : null}
+
+              {/* Date */}
+              {!isProcurementOrdersPage ? (
+              <View>
+                <Text style={{ color: colors.text.tertiary, fontSize: 10, marginBottom: 5, letterSpacing: 1, textTransform: 'uppercase' }}>Date</Text>
+                {Platform.OS === 'web' ? (
+                  <View style={{ height: 48, borderRadius: 10, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12 }}>
+                    <Calendar size={16} color={colors.text.tertiary} strokeWidth={2} />
+                    <input
+                      className="finance-date-input"
+                      type="date"
+                      value={poExpectedDateDraft}
+                      onChange={(e: any) => setPoExpectedDateDraft(e.target.value)}
+                      style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', color: colors.text.primary, fontSize: 14, marginLeft: 8, fontFamily: 'inherit', colorScheme: isDarkMode ? 'dark' : 'light' }}
+                    />
+                  </View>
+                ) : (
+                  <Pressable
+                    onPress={() => setShowPoDatePicker(true)}
+                    style={{ height: 48, borderRadius: 10, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center' }}
+                  >
+                    <Calendar size={16} color={colors.text.tertiary} strokeWidth={2} />
+                    <Text style={{ color: colors.text.primary, fontSize: 14, marginLeft: 8 }}>{poExpectedDateDraft || 'Select date'}</Text>
+                  </Pressable>
+                )}
+                {showPoDatePicker && Platform.OS !== 'web' ? (
+                  <DateTimePicker
+                    value={poExpectedDateDraft ? new Date(poExpectedDateDraft + 'T00:00:00') : new Date()}
+                    mode="date"
+                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    onChange={(_event: any, selectedDate?: Date) => {
+                      setShowPoDatePicker(Platform.OS === 'ios');
+                      if (selectedDate) setPoExpectedDateDraft(selectedDate.toISOString().split('T')[0]);
+                    }}
+                  />
+                ) : null}
+              </View>
+              ) : null}
+
+              {/* Payment breakdown lines */}
+              {activeTab === 'procurement' && procurementChildPage === 'orders' ? (
+                <View style={{ gap: 14 }}>
+                  {poPurchaseLines.map((line, index) => {
+                    const computedLine = computeProcurementLine(line);
+                    const productQuery = line.productName.trim().toLowerCase();
+                    const productMatches = availableProcurementProducts
+                      .filter((option) => (
+                        !productQuery
+                        || option.productName.toLowerCase().includes(productQuery)
+                        || option.category.toLowerCase().includes(productQuery)
+                      ))
+                      .slice(0, 8);
+                    const selectedProduct = line.productId
+                      ? availableProcurementProducts.find((product) => product.productId === line.productId)
+                      : availableProcurementProducts.find((product) => product.productName.toLowerCase() === productQuery);
+                    const isWarehouseSelection = selectedProduct?.source === 'warehouse';
+                    const variantOptions = (selectedProduct?.variants ?? [])
+                      .map((variant) => {
+                        const variantName = Object.values(variant.variableValues ?? {})
+                          .map((value) => value.trim())
+                          .filter(Boolean)
+                          .join(' / ');
+                        return {
+                          variantId: variant.id,
+                          variantName,
+                          sku: variant.sku?.trim() ?? '',
+                          imageUrl: variant.imageUrl || selectedProduct?.imageUrl,
+                        };
+                      })
+                      .filter((option) => option.variantName.length > 0 || option.sku.length > 0);
+                    const variantQuery = line.variantName?.trim().toLowerCase() ?? '';
+                    const variantMatches = variantOptions
+                      .filter((option) => (
+                        !variantQuery
+                        || option.variantName.toLowerCase().includes(variantQuery)
+                        || option.sku.toLowerCase().includes(variantQuery)
+                      ))
+                      .slice(0, 8);
+
+                    return (
+                      <View key={line.id} style={{ gap: 10, zIndex: activeProcurementProductLineId === line.id || activeProcurementVariantLineId === line.id ? 3000 : 1 }}>
+                        <View style={{ position: 'relative', zIndex: activeProcurementProductLineId === line.id ? 3000 : 1 }}>
+                          <Text style={{ color: colors.text.tertiary, fontSize: 10, marginBottom: 5, letterSpacing: 1, textTransform: 'uppercase' }}>Product Name</Text>
+                          <TextInput
+                            value={line.productName}
+                            onFocus={() => {
+                              setActiveProcurementProductLineId(line.id);
+                              setActiveProcurementVariantLineId(null);
+                            }}
+                            onChangeText={(text) => {
+                              setActiveProcurementProductLineId(line.id);
+                              setActiveProcurementVariantLineId(null);
+                              updateProcurementLineDraft(line.id, { productId: undefined, variantId: undefined, variantName: '', productName: text });
+                            }}
+                            placeholder="Type or select from inventory..."
+                            placeholderTextColor={colors.text.muted}
+                            style={{ height: 44, borderRadius: 10, borderWidth: 1, borderColor: activeProcurementProductLineId === line.id ? formFieldActiveBorder : formFieldBorder, backgroundColor: formFieldBg, color: colors.text.primary, paddingHorizontal: 12, fontSize: 14 }}
+                          />
+                          {activeProcurementProductLineId === line.id ? (
+                            <View style={{ position: 'absolute', top: 66, left: 0, right: 0, maxHeight: 220, borderWidth: 1, borderColor: formFieldActiveBorder, borderRadius: 10, backgroundColor: colors.bg.card, overflow: 'hidden', zIndex: 4000 }}>
+                              <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled>
+                                {productMatches.map((option) => (
+                                  <Pressable
+                                    key={option.productId}
+                                    onPress={() => {
+                                      updateProcurementLineDraft(line.id, {
+                                        productId: option.productId,
+                                        variantId: undefined,
+                                        variantName: '',
+                                        productName: option.productName,
+                                        quantityPurchased: line.quantityPurchased || '1',
+                                        quantityReceived: line.quantityReceived || '',
+                                        currentSellingPrice: line.currentSellingPrice || '',
+                                        imageUrl: option.imageUrl ?? line.imageUrl,
+                                      });
+                                      setActiveProcurementProductLineId(null);
+                                      setActiveProcurementVariantLineId(line.id);
+                                    }}
+                                    style={{ paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.divider }}
+                                  >
+                                    <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }} numberOfLines={1}>{option.productName}</Text>
+                                    <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 2 }} numberOfLines={1}>
+                                      {option.source === 'warehouse'
+                                        ? `${option.category ? `${option.category} · ` : ''}warehouse`
+                                        : `${option.category ? `${option.category} · ` : ''}${option.variants.length} saved variant${option.variants.length === 1 ? '' : 's'}`}
+                                    </Text>
+                                  </Pressable>
+                                ))}
+                                {productMatches.length === 0 ? (
+                                  <View style={{ paddingHorizontal: 12, paddingVertical: 12 }}>
+                                    <Text style={{ color: colors.text.muted, fontSize: 12 }}>No matching products</Text>
+                                  </View>
+                                ) : null}
+                                {line.productName.trim() && !availableProcurementProducts.some((o) => o.productName.toLowerCase() === productQuery) ? (
+                                  <Pressable
+                                    onPress={() => {
+                                      setActiveProcurementProductLineId(null);
+                                      setActiveProcurementVariantLineId(null);
+                                      setOrderLineCreateProductDraft({
+                                        lineId: line.id,
+                                        name: line.productName.trim(),
+                                        variantType: '',
+                                        variants: [{ id: Math.random().toString(36).slice(2), name: '', price: '', imageUri: null }],
+                                        imageUri: line.imageUrl ?? null,
+                                        isNewProduct: line.isNewProduct ?? true,
+                                      });
+                                    }}
+                                    style={{ paddingHorizontal: 12, paddingVertical: 10, borderTopWidth: 1, borderTopColor: colors.divider, flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                                  >
+                                    <Plus size={12} color={colors.bar} strokeWidth={2.5} />
+                                    <Text style={{ color: colors.bar, fontSize: 13, fontWeight: '600' }} numberOfLines={1}>
+                                      Add "{line.productName.trim()}" to inventory
+                                    </Text>
+                                  </Pressable>
+                                ) : null}
+                              </ScrollView>
+                            </View>
+                          ) : null}
+                        </View>
+
+                        <View style={{ position: 'relative', zIndex: activeProcurementVariantLineId === line.id ? 2900 : 1 }}>
+                          <Text style={{ color: colors.text.tertiary, fontSize: 10, marginBottom: 5, letterSpacing: 1, textTransform: 'uppercase' }}>Variant</Text>
+                          <TextInput
+                            value={line.variantName ?? ''}
+                            editable={Boolean(selectedProduct) && !isWarehouseSelection}
+                            onFocus={() => {
+                              if (!selectedProduct || isWarehouseSelection) return;
+                              setActiveProcurementVariantLineId(line.id);
+                              setActiveProcurementProductLineId(null);
+                            }}
+                            onChangeText={(text) => {
+                              if (!selectedProduct || isWarehouseSelection) return;
+                              setActiveProcurementVariantLineId(line.id);
+                              setActiveProcurementProductLineId(null);
+                              updateProcurementLineDraft(line.id, { variantId: undefined, variantName: text });
+                            }}
+                            placeholder={!selectedProduct ? 'Select product first' : isWarehouseSelection ? 'Not needed for warehouse item' : 'Search saved variants...'}
+                            placeholderTextColor={colors.text.muted}
+                            style={{
+                              height: 44,
+                              borderRadius: 10,
+                              borderWidth: 1,
+                              borderColor: activeProcurementVariantLineId === line.id ? formFieldActiveBorder : formFieldBorder,
+                              backgroundColor: selectedProduct && !isWarehouseSelection ? formFieldBg : colors.bg.input,
+                              color: selectedProduct && !isWarehouseSelection ? colors.text.primary : colors.text.muted,
+                              paddingHorizontal: 12,
+                              fontSize: 14,
+                            }}
+                          />
+                          {selectedProduct && !isWarehouseSelection && activeProcurementVariantLineId === line.id ? (
+                            <View style={{ position: 'absolute', top: 66, left: 0, right: 0, maxHeight: 220, borderWidth: 1, borderColor: formFieldActiveBorder, borderRadius: 10, backgroundColor: colors.bg.card, overflow: 'hidden', zIndex: 3900 }}>
+                              <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled>
+                                {variantMatches.map((option) => (
+                                  <Pressable
+                                    key={option.variantId}
+                                    onPress={() => {
+                                      updateProcurementLineDraft(line.id, {
+                                        variantId: option.variantId,
+                                        variantName: option.variantName,
+                                        imageUrl: option.imageUrl ?? line.imageUrl,
+                                      });
+                                      setActiveProcurementVariantLineId(null);
+                                    }}
+                                    style={{ paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.divider }}
+                                  >
+                                    <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }} numberOfLines={1}>
+                                      {option.variantName || 'Default variant'}
+                                    </Text>
+                                    <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 2 }} numberOfLines={1}>
+                                      {option.sku || selectedProduct.productName}
+                                    </Text>
+                                  </Pressable>
+                                ))}
+                                {variantMatches.length === 0 ? (
+                                  <View style={{ paddingHorizontal: 12, paddingVertical: 12 }}>
+                                    <Text style={{ color: colors.text.muted, fontSize: 12 }}>No matching saved variants</Text>
+                                  </View>
+                                ) : null}
+                              </ScrollView>
+                            </View>
+                          ) : null}
+                        </View>
+
+                        <View style={{ flexDirection: 'row', gap: 8 }}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ color: colors.text.tertiary, fontSize: 10, marginBottom: 5, letterSpacing: 1, textTransform: 'uppercase' }}>Qty Ordered</Text>
+                            <TextInput
+                              value={line.quantityPurchased}
+                              onChangeText={(text) => updateProcurementLineDraft(line.id, { quantityPurchased: text, quantityReceived: line.quantityReceived || text })}
+                              placeholder="0"
+                              keyboardType="number-pad"
+                              placeholderTextColor={colors.text.muted}
+                              style={{ height: 42, borderRadius: 10, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, color: colors.text.primary, paddingHorizontal: 12, fontSize: 14 }}
+                            />
+                          </View>
+                          {index > 0 ? (
+                            <Pressable
+                              onPress={() => removeProcurementLineDraft(line.id)}
+                              style={{ width: 42, height: 42, borderRadius: 10, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-end' }}
+                            >
+                              <Trash2 size={14} color={colors.text.tertiary} strokeWidth={2} />
+                            </Pressable>
+                          ) : null}
+                        </View>
+
+                        {isProcurementOrdersPage ? (
+                          <View style={{ gap: 10 }}>
+                            <Pressable
+                              onPress={() => updateProcurementLineDraft(line.id, { isNewProduct: !line.isNewProduct })}
+                              style={{
+                                minHeight: 48,
+                                borderRadius: 10,
+                                borderWidth: 1,
+                                borderColor: formFieldBorder,
+                                backgroundColor: formFieldBg,
+                                paddingHorizontal: 12,
+                                paddingVertical: 10,
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: 12,
+                              }}
+                            >
+                              <View
+                                style={{ flex: 1, minWidth: 0 }}
+                              >
+                                <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }}>
+                                  New product
+                                </Text>
+                                <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 2 }}>
+                                  Show inventory + new product badge for this order line
+                                </Text>
+                              </View>
+                              <View
+                                style={{
+                                  width: 44,
+                                  height: 26,
+                                  borderRadius: 13,
+                                  borderWidth: 1,
+                                  borderColor: line.isNewProduct ? colors.bar : colors.divider,
+                                  backgroundColor: line.isNewProduct ? colors.bar : colors.bg.input,
+                                  justifyContent: 'center',
+                                  paddingHorizontal: 2,
+                                }}
+                              >
+                                <View
+                                  style={{
+                                    width: 20,
+                                    height: 20,
+                                    borderRadius: 10,
+                                    backgroundColor: line.isNewProduct ? colors.bg.screen : colors.text.tertiary,
+                                    alignSelf: line.isNewProduct ? 'flex-end' : 'flex-start',
+                                  }}
+                                />
+                              </View>
+                            </Pressable>
+
+                            <Pressable
+                              onPress={() => updateProcurementLineDraft(line.id, { isSample: !line.isSample })}
+                              style={{
+                                minHeight: 48,
+                                borderRadius: 10,
+                                borderWidth: 1,
+                                borderColor: line.isSample ? '#F59E0B' : formFieldBorder,
+                                backgroundColor: line.isSample ? 'rgba(245,158,11,0.08)' : formFieldBg,
+                                paddingHorizontal: 12,
+                                paddingVertical: 10,
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: 12,
+                              }}
+                            >
+                              <View style={{ flex: 1, minWidth: 0 }}>
+                                <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }}>
+                                  Sample / Non-sale
+                                </Text>
+                                <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 2 }}>
+                                  Receive this line for content or marketing without adding to sellable stock
+                                </Text>
+                              </View>
+                              <View
+                                style={{
+                                  width: 44,
+                                  height: 26,
+                                  borderRadius: 13,
+                                  borderWidth: 1,
+                                  borderColor: line.isSample ? '#F59E0B' : colors.divider,
+                                  backgroundColor: line.isSample ? '#F59E0B' : colors.bg.input,
+                                  justifyContent: 'center',
+                                  paddingHorizontal: 2,
+                                }}
+                              >
+                                <View
+                                  style={{
+                                    width: 20,
+                                    height: 20,
+                                    borderRadius: 10,
+                                    backgroundColor: line.isSample ? colors.bg.screen : colors.text.tertiary,
+                                    alignSelf: line.isSample ? 'flex-end' : 'flex-start',
+                                  }}
+                                />
+                              </View>
+                            </Pressable>
+                          </View>
+                        ) : (
+                          <Text style={{ color: colors.text.muted, fontSize: 11 }}>
+                            The new product badge is automatic: manual items show as new product, and inventory items show as new only if the inventory product was added this month.
+                          </Text>
+                        )}
+
+                        {/* Product image */}
+                        <View>
+                          <Text style={{ color: colors.text.tertiary, fontSize: 10, marginBottom: 5, letterSpacing: 1, textTransform: 'uppercase' }}>Product image <Text style={{ color: colors.text.muted, fontWeight: '400', textTransform: 'none', letterSpacing: 0 }}>(optional)</Text></Text>
+                          {line.imageUrl ? (
+                            <View style={{ height: 100, borderRadius: 10, overflow: 'hidden', position: 'relative' }}>
+                              <ResolvedAttachmentImage imageUrl={line.imageUrl} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                              <View style={{ position: 'absolute', bottom: 6, right: 6, flexDirection: 'row', gap: 6 }}>
+                                <Pressable
+                                  onPress={async () => { const uri = await pickImageSimple(); if (uri) updateProcurementLineDraft(line.id, { imageUrl: uri }); }}
+                                  style={{ height: 26, paddingHorizontal: 10, borderRadius: 6, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' }}
+                                >
+                                  <Text style={{ color: '#fff', fontSize: 11, fontWeight: '600' }}>Change</Text>
+                                </Pressable>
+                                <Pressable
+                                  onPress={() => updateProcurementLineDraft(line.id, { imageUrl: undefined })}
+                                  style={{ width: 26, height: 26, borderRadius: 6, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' }}
+                                >
+                                  <X size={11} color="#fff" strokeWidth={2.5} />
+                                </Pressable>
+                              </View>
+                            </View>
+                          ) : (
+                            <Pressable
+                              onPress={async () => { const uri = await pickImageSimple(); if (uri) updateProcurementLineDraft(line.id, { imageUrl: uri }); }}
+                              style={{ height: 72, borderRadius: 10, borderWidth: 1, borderColor: formFieldBorder, borderStyle: 'dashed', backgroundColor: formFieldBg, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 }}
+                            >
+                              <Plus size={14} color={colors.text.muted} strokeWidth={2} />
+                              <Text style={{ color: colors.text.muted, fontSize: 13 }}>Upload product image</Text>
+                            </Pressable>
+                          )}
+                        </View>
+
+                        {isProcurementOrdersPage ? (
+                          <View style={{ borderRadius: 12, borderWidth: 1, borderColor: colors.divider, backgroundColor: formFieldBg, padding: 12, gap: 10 }}>
+                            <View>
+                              <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 }}>Product Properties</Text>
+                              <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 3 }}>
+                                Add the product features staff must verify in Goods Received QC.
+                              </Text>
+                            </View>
+                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                              {procurementPropertyOptions.map((property) => {
+                                const checked = line.properties.includes(property);
+                                return (
+                                  <Pressable
+                                    key={property}
+                                    onPress={() => updateProcurementLineDraft(line.id, {
+                                      properties: checked
+                                        ? line.properties.filter((item) => item !== property)
+                                        : [...line.properties, property],
+                                    })}
+                                    style={{
+                                      height: 30,
+                                      borderRadius: 999,
+                                      borderWidth: 1,
+                                      borderColor: checked ? colors.bar : colors.divider,
+                                      backgroundColor: checked ? colors.bar : colors.bg.input,
+                                      paddingHorizontal: 10,
+                                      flexDirection: 'row',
+                                      alignItems: 'center',
+                                      gap: 6,
+                                    }}
+                                  >
+                                    {checked ? <Check size={12} color={colors.bg.screen} strokeWidth={3} /> : null}
+                                    <Text style={{ color: checked ? colors.bg.screen : colors.text.secondary, fontSize: 11, fontWeight: '600' }}>{property}</Text>
+                                  </Pressable>
+                                );
+                              })}
+                            </View>
+                            {line.properties.length > 0 ? (
+                              <View style={{ gap: 6 }}>
+                                {line.properties.map((property) => (
+                                  <View key={property} style={{ minHeight: 34, borderRadius: 9, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                                    <Text style={{ color: colors.text.primary, fontSize: 12, flex: 1 }} numberOfLines={1}>{property}</Text>
+                                    <Pressable
+                                      onPress={() => updateProcurementLineDraft(line.id, { properties: line.properties.filter((item) => item !== property) })}
+                                      style={{ width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' }}
+                                    >
+                                      <X size={12} color={colors.text.tertiary} strokeWidth={2.4} />
+                                    </Pressable>
+                                  </View>
+                                ))}
+                              </View>
+                            ) : null}
+                            <TextInput
+                              placeholder="Add custom product property and press return"
+                              placeholderTextColor={colors.text.muted}
+                              returnKeyType="done"
+                              onSubmitEditing={(event) => {
+                                const value = event.nativeEvent.text.trim();
+                                if (!value || line.properties.some((item) => item.toLowerCase() === value.toLowerCase())) return;
+                                persistProcurementPropertyOption(value);
+                                updateProcurementLineDraft(line.id, { properties: [...line.properties, value] });
+                              }}
+                              style={{ height: 38, borderRadius: 9, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: colors.bg.card, color: colors.text.primary, paddingHorizontal: 10, fontSize: 12 }}
+                            />
+                          </View>
+                        ) : null}
+
+                        <View style={{ position: 'relative', zIndex: showPoStatusDropdown ? 4000 : 1 }}>
+                          <Text style={{ color: colors.text.tertiary, fontSize: 10, marginBottom: 5, letterSpacing: 1, textTransform: 'uppercase' }}>Status</Text>
+                          <Pressable
+                            onPress={() => {
+                              setShowPoStatusDropdown((prev) => !prev);
+                              setShowPoSupplierDropdown(false);
+                              setShowPoNumberDropdown(false);
+                              setActiveProcurementProductLineId(null);
+                            }}
+                            style={{
+                              height: 48,
+                              borderTopLeftRadius: 10,
+                              borderTopRightRadius: 10,
+                              borderBottomLeftRadius: showPoStatusDropdown ? 0 : 10,
+                              borderBottomRightRadius: showPoStatusDropdown ? 0 : 10,
+                              borderWidth: 1,
+                              borderColor: showPoStatusDropdown ? formFieldActiveBorder : formFieldBorder,
+                              backgroundColor: formFieldBg,
+                              paddingHorizontal: 12,
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                            }}
+                          >
+                            <Text numberOfLines={1} style={{ color: colors.text.primary, flex: 1, marginRight: 8, fontSize: 15 }}>{poStatusDraft}</Text>
+                            <ChevronDown size={16} color={showPoStatusDropdown ? formFieldActiveBorder : colors.text.tertiary} strokeWidth={2} />
+                          </Pressable>
+                          {showPoStatusDropdown ? (
+                            <View style={{ borderWidth: 1, borderTopWidth: 0, borderColor: formFieldActiveBorder, borderBottomLeftRadius: 10, borderBottomRightRadius: 10, backgroundColor: colors.bg.card, overflow: 'hidden', maxHeight: 220 }}>
+                              <ScrollView showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                                {procurementFilterOptions.filter((option) => option.key !== 'all').map((option) => (
+                                  <Pressable
+                                    key={option.key}
+                                    onPress={() => { setPoStatusDraft(option.key as ProcurementStatus); setShowPoStatusDropdown(false); }}
+                                    style={{ paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.divider, backgroundColor: poStatusDraft === option.key ? colors.bg.input : colors.bg.card, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+                                  >
+                                    <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '500' }}>{option.label}</Text>
+                                    {poStatusDraft === option.key ? <Check size={14} color={colors.bar} strokeWidth={2.5} /> : null}
+                                  </Pressable>
+                                ))}
+                              </ScrollView>
+                            </View>
+                          ) : null}
+                        </View>
+
+                        <View style={{ borderRadius: 12, borderWidth: 1, borderColor: colors.divider, padding: 12, gap: 8 }}>
+                          <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 }}>Cost Breakdown (per unit, ₦)</Text>
+                          <View style={{ borderRadius: 10, overflow: 'hidden' }}>
+                            {([
+                              ['unitCost', 'Product Cost', line.unitCost],
+                              ['serviceFee', 'Service Fee', line.serviceFee],
+                              ['deliveryFee', 'Logistics fee', line.deliveryFee],
+                              ['shippingClearanceFee', 'Shipping & Clearance', line.shippingClearanceFee],
+                              ['additionalFee', 'Other Fees', line.additionalFee],
+                            ] as const).map(([field, label, value], rowIndex) => (
+                              <View key={field} style={{ minHeight: 46, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: rowIndex === 0 ? 0 : 1, borderTopColor: colors.divider, gap: 12 }}>
+                                <Text style={{ color: colors.text.secondary, fontSize: 14, flex: 1 }}>{label}</Text>
+                                <TextInput
+                                  value={value}
+                                  onChangeText={(text) => updateProcurementLineDraft(line.id, { [field]: text })}
+                                  placeholder="0.00"
+                                  keyboardType="decimal-pad"
+                                  placeholderTextColor={colors.text.muted}
+                                  style={{ width: 132, height: 38, color: colors.text.primary, textAlign: 'right', fontSize: 14, fontWeight: '600' }}
+                                />
+                              </View>
+                            ))}
+                            <View style={{ minHeight: 50, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: colors.divider, backgroundColor: colors.bg.input }}>
+                              <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '700' }}>Total Landed Cost</Text>
+                              <Text style={{ color: colors.bar, fontSize: 15, fontWeight: '800' }}>{formatCurrency(computedLine.landedUnitCost)}</Text>
+                            </View>
+                          </View>
+                        </View>
+
+                        <View style={{ borderRadius: 12, borderWidth: 1, borderColor: colors.divider, padding: 14, gap: 12 }}>
+                          <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 }}>Profit Calculator</Text>
+                          <View style={{ flexDirection: 'row', gap: 12 }}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ color: colors.text.tertiary, fontSize: 10, marginBottom: 5, letterSpacing: 1, textTransform: 'uppercase' }}>Selling Price (₦)</Text>
+                              <TextInput
+                                value={line.currentSellingPrice}
+                                onChangeText={(text) => updateProcurementLineDraft(line.id, { currentSellingPrice: text })}
+                                placeholder="0"
+                                keyboardType="decimal-pad"
+                                placeholderTextColor={colors.text.muted}
+                                style={{ height: 44, borderRadius: 9, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, color: colors.text.primary, paddingHorizontal: 12, fontSize: 14 }}
+                              />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ color: colors.text.tertiary, fontSize: 10, marginBottom: 5, letterSpacing: 1, textTransform: 'uppercase' }}>Target Margin %</Text>
+                              <TextInput
+                                value={line.marginPercent}
+                                onChangeText={(text) => updateProcurementLineDraft(line.id, { marginPercent: text })}
+                                placeholder="e.g. 40"
+                                keyboardType="decimal-pad"
+                                placeholderTextColor={colors.text.muted}
+                                style={{ height: 44, borderRadius: 9, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, color: colors.text.primary, paddingHorizontal: 12, fontSize: 14 }}
+                              />
+                            </View>
+                          </View>
+                          <View style={{ gap: 9 }}>
+                            {([
+                              ['Landed cost / unit', formatCurrency(computedLine.landedUnitCost), colors.text.primary],
+                              ['Selling price / unit', formatCurrency(computedLine.effectiveSellingPrice), colors.text.primary],
+                              ['Profit / unit', formatCurrency(computedLine.effectiveSellingPrice - computedLine.landedUnitCost), (computedLine.effectiveSellingPrice - computedLine.landedUnitCost) >= 0 ? colors.success : colors.danger],
+                            ] as const).map(([label, value, color]) => (
+                              <View key={label} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                                <Text style={{ color: colors.text.secondary, fontSize: 14 }}>{label}</Text>
+                                <Text style={{ color, fontSize: 14, fontWeight: '700' }}>{value}</Text>
+                              </View>
+                            ))}
+                          </View>
+                          <View style={{ height: 1, backgroundColor: colors.divider }} />
+                          <View style={{ gap: 9 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                              <Text style={{ color: colors.text.secondary, fontSize: 14 }}>Actual margin</Text>
+                              <Text style={{ color: computedLine.currentSellingPrice > 0 && computedLine.landedUnitCost > 0 ? colors.success : colors.text.muted, fontSize: 14, fontWeight: '700' }}>
+                                {computedLine.currentSellingPrice > 0 && computedLine.landedUnitCost > 0
+                                  ? `${(((computedLine.currentSellingPrice - computedLine.landedUnitCost) / computedLine.currentSellingPrice) * 100).toFixed(1)}%`
+                                  : '-'}
+                              </Text>
+                            </View>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                              <Text style={{ color: colors.text.secondary, fontSize: 14 }}>Suggested price (target)</Text>
+                              <Text style={{ color: computedLine.marginPercent > 0 ? colors.text.primary : colors.text.muted, fontSize: 14, fontWeight: '700' }}>
+                                {computedLine.marginPercent > 0 ? formatCurrency(computedLine.targetSellingPriceFromMargin) : '-'}
+                              </Text>
+                            </View>
+                          </View>
+                          <View style={{ height: 1, backgroundColor: colors.divider }} />
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
+                            <Text style={{ color: colors.text.primary, fontSize: 15, fontWeight: '800' }}>Total expected profit</Text>
+                            <Text style={{ color: computedLine.expectedProfit >= 0 ? colors.success : colors.danger, fontSize: 15, fontWeight: '800' }}>{formatCurrency(computedLine.expectedProfit)}</Text>
+                          </View>
+                        </View>
+                      </View>
+                    );
+                  })}
+                  <Pressable
+                    onPress={addProcurementLineDraft}
+                    style={{ height: 40, borderRadius: 10, borderWidth: 1, borderColor: colors.divider, borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 }}
+                  >
+                    <Plus size={14} color={colors.text.tertiary} strokeWidth={2.5} />
+                    <Text style={{ color: colors.text.tertiary, fontSize: 13 }}>Add another item</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <View style={{ borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, borderRadius: 16, padding: 14 }}>
+                  <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 }}>Payment Breakdown</Text>
+                  <View style={{ gap: 12 }}>
+                    {editablePaymentBreakdownLines.map((line, index) => (
+                      <View key={line.id} style={{ gap: 8 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <TextInput
+                            value={line.productName}
+                            onChangeText={(text) => updateProcurementLineDraft(line.id, { productName: text, quantityPurchased: line.quantityPurchased || '1', quantityReceived: line.quantityReceived || '1' })}
+                            placeholder="Charge label"
+                            placeholderTextColor={colors.text.muted}
+                            style={{ flex: 3, minWidth: 0, height: 44, borderRadius: 10, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, color: colors.text.primary, paddingHorizontal: 12, fontSize: 14 }}
+                          />
+                          <TextInput
+                            value={line.unitCost}
+                            onChangeText={(text) => updateProcurementLineDraft(line.id, {
+                              unitCost: text,
+                              quantityPurchased: '1',
+                              quantityReceived: '1',
+                              serviceFee: '',
+                              deliveryFee: '',
+                              shippingClearanceFee: '',
+                              additionalFee: '',
+                              marginPercent: '',
+                              currentSellingPrice: '',
+                            })}
+                            placeholder="Charge cost"
+                            keyboardType="decimal-pad"
+                            placeholderTextColor={colors.text.muted}
+                            style={{ flex: 2, minWidth: 0, height: 44, borderRadius: 10, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, color: colors.text.primary, paddingHorizontal: 12, fontSize: 14 }}
+                          />
+                          {index > 0 ? (
+                            <Pressable
+                              onPress={() => removeProcurementLineDraft(line.id)}
+                              style={{ width: 44, height: 44, borderRadius: 10, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                            >
+                              <Trash2 size={14} color={colors.text.tertiary} strokeWidth={2} />
+                            </Pressable>
+                          ) : null}
+                        </View>
+                        {Platform.OS === 'web' ? (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', height: 36, borderRadius: 8, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, paddingHorizontal: 10, gap: 6 }}>
+                            <Calendar size={13} color={colors.text.muted} strokeWidth={2} />
+                            <input
+                              className="finance-date-input"
+                              type="date"
+                              value={line.paymentDate}
+                              onChange={(e: any) => updateProcurementLineDraft(line.id, { paymentDate: e.target.value })}
+                              style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', color: line.paymentDate ? colors.text.secondary : colors.text.muted, fontSize: 12, fontFamily: 'inherit', colorScheme: isDarkMode ? 'dark' : 'light' }}
+                            />
+                          </View>
+                        ) : (
+                          <>
+                            <Pressable
+                              onPress={() => setOpenLineDatePickerId(line.id)}
+                              style={{ flexDirection: 'row', alignItems: 'center', height: 36, borderRadius: 8, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, paddingHorizontal: 10, gap: 6 }}
+                            >
+                              <Calendar size={13} color={colors.text.muted} strokeWidth={2} />
+                              <Text style={{ color: line.paymentDate ? colors.text.secondary : colors.text.muted, fontSize: 12 }}>
+                                {line.paymentDate || 'Payment date (optional)'}
+                              </Text>
+                            </Pressable>
+                            {openLineDatePickerId === line.id ? (
+                              <DateTimePicker
+                                value={line.paymentDate ? new Date(line.paymentDate + 'T00:00:00') : new Date()}
+                                mode="date"
+                                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                                onChange={(_event: any, selectedDate?: Date) => {
+                                  setOpenLineDatePickerId(Platform.OS === 'ios' ? line.id : null);
+                                  if (selectedDate) updateProcurementLineDraft(line.id, { paymentDate: selectedDate.toISOString().split('T')[0] });
+                                }}
+                              />
+                            ) : null}
+                          </>
+                        )}
+                      </View>
+                    ))}
+                  </View>
+                  <Pressable
+                    onPress={addProcurementLineDraft}
+                    style={{ marginTop: 10, height: 40, borderRadius: 10, borderWidth: 1, borderColor: colors.divider, borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 }}
+                  >
+                    <Plus size={14} color={colors.text.tertiary} strokeWidth={2.5} />
+                    <Text style={{ color: colors.text.tertiary, fontSize: 13 }}>Add another charge</Text>
+                  </Pressable>
+                  {procurementChargePreview.total > 0 ? (
+                    <View style={{ marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.divider, gap: 6 }}>
+                      {procurementChargePreview.fee + procurementChargePreview.vat > 0 ? (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <Text style={{ color: colors.text.muted, fontSize: 12 }}>
+                            Transfer fees ({procurementChargePreview.count}x)
+                          </Text>
+                          <Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '600' }}>{formatCurrency(procurementChargePreview.fee + procurementChargePreview.vat)}</Text>
+                        </View>
+                      ) : null}
+                      {procurementChargePreview.stampDuty > 0 ? (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <Text style={{ color: colors.text.muted, fontSize: 12 }}>
+                            Stamp duty ({procurementChargePreview.count}x)
+                          </Text>
+                          <Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '600' }}>{formatCurrency(procurementChargePreview.stampDuty)}</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  ) : null}
+                </View>
+              )}
+
+              {activeTab === 'procurement' && procurementChildPage !== 'orders' && readOnlyPoItemDraftLines.length > 0 ? (
+                <View style={{ borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, borderRadius: 16, padding: 14, gap: 10 }}>
+                  <View>
+                    <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }}>PO Items</Text>
+                    <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 4 }}>
+                      View only — added and edited from the Orders page, not here.
+                    </Text>
+                  </View>
+                  <View style={{ gap: 8 }}>
+                    {readOnlyPoItemDraftLines.map((line) => (
+                      <View key={line.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 6, borderTopWidth: 1, borderTopColor: colors.divider }}>
+                        <Text style={{ color: colors.text.secondary, fontSize: 13, flex: 1 }} numberOfLines={1}>
+                          {line.variantName ? `${line.productName} — ${line.variantName}` : line.productName}
+                        </Text>
+                        {line.quantityPurchased ? (
+                          <Text style={{ color: colors.text.muted, fontSize: 12 }}>Qty {line.quantityPurchased}</Text>
+                        ) : null}
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              ) : null}
+
+              <View style={{ gap: 10 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                      Attachments
+                    </Text>
+                    <Text style={{ color: colors.text.muted, fontSize: 12, marginTop: 4 }}>
+                      Upload payment receipts, invoices, or supporting documents.
+                    </Text>
+                  </View>
+                  <Pressable
+                    onPress={() => { void pickPoAttachment(); }}
+                    disabled={isPickingPoFile}
+                    style={{
+                      minWidth: 108,
+                      height: 38,
+                      borderRadius: 10,
+                      borderWidth: 1,
+                      borderColor: colors.divider,
+                      backgroundColor: colors.bg.input,
+                      paddingHorizontal: 12,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      opacity: isPickingPoFile ? 0.7 : 1,
+                    }}
+                  >
+                    {isPickingPoFile ? (
+                      <ActivityIndicator size="small" color={colors.text.secondary} />
+                    ) : (
+                      <>
+                        <Paperclip size={14} color={colors.text.secondary} strokeWidth={2} />
+                        <Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '600' }}>Attach files</Text>
+                      </>
+                    )}
+                  </Pressable>
+                </View>
+
+                {poAttachmentsDraft.length > 0 ? (
+                  <View style={{ borderRadius: 12, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, overflow: 'hidden' }}>
+                    {poAttachmentsDraft.map((attachment, index) => {
+                      const isImage = attachment.mimeType?.startsWith('image/');
+                      return (
+                        <View
+                          key={`${attachment.storagePath ?? attachment.uri}-${index}`}
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            paddingHorizontal: 12,
+                            paddingVertical: 11,
+                            gap: 10,
+                            borderTopWidth: index === 0 ? 0 : 1,
+                            borderTopColor: colors.divider,
+                          }}
+                        >
+                          <View
+                            style={{
+                              width: 34,
+                              height: 34,
+                              borderRadius: 10,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              borderWidth: 1,
+                              borderColor: colors.divider,
+                              backgroundColor: colors.bg.input,
+                            }}
+                          >
+                            {isImage ? (
+                              <ImageIcon size={16} color={colors.text.tertiary} strokeWidth={1.5} />
+                            ) : (
+                              <FileText size={16} color={colors.text.tertiary} strokeWidth={1.5} />
+                            )}
+                          </View>
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }} numberOfLines={1}>
+                              {attachment.name || `Attachment ${index + 1}`}
+                            </Text>
+                            {attachment.mimeType ? (
+                              <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 2 }} numberOfLines={1}>
+                                {attachment.mimeType}
+                              </Text>
+                            ) : null}
+                          </View>
+                          <Pressable
+                            onPress={() => removePoAttachmentDraft(attachment.uri)}
+                            style={{
+                              width: 28,
+                              height: 28,
+                              borderRadius: 14,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              backgroundColor: colors.bg.input,
+                            }}
+                          >
+                            <X size={14} color={colors.text.muted} strokeWidth={2.2} />
+                          </Pressable>
+                        </View>
                       );
                     })}
                   </View>
-                </View>
-              ) : null}
-
-              {isMobile ? (
-                <View>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Notes (optional)</Text>
-                  <TextInput
-                    value={poNoteDraft}
-                    onChangeText={setPoNoteDraft}
-                    placeholder="Optional notes..."
-                    placeholderTextColor={colors.text.muted}
-                    multiline
-                    numberOfLines={3}
+                ) : (
+                  <Pressable
+                    onPress={() => { void pickPoAttachment(); }}
                     style={{
-                      minHeight: 84,
+                      minHeight: 72,
                       borderRadius: 12,
                       borderWidth: 1,
-                      borderColor: formFieldBorder,
-                      backgroundColor: formFieldBg,
-                      color: colors.text.primary,
-                      paddingHorizontal: 14,
-                      paddingTop: 12,
-                      textAlignVertical: 'top',
-                      fontSize: 15,
+                      borderStyle: 'dashed',
+                      borderColor: colors.divider,
+                      backgroundColor: colors.bg.card,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      paddingHorizontal: 16,
+                      gap: 6,
                     }}
-                  />
-                </View>
-              ) : null}
-            </View>
+                  >
+                    <Paperclip size={18} color={colors.text.muted} strokeWidth={1.8} />
+                    <Text style={{ color: colors.text.muted, fontSize: 12, textAlign: 'center' }}>
+                      Tap to upload payment receipts or procurement files
+                    </Text>
+                  </Pressable>
+                )}
+              </View>
 
-            <View className="flex-row justify-end mt-6" style={{ gap: 10 }}>
+            </View>
+            </ScrollView>
+
+            <View
+              className="flex-row justify-end"
+              style={{
+                gap: 10,
+                paddingHorizontal: 24,
+                paddingVertical: 16,
+                paddingBottom: isWebDesktop ? 16 : Math.max(insets.bottom, 16),
+                borderTopWidth: 1,
+                borderTopColor: colors.divider,
+                backgroundColor: colors.bg.card,
+              }}
+            >
               <Pressable
                 onPress={() => {
                   setShowProcurementModal(false);
                   setEditingProcurementId(null);
+                  setEditingProcurementItemIndex(null);
                   setShowPoSupplierDropdown(false);
                   setShowPoStatusDropdown(false);
+                  setActiveProcurementProductLineId(null);
                 }}
                 className="rounded-full px-5"
                 style={{ height: 44, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.divider }}
@@ -14475,23 +20399,27 @@ export default function FinanceScreen() {
                 </Text>
               </Pressable>
             </View>
-            </ScrollView>
           </Pressable>
         </Pressable>
       </Modal>
 
-      <Modal visible={isWebDesktop && showSupplierModal} transparent animationType="fade" onRequestClose={() => setShowSupplierModal(false)}>
+      <Modal visible={showSupplierModal} transparent animationType="fade" onRequestClose={() => setShowSupplierModal(false)}>
         <Pressable
           className="flex-1 items-center justify-center"
-          style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)' }}
+          style={{
+            backgroundColor: 'rgba(0, 0, 0, 0.6)',
+            paddingHorizontal: isMobile ? 12 : 20,
+            paddingBottom: isMobile ? Math.max(insets.bottom, 12) : 20,
+          }}
           onPress={() => setShowSupplierModal(false)}
         >
           <Pressable
             onPress={(event) => event.stopPropagation()}
             style={{
-              width: '92%',
+              width: '100%',
               maxWidth: 620,
-              borderRadius: 20,
+              maxHeight: isMobile ? '90%' : undefined,
+              borderRadius: isMobile ? 22 : 20,
               borderWidth: 1,
               borderColor: colors.divider,
               backgroundColor: colors.bg.card,
@@ -14511,51 +20439,53 @@ export default function FinanceScreen() {
               </Pressable>
             </View>
 
-            <View className="mt-5" style={{ gap: 12 }}>
-              <View>
-                <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Supplier Name</Text>
-                <TextInput
-                  value={supplierNameDraft}
-                  onChangeText={setSupplierNameDraft}
-                  placeholder="e.g. Global Parts Co"
-                  placeholderTextColor={colors.text.muted}
-                  style={{ height: 48, borderRadius: 12, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, color: colors.text.primary, paddingHorizontal: 14, fontSize: 15 }}
-                />
-              </View>
-              <View className="flex-row" style={{ gap: 12 }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Contact Name</Text>
+            <ScrollView className="mt-5" showsVerticalScrollIndicator={false} style={{ maxHeight: isMobile ? 420 : undefined }}>
+              <View style={{ gap: 12, paddingBottom: 6 }}>
+                <View>
+                  <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Supplier Name</Text>
                   <TextInput
-                    value={supplierContactDraft}
-                    onChangeText={setSupplierContactDraft}
-                    placeholder="e.g. James Wu"
+                    value={supplierNameDraft}
+                    onChangeText={setSupplierNameDraft}
+                    placeholder="e.g. Global Parts Co"
                     placeholderTextColor={colors.text.muted}
                     style={{ height: 48, borderRadius: 12, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, color: colors.text.primary, paddingHorizontal: 14, fontSize: 15 }}
                   />
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Payment Terms</Text>
+                <View className="flex-row" style={{ gap: 12 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Contact Name</Text>
+                    <TextInput
+                      value={supplierContactDraft}
+                      onChangeText={setSupplierContactDraft}
+                      placeholder="e.g. James Wu"
+                      placeholderTextColor={colors.text.muted}
+                      style={{ height: 48, borderRadius: 12, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, color: colors.text.primary, paddingHorizontal: 14, fontSize: 15 }}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Payment Terms</Text>
+                    <TextInput
+                      value={supplierTermsDraft}
+                      onChangeText={setSupplierTermsDraft}
+                      placeholder="e.g. Net 30"
+                      placeholderTextColor={colors.text.muted}
+                      style={{ height: 48, borderRadius: 12, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, color: colors.text.primary, paddingHorizontal: 14, fontSize: 15 }}
+                    />
+                  </View>
+                </View>
+                <View>
+                  <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Email</Text>
                   <TextInput
-                    value={supplierTermsDraft}
-                    onChangeText={setSupplierTermsDraft}
-                    placeholder="e.g. Net 30"
+                    value={supplierEmailDraft}
+                    onChangeText={setSupplierEmailDraft}
+                    placeholder="name@company.com"
+                    autoCapitalize="none"
                     placeholderTextColor={colors.text.muted}
                     style={{ height: 48, borderRadius: 12, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, color: colors.text.primary, paddingHorizontal: 14, fontSize: 15 }}
                   />
                 </View>
               </View>
-              <View>
-                <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Email</Text>
-                <TextInput
-                  value={supplierEmailDraft}
-                  onChangeText={setSupplierEmailDraft}
-                  placeholder="name@company.com"
-                  autoCapitalize="none"
-                  placeholderTextColor={colors.text.muted}
-                  style={{ height: 48, borderRadius: 12, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, color: colors.text.primary, paddingHorizontal: 14, fontSize: 15 }}
-                />
-              </View>
-            </View>
+            </ScrollView>
 
             <View className="flex-row justify-end mt-6" style={{ gap: 10 }}>
               <Pressable onPress={() => setShowSupplierModal(false)} className="rounded-xl px-5" style={{ height: 44, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.divider }}>
@@ -14576,11 +20506,28 @@ export default function FinanceScreen() {
         </Pressable>
       </Modal>
 
-      <Modal visible={isWebDesktop && showCategoryModal} transparent animationType="fade" onRequestClose={() => setShowCategoryModal(false)}>
-        <Pressable className="flex-1 items-center justify-center" style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)' }} onPress={() => setShowCategoryModal(false)}>
+      <Modal visible={showCategoryModal} transparent animationType="fade" onRequestClose={() => setShowCategoryModal(false)}>
+        <Pressable
+          className="flex-1 items-center justify-center"
+          style={{
+            backgroundColor: 'rgba(0, 0, 0, 0.6)',
+            paddingHorizontal: isMobile ? 12 : 20,
+            paddingBottom: isMobile ? Math.max(insets.bottom, 12) : 20,
+          }}
+          onPress={() => setShowCategoryModal(false)}
+        >
           <Pressable
             onPress={(event) => event.stopPropagation()}
-            style={{ width: '92%', maxWidth: 520, borderRadius: 20, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, padding: 20 }}
+            style={{
+              width: '100%',
+              maxWidth: 520,
+              maxHeight: isMobile ? '85%' : undefined,
+              borderRadius: isMobile ? 22 : 20,
+              borderWidth: 1,
+              borderColor: colors.divider,
+              backgroundColor: colors.bg.card,
+              padding: 20,
+            }}
           >
             <View className="flex-row items-center justify-between">
               <Text style={{ color: colors.text.primary }} className="text-lg font-bold">
@@ -14623,11 +20570,28 @@ export default function FinanceScreen() {
         </Pressable>
       </Modal>
 
-      <Modal visible={isWebDesktop && showStatusModal} transparent animationType="fade" onRequestClose={() => setShowStatusModal(false)}>
-        <Pressable className="flex-1 items-center justify-center" style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)' }} onPress={() => setShowStatusModal(false)}>
+      <Modal visible={showStatusModal} transparent animationType="fade" onRequestClose={() => setShowStatusModal(false)}>
+        <Pressable
+          className="flex-1 items-center justify-center"
+          style={{
+            backgroundColor: 'rgba(0, 0, 0, 0.6)',
+            paddingHorizontal: isMobile ? 12 : 20,
+            paddingBottom: isMobile ? Math.max(insets.bottom, 12) : 20,
+          }}
+          onPress={() => setShowStatusModal(false)}
+        >
           <Pressable
             onPress={(event) => event.stopPropagation()}
-            style={{ width: '92%', maxWidth: 520, borderRadius: 20, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, padding: 20 }}
+            style={{
+              width: '100%',
+              maxWidth: 520,
+              maxHeight: isMobile ? '85%' : undefined,
+              borderRadius: isMobile ? 22 : 20,
+              borderWidth: 1,
+              borderColor: colors.divider,
+              backgroundColor: colors.bg.card,
+              padding: 20,
+            }}
           >
             <View className="flex-row items-center justify-between">
               <Text style={{ color: colors.text.primary }} className="text-lg font-bold">
@@ -14651,6 +20615,20 @@ export default function FinanceScreen() {
                 style={{ height: 48, borderRadius: 12, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, color: colors.text.primary, paddingHorizontal: 14, fontSize: 15 }}
               />
             </View>
+            <View className="mt-4">
+              <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Order Number</Text>
+              <TextInput
+                value={statusOrderDraft}
+                onChangeText={(value) => setStatusOrderDraft(value.replace(/[^0-9]/g, ''))}
+                placeholder="e.g. 1"
+                placeholderTextColor={colors.text.muted}
+                keyboardType="number-pad"
+                style={{ height: 48, borderRadius: 12, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, color: colors.text.primary, paddingHorizontal: 14, fontSize: 15 }}
+              />
+              <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1.5">
+                Lower numbers appear first in the PO status list.
+              </Text>
+            </View>
             <View className="flex-row justify-end mt-6" style={{ gap: 10 }}>
               <Pressable onPress={() => setShowStatusModal(false)} className="rounded-xl px-5" style={{ height: 44, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.divider }}>
                 <Text style={{ color: colors.text.secondary }} className="font-semibold">Cancel</Text>
@@ -14670,10 +20648,419 @@ export default function FinanceScreen() {
         </Pressable>
       </Modal>
 
-      <Modal visible={isWebDesktop && showFixedCostModal} transparent animationType="fade" onRequestClose={() => setShowFixedCostModal(false)}>
+      <Modal visible={showSalaryTemplateModal} transparent animationType="fade" onRequestClose={() => setShowSalaryTemplateModal(false)}>
         <Pressable
           className="flex-1 items-center justify-center"
-          style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)' }}
+          style={{
+            backgroundColor: 'rgba(0,0,0,0.55)',
+            paddingHorizontal: isMobile ? 12 : 20,
+            paddingBottom: isMobile ? Math.max(insets.bottom, 12) : 20,
+          }}
+          onPress={() => {
+            setShowSalaryTemplateModal(false);
+            setEditingSalaryTemplateId(null);
+          }}
+        >
+          <Pressable
+            onPress={(event) => event.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: 760,
+              maxHeight: isMobile ? '92%' : undefined,
+              borderRadius: isMobile ? 24 : 20,
+              borderWidth: 1,
+              borderColor: colors.divider,
+              backgroundColor: colors.bg.card,
+              overflow: 'visible',
+              padding: 20,
+            }}
+          >
+            <View className="flex-row items-center justify-between">
+              <Text style={{ color: colors.text.primary }} className="text-lg font-bold">
+                {editingSalaryTemplateId ? 'Edit Salary Template' : 'Add Salary Template'}
+              </Text>
+              <Pressable
+                onPress={() => {
+                  setShowSalaryTemplateModal(false);
+                  setEditingSalaryTemplateId(null);
+                }}
+                className="rounded-full items-center justify-center"
+                style={{ backgroundColor: colors.bg.input, width: 40, height: 40 }}
+              >
+                <X size={20} color={colors.text.secondary} strokeWidth={2.5} />
+              </Pressable>
+            </View>
+
+            <ScrollView className="mt-5" showsVerticalScrollIndicator={false} style={{ maxHeight: isMobile ? 520 : 560 }}>
+              <View style={{ gap: 12, paddingBottom: 6 }}>
+                <View>
+                  <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Template Name</Text>
+                  <TextInput
+                    value={salaryTemplateNameDraft}
+                    onChangeText={setSalaryTemplateNameDraft}
+                    placeholder="e.g. Monthly Salaries"
+                    placeholderTextColor={colors.text.muted}
+                    style={{ height: 48, borderRadius: 12, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, color: colors.text.primary, paddingHorizontal: 14, fontSize: 15 }}
+                  />
+                </View>
+
+                <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, padding: 14 }}>
+                  <View className="flex-row items-center justify-between mb-3">
+                    <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '700' }}>Employees</Text>
+                    <Pressable
+                      onPress={() => setSalaryTemplateLinesDraft((previous) => [...previous, createSalaryTemplateLineDraft()])}
+                      style={{ height: 34, borderRadius: 999, paddingHorizontal: 12, borderWidth: 1, borderColor: colors.divider, alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      <Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '700' }}>Add Employee</Text>
+                    </Pressable>
+                  </View>
+
+                  <View style={{ gap: 10 }}>
+                    {salaryTemplateLinesDraft.map((line, index) => (
+                      <View key={line.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <TextInput
+                          value={line.employeeName}
+                          onChangeText={(value) => setSalaryTemplateLinesDraft((previous) => previous.map((item) => item.id === line.id ? { ...item, employeeName: value } : item))}
+                          placeholder="Employee name"
+                          placeholderTextColor={colors.text.muted}
+                          style={{ flex: 1, height: 44, borderRadius: 10, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, color: colors.text.primary, paddingHorizontal: 12, fontSize: 14 }}
+                        />
+                        <TextInput
+                          value={line.amount}
+                          onChangeText={(value) => setSalaryTemplateLinesDraft((previous) => previous.map((item) => item.id === line.id ? { ...item, amount: value } : item))}
+                          placeholder="0"
+                          keyboardType="decimal-pad"
+                          placeholderTextColor={colors.text.muted}
+                          style={{ width: 118, height: 44, borderRadius: 10, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, color: colors.text.primary, paddingHorizontal: 12, fontSize: 14 }}
+                        />
+                        {salaryTemplateLinesDraft.length > 1 ? (
+                          <Pressable
+                            onPress={() => setSalaryTemplateLinesDraft((previous) => previous.filter((item) => item.id !== line.id))}
+                            style={{ width: 44, height: 44, borderRadius: 10, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, alignItems: 'center', justifyContent: 'center' }}
+                          >
+                            <Trash2 size={14} color={colors.text.tertiary} strokeWidth={2} />
+                          </Pressable>
+                        ) : null}
+                      </View>
+                    ))}
+                  </View>
+                </View>
+
+                <View>
+                  <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Notes (optional)</Text>
+                  <TextInput
+                    value={salaryTemplateNotesDraft}
+                    onChangeText={setSalaryTemplateNotesDraft}
+                    placeholder="Optional notes for payroll review"
+                    placeholderTextColor={colors.text.muted}
+                    multiline
+                    numberOfLines={3}
+                    style={{ minHeight: 84, borderRadius: 12, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, color: colors.text.primary, paddingHorizontal: 14, paddingTop: 12, textAlignVertical: 'top', fontSize: 15 }}
+                  />
+                </View>
+              </View>
+            </ScrollView>
+
+            <View className="flex-row justify-end mt-6" style={{ gap: 10 }}>
+              <Pressable
+                onPress={() => {
+                  setShowSalaryTemplateModal(false);
+                  setEditingSalaryTemplateId(null);
+                }}
+                className="rounded-xl px-5"
+                style={{ height: 44, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.divider }}
+              >
+                <Text style={{ color: colors.text.secondary }} className="font-semibold">Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={saveSalaryTemplateModal}
+                disabled={!canSaveSalaryTemplate}
+                className="rounded-xl px-5"
+                style={{ height: 44, alignItems: 'center', justifyContent: 'center', backgroundColor: canSaveSalaryTemplate ? colors.bar : colors.bg.input }}
+              >
+                <Text style={{ color: canSaveSalaryTemplate ? colors.bg.screen : colors.text.tertiary }} className="font-semibold">
+                  {editingSalaryTemplateId ? 'Update' : 'Save'}
+                </Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={showSalaryTemplatePickerModal} transparent animationType="fade" onRequestClose={() => setShowSalaryTemplatePickerModal(false)}>
+        <Pressable
+          className="flex-1 items-center justify-center"
+          style={{
+            backgroundColor: 'rgba(0,0,0,0.55)',
+            paddingHorizontal: isMobile ? 12 : 20,
+            paddingBottom: isMobile ? Math.max(insets.bottom, 12) : 20,
+          }}
+          onPress={() => setShowSalaryTemplatePickerModal(false)}
+        >
+          <Pressable
+            onPress={(event) => event.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: 560,
+              borderRadius: isMobile ? 24 : 20,
+              borderWidth: 1,
+              borderColor: colors.divider,
+              backgroundColor: colors.bg.card,
+              overflow: 'hidden',
+            }}
+          >
+            <View className="flex-row items-center justify-between px-5 py-4" style={{ borderBottomWidth: 1, borderBottomColor: colors.divider }}>
+              <View style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
+                <Text style={{ color: colors.text.primary }} className="text-lg font-bold">Choose Salary Template</Text>
+                <Text style={{ color: colors.text.tertiary, fontSize: 13, marginTop: 4 }}>
+                  Pick a saved template to start this month&apos;s salary run.
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => setShowSalaryTemplatePickerModal(false)}
+                className="rounded-full items-center justify-center"
+                style={{ backgroundColor: colors.bg.input, width: 40, height: 40 }}
+              >
+                <X size={20} color={colors.text.secondary} strokeWidth={2.5} />
+              </Pressable>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: isMobile ? 420 : 460 }}>
+              <View style={{ padding: 16, gap: 10 }}>
+                {salaryTemplates.map((template) => (
+                  <Pressable
+                    key={template.id}
+                    onPress={() => {
+                      setShowSalaryTemplatePickerModal(false);
+                      openSalaryRunModal(template.id);
+                    }}
+                    className="rounded-2xl px-4 py-3"
+                    style={{ borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.input }}
+                  >
+                    <View className="flex-row items-center justify-between" style={{ gap: 12 }}>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={{ color: colors.text.primary, fontSize: 15, fontWeight: '700' }} numberOfLines={1}>
+                          {capitalizeDisplayValue(template.name)}
+                        </Text>
+                        <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 4 }} numberOfLines={2}>
+                          {template.lines.length} {template.lines.length === 1 ? 'employee' : 'employees'}
+                          {template.notes?.trim() ? ` · ${template.notes.trim()}` : ''}
+                        </Text>
+                      </View>
+                      <ChevronRight size={18} color={colors.text.tertiary} strokeWidth={2.5} />
+                    </View>
+                  </Pressable>
+                ))}
+              </View>
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={showSalaryRunModal} transparent animationType="fade" onRequestClose={() => setShowSalaryRunModal(false)}>
+        <Pressable
+          className="flex-1 items-center justify-center"
+          style={{
+            backgroundColor: 'rgba(0,0,0,0.55)',
+            paddingHorizontal: isMobile ? 12 : 20,
+            paddingBottom: isMobile ? Math.max(insets.bottom, 12) : 20,
+          }}
+          onPress={() => {
+            setShowSalaryRunModal(false);
+            setSalaryRunTemplateId(null);
+          }}
+        >
+          <Pressable
+            onPress={(event) => event.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: 840,
+              maxHeight: isMobile ? '94%' : undefined,
+              borderRadius: isMobile ? 24 : 20,
+              borderWidth: 1,
+              borderColor: colors.divider,
+              backgroundColor: colors.bg.card,
+              overflow: 'visible',
+              padding: 20,
+            }}
+          >
+            <View className="flex-row items-center justify-between">
+              <Text style={{ color: colors.text.primary }} className="text-lg font-bold">Run Salary</Text>
+              <Pressable
+                onPress={() => {
+                  setShowSalaryRunModal(false);
+                  setSalaryRunTemplateId(null);
+                }}
+                className="rounded-full items-center justify-center"
+                style={{ backgroundColor: colors.bg.input, width: 40, height: 40 }}
+              >
+                <X size={20} color={colors.text.secondary} strokeWidth={2.5} />
+              </Pressable>
+            </View>
+
+            <ScrollView className="mt-5" showsVerticalScrollIndicator={false} style={{ maxHeight: isMobile ? 540 : 620 }}>
+              <View style={{ gap: 12, paddingBottom: 6 }}>
+                <View className="flex-row" style={{ gap: 12 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Run Title</Text>
+                    <TextInput
+                      value={salaryRunNameDraft}
+                      onChangeText={setSalaryRunNameDraft}
+                      placeholder="e.g. March 2026 Salaries"
+                      placeholderTextColor={colors.text.muted}
+                      style={{ height: 48, borderRadius: 12, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, color: colors.text.primary, paddingHorizontal: 14, fontSize: 15 }}
+                    />
+                  </View>
+                  <View style={{ width: isMobile ? 130 : 160 }}>
+                    <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Pay Date</Text>
+                    {Platform.OS === 'web' ? (
+                      <View style={{ height: 48, borderRadius: 12, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, justifyContent: 'center', paddingHorizontal: 12 }}>
+                        <input
+                          className="finance-date-input"
+                          type="date"
+                          value={salaryRunDateDraft}
+                          onChange={(e: any) => setSalaryRunDateDraft(e.target.value)}
+                          style={{
+                            border: 'none',
+                            outline: 'none',
+                            background: 'transparent',
+                            color: colors.text.primary,
+                            fontSize: 15,
+                            fontFamily: 'inherit',
+                            colorScheme: resolvedThemeMode === 'dark' ? 'dark' : 'light',
+                          }}
+                        />
+                      </View>
+                    ) : (
+                      <TextInput
+                        value={salaryRunDateDraft}
+                        onChangeText={setSalaryRunDateDraft}
+                        placeholder="YYYY-MM-DD"
+                        placeholderTextColor={colors.text.muted}
+                        style={{ height: 48, borderRadius: 12, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, color: colors.text.primary, paddingHorizontal: 14, fontSize: 15 }}
+                      />
+                    )}
+                  </View>
+                </View>
+
+                <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, padding: 14 }}>
+                  <View className="flex-row items-center justify-between mb-3">
+                    <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '700' }}>Review Salaries</Text>
+                    <Pressable
+                      onPress={() => setSalaryRunLinesDraft((previous) => [...previous, { id: `salary-run-${Date.now().toString(36)}`, employeeName: '', amount: '' }])}
+                      style={{ height: 34, borderRadius: 999, paddingHorizontal: 12, borderWidth: 1, borderColor: colors.divider, alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      <Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '700' }}>Add Row</Text>
+                    </Pressable>
+                  </View>
+
+                  <View style={{ gap: 10 }}>
+                    {salaryRunComputedLines.map((line) => (
+                      <View key={line.id} style={{ borderRadius: 12, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.input, padding: 12, gap: 8 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <TextInput
+                            value={line.employeeName}
+                            onChangeText={(value) => setSalaryRunLinesDraft((previous) => previous.map((item) => item.id === line.id ? { ...item, employeeName: value } : item))}
+                            placeholder="Employee name"
+                            placeholderTextColor={colors.text.muted}
+                            style={{ flex: 1, height: 42, borderRadius: 10, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, color: colors.text.primary, paddingHorizontal: 12, fontSize: 14 }}
+                          />
+                          <TextInput
+                            value={line.amount}
+                            onChangeText={(value) => setSalaryRunLinesDraft((previous) => previous.map((item) => item.id === line.id ? { ...item, amount: value } : item))}
+                            placeholder="0"
+                            keyboardType="decimal-pad"
+                            placeholderTextColor={colors.text.muted}
+                            style={{ width: 118, height: 42, borderRadius: 10, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, color: colors.text.primary, paddingHorizontal: 12, fontSize: 14 }}
+                          />
+                          {salaryRunLinesDraft.length > 1 ? (
+                            <Pressable
+                              onPress={() => setSalaryRunLinesDraft((previous) => previous.filter((item) => item.id !== line.id))}
+                              style={{ width: 42, height: 42, borderRadius: 10, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, alignItems: 'center', justifyContent: 'center' }}
+                            >
+                              <Trash2 size={14} color={colors.text.tertiary} strokeWidth={2} />
+                            </Pressable>
+                          ) : null}
+                        </View>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
+                          <Text style={{ color: colors.text.tertiary, fontSize: 12 }}>Charges: {formatCurrency(line.bankChargeAmount)} · Stamp duty: {formatCurrency(line.stampDutyAmount)}</Text>
+                          <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '700' }}>Debit {formatCurrency(line.totalDebit)}</Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+
+                <View>
+                  <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Notes (optional)</Text>
+                  <TextInput
+                    value={salaryRunNoteDraft}
+                    onChangeText={setSalaryRunNoteDraft}
+                    placeholder="Notes for this salary run"
+                    placeholderTextColor={colors.text.muted}
+                    multiline
+                    numberOfLines={3}
+                    style={{ minHeight: 84, borderRadius: 12, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, color: colors.text.primary, paddingHorizontal: 14, paddingTop: 12, textAlignVertical: 'top', fontSize: 15 }}
+                  />
+                </View>
+
+                <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, padding: 14, gap: 10 }}>
+                  <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '700' }}>Run Summary</Text>
+                  <View className="flex-row items-center justify-between">
+                    <Text style={{ color: colors.text.tertiary, fontSize: 13 }}>Base payroll</Text>
+                    <Text style={{ color: colors.text.secondary, fontSize: 13, fontWeight: '600' }}>{formatCurrency(salaryRunBaseTotal)}</Text>
+                  </View>
+                  <View className="flex-row items-center justify-between">
+                    <Text style={{ color: colors.text.tertiary, fontSize: 13 }}>Bank charges</Text>
+                    <Text style={{ color: colors.text.secondary, fontSize: 13, fontWeight: '600' }}>{formatCurrency(salaryRunBankChargeTotal)}</Text>
+                  </View>
+                  <View className="flex-row items-center justify-between">
+                    <Text style={{ color: colors.text.tertiary, fontSize: 13 }}>Stamp duty</Text>
+                    <Text style={{ color: colors.text.secondary, fontSize: 13, fontWeight: '600' }}>{formatCurrency(salaryRunStampDutyTotal)}</Text>
+                  </View>
+                  <View className="flex-row items-center justify-between pt-2" style={{ borderTopWidth: 1, borderTopColor: colors.divider }}>
+                    <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '700' }}>Total debit</Text>
+                    <Text style={{ color: colors.text.primary, fontSize: 15, fontWeight: '700' }}>{formatCurrency(salaryRunTotalDebit)}</Text>
+                  </View>
+                </View>
+              </View>
+            </ScrollView>
+
+            <View className="flex-row justify-end mt-6" style={{ gap: 10 }}>
+              <Pressable
+                onPress={() => {
+                  setShowSalaryRunModal(false);
+                  setSalaryRunTemplateId(null);
+                }}
+                className="rounded-xl px-5"
+                style={{ height: 44, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.divider }}
+              >
+                <Text style={{ color: colors.text.secondary }} className="font-semibold">Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={saveSalaryRunModal}
+                disabled={!canSaveSalaryRun}
+                className="rounded-xl px-5"
+                style={{ height: 44, alignItems: 'center', justifyContent: 'center', backgroundColor: canSaveSalaryRun ? colors.bar : colors.bg.input }}
+              >
+                <Text style={{ color: canSaveSalaryRun ? colors.bg.screen : colors.text.tertiary }} className="font-semibold">
+                  Log Salary Run
+                </Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={showFixedCostModal} transparent animationType="fade" onRequestClose={() => setShowFixedCostModal(false)}>
+        <Pressable
+          className={`flex-1 items-center ${isMobile ? 'justify-end' : 'justify-center'}`}
+          style={{
+            backgroundColor: 'rgba(0, 0, 0, 0.6)',
+            paddingTop: isMobile ? 40 : 20,
+            paddingHorizontal: isMobile ? 12 : 20,
+            paddingBottom: isMobile ? Math.max(insets.bottom, 12) : 20,
+          }}
           onPress={() => {
             setShowFixedCostModal(false);
             setShowFixedCostCategoryDropdown(false);
@@ -14684,9 +21071,10 @@ export default function FinanceScreen() {
           <Pressable
             onPress={(event) => event.stopPropagation()}
             style={{
-              width: '92%',
+              width: '100%',
               maxWidth: 760,
-              borderRadius: 20,
+              maxHeight: isMobile ? '92%' : undefined,
+              borderRadius: isMobile ? 24 : 20,
               borderWidth: 1,
               borderColor: colors.divider,
               backgroundColor: colors.bg.card,
@@ -14890,65 +21278,82 @@ export default function FinanceScreen() {
                 </View>
               </View>
 
-              <View className="flex-row" style={{ gap: 12, zIndex: showFixedCostSupplierDropdown ? 2200 : 1 }}>
-                <View style={{ flex: 1, position: 'relative', zIndex: showFixedCostSupplierDropdown ? 2300 : 1 }}>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Supplier / Merchant</Text>
-                  <Pressable
-                    onPress={() => {
-                      setShowFixedCostSupplierDropdown((prev) => !prev);
-                      setShowFixedCostCategoryDropdown(false);
-                      setShowFixedCostFrequencyDropdown(false);
-                      setFixedCostSupplierSearch(fixedCostSupplierDraft);
-                    }}
+              <View style={{ position: 'relative', zIndex: showFixedCostSupplierDropdown ? 2200 : 1 }}>
+                <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Supplier / Merchant</Text>
+                <Pressable
+                  onPress={() => {
+                    setShowFixedCostSupplierDropdown((prev) => !prev);
+                    setShowFixedCostCategoryDropdown(false);
+                    setShowFixedCostFrequencyDropdown(false);
+                    setFixedCostSupplierSearch(fixedCostSupplierDraft);
+                  }}
+                  style={{
+                    height: 48,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: showFixedCostSupplierDropdown ? formFieldActiveBorder : formFieldBorder,
+                    backgroundColor: formFieldBg,
+                    paddingHorizontal: 14,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <Text numberOfLines={1} style={{ color: fixedCostSupplierDraft ? colors.text.primary : colors.text.muted, flex: 1, marginRight: 8, fontSize: 15 }}>
+                    {fixedCostSupplierDraft || 'Select or search supplier'}
+                  </Text>
+                  <ChevronDown size={16} color={colors.text.tertiary} strokeWidth={2} />
+                </Pressable>
+
+                {showFixedCostSupplierDropdown ? (
+                  <View
                     style={{
-                      height: 48,
-                      borderRadius: 12,
+                      position: 'absolute',
+                      top: 78,
+                      left: 0,
+                      right: 0,
+                      borderRadius: 10,
                       borderWidth: 1,
-                      borderColor: showFixedCostSupplierDropdown ? formFieldActiveBorder : formFieldBorder,
-                      backgroundColor: formFieldBg,
-                      paddingHorizontal: 14,
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
+                      borderColor: colors.divider,
+                      backgroundColor: colors.bg.card,
+                      zIndex: 3200,
+                      overflow: 'hidden',
+                      maxHeight: 240,
+                      elevation: 40,
                     }}
                   >
-                    <Text numberOfLines={1} style={{ color: fixedCostSupplierDraft ? colors.text.primary : colors.text.muted, flex: 1, marginRight: 8, fontSize: 15 }}>
-                      {fixedCostSupplierDraft || 'Select or search supplier'}
-                    </Text>
-                    <ChevronDown size={16} color={colors.text.tertiary} strokeWidth={2} />
-                  </Pressable>
-
-                  {showFixedCostSupplierDropdown ? (
-                    <View
-                      style={{
-                        position: 'absolute',
-                        top: 78,
-                        left: 0,
-                        right: 0,
-                        borderRadius: 10,
-                        borderWidth: 1,
-                        borderColor: colors.divider,
-                        backgroundColor: colors.bg.card,
-                        zIndex: 3200,
-                        overflow: 'hidden',
-                        maxHeight: 240,
-                        elevation: 40,
-                      }}
-                    >
-                      <View style={{ padding: 10, borderBottomWidth: 1, borderBottomColor: colors.divider }}>
-                        <TextInput
-                          value={fixedCostSupplierSearch}
-                          onChangeText={setFixedCostSupplierSearch}
-                          placeholder="Search supplier..."
-                          placeholderTextColor={colors.text.muted}
-                          style={{ height: 40, borderRadius: 10, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, color: colors.text.primary, paddingHorizontal: 12, fontSize: 14 }}
-                        />
-                      </View>
-                      <ScrollView showsVerticalScrollIndicator={false}>
+                    <View style={{ padding: 10, borderBottomWidth: 1, borderBottomColor: colors.divider }}>
+                      <TextInput
+                        value={fixedCostSupplierSearch}
+                        onChangeText={setFixedCostSupplierSearch}
+                        placeholder="Search supplier..."
+                        placeholderTextColor={colors.text.muted}
+                        style={{ height: 40, borderRadius: 10, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, color: colors.text.primary, paddingHorizontal: 12, fontSize: 14 }}
+                      />
+                    </View>
+                    <ScrollView showsVerticalScrollIndicator={false}>
+                      <Pressable
+                        onPress={() => {
+                          setFixedCostSupplierDraft('');
+                          setFixedCostSupplierSearch('');
+                          setShowFixedCostSupplierDropdown(false);
+                        }}
+                        style={{
+                          paddingHorizontal: 12,
+                          paddingVertical: 10,
+                          borderBottomWidth: 1,
+                          borderBottomColor: colors.divider,
+                          backgroundColor: fixedCostSupplierDraft === '' ? colors.bg.input : colors.bg.card,
+                        }}
+                      >
+                        <Text style={{ color: colors.text.secondary, fontSize: 13 }}>No supplier (optional)</Text>
+                      </Pressable>
+                      {filteredFixedCostSuppliers.map((supplier) => (
                         <Pressable
+                          key={supplier}
                           onPress={() => {
-                            setFixedCostSupplierDraft('');
-                            setFixedCostSupplierSearch('');
+                            setFixedCostSupplierDraft(supplier);
+                            setFixedCostSupplierSearch(supplier);
                             setShowFixedCostSupplierDropdown(false);
                           }}
                           style={{
@@ -14956,68 +21361,49 @@ export default function FinanceScreen() {
                             paddingVertical: 10,
                             borderBottomWidth: 1,
                             borderBottomColor: colors.divider,
-                            backgroundColor: fixedCostSupplierDraft === '' ? colors.bg.input : colors.bg.card,
+                            backgroundColor: fixedCostSupplierDraft === supplier ? colors.bg.input : colors.bg.card,
                           }}
                         >
-                          <Text style={{ color: colors.text.secondary, fontSize: 13 }}>No supplier (optional)</Text>
+                          <Text style={{ color: colors.text.primary, fontSize: 15 }} className="font-medium">{supplier}</Text>
                         </Pressable>
-                        {filteredFixedCostSuppliers.map((supplier) => (
-                          <Pressable
-                            key={supplier}
-                            onPress={() => {
-                              setFixedCostSupplierDraft(supplier);
-                              setFixedCostSupplierSearch(supplier);
-                              setShowFixedCostSupplierDropdown(false);
-                            }}
-                            style={{
-                              paddingHorizontal: 12,
-                              paddingVertical: 10,
-                              borderBottomWidth: 1,
-                              borderBottomColor: colors.divider,
-                              backgroundColor: fixedCostSupplierDraft === supplier ? colors.bg.input : colors.bg.card,
-                            }}
-                          >
-                            <Text style={{ color: colors.text.primary, fontSize: 15 }} className="font-medium">{supplier}</Text>
-                          </Pressable>
-                        ))}
-                        {fixedCostSupplierSearch.trim() && !availableExpenseMerchants.some(
-                          (supplier) => supplier.toLowerCase() === fixedCostSupplierSearch.trim().toLowerCase()
-                        ) ? (
-                          <Pressable
-                            onPress={() => {
-                              const customSupplier = fixedCostSupplierSearch.trim();
-                              upsertFinanceSupplierName(customSupplier);
-                              setFixedCostSupplierDraft(customSupplier);
-                              setFixedCostSupplierSearch(customSupplier);
-                              setShowFixedCostSupplierDropdown(false);
-                            }}
-                            style={{
-                              paddingHorizontal: 12,
-                              paddingVertical: 10,
-                              borderBottomWidth: 1,
-                              borderBottomColor: colors.divider,
-                              backgroundColor: colors.bg.card,
-                            }}
-                          >
-                            <Text style={{ color: colors.text.primary, fontSize: 15 }} className="font-medium">Use "{fixedCostSupplierSearch.trim()}"</Text>
-                          </Pressable>
-                        ) : null}
-                      </ScrollView>
-                    </View>
-                  ) : null}
-                </View>
+                      ))}
+                      {fixedCostSupplierSearch.trim() && !availableExpenseMerchants.some(
+                        (supplier) => supplier.toLowerCase() === fixedCostSupplierSearch.trim().toLowerCase()
+                      ) ? (
+                        <Pressable
+                          onPress={() => {
+                            const customSupplier = fixedCostSupplierSearch.trim();
+                            upsertFinanceSupplierName(customSupplier);
+                            setFixedCostSupplierDraft(customSupplier);
+                            setFixedCostSupplierSearch(customSupplier);
+                            setShowFixedCostSupplierDropdown(false);
+                          }}
+                          style={{
+                            paddingHorizontal: 12,
+                            paddingVertical: 10,
+                            borderBottomWidth: 1,
+                            borderBottomColor: colors.divider,
+                            backgroundColor: colors.bg.card,
+                          }}
+                        >
+                          <Text style={{ color: colors.text.primary, fontSize: 15 }} className="font-medium">Use "{fixedCostSupplierSearch.trim()}"</Text>
+                        </Pressable>
+                      ) : null}
+                    </ScrollView>
+                  </View>
+                ) : null}
+              </View>
 
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Amount (N)</Text>
-                  <TextInput
-                    value={fixedCostAmountDraft}
-                    onChangeText={setFixedCostAmountDraft}
-                    placeholder="0"
-                    keyboardType="decimal-pad"
-                    placeholderTextColor={colors.text.muted}
-                    style={{ height: 48, borderRadius: 12, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, color: colors.text.primary, paddingHorizontal: 14, fontSize: 15 }}
-                  />
-                </View>
+              <View>
+                <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Amount (N)</Text>
+                <TextInput
+                  value={fixedCostAmountDraft}
+                  onChangeText={setFixedCostAmountDraft}
+                  placeholder="0"
+                  keyboardType="decimal-pad"
+                  placeholderTextColor={colors.text.muted}
+                  style={{ height: 48, borderRadius: 12, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, color: colors.text.primary, paddingHorizontal: 14, fontSize: 15 }}
+                />
               </View>
 
               <View>
@@ -15260,7 +21646,7 @@ export default function FinanceScreen() {
                 <Text style={{ color: colors.text.secondary, fontSize: 14, fontWeight: '600' }}>Cancel</Text>
               </Pressable>
               <Pressable
-                onPress={() => {
+                onPress={async () => {
                   const name = revenueRuleNameDraft.trim();
                   const channel = revenueRuleChannelDraft.trim();
                   if (!name) {
@@ -15293,14 +21679,18 @@ export default function FinanceScreen() {
                     return;
                   }
 
-                  if (editingRevenueRuleId) {
-                    updateRevenueRule(editingRevenueRuleId, { name, channel, percentFee: pct, flatFee: flat });
+                  try {
+                    if (editingRevenueRuleId) {
+                      await updateRevenueRule(editingRevenueRuleId, { name, channel, percentFee: pct, flatFee: flat }, businessId);
+                    } else {
+                      await addRevenueRule({ id: `rrule-${Date.now().toString(36)}`, name, channel, percentFee: pct, flatFee: flat, enabled: true }, businessId);
+                    }
                     notifySettingsSaved(settingsSavedMessage('Gateway fee'));
-                  } else {
-                    addRevenueRule({ id: `rrule-${Date.now().toString(36)}`, name, channel, percentFee: pct, flatFee: flat, enabled: true });
-                    notifySettingsSaved(settingsSavedMessage('Gateway fee'));
+                    setShowRevenueRuleModal(false);
+                  } catch (error) {
+                    console.warn('Gateway fee save failed:', error);
+                    showSettingsToast('error', 'Gateway fee could not sync. Please try again.');
                   }
-                  setShowRevenueRuleModal(false);
                 }}
                 style={{ flex: 1, height: 46, borderRadius: 12, backgroundColor: colors.bar, alignItems: 'center', justifyContent: 'center' }}
               >
@@ -15312,6 +21702,535 @@ export default function FinanceScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <Modal
+        visible={showProcurementExportModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowProcurementExportModal(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', padding: 18 }}
+          onPress={() => {
+            setShowProcurementExportModal(false);
+            setShowProcurementExportPoPicker(false);
+            setProcurementExportPoSearch('');
+          }}
+        >
+          <Pressable
+            onPress={(event) => event.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: 420,
+              alignSelf: 'center',
+              borderRadius: 22,
+              backgroundColor: colors.bg.card,
+              borderWidth: 1,
+              borderColor: colors.divider,
+              padding: 18,
+              gap: 12,
+            }}
+          >
+            <View>
+              <Text style={{ color: colors.text.primary, fontSize: 18, fontWeight: '600' }}>Choose export</Text>
+              <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '400', marginTop: 4 }}>
+                Pick the procurement CSV you want to download.
+              </Text>
+            </View>
+
+            <View style={{ gap: 8 }}>
+              <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.8 }}>
+                PO scope
+              </Text>
+              <Pressable
+                onPress={() => {
+                  setShowProcurementExportPoPicker((value) => !value);
+                  if (showProcurementExportPoPicker) setProcurementExportPoSearch('');
+                }}
+                className="active:opacity-80"
+                style={{
+                  minHeight: 46,
+                  borderRadius: 14,
+                  backgroundColor: colors.bg.card,
+                  borderWidth: 1,
+                  borderColor: colors.divider,
+                  paddingHorizontal: 14,
+                  paddingVertical: 10,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 10,
+                }}
+              >
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }} numberOfLines={1}>
+                    {selectedProcurementExportOption?.label ?? 'All visible POs'}
+                  </Text>
+                  <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '400', marginTop: 2 }} numberOfLines={1}>
+                    {selectedProcurementExportOption
+                      ? `${selectedProcurementExportOption.supplier} · Paid ${selectedProcurementExportOption.paidDate || 'No date'} · ${selectedProcurementExportOption.lineCount} line${selectedProcurementExportOption.lineCount === 1 ? '' : 's'}`
+                      : `${visibleProcurementRows.length} PO${visibleProcurementRows.length === 1 ? '' : 's'} from the current table filters`}
+                  </Text>
+                </View>
+                <ChevronDown size={18} color={colors.text.secondary} strokeWidth={2} />
+              </Pressable>
+
+              {showProcurementExportPoPicker ? (
+                <View
+                  style={{
+                    maxHeight: 300,
+                    borderRadius: 14,
+                    backgroundColor: colors.bg.card,
+                    overflow: 'hidden',
+                    borderWidth: 1,
+                    borderColor: colors.divider,
+                  }}
+                >
+                  <View style={{ padding: 10, borderBottomWidth: 1, borderBottomColor: colors.divider }}>
+                    <View
+                      style={{
+                        minHeight: 38,
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        borderColor: colors.divider,
+                        backgroundColor: colors.bg.card,
+                        paddingHorizontal: 12,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 8,
+                      }}
+                    >
+                      <Search size={15} color={colors.text.tertiary} strokeWidth={2} />
+                      <TextInput
+                        value={procurementExportPoSearch}
+                        onChangeText={setProcurementExportPoSearch}
+                        placeholder="Search PO number, supplier, or date"
+                        placeholderTextColor={colors.text.tertiary}
+                        autoCapitalize="none"
+                        style={{
+                          flex: 1,
+                          color: colors.text.primary,
+                          fontSize: 12,
+                          fontWeight: '400',
+                          outlineStyle: 'none' as any,
+                        }}
+                      />
+                    </View>
+                  </View>
+                  <ScrollView keyboardShouldPersistTaps="handled">
+                    <Pressable
+                      onPress={() => {
+                        setProcurementExportSelectedId('all');
+                        setShowProcurementExportPoPicker(false);
+                        setProcurementExportPoSearch('');
+                      }}
+                      className="active:opacity-80"
+                      style={{
+                        paddingHorizontal: 14,
+                        paddingVertical: 12,
+                        backgroundColor: colors.bg.card,
+                        borderBottomWidth: filteredProcurementExportOptions.length > 0 ? 1 : 0,
+                        borderBottomColor: colors.divider,
+                      }}
+                    >
+                      <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }}>All visible POs</Text>
+                      <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '400', marginTop: 2 }}>
+                        Export all product rows from the current table filters.
+                      </Text>
+                    </Pressable>
+
+                    {filteredProcurementExportOptions.map((option, index) => (
+                      <Pressable
+                        key={option.id}
+                        onPress={() => {
+                          setProcurementExportSelectedId(option.id);
+                          setShowProcurementExportPoPicker(false);
+                          setProcurementExportPoSearch('');
+                        }}
+                        className="active:opacity-80"
+                        style={{
+                          paddingHorizontal: 14,
+                          paddingVertical: 12,
+                          backgroundColor: colors.bg.card,
+                          borderBottomWidth: index === filteredProcurementExportOptions.length - 1 ? 0 : 1,
+                          borderBottomColor: colors.divider,
+                        }}
+                      >
+                        <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }}>
+                          {option.label} · {option.paidDate || option.receivedDate || 'No date'}
+                        </Text>
+                        <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '400', marginTop: 2 }} numberOfLines={1}>
+                          {option.supplier} · {option.status} · {option.lineCount} line{option.lineCount === 1 ? '' : 's'}
+                        </Text>
+                      </Pressable>
+                    ))}
+                    {filteredProcurementExportOptions.length === 0 ? (
+                      <View style={{ paddingHorizontal: 14, paddingVertical: 14 }}>
+                        <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '400' }}>
+                          No POs match your search.
+                        </Text>
+                      </View>
+                    ) : null}
+                  </ScrollView>
+                </View>
+              ) : null}
+            </View>
+
+            <Pressable
+              onPress={() => handleChooseProcurementExport('summary')}
+              className="active:opacity-80"
+              style={{
+                minHeight: 58,
+                borderRadius: 16,
+                backgroundColor: colors.bg.card,
+                borderWidth: 1,
+                borderColor: colors.divider,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 12,
+              }}
+            >
+              <FileText size={18} color={colors.text.primary} strokeWidth={2} />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }}>Procurement summary</Text>
+                <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '400', marginTop: 2 }}>
+                  One row per PO with supplier, status, dates, and total.
+                </Text>
+              </View>
+            </Pressable>
+
+            <Pressable
+              onPress={() => handleChooseProcurementExport('products')}
+              className="active:opacity-80"
+              style={{
+                minHeight: 58,
+                borderRadius: 16,
+                backgroundColor: colors.bg.card,
+                borderWidth: 1,
+                borderColor: colors.divider,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 12,
+              }}
+            >
+              <Package size={18} color={colors.text.primary} strokeWidth={2} />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }}>Products / order lines</Text>
+                <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '400', marginTop: 2 }}>
+                  One row per procured product with quantity, costs, fees, and dates.
+                </Text>
+              </View>
+            </Pressable>
+
+            <Pressable
+              onPress={() => {
+                setShowProcurementExportModal(false);
+                setShowProcurementExportPoPicker(false);
+                setProcurementExportPoSearch('');
+              }}
+              className="active:opacity-80"
+              style={{ height: 42, borderRadius: 999, alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Text style={{ color: colors.text.secondary, fontSize: 13, fontWeight: '600' }}>Cancel</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={showNewPoItemPicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowNewPoItemPicker(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', padding: 18 }}
+          onPress={() => setShowNewPoItemPicker(false)}
+        >
+          <Pressable
+            onPress={(event) => event.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: 420,
+              maxHeight: '78%',
+              alignSelf: 'center',
+              borderRadius: 22,
+              backgroundColor: colors.bg.card,
+              borderWidth: 1,
+              borderColor: colors.divider,
+              overflow: 'hidden',
+            }}
+          >
+            <View style={{ padding: 18, gap: 12 }}>
+              <View>
+                <Text style={{ color: colors.text.primary, fontSize: 18, fontWeight: '600' }}>New PO item</Text>
+                <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '400', marginTop: 4 }}>
+                  Link this to a PO you've already created, or start a brand new PO if one doesn't exist yet.
+                </Text>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bg.input, borderRadius: 12, paddingHorizontal: 12, height: 42 }}>
+                <Search size={14} color={colors.text.tertiary} strokeWidth={2} />
+                <TextInput
+                  placeholder="Search PO number, name, or supplier…"
+                  placeholderTextColor={colors.text.tertiary}
+                  value={newPoItemSearch}
+                  onChangeText={setNewPoItemSearch}
+                  style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 13 }}
+                />
+              </View>
+            </View>
+            <Pressable
+              onPress={() => {
+                setShowNewPoItemPicker(false);
+                openProcurementComposer('procurement');
+              }}
+              className="active:opacity-80"
+              style={{
+                marginHorizontal: 18,
+                marginBottom: 12,
+                height: 46,
+                borderRadius: 14,
+                backgroundColor: colors.bar,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+              }}
+            >
+              <Plus size={16} color={colors.bg.screen} strokeWidth={2.5} />
+              <Text style={{ color: colors.bg.screen, fontSize: 14, fontWeight: '700' }}>Create a new PO</Text>
+            </Pressable>
+            <ScrollView style={{ maxHeight: 320 }} showsVerticalScrollIndicator={false}>
+              {newPoItemOptions.length === 0 ? (
+                <View style={{ paddingHorizontal: 18, paddingBottom: 18 }}>
+                  <Text style={{ color: colors.text.tertiary, fontSize: 13, textAlign: 'center' }}>
+                    No existing POs yet — create one above.
+                  </Text>
+                </View>
+              ) : (
+                newPoItemOptions.map((option) => (
+                  <Pressable
+                    key={option.id}
+                    onPress={() => {
+                      setShowNewPoItemPicker(false);
+                      openProcurementEditor(option.id);
+                    }}
+                    style={({ pressed }) => ({
+                      paddingHorizontal: 18,
+                      paddingVertical: 12,
+                      borderTopWidth: 1,
+                      borderTopColor: colors.divider,
+                      backgroundColor: pressed ? colors.bg.input : 'transparent',
+                    })}
+                  >
+                    <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600' }} numberOfLines={1}>
+                      {option.title || option.poNumber}
+                    </Text>
+                    <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 2 }} numberOfLines={1}>
+                      {option.poNumber} · {option.supplier}
+                    </Text>
+                  </Pressable>
+                ))
+              )}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={mergingProcurementId !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMergingProcurementId(null)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', padding: 18 }}
+          onPress={() => setMergingProcurementId(null)}
+        >
+          <Pressable
+            onPress={(event) => event.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: 420,
+              maxHeight: '78%',
+              alignSelf: 'center',
+              borderRadius: 22,
+              backgroundColor: colors.bg.card,
+              borderWidth: 1,
+              borderColor: colors.divider,
+              overflow: 'hidden',
+            }}
+          >
+            <View style={{ padding: 18, gap: 12 }}>
+              <View>
+                <Text style={{ color: colors.text.primary, fontSize: 18, fontWeight: '600' }}>Merge into which PO?</Text>
+                <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '400', marginTop: 4 }}>
+                  All items move into the PO you pick. This PO is then moved to the recycle bin — nothing is lost, and you can restore it if needed.
+                </Text>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bg.input, borderRadius: 12, paddingHorizontal: 12, height: 42 }}>
+                <Search size={14} color={colors.text.tertiary} strokeWidth={2} />
+                <TextInput
+                  placeholder="Search PO number, name, or supplier…"
+                  placeholderTextColor={colors.text.tertiary}
+                  value={mergeProcurementSearch}
+                  onChangeText={setMergeProcurementSearch}
+                  style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 13 }}
+                />
+              </View>
+            </View>
+            <ScrollView style={{ maxHeight: 360 }} showsVerticalScrollIndicator={false}>
+              {mergeProcurementOptions.length === 0 ? (
+                <View style={{ paddingHorizontal: 18, paddingBottom: 18 }}>
+                  <Text style={{ color: colors.text.tertiary, fontSize: 13, textAlign: 'center' }}>
+                    No other POs to merge into.
+                  </Text>
+                </View>
+              ) : (
+                mergeProcurementOptions.map((option) => (
+                  <Pressable
+                    key={option.id}
+                    onPress={() => {
+                      if (mergingProcurementId) {
+                        handleMergeProcurementInto(mergingProcurementId, option.id);
+                      }
+                      setMergingProcurementId(null);
+                    }}
+                    style={({ pressed }) => ({
+                      paddingHorizontal: 18,
+                      paddingVertical: 12,
+                      borderTopWidth: 1,
+                      borderTopColor: colors.divider,
+                      backgroundColor: pressed ? colors.bg.input : 'transparent',
+                    })}
+                  >
+                    <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600' }} numberOfLines={1}>
+                      {option.title || option.poNumber}
+                    </Text>
+                    <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 2 }} numberOfLines={1}>
+                      {option.poNumber} · {option.supplier}
+                    </Text>
+                  </Pressable>
+                ))
+              )}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {!isWebDesktop && canAccessFinance && !mobileDetail ? (
+        <>
+          <Modal
+            visible={showMobileFinanceMenu}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setShowMobileFinanceMenu(false)}
+          >
+            <Pressable
+              style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.28)' }}
+              onPress={() => setShowMobileFinanceMenu(false)}
+            >
+              <View
+                style={{
+                  position: 'absolute',
+                  right: 16,
+                  bottom: Math.max(12, tabBarHeight - 4),
+                  width: 268,
+                  maxHeight: '78%',
+                  borderRadius: 22,
+                  borderWidth: 1,
+                  borderColor: colors.divider,
+                  backgroundColor: colors.bg.card,
+                  overflow: 'hidden',
+                  shadowColor: '#000000',
+                  shadowOpacity: 0.18,
+                  shadowRadius: 18,
+                  shadowOffset: { width: 0, height: 10 },
+                  elevation: 8,
+                }}
+              >
+                <Pressable onPress={(event) => event.stopPropagation()}>
+                  <View className="px-4 py-3" style={{ borderBottomWidth: 1, borderBottomColor: colors.divider }}>
+                    <Text style={{ color: colors.text.primary, fontSize: 15, fontWeight: '700' }}>Finance Menu</Text>
+                    <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 2 }}>{activeTabLabel}</Text>
+                  </View>
+                  <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 6 }}>
+                    {mobileFinanceMenuOptions.map((item) => {
+                      const Icon = item.icon;
+                      const isActive = item.type === 'tab'
+                        ? activeTab === item.key && (item.key !== 'procurement' || procurementChildPage === 'overview')
+                        : item.type === 'procurement-page'
+                          ? activeTab === 'procurement' && procurementChildPage === item.key
+                          : false;
+                      return (
+                        <Pressable
+                          key={`${item.type}-${item.key}`}
+                          onPress={() => {
+                            if (item.type === 'tab') {
+                              selectTab(item.key);
+                            } else if (item.type === 'procurement-page') {
+                              selectProcurementPage(item.key);
+                            } else {
+                              setShowMobileFinanceMenu(false);
+                              router.push(item.href as never);
+                            }
+                          }}
+                          className="flex-row items-center px-4"
+                          style={{
+                            minHeight: 44,
+                            backgroundColor: isActive ? colors.bg.input : 'transparent',
+                            borderLeftWidth: isActive ? 3 : 0,
+                            borderLeftColor: colors.bar,
+                          }}
+                        >
+                          <Icon size={17} color={isActive ? colors.text.primary : colors.text.tertiary} strokeWidth={2.2} />
+                          <Text
+                            style={{ color: isActive ? colors.text.primary : colors.text.secondary, fontSize: 14, fontWeight: isActive ? '700' : '600', marginLeft: 10, flex: 1 }}
+                            numberOfLines={1}
+                          >
+                            {item.label}
+                          </Text>
+                          {isActive ? <Check size={15} color={colors.text.primary} strokeWidth={2.5} /> : null}
+                        </Pressable>
+                      );
+                    })}
+
+                  </ScrollView>
+                </Pressable>
+              </View>
+            </Pressable>
+          </Modal>
+
+          <Pressable
+            onPress={() => {
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setShowMobileFinanceMenu(true);
+            }}
+            style={{
+              position: 'absolute',
+              right: 18,
+              bottom: Math.max(12, tabBarHeight - 30),
+              width: 58,
+              height: 58,
+              borderRadius: 29,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: colors.bar,
+              shadowColor: '#000000',
+              shadowOpacity: 0.22,
+              shadowRadius: 14,
+              shadowOffset: { width: 0, height: 8 },
+              elevation: 8,
+              zIndex: 50,
+            }}
+          >
+            <Menu size={24} color={colors.bg.screen} strokeWidth={2.6} />
+          </Pressable>
+        </>
+      ) : null}
 
       {canAccessFinance ? (
         <FyllAiAssistantDrawer
@@ -15328,6 +22247,64 @@ export default function FinanceScreen() {
           onAsk={handleAskFinanceAi}
         />
       ) : null}
+
+      <ProcurementCreateInventoryProductModal
+        visible={orderLineCreateProductDraft !== null}
+        draft={orderLineCreateProductDraft}
+        setDraft={setOrderLineCreateProductDraft}
+        colors={colors}
+        productVariables={productVariables}
+        availableVariantValuesByType={availableVariantValuesByType}
+        onPersistVariantValue={persistVariantValueOption}
+        onClose={() => setOrderLineCreateProductDraft(null)}
+        saveDisabled={
+          orderLineCreateProductSaving
+          || !orderLineCreateProductDraft?.name.trim()
+          || !orderLineCreateProductDraft.variants.some((variant) => variant.name.trim())
+        }
+        saveLabel={orderLineCreateProductSaving ? 'Saving…' : 'Save to Inventory'}
+        isMobile={isMobile}
+        onSave={async () => {
+          if (!orderLineCreateProductDraft) return;
+          const name = orderLineCreateProductDraft.name.trim();
+          const validVariants = orderLineCreateProductDraft.variants.filter((variant) => variant.name.trim());
+          if (!name || !validVariants.length) return;
+
+          validVariants.forEach((variant) => {
+            persistVariantValueOption(orderLineCreateProductDraft.variantType, variant.name);
+          });
+
+          setOrderLineCreateProductSaving(true);
+          try {
+            const createdProduct = await handleCreateInventoryProductFromOrder({
+              name,
+              variantType: orderLineCreateProductDraft.variantType.trim() || undefined,
+              variants: validVariants.map((variant) => ({
+                name: variant.name.trim(),
+                price: parseFloat(variant.price.replace(/,/g, '')) || 0,
+                imageUri: variant.imageUri ?? null,
+              })),
+              isNewProduct: orderLineCreateProductDraft.isNewProduct,
+              imageUri: orderLineCreateProductDraft.imageUri ?? undefined,
+            });
+            const productId = createdProduct.productId;
+            const newProduct = products.find((product) => product.id === productId) ?? { id: productId, name, variants: [] };
+            const firstVariant = newProduct.variants?.[0];
+            updateProcurementLineDraft(orderLineCreateProductDraft.lineId, {
+              productId,
+              variantId: createdProduct.variantId ?? firstVariant?.id ?? '',
+              variantName: createdProduct.variantName ?? (firstVariant ? Object.values(firstVariant.variableValues ?? {})[0] ?? '' : ''),
+              productName: name,
+              imageUrl: createdProduct.imageUrl ?? orderLineCreateProductDraft.imageUri ?? undefined,
+              isNewProduct: orderLineCreateProductDraft.isNewProduct,
+            });
+            setActiveProcurementProductLineId(orderLineCreateProductDraft.lineId);
+            setOrderLineCreateProductDraft(null);
+          } finally {
+            setOrderLineCreateProductSaving(false);
+          }
+        }}
+      />
 
       {settingsToast ? (
         <View

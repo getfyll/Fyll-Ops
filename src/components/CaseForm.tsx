@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,11 +9,11 @@ import {
   KeyboardAvoidingView,
   Platform,
   Image,
-  Switch,
   Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { X, ChevronDown, Check,
+  Link2,
   Mail,
   Phone,
   MessageSquare,
@@ -26,9 +26,12 @@ import { X, ChevronDown, Check,
   DollarSign,
   Zap,
   ShieldCheck,
+  ImageIcon,
+  Search,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useThemeColors } from '@/lib/theme';
+import { useBreakpoint } from '@/lib/useBreakpoint';
 import { FyllAiButton } from '@/components/FyllAiButton';
 import useFyllStore, {
   Case,
@@ -45,8 +48,15 @@ import useFyllStore, {
   CASE_PRIORITY_COLORS,
   CASE_SOURCES,
   CaseAttachment,
+  Customer,
+  RETURN_REASONS,
+  RETURN_RESOLUTIONS,
+  type ReturnReason,
+  type ReturnResolution,
+  type ReturnShippingPayer,
   generateCaseNumber,
   generateCaseId,
+  Order,
 } from '@/lib/state/fyll-store';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -59,6 +69,7 @@ const getCaseTypeIcon = (type: CaseType, color: string, size: number = 18) => {
     case 'Replacement': return <Undo2 {...props} />;
     case 'Refund': return <DollarSign {...props} />;
     case 'Partial Refund': return <Zap {...props} />;
+    case 'Return': return <RefreshCcw {...props} />;
     case 'Goodwill': return <ShieldCheck {...props} />;
     default: return <HelpCircle {...props} />;
   }
@@ -77,16 +88,36 @@ const getCaseSourceIcon = (source: CaseSource, color: string, size: number = 18)
   }
 };
 
+type CaseLinkSearchResult =
+  | { kind: 'order'; order: Order }
+  | { kind: 'customer'; customer: Customer };
+
+export interface CaseReturnDetails {
+  reason: ReturnReason;
+  otherReason?: string;
+  resolution: ReturnResolution;
+  shippingPayer: ReturnShippingPayer;
+}
+
+const formatOrderItems = (order: Order) =>
+  order.items
+    .slice(0, 2)
+    .map((item) => [item.productName, item.variantName].filter(Boolean).join(' '))
+    .filter(Boolean)
+    .join(', ');
+
 interface CaseFormProps {
   visible: boolean;
   onClose: () => void;
-  onSave: (caseData: Case) => void;
+  onSave: (caseData: Case, returnDetails?: CaseReturnDetails) => void;
   orderId?: string;
   orderNumber?: string;
   customerId?: string;
   customerName?: string;
   existingCase?: Case;
   createdBy?: string;
+  initialCaseType?: CaseType;
+  enableReturnDetails?: boolean;
 }
 
 export function CaseForm({
@@ -99,8 +130,11 @@ export function CaseForm({
   customerName,
   existingCase,
   createdBy,
+  initialCaseType,
+  enableReturnDetails,
 }: CaseFormProps) {
   const colors = useThemeColors();
+  const { isMobile } = useBreakpoint();
   const router = useRouter();
   const isEditing = !!existingCase;
   const isWeb = Platform.OS === 'web';
@@ -119,10 +153,13 @@ export function CaseForm({
   const [originalMessage, setOriginalMessage] = useState('');
   const [standaloneCustomerName, setStandaloneCustomerName] = useState(customerName || '');
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
+  const [showCaseTypeDropdown, setShowCaseTypeDropdown] = useState(false);
+  const [showSourceDropdown, setShowSourceDropdown] = useState(false);
   const [attachments, setAttachments] = useState<CaseAttachment[]>(existingCase?.attachments ?? []);
-  const [forceCompression, setForceCompression] = useState(true);
   const caseStatuses = useFyllStore((s) => s.caseStatuses);
   const resolutionTypes = useFyllStore((s) => s.resolutionTypes);
+  const orders = useFyllStore((s) => s.orders);
+  const customers = useFyllStore((s) => s.customers);
   const resolutionTypeOptions = resolutionTypes.map((rt) => rt.name);
   const caseTypeOptions = useMemo(() => {
     const base = [...CASE_TYPES];
@@ -151,12 +188,25 @@ export function CaseForm({
     }
   });
   const selectedStatusOption = caseStatuses.find((option) => option.name === status);
+  const [linkSearchQuery, setLinkSearchQuery] = useState('');
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [returnReason, setReturnReason] = useState<ReturnReason | null>(null);
+  const [returnResolution, setReturnResolution] = useState<ReturnResolution | null>(null);
+  const [returnShippingPayer, setReturnShippingPayer] = useState<ReturnShippingPayer | null>(null);
+  const [returnOtherReason, setReturnOtherReason] = useState('');
+  const [showReturnReasonDropdown, setShowReturnReasonDropdown] = useState(false);
+  const [showReturnResolutionDropdown, setShowReturnResolutionDropdown] = useState(false);
+  const [showReturnShippingDropdown, setShowReturnShippingDropdown] = useState(false);
 
   // Resolution fields
-  const [showResolution, setShowResolution] = useState(false);
   const [resolutionType, setResolutionType] = useState<ResolutionType>('No Action Required');
   const [resolutionNotes, setResolutionNotes] = useState('');
   const [resolutionValue, setResolutionValue] = useState('');
+  const [formError, setFormError] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showResolutionTypeDropdown, setShowResolutionTypeDropdown] = useState(false);
 
   useEffect(() => {
@@ -171,35 +221,141 @@ export function CaseForm({
       setOriginalMessage(existingCase.originalCustomerMessage || '');
       setStandaloneCustomerName(existingCase.customerName || customerName || '');
       setAttachments(existingCase.attachments ?? []);
+      const matchedOrder = existingCase.orderId ? orders.find((item) => item.id === existingCase.orderId) ?? null : null;
+      const matchedCustomer = existingCase.customerId ? customers.find((item) => item.id === existingCase.customerId) ?? null : null;
+      setSelectedOrder(matchedOrder);
+      setSelectedCustomer(matchedCustomer);
+      setLinkSearchQuery('');
+      setReturnReason(null);
+      setReturnResolution(null);
+      setReturnShippingPayer(null);
+      setReturnOtherReason('');
       if (existingCase.resolution) {
-        setShowResolution(true);
         setResolutionType(existingCase.resolution.type);
         setResolutionNotes(existingCase.resolution.notes);
         setResolutionValue(existingCase.resolution.value?.toString() || '');
       }
     } else {
       // Reset form for new case
-      setCaseType('Other');
+      setCaseType(initialCaseType ?? 'Other');
       setStatus(defaultStatus);
       setPriority('Medium');
       setSource('Email');
       setIssueSummary('');
       setOriginalMessage('');
       setAttachments([]);
-      setShowResolution(false);
       setResolutionType(defaultResolutionType);
       setResolutionNotes('');
       setResolutionValue('');
       setStandaloneCustomerName(customerName || '');
+      const matchedOrder = orderId ? orders.find((item) => item.id === orderId) ?? null : null;
+      const matchedCustomer = customerId ? customers.find((item) => item.id === customerId) ?? null : null;
+      setSelectedOrder(matchedOrder);
+      setSelectedCustomer(matchedCustomer);
+      setLinkSearchQuery('');
+      setReturnReason(null);
+      setReturnResolution(null);
+      setReturnShippingPayer(null);
+      setReturnOtherReason('');
     }
-  }, [existingCase, visible, caseStatuses, resolutionTypes, customerName]);
+  }, [existingCase, visible, caseStatuses, resolutionTypes, customerName, initialCaseType, orderId, customerId, orders, customers]);
 
-  // Show resolution section when status is Resolved or Closed
-  useEffect(() => {
-    if (status === 'Resolved' || status === 'Closed') {
-      setShowResolution(true);
-    }
-  }, [status]);
+  const showResolution = status === 'Resolved' || status === 'Closed';
+  const showReturnDetails = Boolean(enableReturnDetails && caseType === 'Return' && !isEditing);
+  const selectedReturnReasonLabel = returnReason
+    ? RETURN_REASONS.find((item) => item.value === returnReason)?.label ?? 'Choose reason'
+    : 'Choose reason';
+  const selectedReturnResolutionLabel = returnResolution
+    ? RETURN_RESOLUTIONS.find((item) => item.value === returnResolution)?.label ?? 'Choose refund or exchange'
+    : 'Choose refund or exchange';
+  const returnShippingOptions: Array<{ value: ReturnShippingPayer; label: string }> = [
+    { value: 'customer', label: 'Customer pays' },
+    { value: 'seller', label: 'Business pays' },
+  ];
+  const selectedReturnShippingLabel = returnShippingPayer
+    ? returnShippingOptions.find((item) => item.value === returnShippingPayer)?.label ?? 'Choose who pays'
+    : 'Choose who pays';
+  const canSearchCaseLink = !orderId;
+  const selectedLinkLabel = selectedOrder
+    ? `${selectedOrder.orderNumber} · ${selectedOrder.customerName}`
+    : selectedCustomer
+      ? selectedCustomer.fullName
+      : null;
+  const linkSearchResults = useMemo<CaseLinkSearchResult[]>(() => {
+    const query = linkSearchQuery.trim().toLowerCase();
+    if (!query) return [];
+
+    const orderResults = orders
+      .filter((item) => {
+        const searchable = [
+          item.orderNumber,
+          item.customerTrackingCode,
+          item.websiteOrderReference,
+          item.customerName,
+          item.customerEmail,
+          item.customerPhone,
+          formatOrderItems(item),
+        ].join(' ').toLowerCase();
+        return searchable.includes(query);
+      })
+      .slice(0, 6)
+      .map((item): CaseLinkSearchResult => ({ kind: 'order', order: item }));
+
+    const linkedCustomerIds = new Set(
+      orderResults
+        .map((item) => item.kind === 'order' ? item.order.customerId : undefined)
+        .filter(Boolean)
+    );
+    const customerResults = customers
+      .filter((item) => {
+        if (linkedCustomerIds.has(item.id)) return false;
+        const searchable = [
+          item.fullName,
+          item.email,
+          item.phone,
+        ].join(' ').toLowerCase();
+        return searchable.includes(query);
+      })
+      .slice(0, 4)
+      .map((item): CaseLinkSearchResult => ({ kind: 'customer', customer: item }));
+
+    return [...orderResults, ...customerResults].slice(0, 8);
+  }, [customers, linkSearchQuery, orders]);
+
+  const selectOrderForCase = (item: Order) => {
+    const linkedCustomer = item.customerId
+      ? customers.find((customer) => customer.id === item.customerId) ?? null
+      : customers.find((customer) =>
+          customer.email.trim().toLowerCase() === item.customerEmail.trim().toLowerCase()
+          || customer.phone.trim() === item.customerPhone.trim()
+        ) ?? null;
+    setSelectedOrder(item);
+    setSelectedCustomer(linkedCustomer);
+    setStandaloneCustomerName(item.customerName);
+    setLinkSearchQuery('');
+    Haptics.selectionAsync();
+  };
+
+  const selectCustomerForCase = (item: Customer) => {
+    setSelectedOrder(null);
+    setSelectedCustomer(item);
+    setStandaloneCustomerName(item.fullName);
+    setLinkSearchQuery('');
+    Haptics.selectionAsync();
+  };
+
+  const clearCaseLink = () => {
+    setSelectedOrder(null);
+    setSelectedCustomer(null);
+    setLinkSearchQuery('');
+    Haptics.selectionAsync();
+  };
+
+  const showToast = (message: string) => {
+    setToastMessage(message);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToastMessage(null), 2400);
+  };
 
   const handleAddAttachment = async () => {
     try {
@@ -212,32 +368,38 @@ export function CaseForm({
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: false,
+        allowsMultipleSelection: true,
       });
 
       if (result.canceled || !result.assets.length) {
         return;
       }
 
-      const asset = result.assets[0];
-      const manipulated = await ImageManipulator.manipulateAsync(
-        asset.uri,
-        [],
-        {
-          compress: forceCompression ? 0.6 : 0.95,
-          format: ImageManipulator.SaveFormat.JPEG,
-          base64: true,
-        }
+      const nextAttachments = await Promise.all(
+        result.assets.map(async (asset, index) => {
+          const manipulated = await ImageManipulator.manipulateAsync(
+            asset.uri,
+            [],
+            {
+              compress: 0.6,
+              format: ImageManipulator.SaveFormat.JPEG,
+              base64: true,
+            }
+          );
+
+          const newAttachment: CaseAttachment = {
+            id: Math.random().toString(36).slice(2),
+            label: asset.fileName || `Image ${attachments.length + index + 1}`,
+            uri: manipulated.uri,
+            preview: manipulated.base64 ? `data:image/jpeg;base64,${manipulated.base64}` : undefined,
+            uploadedAt: new Date().toISOString(),
+          };
+
+          return newAttachment;
+        })
       );
 
-      const newAttachment: CaseAttachment = {
-        id: Math.random().toString(36).slice(2),
-        label: asset.fileName || `Image ${attachments.length + 1}`,
-        uri: manipulated.uri,
-        preview: manipulated.base64 ? `data:image/jpeg;base64,${manipulated.base64}` : undefined,
-        uploadedAt: new Date().toISOString(),
-      };
-
-      setAttachments((prev) => [...prev, newAttachment]);
+      setAttachments((prev) => [...prev, ...nextAttachments]);
     } catch (error) {
       console.warn('Case attachment failed:', error);
     }
@@ -248,8 +410,11 @@ export function CaseForm({
   };
 
   const handleSave = () => {
+    setFormError(null);
     if (!issueSummary.trim()) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      setFormError('Add a short issue summary before saving.');
+      showToast('Add a short issue summary before saving.');
       return;
     }
 
@@ -257,14 +422,56 @@ export function CaseForm({
     const resolvedCustomerName = standaloneCustomerName.trim() || customerName;
     if (!resolvedCustomerName) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      setFormError('Add the customer name before saving.');
+      showToast('Add the customer name before saving.');
       return;
+    }
+    if (showResolution) {
+      if (!resolutionNotes.trim()) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        setFormError('Add resolution details before saving.');
+        showToast('Add resolution details before closing the case.');
+        return;
+      }
+      if ((resolutionType === 'Refund Issued' || resolutionType === 'Credit Applied') && !resolutionValue.trim()) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        setFormError('Enter a resolution value for refunds or credits.');
+        showToast('Enter a resolution value to close the case.');
+        return;
+      }
+    }
+    if (showReturnDetails) {
+      if (!returnReason) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        setFormError('Choose the return reason before creating the return.');
+        showToast('Choose the return reason.');
+        return;
+      }
+      if (returnReason === 'other' && !returnOtherReason.trim()) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        setFormError('Write the return reason before creating the return.');
+        showToast('Write the return reason.');
+        return;
+      }
+      if (!returnResolution) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        setFormError('Choose refund or exchange before creating the return.');
+        showToast('Choose refund or exchange.');
+        return;
+      }
+      if (!returnShippingPayer) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        setFormError('Choose who pays return shipping before creating the return.');
+        showToast('Choose who pays shipping.');
+        return;
+      }
     }
 
     const now = new Date().toISOString();
     let resolution: CaseResolution | undefined;
 
     // Save resolution if user has entered resolution details (regardless of status)
-    if (showResolution && (resolutionType || resolutionNotes.trim() || resolutionValue)) {
+    if (showResolution) {
       resolution = {
         type: resolutionType,
         notes: resolutionNotes,
@@ -292,9 +499,9 @@ export function CaseForm({
     const caseData: Case = {
       id: existingCase?.id || generateCaseId(),
       caseNumber: existingCase?.caseNumber || generateCaseNumber(),
-      orderId: orderId || existingCase?.orderId,
-      orderNumber: orderNumber || existingCase?.orderNumber,
-      customerId,
+      orderId: selectedOrder?.id || orderId || existingCase?.orderId,
+      orderNumber: selectedOrder?.orderNumber || orderNumber || existingCase?.orderNumber,
+      customerId: selectedOrder?.customerId || selectedCustomer?.id || customerId,
       customerName: resolvedCustomerName,
       type: caseType,
       status,
@@ -312,8 +519,15 @@ export function CaseForm({
     };
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    onSave(caseData);
-    onClose();
+    onSave(caseData, showReturnDetails && returnReason && returnResolution && returnShippingPayer ? {
+      reason: returnReason,
+      otherReason: returnReason === 'other' ? returnOtherReason.trim() : undefined,
+      resolution: returnResolution,
+      shippingPayer: returnShippingPayer,
+    } : undefined);
+    showToast(isEditing ? 'Case updated.' : 'Case created.');
+    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = setTimeout(() => onClose(), 700);
   };
 
   const handleOpenAICase = () => {
@@ -335,12 +549,13 @@ export function CaseForm({
   const renderDropdown = (
     items: string[],
     selected: string,
-    onSelect: (item: any) => void,
+    onSelect: (item: string) => void,
     show: boolean,
     setShow: (show: boolean) => void,
     colorMap?: Record<string, string>,
+    renderIcon?: (item: string, isSelected: boolean) => React.ReactNode,
   ) => (
-    <View>
+    <View style={{ position: 'relative', zIndex: show ? 50 : 1, overflow: 'visible' }}>
       <Pressable
         onPress={() => {
           Haptics.selectionAsync();
@@ -354,6 +569,7 @@ export function CaseForm({
     }}
   >
         <View className="flex-row items-center gap-2">
+          {renderIcon ? renderIcon(selected, true) : null}
           {colorMap && (
             <View
               className="w-3 h-3 rounded-full"
@@ -369,11 +585,17 @@ export function CaseForm({
 
       {show && (
         <View
-          className="mt-1 rounded-xl overflow-hidden"
+          className="rounded-xl overflow-hidden absolute left-0 right-0 top-[58px]"
           style={{
             backgroundColor: formBg,
             borderWidth: 1,
             borderColor: formBorder,
+            zIndex: 1000,
+            shadowColor: '#000000',
+            shadowOpacity: 0.12,
+            shadowRadius: 12,
+            shadowOffset: { width: 0, height: 6 },
+            elevation: 30,
           }}
         >
           {items.map((item) => (
@@ -392,6 +614,7 @@ export function CaseForm({
               }}
             >
               <View className="flex-row items-center gap-2">
+                {renderIcon ? renderIcon(item, item === selected) : null}
                 {colorMap && (
                   <View
                     className="w-3 h-3 rounded-full"
@@ -433,8 +656,9 @@ export function CaseForm({
                   borderWidth: 1,
                   borderColor: '#E6E6E6',
                   borderRadius: 18,
-                  overflow: 'hidden',
-                  marginVertical: 12,
+                  overflow: 'visible',
+                  marginTop: 0,
+                  marginBottom: 12,
                 }
               : null,
           ]}
@@ -468,15 +692,7 @@ export function CaseForm({
                 {isEditing ? 'Edit Case' : 'New Case'}
               </Text>
             </View>
-            <Pressable
-              onPress={handleSave}
-              className="px-5 py-2.5 rounded-full active:opacity-80"
-              style={{ backgroundColor: isDark ? '#FFFFFF' : '#111111' }}
-            >
-              <Text style={{ color: isDark ? '#111111' : '#FFFFFF' }} className="font-semibold">
-                {isEditing ? 'Update' : 'Create'}
-              </Text>
-            </Pressable>
+            <View style={{ width: 40 }} />
           </View>
 
           <ScrollView
@@ -492,6 +708,33 @@ export function CaseForm({
               alignSelf: 'center',
             }}
           >
+            {toastMessage && (
+              <View
+                className="mb-4 rounded-full px-4 py-2"
+                style={{
+                  backgroundColor: isDark ? '#EF4444' : '#111111',
+                  alignSelf: 'flex-start',
+                }}
+              >
+                <Text style={{ color: isDark ? '#111111' : '#FFFFFF' }} className="text-xs font-semibold">
+                  {toastMessage}
+                </Text>
+              </View>
+            )}
+            {formError && (
+              <View
+                className="mb-4 rounded-xl px-4 py-3"
+                style={{
+                  backgroundColor: isDark ? '#3B1D1D' : '#FEE2E2',
+                  borderWidth: 1,
+                  borderColor: isDark ? '#7F1D1D' : '#FCA5A5',
+                }}
+              >
+                <Text style={{ color: isDark ? '#FCA5A5' : '#991B1B' }} className="text-sm font-semibold">
+                  {formError}
+                </Text>
+              </View>
+            )}
             {/* AI Case Shortcut */}
             {!isEditing && (
               <View
@@ -511,7 +754,7 @@ export function CaseForm({
             {/* Order Info + Customer Name */}
             {orderId && orderNumber && (
               <View className="mb-4">
-                <Text style={{ color: colors.text.muted }} className="text-xs uppercase font-semibold mb-2">
+                <Text style={{ color: colors.text.secondary }} className="text-xs uppercase font-semibold mb-2">
                   Linked Order
                 </Text>
                 <View
@@ -524,8 +767,107 @@ export function CaseForm({
                 </View>
               </View>
             )}
+            {canSearchCaseLink && (
+              <View className="mb-4" style={{ position: 'relative', zIndex: 260, overflow: 'visible' }}>
+                <Text style={{ color: colors.text.secondary }} className="text-xs uppercase font-semibold mb-2">
+                  Link Customer or Order
+                </Text>
+                {selectedLinkLabel ? (
+                  <View
+                    className="rounded-xl p-4"
+                    style={{ backgroundColor: formBg, borderWidth: 1, borderColor: formBorder }}
+                  >
+                    <View className="flex-row items-center justify-between gap-3">
+                      <View className="flex-1">
+                        <View className="flex-row items-center gap-2">
+                          <Link2 size={16} color={colors.accent.primary} strokeWidth={2} />
+                          <Text style={{ color: colors.text.primary }} className="font-semibold" numberOfLines={1}>
+                            {selectedLinkLabel}
+                          </Text>
+                        </View>
+                        <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1" numberOfLines={1}>
+                          {selectedOrder
+                            ? `${selectedOrder.customerEmail || selectedOrder.customerPhone || 'Order linked'}`
+                            : selectedCustomer?.email || selectedCustomer?.phone || 'Customer linked'}
+                        </Text>
+                      </View>
+                      <Pressable
+                        onPress={clearCaseLink}
+                        className="px-3 py-2 rounded-full active:opacity-80"
+                        style={{ backgroundColor: colors.bg.primary, borderWidth: 1, borderColor: formBorder }}
+                      >
+                        <Text style={{ color: colors.text.secondary }} className="text-xs font-semibold">
+                          Clear
+                        </Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                ) : (
+                  <>
+                    <View
+                      className="rounded-xl px-4 flex-row items-center"
+                      style={{
+                        height: 52,
+                        backgroundColor: formBg,
+                        borderWidth: 1,
+                        borderColor: formBorder,
+                      }}
+                    >
+                      <Search size={17} color={colors.text.muted} strokeWidth={2} />
+                      <TextInput
+                        value={linkSearchQuery}
+                        onChangeText={setLinkSearchQuery}
+                        placeholder="Search order number, customer, phone, email..."
+                        placeholderTextColor={colors.text.muted}
+                        className="flex-1 ml-2"
+                        style={{ color: colors.text.primary, outlineStyle: 'none' as any }}
+                      />
+                    </View>
+                    {linkSearchQuery.trim() ? (
+                      <View
+                        className="rounded-xl overflow-hidden mt-2"
+                        style={{ backgroundColor: formBg, borderWidth: 1, borderColor: formBorder }}
+                      >
+                        {linkSearchResults.length > 0 ? (
+                          linkSearchResults.map((result) => {
+                            const key = result.kind === 'order' ? `order-${result.order.id}` : `customer-${result.customer.id}`;
+                            const title = result.kind === 'order'
+                              ? `${result.order.orderNumber} · ${result.order.customerName}`
+                              : result.customer.fullName;
+                            const subtitle = result.kind === 'order'
+                              ? [result.order.customerEmail, result.order.customerPhone, formatOrderItems(result.order)].filter(Boolean).join(' · ')
+                              : [result.customer.email, result.customer.phone].filter(Boolean).join(' · ');
+                            return (
+                              <Pressable
+                                key={key}
+                                onPress={() => result.kind === 'order' ? selectOrderForCase(result.order) : selectCustomerForCase(result.customer)}
+                                className="px-4 py-3 active:opacity-80"
+                                style={{ borderTopWidth: key === (linkSearchResults[0].kind === 'order' ? `order-${linkSearchResults[0].order.id}` : `customer-${linkSearchResults[0].customer.id}`) ? 0 : 1, borderTopColor: formBorder }}
+                              >
+                                <Text style={{ color: colors.text.primary }} className="text-sm font-semibold" numberOfLines={1}>
+                                  {title}
+                                </Text>
+                                <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1" numberOfLines={1}>
+                                  {subtitle || (result.kind === 'order' ? 'Order' : 'Customer')}
+                                </Text>
+                              </Pressable>
+                            );
+                          })
+                        ) : (
+                          <View className="px-4 py-3">
+                            <Text style={{ color: colors.text.tertiary }} className="text-sm">
+                              No matching customer or order found.
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    ) : null}
+                  </>
+                )}
+              </View>
+            )}
             <View className="mb-6">
-              <Text style={{ color: colors.text.muted }} className="text-xs uppercase font-semibold mb-2">
+              <Text style={{ color: colors.text.secondary }} className="text-xs uppercase font-semibold mb-2">
                 Customer Name *
               </Text>
               <TextInput
@@ -544,51 +886,9 @@ export function CaseForm({
               />
             </View>
 
-          {/* Case Type - Grid Selection */}
-          <View className="mb-5">
-            <Text style={{ color: colors.text.muted }} className="text-xs uppercase font-semibold mb-3">
-              Case Type
-            </Text>
-            <View className="flex-row flex-wrap gap-2">
-              {caseTypeOptions.map((type) => {
-                const isSelected = caseType === type;
-                return (
-                  <Pressable
-                    key={type}
-                    onPress={() => {
-                      Haptics.selectionAsync();
-                      setCaseType(type);
-                    }}
-                    className="flex-row items-center gap-2 px-4 py-3 rounded-xl active:opacity-80"
-                    style={{
-                      backgroundColor: isSelected ? colors.bg.tertiary : formBg,
-                      borderWidth: isSelected ? 2 : 1,
-                      borderColor: isSelected ? colors.text.primary : formBorder,
-                    }}
-                  >
-                    <View
-                      className="p-1.5 rounded-lg"
-                      style={{
-                        backgroundColor: isSelected ? colors.text.primary : colors.bg.primary,
-                      }}
-                    >
-                      {getCaseTypeIcon(type, isSelected ? colors.bg.primary : colors.text.secondary, 14)}
-                    </View>
-                    <Text
-                      style={{ color: isSelected ? colors.text.primary : colors.text.secondary }}
-                      className="text-xs font-bold uppercase tracking-wider"
-                    >
-                      {type}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
-
           {/* Priority Selection */}
-          <View className="mb-5">
-            <Text style={{ color: colors.text.muted }} className="text-xs uppercase font-semibold mb-3">
+          <View className="mb-5" style={{ position: 'relative', zIndex: 1 }}>
+            <Text style={{ color: colors.text.secondary }} className="text-xs uppercase font-semibold mb-3">
               Priority
             </Text>
             <View
@@ -605,16 +905,16 @@ export function CaseForm({
                       Haptics.selectionAsync();
                       setPriority(p);
                     }}
-                    className="flex-1 flex-row items-center justify-center gap-1.5 py-3 rounded-xl active:opacity-80"
+                    className="flex-1 flex-row items-center justify-center gap-1.5 py-3 rounded-full active:opacity-80"
                     style={{
-                      backgroundColor: isSelected ? (isWeb ? (isDark ? colors.bg.card : '#F9FAFB') : colors.bg.card) : 'transparent',
-                      borderWidth: isSelected ? 1 : 0,
-                      borderColor: isSelected ? priorityColor + '50' : 'transparent',
+                      backgroundColor: isSelected ? priorityColor : 'transparent',
+                      borderWidth: 0,
+                      borderColor: 'transparent',
                     }}
                   >
-                    {isSelected && <Flag size={12} color={priorityColor} strokeWidth={2} />}
+                    {isSelected && <Flag size={12} color="#FFFFFF" strokeWidth={2} />}
                     <Text
-                      style={{ color: isSelected ? priorityColor : colors.text.muted }}
+                      style={{ color: isSelected ? '#FFFFFF' : colors.text.muted }}
                       className="text-[10px] font-bold uppercase tracking-tighter"
                     >
                       {p}
@@ -626,77 +926,157 @@ export function CaseForm({
           </View>
 
           {/* Source Channel */}
-          <View className="mb-5">
-            <Text style={{ color: colors.text.muted }} className="text-xs uppercase font-semibold mb-3">
+          <View className="mb-5" style={{ position: 'relative', zIndex: showSourceDropdown ? 240 : 1, overflow: 'visible' }}>
+            <Text style={{ color: colors.text.secondary }} className="text-xs uppercase font-semibold mb-3">
               Source Channel
             </Text>
-            <View
-              className="flex-row flex-wrap p-1.5 rounded-xl gap-1"
-              style={{ backgroundColor: formBg, borderWidth: 1, borderColor: formBorder }}
-            >
-              {sourceOptions.map((s) => {
-                const isSelected = source === s;
-                return (
-                  <Pressable
-                    key={s}
-                    onPress={() => {
-                      Haptics.selectionAsync();
-                      setSource(s);
-                    }}
-                    className="flex-col items-center justify-center py-3 px-4 rounded-xl active:opacity-80"
-                    style={{
-                      backgroundColor: isSelected ? (isWeb ? (isDark ? colors.bg.card : '#F9FAFB') : colors.bg.card) : 'transparent',
-                      borderWidth: isSelected ? 1 : 0,
-                      borderColor: isSelected ? formBorder : 'transparent',
-                      minWidth: 70,
-                    }}
-                  >
-                    {getCaseSourceIcon(s, isSelected ? colors.text.primary : colors.text.muted, 18)}
-                    <Text
-                      style={{ color: isSelected ? colors.text.primary : colors.text.muted }}
-                      className="text-[10px] font-bold uppercase tracking-tighter mt-1"
-                    >
-                      {s}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+            {renderDropdown(
+              sourceOptions,
+              source,
+              (item) => setSource(item as CaseSource),
+              showSourceDropdown,
+              setShowSourceDropdown,
+              undefined,
+              (item, isSelected) => getCaseSourceIcon(item as CaseSource, isSelected ? colors.text.primary : colors.text.muted, 16),
+            )}
           </View>
 
           {/* Status */}
-          <View className="mb-4">
-            <Text style={{ color: colors.text.muted }} className="text-xs uppercase font-semibold mb-2">
+          <View className="mb-5" style={{ position: 'relative', zIndex: showStatusDropdown ? 230 : 1, overflow: 'visible' }}>
+            <Text style={{ color: colors.text.secondary }} className="text-xs uppercase font-semibold mb-2">
               Status
             </Text>
-          {renderDropdown(
-            statusOptions,
-            status,
-            setStatus,
-            showStatusDropdown,
-            setShowStatusDropdown,
-            statusColorMap,
-          )}
-          {selectedStatusOption?.description ? (
-            <Text style={{ color: colors.text.tertiary, marginTop: 4, fontSize: 12 }}>
-              {selectedStatusOption.description}
+            {renderDropdown(
+              statusOptions,
+              status,
+              setStatus,
+              showStatusDropdown,
+              setShowStatusDropdown,
+              statusColorMap,
+            )}
+            {selectedStatusOption?.description ? (
+              <Text style={{ color: colors.text.tertiary, marginTop: 4, fontSize: 12 }}>
+                {selectedStatusOption.description}
+              </Text>
+            ) : null}
+            <Pressable
+              onPress={() => {
+                router.push('/settings?section=case-statuses');
+              }}
+              className="mt-2"
+            >
+              <Text style={{ color: colors.accent.primary }} className="text-xs font-semibold">
+                Customize case statuses in Settings
+              </Text>
+            </Pressable>
+          </View>
+
+          {/* Case Type */}
+          <View className="mb-5" style={{ position: 'relative', zIndex: showCaseTypeDropdown ? 220 : 1, overflow: 'visible' }}>
+            <Text style={{ color: colors.text.secondary }} className="text-xs uppercase font-semibold mb-3">
+              Case Type
             </Text>
-          ) : null}
-          <Pressable
-            onPress={() => {
-              router.push('/settings?section=case-statuses');
-            }}
-            className="mt-2"
-          >
-            <Text style={{ color: colors.accent.primary }} className="text-xs font-semibold">
-              Customize case statuses in Settings
-            </Text>
-          </Pressable>
-        </View>
+            {renderDropdown(
+              caseTypeOptions,
+              caseType,
+              (item) => setCaseType(item as CaseType),
+              showCaseTypeDropdown,
+              setShowCaseTypeDropdown,
+              undefined,
+              (item, isSelected) => getCaseTypeIcon(item as CaseType, isSelected ? colors.text.primary : colors.text.muted, 16),
+            )}
+          </View>
+
+            {showReturnDetails ? (
+              <View
+                className="mb-5 rounded-2xl p-4"
+                style={{
+                  backgroundColor: formBg,
+                  borderWidth: 1,
+                  borderColor: formBorder,
+                  position: 'relative',
+                  zIndex: showReturnReasonDropdown || showReturnResolutionDropdown || showReturnShippingDropdown ? 210 : 2,
+                  overflow: 'visible',
+                }}
+              >
+                <View className="mb-4">
+                  <Text style={{ color: colors.text.primary }} className="text-base font-semibold">
+                    Return details
+                  </Text>
+                  <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1">
+                    Choose these manually for business-created returns.
+                  </Text>
+                </View>
+
+                <View className="mb-4" style={{ position: 'relative', zIndex: showReturnReasonDropdown ? 90 : 3 }}>
+                  <Text style={{ color: colors.text.secondary }} className="text-xs uppercase font-semibold mb-2">
+                    Return Reason
+                  </Text>
+                  {renderDropdown(
+                    RETURN_REASONS.map((item) => item.label),
+                    selectedReturnReasonLabel,
+                    (label) => {
+                      const reason = RETURN_REASONS.find((item) => item.label === label);
+                      if (reason) setReturnReason(reason.value);
+                    },
+                    showReturnReasonDropdown,
+                    setShowReturnReasonDropdown,
+                  )}
+                  {returnReason === 'other' ? (
+                    <TextInput
+                      value={returnOtherReason}
+                      onChangeText={setReturnOtherReason}
+                      placeholder="Write the return reason..."
+                      placeholderTextColor={colors.text.muted}
+                      className="py-3 px-4 rounded-xl mt-3"
+                      style={{
+                        backgroundColor: colors.bg.primary,
+                        color: colors.text.primary,
+                        borderWidth: 1,
+                        borderColor: formBorder,
+                        outlineStyle: 'none' as any,
+                      }}
+                    />
+                  ) : null}
+                </View>
+
+                <View className="mb-4" style={{ position: 'relative', zIndex: showReturnResolutionDropdown ? 80 : 2 }}>
+                  <Text style={{ color: colors.text.secondary }} className="text-xs uppercase font-semibold mb-2">
+                    Refund or Exchange
+                  </Text>
+                  {renderDropdown(
+                    RETURN_RESOLUTIONS.map((item) => item.label),
+                    selectedReturnResolutionLabel,
+                    (label) => {
+                      const resolution = RETURN_RESOLUTIONS.find((item) => item.label === label);
+                      if (resolution) setReturnResolution(resolution.value);
+                    },
+                    showReturnResolutionDropdown,
+                    setShowReturnResolutionDropdown,
+                  )}
+                </View>
+
+                <View style={{ position: 'relative', zIndex: showReturnShippingDropdown ? 70 : 1 }}>
+                  <Text style={{ color: colors.text.secondary }} className="text-xs uppercase font-semibold mb-2">
+                    Return Shipping
+                  </Text>
+                  {renderDropdown(
+                    returnShippingOptions.map((item) => item.label),
+                    selectedReturnShippingLabel,
+                    (label) => {
+                      const payer = returnShippingOptions.find((item) => item.label === label);
+                      if (payer) setReturnShippingPayer(payer.value);
+                    },
+                    showReturnShippingDropdown,
+                    setShowReturnShippingDropdown,
+                  )}
+                </View>
+              </View>
+            ) : null}
 
           {/* Issue Summary */}
           <View className="mb-4">
-            <Text style={{ color: colors.text.muted }} className="text-xs uppercase font-semibold mb-2">
+            <Text style={{ color: colors.text.secondary }} className="text-xs uppercase font-semibold mb-2">
               Issue Summary *
             </Text>
             <TextInput
@@ -716,7 +1096,7 @@ export function CaseForm({
 
           {/* Original Customer Message */}
           <View className="mb-4">
-            <Text style={{ color: colors.text.muted }} className="text-xs uppercase font-semibold mb-2">
+            <Text style={{ color: colors.text.secondary }} className="text-xs uppercase font-semibold mb-2">
               Original Customer Message
             </Text>
             <TextInput
@@ -740,44 +1120,40 @@ export function CaseForm({
 
           {/* Proof Attachments */}
           <View className="mb-4">
-            <Text style={{ color: colors.text.muted }} className="text-xs uppercase font-semibold mb-2">
+            <Text style={{ color: colors.text.secondary }} className="text-xs uppercase font-semibold mb-2">
               Proof Images
             </Text>
-            <View className="flex-row items-center justify-between mb-3">
-              <Pressable
-                onPress={handleAddAttachment}
-                className="px-4 py-2 rounded-xl active:opacity-80"
-                style={{ backgroundColor: '#111111' }}
-              >
-                <Text className="text-white font-semibold text-xs">Add Image</Text>
-              </Pressable>
-              <View className="flex-row items-center gap-2">
-                <Switch
-                  value={forceCompression}
-                  onValueChange={(value) => {
-                    Haptics.selectionAsync();
-                    setForceCompression(value);
-                  }}
-                  trackColor={{ false: '#E5E5E5', true: '#22C55E' }}
-                  thumbColor="#FFFFFF"
-                />
-                <Text style={{ color: colors.text.tertiary }} className="text-xs">
-                  Force compression
-                </Text>
-              </View>
-            </View>
+            <Pressable
+              onPress={handleAddAttachment}
+              className="rounded-2xl items-center justify-center active:opacity-80"
+              style={{
+                height: 130,
+                borderWidth: 1,
+                borderColor: formBorder,
+                borderStyle: 'dashed',
+                backgroundColor: formBg,
+              }}
+            >
+              <ImageIcon size={22} color={colors.text.muted} strokeWidth={1.6} />
+              <Text style={{ color: colors.text.primary }} className="text-sm font-semibold mt-3">
+                Upload proof images
+              </Text>
+              <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1">
+                PNG or JPEG · multiple files allowed
+              </Text>
+            </Pressable>
             {attachments.length > 0 && (
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ paddingBottom: 4 }}
+                contentContainerStyle={{ paddingTop: 12, paddingBottom: 4 }}
               >
                 {attachments.map((attachment) => (
                   <View key={attachment.id} className="mr-3" style={{ position: 'relative' }}>
                     <View className="rounded-xl overflow-hidden" style={{ borderWidth: 1, borderColor: formBorder }}>
                       <Image
                         source={{ uri: attachment.preview ?? attachment.uri }}
-                        style={{ width: 120, height: 120 }}
+                        style={{ width: 96, height: 96 }}
                         resizeMode="cover"
                       />
                       <Pressable
@@ -805,6 +1181,9 @@ export function CaseForm({
                 backgroundColor: formBg,
                 borderWidth: 1,
                 borderColor: formBorder,
+                position: 'relative',
+                zIndex: showResolutionTypeDropdown ? 250 : 1,
+                overflow: 'visible',
               }}
             >
               <Text style={{ color: colors.text.primary }} className="font-semibold mb-4">
@@ -812,8 +1191,8 @@ export function CaseForm({
               </Text>
 
               {/* Resolution Type */}
-              <View className="mb-4">
-                <Text style={{ color: colors.text.muted }} className="text-xs uppercase font-semibold mb-2">
+              <View className="mb-4" style={{ position: 'relative', zIndex: 260 }}>
+                <Text style={{ color: colors.text.secondary }} className="text-xs uppercase font-semibold mb-2">
                   Resolution Type
                 </Text>
                 {renderDropdown(
@@ -827,8 +1206,8 @@ export function CaseForm({
 
               {/* Resolution Value (for refunds/credits) */}
               {(resolutionType === 'Refund Issued' || resolutionType === 'Credit Applied') && (
-                <View className="mb-4">
-                  <Text style={{ color: colors.text.muted }} className="text-xs uppercase font-semibold mb-2">
+                <View className="mb-4" style={{ position: 'relative', zIndex: 1 }}>
+                  <Text style={{ color: colors.text.secondary }} className="text-xs uppercase font-semibold mb-2">
                     Resolution Value
                   </Text>
                   <TextInput
@@ -849,8 +1228,8 @@ export function CaseForm({
               )}
 
               {/* Resolution Notes */}
-              <View>
-                <Text style={{ color: colors.text.muted }} className="text-xs uppercase font-semibold mb-2">
+              <View style={{ position: 'relative', zIndex: 1 }}>
+                <Text style={{ color: colors.text.secondary }} className="text-xs uppercase font-semibold mb-2">
                   Resolution Notes
                 </Text>
                 <TextInput
@@ -874,29 +1253,18 @@ export function CaseForm({
             </View>
           )}
 
-          {/* Add resolution button if not showing */}
-          {!showResolution && status !== 'Resolved' && status !== 'Closed' && (
-            <Pressable
-              onPress={() => {
-                Haptics.selectionAsync();
-                setShowResolution(true);
-              }}
-              className="py-3 px-4 rounded-xl mb-4 active:opacity-70"
-              style={{
-                backgroundColor: formBg,
-                borderWidth: 1,
-                borderColor: formBorder,
-                borderStyle: 'dashed',
-              }}
-            >
-              <Text style={{ color: colors.text.secondary }} className="text-center">
-                + Add Resolution Details
-              </Text>
-            </Pressable>
-          )}
+          <Pressable
+            onPress={handleSave}
+            className="h-14 rounded-full items-center justify-center active:opacity-80 mt-2"
+            style={{ backgroundColor: isDark ? '#FFFFFF' : '#111111' }}
+          >
+            <Text style={{ color: isDark ? '#111111' : '#FFFFFF' }} className="font-semibold text-base">
+              {isEditing ? 'Update Case' : 'Create Case'}
+            </Text>
+          </Pressable>
 
           {/* Spacer for keyboard */}
-          <View className="h-20" />
+          <View className="h-8" />
           </ScrollView>
         </View>
         </View>

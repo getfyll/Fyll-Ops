@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, Pressable, TextInput, Image, Modal, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
-import { FileText, Upload, X, Eye, Trash2, FileIcon } from 'lucide-react-native';
+import { FileText, Upload, X, Eye, Trash2, FileIcon, Plus } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { useThemeColors } from '@/lib/theme';
@@ -163,18 +163,34 @@ export function PrescriptionSection({ prescription, onUpdate, editable = true, s
     });
   };
 
-  const actionPillStyle = {
+  const actionPillBaseStyle = {
     minHeight: 32,
     minWidth: 90,
     paddingHorizontal: 10,
     borderRadius: 999,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
+  };
+
+  const primaryActionPillStyle = {
+    ...actionPillBaseStyle,
     backgroundColor: colors.text.primary,
   };
 
-  const actionPillTextStyle = {
+  const primaryActionTextStyle = {
     color: colors.bg.primary,
+    fontSize: 13,
+    fontWeight: '600' as const,
+  };
+
+  const addActionPillStyle = {
+    ...actionPillBaseStyle,
+    borderWidth: 1,
+    borderColor: colors.border.light,
+  };
+
+  const addActionTextStyle = {
+    color: colors.text.secondary,
     fontSize: 13,
     fontWeight: '600' as const,
   };
@@ -186,15 +202,16 @@ export function PrescriptionSection({ prescription, onUpdate, editable = true, s
         style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
       >
         <View className="flex-row items-center justify-between mb-3">
-          <Text style={{ color: colors.text.primary }} className="font-bold text-base">Customer notes</Text>
+          <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '500', letterSpacing: 1.2, textTransform: 'uppercase' }}>Customer notes</Text>
           {editable && (
             <Pressable
               onPress={handleOpenEdit}
-              className="active:opacity-70"
-              style={actionPillStyle}
+              className="active:opacity-70 flex-row items-center justify-center"
+              style={hasPrescription ? primaryActionPillStyle : addActionPillStyle}
             >
-              <Text style={actionPillTextStyle}>
-                {hasPrescription ? 'Edit' : '+ Add'}
+              {!hasPrescription ? <Plus size={13} color={colors.text.secondary} strokeWidth={2.5} /> : null}
+              <Text style={[hasPrescription ? primaryActionTextStyle : addActionTextStyle, !hasPrescription ? { marginLeft: 5 } : null]}>
+                {hasPrescription ? 'Edit' : 'Add'}
               </Text>
             </Pressable>
           )}
@@ -246,7 +263,7 @@ export function PrescriptionSection({ prescription, onUpdate, editable = true, s
                 style={{ backgroundColor: colors.bg.secondary }}
               >
                 <Text style={{ color: colors.text.muted }} className="text-xs mb-1">Customer Note</Text>
-                <Text style={{ color: colors.text.primary }} className="text-sm leading-5">
+                <Text style={{ color: colors.text.primary, fontSize: 12, lineHeight: 18 }}>
                   {prescription.text}
                 </Text>
               </View>
@@ -263,7 +280,7 @@ export function PrescriptionSection({ prescription, onUpdate, editable = true, s
         ) : (
           <View className="py-6 items-center">
             <FileText size={24} color={colors.text.muted} strokeWidth={1.5} />
-            <Text style={{ color: colors.text.muted }} className="text-sm mt-2">No customer notes added</Text>
+            <Text style={{ color: colors.text.muted, fontSize: 12, marginTop: 8 }}>No customer notes added</Text>
           </View>
         )}
       </View>

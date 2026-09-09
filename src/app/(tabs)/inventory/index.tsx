@@ -411,11 +411,8 @@ export default function InventoryScreen() {
   const [visibleProductsCount, setVisibleProductsCount] = useState(INVENTORY_PAGE_SIZE);
   const [visibleServicesCount, setVisibleServicesCount] = useState(INVENTORY_PAGE_SIZE);
   // Products synced in from a connected WooCommerce store are hidden from
-  // the main inventory view by default, so a store's already-audited manual
-  // inventory isn't diluted by an incoming catalog. Session-only — resets on
-  // reload, intentionally, so it stays an explicit "just show me these for a
-  // moment" action rather than a persistent setting.
-  const [showSyncedProducts, setShowSyncedProducts] = useState(false);
+  // the main inventory view, so a store's already-audited manual inventory
+  // isn't diluted by an incoming catalog.
   // Archived products (see Product.isArchived) are hidden from the main
   // inventory view too — same session-only reveal pattern as synced ones.
   const [showArchivedProducts, setShowArchivedProducts] = useState(false);
@@ -472,10 +469,6 @@ export default function InventoryScreen() {
   );
   const isSyncedProduct = (product: Product) => product.catalogSource === 'woocommerce-plugin';
   const isArchivedProduct = (product: Product) => Boolean(product.isArchived);
-  const syncedHiddenCount = useMemo(
-    () => (showSyncedProducts ? 0 : products.filter((product) => !isServiceProduct(product) && isSyncedProduct(product)).length),
-    [products, showSyncedProducts]
-  );
   const archivedHiddenCount = useMemo(
     () => (showArchivedProducts ? 0 : products.filter((product) => !isServiceProduct(product) && isArchivedProduct(product)).length),
     [products, showArchivedProducts]
@@ -486,9 +479,7 @@ export default function InventoryScreen() {
     if (!showArchivedProducts) {
       result = result.filter((p) => !isArchivedProduct(p));
     }
-    if (!showSyncedProducts) {
-      result = result.filter((p) => !isSyncedProduct(p));
-    }
+    result = result.filter((p) => !isSyncedProduct(p));
 
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
@@ -534,7 +525,7 @@ export default function InventoryScreen() {
     });
 
     return result;
-  }, [products, searchQuery, inventoryFilter, useGlobalLowStockThreshold, globalLowStockThreshold, sortBy, showSyncedProducts, showArchivedProducts]);
+  }, [products, searchQuery, inventoryFilter, useGlobalLowStockThreshold, globalLowStockThreshold, sortBy, showArchivedProducts]);
 
   const filteredServices = useMemo(() => {
     let result = products.filter((p) => isServiceProduct(p));
@@ -570,7 +561,7 @@ export default function InventoryScreen() {
   const hasMoreServices = visibleServices.length < filteredServices.length;
   const hasMoreForCurrentTab = inventoryTab === 'services' ? hasMoreServices : hasMoreProducts;
   const mobileInventoryStats = useMemo(() => {
-    const inventoryProducts = products.filter((p) => !isServiceProduct(p));
+    const inventoryProducts = filteredProducts;
     const totalStock = inventoryProducts.reduce(
       (sum, product) => sum + product.variants.reduce((variantSum, variant) => variantSum + variant.stock, 0),
       0
@@ -587,7 +578,7 @@ export default function InventoryScreen() {
       totalStock,
       lowStock,
     };
-  }, [products, useGlobalLowStockThreshold, globalLowStockThreshold]);
+  }, [filteredProducts, useGlobalLowStockThreshold, globalLowStockThreshold]);
 
   useEffect(() => {
     setVisibleProductsCount(INVENTORY_PAGE_SIZE);
@@ -871,52 +862,6 @@ export default function InventoryScreen() {
                     Offline · Last synced {lastSyncLabel}
                   </Text>
                 </View>
-              ) : null}
-              {inventoryTab === 'products' && syncedHiddenCount > 0 ? (
-                <Pressable
-                  onPress={() => setShowSyncedProducts(true)}
-                  style={{
-                    marginTop: !isWebDesktop ? 8 : 6,
-                    alignSelf: 'flex-start',
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 6,
-                    paddingHorizontal: 10,
-                    paddingVertical: 4,
-                    borderRadius: 999,
-                    backgroundColor: colors.bg.card,
-                    borderWidth: 1,
-                    borderColor: colors.border.light,
-                  }}
-                >
-                  <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '600' }}>
-                    {syncedHiddenCount} synced from WooCommerce hidden
-                  </Text>
-                  <ChevronDown size={12} color={colors.text.tertiary} strokeWidth={2.4} />
-                </Pressable>
-              ) : null}
-              {inventoryTab === 'products' && showSyncedProducts ? (
-                <Pressable
-                  onPress={() => setShowSyncedProducts(false)}
-                  style={{
-                    marginTop: !isWebDesktop ? 8 : 6,
-                    alignSelf: 'flex-start',
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 6,
-                    paddingHorizontal: 10,
-                    paddingVertical: 4,
-                    borderRadius: 999,
-                    backgroundColor: colors.accent.primary + '1A',
-                    borderWidth: 1,
-                    borderColor: colors.accent.primary,
-                  }}
-                >
-                  <Text style={{ color: colors.accent.primary, fontSize: 12, fontWeight: '600' }}>
-                    Showing WooCommerce-synced products
-                  </Text>
-                  <ChevronUp size={12} color={colors.accent.primary} strokeWidth={2.4} />
-                </Pressable>
               ) : null}
               {inventoryTab === 'products' && archivedHiddenCount > 0 ? (
                 <Pressable

@@ -1,8 +1,9 @@
-import React, { useMemo } from 'react';
-import { View, Text } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View, Text, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Briefcase, Edit2 } from 'lucide-react-native';
 import useFyllStore, { Product, ServiceVariableOption, formatCurrency } from '@/lib/state/fyll-store';
+import useAuthStore from '@/lib/state/auth-store';
 import { useThemeColors } from '@/lib/theme';
 import { normalizeProductType } from '@/lib/product-utils';
 import { DetailSection, DetailActionButton } from './SplitViewLayout';
@@ -33,10 +34,16 @@ export function ServiceDetailPanel({ serviceId, from }: ServiceDetailPanelProps)
   const isDark = colors.bg.primary === '#111111';
 
   const products = useFyllStore((s) => s.products);
+  const updateProduct = useFyllStore((s) => s.updateProduct);
+  const userRole = useFyllStore((s) => s.userRole);
+  const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
+  const currentUserRole = useAuthStore((s) => s.currentUser?.role ?? null);
+  const [isStatusSaving, setIsStatusSaving] = useState(false);
   const service = useMemo(
     () => products.find((product) => product.id === serviceId && isServiceProduct(product)),
     [products, serviceId]
   );
+  const canManageStatus = userRole === 'owner' || currentUserRole === 'admin' || currentUserRole === 'manager';
 
   if (!service) {
     return (
@@ -60,6 +67,24 @@ export function ServiceDetailPanel({ serviceId, from }: ServiceDetailPanelProps)
       ? `/services/${service.id}?from=inventory`
       : `/services/${service.id}`;
     router.push(path);
+  };
+
+  const handleToggleServiceActive = async () => {
+    if (!service || isStatusSaving) return;
+    setIsStatusSaving(true);
+    const nextInactive = !(service.isDiscontinued ?? false);
+    try {
+      await updateProduct(service.id, {
+        isDiscontinued: nextInactive,
+        discontinuedAt: nextInactive
+          ? (service.discontinuedAt ?? new Date().toISOString())
+          : undefined,
+      }, businessId);
+    } catch (error) {
+      console.warn('Service status update failed:', error);
+    } finally {
+      setIsStatusSaving(false);
+    }
   };
 
   return (
@@ -277,11 +302,39 @@ export function ServiceDetailPanel({ serviceId, from }: ServiceDetailPanelProps)
       </DetailSection>
 
       <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 24 }}>
+        {canManageStatus ? (
+          <Pressable
+            onPress={handleToggleServiceActive}
+            disabled={isStatusSaving}
+            className="rounded-full items-center justify-center active:opacity-80"
+            style={{
+              backgroundColor: service.isDiscontinued ? 'rgba(16, 185, 129, 0.15)' : 'rgba(156, 163, 175, 0.18)',
+              height: 48,
+              opacity: isStatusSaving ? 0.6 : 1,
+            }}
+          >
+            <Text
+              style={{
+                color: service.isDiscontinued ? '#10B981' : '#9CA3AF',
+                fontSize: 15,
+                fontWeight: '600',
+              }}
+            >
+              {isStatusSaving
+                ? 'Saving...'
+                : service.isDiscontinued
+                  ? 'Activate Service'
+                  : 'Deactivate Service'}
+            </Text>
+          </Pressable>
+        ) : null}
+        <View style={{ marginTop: canManageStatus ? 12 : 0 }}>
         <DetailActionButton
           label="Edit Service"
           icon={<Edit2 size={18} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={2} />}
           onPress={handleEdit}
         />
+        </View>
       </View>
     </View>
   );

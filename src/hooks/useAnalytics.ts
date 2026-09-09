@@ -22,10 +22,12 @@ import {
   // New imports for tab-specific data
   getTopAddOns,
   getRevenueBySource,
+  getRevenueByOrderCategory,
   getStatusBreakdown,
   groupOrdersByDay,
   groupOrdersByWeek,
   groupOrdersByMonth,
+  getOrderCategoryBreakdown,
   getReturningVsNew,
   getTopCustomers,
   getCustomersByLocation,
@@ -41,6 +43,7 @@ import {
   // New refund helpers
   getRefundStats,
   filterOrdersByRefundDateRange,
+  isSaleOrder,
 } from '@/lib/analytics-utils';
 
 /**
@@ -59,42 +62,44 @@ export function useAnalytics(range: TimeRange, _tab: TabKey): AnalyticsResult {
     // Filter orders for current and previous periods
     const currentOrders = filterOrdersByDateRange(orders, rangeStart, rangeEnd, true);
     const previousOrders = filterOrdersByDateRange(orders, prevStart, prevEnd, true);
+    const currentSalesOrders = currentOrders.filter(isSaleOrder);
+    const previousSalesOrders = previousOrders.filter(isSaleOrder);
 
     // All orders in range (including refunded) for status breakdown
     const allOrdersInRange = filterOrdersByDateRange(orders, rangeStart, rangeEnd, false);
 
     // Get refund stats using REFUND DATE (includes partial refunds)
     const currentRefundStats = getRefundStats(
-      filterOrdersByRefundDateRange(orders, rangeStart, rangeEnd)
+      filterOrdersByRefundDateRange(orders, rangeStart, rangeEnd).filter(isSaleOrder)
     );
     const previousRefundStats = getRefundStats(
-      filterOrdersByRefundDateRange(orders, prevStart, prevEnd)
+      filterOrdersByRefundDateRange(orders, prevStart, prevEnd).filter(isSaleOrder)
     );
 
     // Core metrics
-    const totalSales = currentOrders.reduce((sum, o) => sum + o.totalAmount, 0);
+    const totalSales = currentSalesOrders.reduce((sum, o) => sum + o.totalAmount, 0);
     const totalOrders = currentOrders.length;
-    const totalUnits = calculateTotalUnits(currentOrders);
+    const totalUnits = calculateTotalUnits(currentSalesOrders);
     const newCustomers = countNewCustomers(currentOrders, orders, rangeStart);
     const refundsCount = currentRefundStats.count;
     const refundsAmount = currentRefundStats.total;
     const netRevenue = Math.max(0, totalSales - refundsAmount);
 
-    const serviceMetrics = getServiceMetrics(currentOrders, products);
-    const previousServiceMetrics = getServiceMetrics(previousOrders, products);
+    const serviceMetrics = getServiceMetrics(currentSalesOrders, products);
+    const previousServiceMetrics = getServiceMetrics(previousSalesOrders, products);
     const serviceRevenueChange = percentChange(serviceMetrics.revenue, previousServiceMetrics.revenue);
-    const serviceByPeriod = getServiceRevenueByPeriod(range, currentOrders, rangeStart, rangeEnd, products);
-    const serviceBreakdown = getServiceBreakdown(currentOrders, products);
-    const serviceVariableBreakdown = getServiceVariableBreakdown(currentOrders, products);
+    const serviceByPeriod = getServiceRevenueByPeriod(range, currentSalesOrders, rangeStart, rangeEnd, products);
+    const serviceBreakdown = getServiceBreakdown(currentSalesOrders, products);
+    const serviceVariableBreakdown = getServiceVariableBreakdown(currentSalesOrders, products);
 
-    const addOnMetrics = getAddOnMetrics(currentOrders);
-    const previousAddOnMetrics = getAddOnMetrics(previousOrders);
+    const addOnMetrics = getAddOnMetrics(currentSalesOrders);
+    const previousAddOnMetrics = getAddOnMetrics(previousSalesOrders);
     const addOnRevenueChange = percentChange(addOnMetrics.revenue, previousAddOnMetrics.revenue);
-    const addOnByPeriod = getAddOnRevenueByPeriod(range, currentOrders, rangeStart, rangeEnd);
-    const addOnBreakdown = getAddOnBreakdown(currentOrders);
+    const addOnByPeriod = getAddOnRevenueByPeriod(range, currentSalesOrders, rangeStart, rangeEnd);
+    const addOnBreakdown = getAddOnBreakdown(currentSalesOrders);
 
     // Previous period metrics
-    const previousPeriodSales = previousOrders.reduce((sum, o) => sum + o.totalAmount, 0);
+    const previousPeriodSales = previousSalesOrders.reduce((sum, o) => sum + o.totalAmount, 0);
     const previousPeriodOrders = previousOrders.length;
     const previousPeriodCustomers = countUniqueCustomers(previousOrders);
 
@@ -105,13 +110,13 @@ export function useAnalytics(range: TimeRange, _tab: TabKey): AnalyticsResult {
     let salesByPeriod: ChartDataPoint[];
     let ordersByPeriod: ChartDataPoint[];
     if (range === '7d') {
-      salesByPeriod = groupByDay(currentOrders, rangeStart, rangeEnd);
+      salesByPeriod = groupByDay(currentSalesOrders, rangeStart, rangeEnd);
       ordersByPeriod = groupOrdersByDay(allOrdersInRange, rangeStart, rangeEnd);
-    } else if (range === '30d') {
-      salesByPeriod = groupByWeek(currentOrders, rangeStart, rangeEnd);
+    } else if (range === 'month' || range === '30d') {
+      salesByPeriod = groupByWeek(currentSalesOrders, rangeStart, rangeEnd);
       ordersByPeriod = groupOrdersByWeek(allOrdersInRange, rangeStart, rangeEnd);
     } else {
-      salesByPeriod = groupByMonth(currentOrders);
+      salesByPeriod = groupByMonth(currentSalesOrders);
       ordersByPeriod = groupOrdersByMonth(allOrdersInRange);
     }
 
@@ -150,9 +155,10 @@ export function useAnalytics(range: TimeRange, _tab: TabKey): AnalyticsResult {
     };
 
     // ====== SALES TAB SPECIFIC ======
-    const averageOrderValue = totalOrders > 0 ? totalSales / totalOrders : 0;
-    const topAddOns = getTopAddOns(currentOrders);
-    const revenueBySource = getRevenueBySource(currentOrders);
+    const averageOrderValue = currentSalesOrders.length > 0 ? totalSales / currentSalesOrders.length : 0;
+    const topAddOns = getTopAddOns(currentSalesOrders);
+    const revenueBySource = getRevenueBySource(currentSalesOrders);
+    const revenueByCategory = getRevenueByOrderCategory(currentOrders);
 
     // ====== ORDERS TAB SPECIFIC ======
     const statusBreakdown = getStatusBreakdown(allOrdersInRange, orderStatuses);
@@ -160,7 +166,11 @@ export function useAnalytics(range: TimeRange, _tab: TabKey): AnalyticsResult {
     const processingOrders = allOrdersInRange.filter(
       (o) => o.status === 'Processing' || o.status === 'Lab Processing' || o.status === 'Quality Check'
     ).length;
+    const completedOrders = allOrdersInRange.filter(
+      (order) => (order.status ?? '').trim().toLowerCase() === 'completed'
+    ).length;
     const deliveredOrders = allOrdersInRange.filter((o) => o.status === 'Delivered').length;
+    const ordersByCategory = getOrderCategoryBreakdown(currentOrders);
 
     // ====== CUSTOMERS TAB SPECIFIC ======
     const returningVsNew = getReturningVsNew(currentOrders, orders, rangeStart);
@@ -215,10 +225,11 @@ export function useAnalytics(range: TimeRange, _tab: TabKey): AnalyticsResult {
       averageOrderValue,
       topAddOns,
       revenueBySource,
+      revenueByCategory,
       addOnMetrics,
       previousAddOnMetrics,
       addOnRevenueChange,
-      todayAddOnMetrics: getAddOnMetrics(currentOrders.filter((order) => {
+      todayAddOnMetrics: getAddOnMetrics(currentSalesOrders.filter((order) => {
         const orderDate = new Date(order.orderDate ?? order.createdAt);
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -231,8 +242,10 @@ export function useAnalytics(range: TimeRange, _tab: TabKey): AnalyticsResult {
       statusBreakdown,
       cancellationsCount,
       processingOrders,
+      completedOrders,
       deliveredOrders,
       ordersByPeriod,
+      ordersByCategory,
 
       // Customers tab specific
       returningCustomers,

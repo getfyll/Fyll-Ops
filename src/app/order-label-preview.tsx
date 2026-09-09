@@ -1,11 +1,12 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, ActivityIndicator, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Printer } from 'lucide-react-native';
+import { ArrowLeft, ListPlus, Printer, Check } from 'lucide-react-native';
 import useFyllStore from '@/lib/state/fyll-store';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
 import { OrderLabel80x90Preview } from '@/components/labels/OrderLabel80x90';
+import { addFyllPrintQueueItem, createShippingPrintQueueItem } from '@/lib/fyll-print-queue';
 import {
   prepareOrderLabelData,
   printOrderLabel,
@@ -13,14 +14,17 @@ import {
 } from '@/utils/printOrderLabel';
 import * as Haptics from 'expo-haptics';
 import { useThemeColors } from '@/lib/theme';
+import { useBreakpoint } from '@/lib/useBreakpoint';
 
 export default function OrderLabelPreviewScreen() {
   const router = useRouter();
+  const { isDesktop } = useBreakpoint();
   const { orderId, carrierName } = useLocalSearchParams<{ orderId: string; carrierName?: string }>();
   const orders = useFyllStore((s) => s.orders);
   const order = useMemo(() => orders.find((o) => o.id === orderId), [orders, orderId]);
   const {
     businessName,
+    businessSlug,
     businessLogo,
     businessPhone,
     businessWebsite,
@@ -30,11 +34,9 @@ export default function OrderLabelPreviewScreen() {
   const colors = useThemeColors();
   const isDark = colors.bg.primary === '#111111';
   const [isPrinting, setIsPrinting] = useState(false);
-  const [selectedLabelSizeId, setSelectedLabelSizeId] = useState<string>('4x6');
-  const selectedLabelSizePreset = useMemo(
-    () => SHIPPING_LABEL_SIZE_PRESETS.find((preset) => preset.id === selectedLabelSizeId) ?? SHIPPING_LABEL_SIZE_PRESETS[0],
-    [selectedLabelSizeId]
-  );
+  const [isQueueing, setIsQueueing] = useState(false);
+  const [queueNotice, setQueueNotice] = useState(false);
+  const labelSize = SHIPPING_LABEL_SIZE_PRESETS[0];
 
   const carrierNameOverride =
     typeof carrierName === 'string' && carrierName.trim().length > 0 ? carrierName.trim() : '';
@@ -44,8 +46,10 @@ export default function OrderLabelPreviewScreen() {
     return prepareOrderLabelData(
       {
         orderNumber: order.orderNumber,
+        customerTrackingCode: order.customerTrackingCode,
         websiteOrderReference: order.websiteOrderReference,
         customerName: order.customerName,
+        customerEmail: order.customerEmail,
         customerPhone: order.customerPhone,
         deliveryAddress: order.deliveryAddress,
         deliveryState: order.deliveryState,
@@ -56,56 +60,40 @@ export default function OrderLabelPreviewScreen() {
       },
       {
         businessName: businessName || 'FYLL',
+        businessSlug,
         businessLogo,
         businessPhone,
         businessWebsite,
         returnAddress,
       }
     );
-  }, [order, businessName, businessLogo, businessPhone, businessWebsite, returnAddress, carrierNameOverride]);
-
-  // Inject print styles for web to hide everything except the label preview
-  useEffect(() => {
-    if (Platform.OS === 'web' && typeof document !== 'undefined') {
-      const styleId = 'order-label-print-styles';
-      let styleEl = document.getElementById(styleId);
-
-      if (!styleEl) {
-        styleEl = document.createElement('style');
-        styleEl.id = styleId;
-        styleEl.textContent = `
-          @media print {
-            body * {
-              visibility: hidden !important;
-            }
-            .printable-order-label-container,
-            .printable-order-label-container * {
-              visibility: visible !important;
-            }
-            .printable-order-label-container {
-              position: absolute !important;
-              left: 50% !important;
-              top: 50% !important;
-              transform: translate(-50%, -50%) !important;
-            }
-          }
-        `;
-        document.head.appendChild(styleEl);
-      }
-
-      return () => {
-        const el = document.getElementById(styleId);
-        if (el) el.remove();
-      };
-    }
-  }, []);
+  }, [order, businessName, businessSlug, businessLogo, businessPhone, businessWebsite, returnAddress, carrierNameOverride]);
 
   const handlePrint = async () => {
     if (!labelData || isPrinting) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setIsPrinting(true);
-    await printOrderLabel(labelData, selectedLabelSizePreset.size);
+    await printOrderLabel(labelData, labelSize.size, { isDesktop });
     setIsPrinting(false);
+  };
+
+  const handleAddToQueue = async () => {
+    if (!order || !labelData || isQueueing) return;
+
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setIsQueueing(true);
+    const item = createShippingPrintQueueItem({
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      customerName: order.customerName,
+      destination: order.deliveryState || order.deliveryAddress || '',
+      carrierName: carrierNameOverride || order.logistics?.carrierName || 'Shipping',
+      labelData,
+    });
+    await addFyllPrintQueueItem(item);
+    setIsQueueing(false);
+    setQueueNotice(true);
+    setTimeout(() => setQueueNotice(false), 2500);
   };
 
   if (!order) {
@@ -124,78 +112,63 @@ export default function OrderLabelPreviewScreen() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg.primary }}>
-      <SafeAreaView className="flex-1" edges={['top']}>
+    <View style={{ flex: 1, backgroundColor: colors.bg.secondary }}>
+      <SafeAreaView
+        className="flex-1"
+        edges={['top']}
+        style={{
+          alignItems: 'center',
+          paddingHorizontal: Platform.OS === 'web' ? 16 : 0,
+          paddingVertical: Platform.OS === 'web' ? 20 : 0,
+        }}
+      >
         <View
           style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            paddingHorizontal: 20,
-            paddingVertical: 16,
-            borderBottomWidth: 1,
-            borderBottomColor: colors.border.light,
-            backgroundColor: colors.bg.secondary,
+            flex: 1,
+            width: '100%',
+            maxWidth: 600,
+            backgroundColor: colors.bg.primary,
+            borderRadius: Platform.OS === 'web' ? 22 : 0,
+            borderWidth: Platform.OS === 'web' ? 1 : 0,
+            borderColor: colors.border.light,
+            overflow: 'hidden',
           }}
         >
-          <Pressable onPress={() => router.back()} className="mr-4 active:opacity-50">
-            <ArrowLeft size={22} color={colors.text.primary} strokeWidth={2} />
-          </Pressable>
-          <View className="flex-1">
-            <Text style={{ color: colors.text.primary }} className="font-bold text-lg">
-              Shipping Label
-            </Text>
-            <Text style={{ color: colors.text.tertiary }} className="text-xs uppercase tracking-wider">
-              Confirm before print • {selectedLabelSizePreset.label}
-            </Text>
-          </View>
-        </View>
-
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={{ paddingTop: 24, paddingHorizontal: 20, paddingBottom: 200 }}
-          showsVerticalScrollIndicator={false}
-        >
           <View
-            className="rounded-2xl p-4 mb-4"
-            style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              paddingHorizontal: 20,
+              paddingVertical: 16,
+              borderBottomWidth: 1,
+              borderBottomColor: colors.border.light,
+              backgroundColor: colors.bg.secondary,
+            }}
           >
-            <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold tracking-wider mb-2">
-              Label Size
-            </Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              {SHIPPING_LABEL_SIZE_PRESETS.map((preset) => {
-                const active = preset.id === selectedLabelSizePreset.id;
-                return (
-                  <Pressable
-                    key={preset.id}
-                    onPress={() => setSelectedLabelSizeId(preset.id)}
-                    style={{
-                      borderWidth: 1,
-                      borderColor: active ? '#111111' : colors.border.light,
-                      backgroundColor: active ? '#111111' : colors.bg.primary,
-                      borderRadius: 999,
-                      paddingHorizontal: 12,
-                      height: 34,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Text style={{ color: active ? '#FFFFFF' : colors.text.primary, fontSize: 12, fontWeight: '700' }}>
-                      {preset.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+            <Pressable onPress={() => router.back()} className="mr-4 active:opacity-50">
+              <ArrowLeft size={22} color={colors.text.primary} strokeWidth={2} />
+            </Pressable>
+            <View className="flex-1">
+              <Text style={{ color: colors.text.primary }} className="font-bold text-lg">
+                Shipping Label
+              </Text>
+              <Text style={{ color: colors.text.tertiary }} className="text-xs uppercase tracking-wider">
+                {labelSize.label}
+              </Text>
             </View>
           </View>
 
-          <View className="printable-order-label-container">
-            <View className="items-center mb-6">
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{ paddingTop: 28, paddingHorizontal: 20, paddingBottom: 40, flexGrow: 1, justifyContent: 'center' }}
+            showsVerticalScrollIndicator={false}
+          >
+            <View className="items-center">
               {labelData && !isLoading ? (
                 <OrderLabel80x90Preview
                   data={labelData}
-                  widthMm={selectedLabelSizePreset.size.widthMm}
-                  heightMm={selectedLabelSizePreset.size.heightMm}
+                  widthMm={labelSize.size.widthMm}
+                  heightMm={labelSize.size.heightMm}
                 />
               ) : (
                 <View
@@ -206,108 +179,66 @@ export default function OrderLabelPreviewScreen() {
                 </View>
               )}
             </View>
-          </View>
+          </ScrollView>
 
           <View
-            className="rounded-2xl p-4 mb-4"
-            style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}
-          >
-            <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold tracking-wider mb-2">
-              Recipient
-            </Text>
-            <Text style={{ color: colors.text.primary }} className="text-base font-semibold">
-              {order.customerName}
-            </Text>
-            <Text style={{ color: colors.text.secondary }} className="text-sm">
-              {order.customerPhone}
-            </Text>
-            <Text style={{ color: colors.text.secondary }} className="text-sm mt-2">
-              {order.deliveryAddress}, {order.deliveryState}
-            </Text>
-          </View>
-
-          <View
-            className="rounded-2xl p-4"
-            style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}
-          >
-            <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold tracking-wider mb-2">
-              Order
-            </Text>
-            <Text style={{ color: colors.text.primary }} className="text-sm">
-              FYLL Ref: {order.orderNumber}
-            </Text>
-            {order.websiteOrderReference && (
-              <Text style={{ color: colors.text.secondary }} className="text-sm mt-1">
-                Customer Ref: {order.websiteOrderReference}
-              </Text>
-            )}
-            {(carrierNameOverride || order.logistics?.carrierName) && (
-              <Text style={{ color: colors.text.secondary }} className="text-sm mt-1">
-                Carrier: {carrierNameOverride || order.logistics?.carrierName}
-              </Text>
-            )}
-          </View>
-
-          <View
-            className="rounded-2xl p-4 mt-4"
-            style={{ backgroundColor: 'rgba(59, 130, 246, 0.1)', borderWidth: 1, borderColor: 'rgba(59, 130, 246, 0.2)' }}
-          >
-            <Text style={{ color: '#1D4ED8', fontSize: 13, lineHeight: 18 }}>
-              Mobile browser limitation: iPhone/iPad web printing supports AirPrint printers only. Most Bluetooth-only thermal printers will not appear in Safari/Chrome print lists.
-            </Text>
-            <Text style={{ color: '#1D4ED8', fontSize: 13, lineHeight: 18, marginTop: 8 }}>
-              For consistent team printing, use a Wi-Fi/Ethernet thermal printer (AirPrint/Mopria) or print from a desktop with the printer driver installed.
-            </Text>
-          </View>
-        </ScrollView>
-
-        <View
-          style={{
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            bottom: 0,
-            paddingHorizontal: 20,
-            paddingBottom: 32,
-            paddingTop: 14,
-            backgroundColor: colors.bg.primary,
-            borderTopWidth: 1,
-            borderTopColor: colors.border.light,
-          }}
-        >
-          <Pressable
-            onPress={handlePrint}
-            className="rounded-full items-center justify-center"
             style={{
-              height: 56,
-              backgroundColor: isDark ? '#FFFFFF' : '#111111',
-              opacity: isPrinting ? 0.7 : 1,
+              paddingHorizontal: 20,
+              paddingBottom: 32,
+              paddingTop: 14,
+              backgroundColor: colors.bg.primary,
+              borderTopWidth: 1,
+              borderTopColor: colors.border.light,
             }}
-            disabled={isPrinting || !labelData}
           >
-            {isPrinting ? (
-              <ActivityIndicator color={isDark ? '#111111' : '#FFFFFF'} />
-            ) : (
-              <View className="flex-row items-center">
-                <Printer size={18} color={isDark ? '#111111' : '#FFFFFF'} strokeWidth={2} />
-                <Text
-                  className="font-semibold text-sm ml-2"
-                  style={{ color: isDark ? '#111111' : '#FFFFFF' }}
-                >
-                  Print Shipping Label
+            {queueNotice ? (
+              <View className="flex-row items-center justify-center mb-3">
+                <Check size={14} color="#16A34A" strokeWidth={2.5} />
+                <Text style={{ color: '#16A34A', fontSize: 12, fontWeight: '600', marginLeft: 6 }}>
+                  Added to FYLL Print queue
                 </Text>
               </View>
-            )}
-          </Pressable>
-          <Pressable
-            onPress={() => router.back()}
-            className="mt-3 rounded-full items-center justify-center"
-            style={{ height: 52, backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}
-          >
-            <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">
-              Cancel
-            </Text>
-          </Pressable>
+            ) : null}
+            <View className="flex-row gap-3">
+              <Pressable
+                onPress={handleAddToQueue}
+                disabled={!labelData || isQueueing}
+                className="flex-1 rounded-full items-center justify-center flex-row active:opacity-80"
+                style={{ height: 56, backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light, opacity: labelData ? 1 : 0.55 }}
+              >
+                {isQueueing ? (
+                  <ActivityIndicator color={colors.text.primary} size="small" />
+                ) : (
+                  <>
+                    <ListPlus size={18} color={colors.text.primary} strokeWidth={2} />
+                    <Text style={{ color: colors.text.primary }} className="text-sm font-semibold ml-2">
+                      Send to Queue
+                    </Text>
+                  </>
+                )}
+              </Pressable>
+              <Pressable
+                onPress={handlePrint}
+                disabled={isPrinting || !labelData}
+                className="flex-1 rounded-full items-center justify-center flex-row active:opacity-80"
+                style={{ height: 56, backgroundColor: isDark ? '#FFFFFF' : '#111111', opacity: isPrinting ? 0.7 : 1 }}
+              >
+                {isPrinting ? (
+                  <ActivityIndicator color={isDark ? '#111111' : '#FFFFFF'} />
+                ) : (
+                  <>
+                    <Printer size={18} color={isDark ? '#111111' : '#FFFFFF'} strokeWidth={2} />
+                    <Text
+                      className="font-semibold text-sm ml-2"
+                      style={{ color: isDark ? '#111111' : '#FFFFFF' }}
+                    >
+                      {Platform.OS === 'web' && !isDesktop ? 'Download PDF' : 'Print Now'}
+                    </Text>
+                  </>
+                )}
+              </Pressable>
+            </View>
+          </View>
         </View>
       </SafeAreaView>
     </View>

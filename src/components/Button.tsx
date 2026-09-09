@@ -177,16 +177,28 @@ interface StickyButtonContainerProps {
   children: React.ReactNode;
   /** Bottom inset from useSafeAreaInsets */
   bottomInset?: number;
+  /** Optional surface color for themed screens */
+  backgroundColor?: string;
+  /** Optional top border color for themed screens */
+  borderColor?: string;
 }
 
-export function StickyButtonContainer({ children, bottomInset = 0 }: StickyButtonContainerProps) {
+export function StickyButtonContainer({
+  children,
+  bottomInset = 0,
+  backgroundColor = '#FFFFFF',
+  borderColor = '#E5E7EB',
+}: StickyButtonContainerProps) {
   return (
     <View
-      className="absolute left-0 right-0 px-5 bg-white border-t border-gray-200"
+      className="absolute left-0 right-0 px-5"
       style={{
         bottom: 0,
         paddingBottom: bottomInset > 0 ? bottomInset : 16,
         paddingTop: 16,
+        backgroundColor,
+        borderTopWidth: 1,
+        borderTopColor: borderColor,
       }}
     >
       {children}

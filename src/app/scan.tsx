@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions, BarcodeScanningResult } from 'expo-camera';
 import { X, Zap, ZapOff, Package, ShoppingCart, AlertCircle, Plus } from 'lucide-react-native';
 import useFyllStore, { formatCurrency } from '@/lib/state/fyll-store';
+import useAuthStore from '@/lib/state/auth-store';
 import { cn } from '@/lib/cn';
 import * as Haptics from 'expo-haptics';
 
@@ -28,6 +29,7 @@ export default function ScanScreen() {
   const insets = useSafeAreaInsets();
   const products = useFyllStore((s) => s.products);
   const updateVariantStock = useFyllStore((s) => s.updateVariantStock);
+  const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
 
   const [permission, requestPermission] = useCameraPermissions();
   const [torch, setTorch] = useState(false);
@@ -87,7 +89,7 @@ export default function ScanScreen() {
   const handleAddStock = () => {
     if (!scannedProduct) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    updateVariantStock(scannedProduct.productId, scannedProduct.variantId, 1);
+    void updateVariantStock(scannedProduct.productId, scannedProduct.variantId, 1, businessId);
     // Refresh the product info
     const updated = findProductByBarcode(scannedProduct.barcode);
     if (updated) setScannedProduct(updated);

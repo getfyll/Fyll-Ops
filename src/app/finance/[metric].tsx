@@ -18,7 +18,7 @@ import { BreakdownTable } from '@/components/stats/BreakdownTable';
 import { getRefundDate, getRefundedAmount } from '@/lib/analytics-utils';
 
 type FinanceMetricKey = 'revenue' | 'expenses' | 'procurement' | 'net-profit';
-type TimeRange = '7d' | '30d' | 'year';
+type TimeRange = '7d' | 'month' | '30d' | 'year';
 type ThirtyDayGranularity = 'daily' | 'weekly';
 
 type Bucket = {
@@ -53,6 +53,7 @@ const isBankTransferPaymentMethod = (value?: string) => {
 
 const RANGE_OPTIONS: { key: TimeRange; label: string }[] = [
   { key: '7d', label: 'Last 7 days' },
+  { key: 'month', label: 'This Month' },
   { key: '30d', label: 'Last 30 days' },
   { key: 'year', label: 'This Year' },
 ];
@@ -106,10 +107,6 @@ const getExpenseTimestamp = (expense: Expense): number | null => {
   return null;
 };
 
-const getProcurementTimestamp = (procurement: Procurement): number | null => {
-  return parseTimestamp(procurement.createdAt);
-};
-
 const extractMetadataValue = (source: string | undefined, key: string): string | null => {
   if (!source) return null;
   const metadataPattern = /\[([a-z_]+):([^\]]+)\]/gi;
@@ -128,6 +125,77 @@ const stripMetadata = (source: string | undefined): string => {
   if (!source) return '';
   const metadataPattern = /\[([a-z_]+):([^\]]+)\]/gi;
   return source.replace(metadataPattern, '').replace(/\s+/g, ' ').trim();
+};
+
+const parseFlexibleDateToTimestamp = (value?: string | null): number | null => {
+  const normalized = value?.trim();
+  if (!normalized) return null;
+
+  const dayFirstMatch = normalized.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);
+  if (dayFirstMatch) {
+    const day = Number(dayFirstMatch[1]);
+    const monthIndex = Number(dayFirstMatch[2]) - 1;
+    const year = Number(dayFirstMatch[3]);
+    if (
+      Number.isInteger(day)
+      && Number.isInteger(monthIndex)
+      && Number.isInteger(year)
+      && monthIndex >= 0
+      && monthIndex <= 11
+      && day >= 1
+      && day <= 31
+    ) {
+      const candidate = new Date(year, monthIndex, day);
+      if (
+        candidate.getFullYear() === year
+        && candidate.getMonth() === monthIndex
+        && candidate.getDate() === day
+      ) {
+        return candidate.getTime();
+      }
+    }
+  }
+
+  return parseTimestamp(normalized);
+};
+
+const resolveProcurementMode = (procurement: Procurement): 'procurement' | 'costing' => {
+  const metadataMode = extractMetadataValue(procurement.notes, 'mode')?.trim().toLowerCase();
+  if (metadataMode === 'costing') return 'costing';
+
+  const hasCostingFields = procurement.items.some((item) => (
+    (item.serviceFee ?? 0) > 0
+    || (item.deliveryFee ?? 0) > 0
+    || (item.shippingClearanceFee ?? 0) > 0
+    || (item.additionalFee ?? 0) > 0
+    || (item.targetMarginPercent ?? 0) > 0
+    || (item.currentSellingPrice ?? 0) > 0
+  ));
+
+  if (hasCostingFields) return 'costing';
+  return 'procurement';
+};
+
+const isProcurementRecord = (procurement: Procurement): boolean => (
+  resolveProcurementMode(procurement) === 'procurement'
+);
+
+const resolveProcurementPaidDate = (procurement: Procurement, createdAtMs: number): string => {
+  const metadataPaidDate = extractMetadataValue(procurement.notes, 'paid_date');
+  if (metadataPaidDate) {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(metadataPaidDate)) return metadataPaidDate;
+    const parsed = parseFlexibleDateToTimestamp(metadataPaidDate);
+    if (parsed !== null) return new Date(parsed).toISOString().split('T')[0];
+  }
+
+  return new Date(createdAtMs).toISOString().split('T')[0];
+};
+
+const getProcurementTimestamp = (procurement: Procurement): number | null => {
+  const createdAtMs = parseTimestamp(procurement.createdAt);
+  if (createdAtMs === null) return null;
+  const paidDate = resolveProcurementPaidDate(procurement, createdAtMs);
+  return parseFlexibleDateToTimestamp(paidDate) ?? createdAtMs;
 };
 
 const estimateFixedCostInWindow = (cost: FixedCostSetting, startMs: number, endMs: number): number => {
@@ -194,9 +262,16 @@ const buildBuckets = (range: TimeRange, nowMs: number): Bucket[] => {
     });
   }
 
-  const dayCount = range === '7d' ? 7 : 30;
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).getTime();
-  const rangeStart = todayStart - (dayCount - 1) * 24 * 60 * 60 * 1000;
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0).getTime();
+  const dayCount = range === '7d'
+    ? 7
+    : range === 'month'
+      ? Math.floor((todayStart - monthStart) / (24 * 60 * 60 * 1000)) + 1
+      : 30;
+  const rangeStart = range === 'month'
+    ? monthStart
+    : todayStart - (dayCount - 1) * 24 * 60 * 60 * 1000;
 
   return Array.from({ length: dayCount }).map((_, index) => {
     const start = rangeStart + index * 24 * 60 * 60 * 1000;
@@ -305,6 +380,7 @@ export default function FinanceMetricDetailScreen() {
     );
 
     const procurement = procurements.reduce((sum, item) => {
+      if (!isProcurementRecord(item)) return sum;
       const timestamp = getProcurementTimestamp(item);
       if (timestamp === null || timestamp < startMs || timestamp >= endMs) return sum;
       return sum + Math.max(0, Number(item.totalCost) || 0);
@@ -381,7 +457,7 @@ export default function FinanceMetricDetailScreen() {
   }, [activeMetric, buckets, calculateTotalsForWindow]);
 
   const displayPeriodRows = useMemo(() => {
-    if (timeRange !== '30d' || thirtyDayGranularity === 'daily') return periodRows;
+    if ((timeRange !== 'month' && timeRange !== '30d') || thirtyDayGranularity === 'daily') return periodRows;
 
     const chunkSize = 7;
     const weeklyRows: { label: string; value: number }[] = [];
@@ -405,8 +481,8 @@ export default function FinanceMetricDetailScreen() {
     () => chartData.map((item, index) => ({ key: `${index}-${item.label}`, label: item.label, value: item.value })),
     [chartData]
   );
-  const useLineChart = timeRange === '7d' || timeRange === '30d';
-  const lineChartMaxLabels = timeRange === '30d'
+  const useLineChart = timeRange === '7d' || timeRange === 'month' || timeRange === '30d';
+  const lineChartMaxLabels = timeRange === 'month' || timeRange === '30d'
     ? (thirtyDayGranularity === 'weekly' ? 6 : 8)
     : 7;
 
@@ -461,6 +537,7 @@ export default function FinanceMetricDetailScreen() {
     if (activeMetric === 'procurement') {
       const supplierMap = new Map<string, number>();
       procurements.forEach((procurement) => {
+        if (!isProcurementRecord(procurement)) return;
         const timestamp = getProcurementTimestamp(procurement);
         if (timestamp === null || timestamp < rangeStart || timestamp >= rangeEnd) return;
         const supplier = procurement.supplierName?.trim() || 'Unknown supplier';
@@ -549,6 +626,7 @@ export default function FinanceMetricDetailScreen() {
     if (activeMetric === 'procurement') {
       const statusMap = new Map<string, number>();
       procurements.forEach((procurement) => {
+        if (!isProcurementRecord(procurement)) return;
         const timestamp = getProcurementTimestamp(procurement);
         if (timestamp === null || timestamp < rangeStart || timestamp >= rangeEnd) return;
         const statusRaw = extractMetadataValue(procurement.notes, 'status') || 'Draft';
@@ -628,7 +706,7 @@ export default function FinanceMetricDetailScreen() {
             <Text style={{ color: colors.text.primary }} className="text-lg font-bold mb-4">
               {metricConfig.chartTitle}
             </Text>
-            {timeRange === '30d' ? (
+            {timeRange === 'month' || timeRange === '30d' ? (
               <View className="flex-row mb-4">
                 {([
                   { key: 'daily', label: 'Daily' },

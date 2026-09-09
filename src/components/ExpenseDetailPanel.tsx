@@ -1,12 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, ScrollView } from 'react-native';
-import { X, MoreVertical, Receipt, FileText, Download, User, Tag, Calendar, Clock, CheckCircle, XCircle, Send, PlusCircle } from 'lucide-react-native';
+import { X, MoreVertical, Receipt, FileText, Download, CheckCircle, XCircle, Send, PlusCircle, User, Tag, Calendar, Clock } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import useFyllStore, { type Expense, type ExpensePaymentStatus, type ExpenseRequestReceipt, formatCurrency } from '@/lib/state/fyll-store';
+import useAuthStore from '@/lib/state/auth-store';
 import { useStatsColors } from '@/lib/theme';
 import { openAttachmentPath } from '@/lib/storage-attachments';
 
 // ── helpers ──
+
+const STAMP_DUTY_THRESHOLD = 10000;
+const EXPENSE_BANK_CHARGE_LABEL = 'Bank Charges';
+const EXPENSE_STAMP_DUTY_LABEL = 'Stamp Duty';
 
 const extractMetadataValue = (source: string | undefined, key: string): string | null => {
   if (!source) return null;
@@ -31,21 +36,71 @@ const decodeMetadataJson = <T, >(value: string | null): T | null => {
 };
 
 type ExpenseType = 'one-time' | 'recurring';
-type LineItem = { id: string; label: string; amount: number; category: string };
+type LineItem = {
+  id: string;
+  label: string;
+  amount: number;
+  category: string;
+  source?: 'manual' | 'system';
+};
+
+const getTransferChargeBreakdown = ({
+  baseAmount,
+  applyCharges,
+  tiers,
+  vatRate,
+  stampDutyAmount,
+}: {
+  baseAmount: number;
+  applyCharges: boolean;
+  tiers: { maxAmount: number | null; fixedFee: number }[];
+  vatRate: number;
+  stampDutyAmount: number;
+}) => {
+  if (!applyCharges || baseAmount <= 0) {
+    return { fee: 0, vat: 0, stampDuty: 0, total: 0 };
+  }
+  const matchedTier = tiers.find((tier) => tier.maxAmount === null || baseAmount <= tier.maxAmount) ?? null;
+  const fee = matchedTier?.fixedFee ?? 0;
+  const vat = fee * vatRate;
+  const stampDuty = baseAmount >= STAMP_DUTY_THRESHOLD ? stampDutyAmount : 0;
+  return { fee, vat, stampDuty, total: fee + vat + stampDuty };
+};
+
+const parseExpenseApplyBankCharges = (description: string | undefined): boolean | null => {
+  const raw = extractMetadataValue(description, 'apply_bank_charges')?.trim().toLowerCase();
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  return null;
+};
+
+const isExpenseChargeLine = (line: LineItem): boolean => {
+  if (line.source === 'system') return true;
+  const normalizedLabel = line.label.trim().toLowerCase();
+  return normalizedLabel === EXPENSE_BANK_CHARGE_LABEL.toLowerCase()
+    || normalizedLabel === EXPENSE_STAMP_DUTY_LABEL.toLowerCase();
+};
 
 const parseLineItems = (description: string | undefined, fallbackCategory: string, fallbackAmount: number): LineItem[] => {
   const encoded = extractMetadataValue(description, 'line_items');
-  const parsed = decodeMetadataJson<{ label?: string; amount?: number; category?: string; kind?: string }[]>(encoded);
+  const parsed = decodeMetadataJson<{ label?: string; amount?: number; category?: string; kind?: string; source?: 'manual' | 'system' }[]>(encoded);
   if (parsed && parsed.length > 0) {
     const normalized = parsed.map((line, i) => ({
       id: `line-${i + 1}`,
       label: (line.label ?? '').trim() || (i === 0 ? 'Base Amount' : 'Additional Charge'),
       amount: Number.isFinite(Number(line.amount)) ? Number(line.amount) : 0,
       category: (line.category ?? fallbackCategory).trim() || fallbackCategory,
+      source: line.source === 'system' ? 'system' as const : 'manual' as const,
     })).filter((l) => l.amount >= 0);
     if (normalized.length > 0) return normalized;
   }
-  return [{ id: 'line-base', label: 'Base Amount', amount: Number.isFinite(fallbackAmount) ? fallbackAmount : 0, category: fallbackCategory || 'General' }];
+  return [{
+    id: 'line-base',
+    label: 'Base Amount',
+    amount: Number.isFinite(fallbackAmount) ? fallbackAmount : 0,
+    category: fallbackCategory || 'General',
+    source: 'manual',
+  }];
 };
 
 const parseReceipts = (description: string | undefined): ExpenseRequestReceipt[] => {
@@ -71,6 +126,11 @@ const inferExpenseType = (expense: Expense): ExpenseType => {
   return 'one-time';
 };
 
+const capitalizeDisplayValue = (value: string): string => {
+  if (!value) return value;
+  return value.charAt(0).toUpperCase() + value.slice(1);
+};
+
 // ── props ──
 
 interface ExpenseDetailPanelProps {
@@ -84,6 +144,9 @@ interface ExpenseDetailPanelProps {
 export function ExpenseDetailPanel({ expenseId, compact = false, onClose, onEdit, onDelete }: ExpenseDetailPanelProps) {
   const colors = useStatsColors();
   const expenses = useFyllStore((s) => s.expenses);
+  const updateExpense = useFyllStore((s) => s.updateExpense);
+  const financeRules = useFyllStore((s) => s.financeRules);
+  const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
   const [showActionMenu, setShowActionMenu] = useState<boolean>(false);
 
   const expense = useMemo(() => expenses.find((e) => e.id === expenseId) ?? null, [expenses, expenseId]);
@@ -101,7 +164,51 @@ export function ExpenseDetailPanel({ expenseId, compact = false, onClose, onEdit
     const ts = new Date(expense.createdAt).getTime();
     return Number.isFinite(ts) ? new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
   }, [expense]);
-  const lineItems = useMemo(() => expense ? parseLineItems(expense.description, expense.category || 'General', expense.amount) : [], [expense]);
+  const lineItems = useMemo(() => {
+    if (!expense) return [];
+    const parsedLineItems = parseLineItems(expense.description, expense.category || 'General', expense.amount);
+    const hasDerivedChargeRows = parsedLineItems.some((line) => isExpenseChargeLine(line));
+    if (hasDerivedChargeRows) return parsedLineItems;
+
+    const applyBankCharges = parseExpenseApplyBankCharges(expense.description);
+    if (applyBankCharges === false) return parsedLineItems;
+
+    const baseLine = parsedLineItems[0];
+    const transferCharges = getTransferChargeBreakdown({
+      baseAmount: baseLine?.amount ?? 0,
+      applyCharges: true,
+      tiers: financeRules.bankChargeTiers,
+      vatRate: financeRules.vatRate,
+      stampDutyAmount: financeRules.incomingStampDuty ?? 50,
+    });
+    const parsedSubtotal = parsedLineItems.reduce((sum, line) => sum + line.amount, 0);
+    const inferredTotal = parsedSubtotal + transferCharges.total;
+    const shouldAppendDerivedCharges = applyBankCharges === true
+      || Math.abs(inferredTotal - expense.amount) < 0.01;
+
+    if (!shouldAppendDerivedCharges || transferCharges.total <= 0) return parsedLineItems;
+
+    const derivedLines: LineItem[] = [];
+    if (transferCharges.fee + transferCharges.vat > 0) {
+      derivedLines.push({
+        id: 'line-bank-charges',
+        label: EXPENSE_BANK_CHARGE_LABEL,
+        amount: transferCharges.fee + transferCharges.vat,
+        category: baseLine?.category || expense.category || 'General',
+        source: 'system',
+      });
+    }
+    if (transferCharges.stampDuty > 0) {
+      derivedLines.push({
+        id: 'line-stamp-duty',
+        label: EXPENSE_STAMP_DUTY_LABEL,
+        amount: transferCharges.stampDuty,
+        category: baseLine?.category || expense.category || 'General',
+        source: 'system',
+      });
+    }
+    return [...parsedLineItems, ...derivedLines];
+  }, [expense, financeRules.bankChargeTiers, financeRules.incomingStampDuty, financeRules.vatRate]);
   const receipts = useMemo(() => parseReceipts(expense?.description), [expense]);
   const note = useMemo(() => extractMetadataValue(expense?.description, 'note') ?? '', [expense]);
 
@@ -137,6 +244,7 @@ export function ExpenseDetailPanel({ expenseId, compact = false, onClose, onEdit
     partial: { label: 'Partial', bg: 'rgba(245,158,11,0.12)',  text: '#F59E0B' },
     paid:    { label: 'Paid',    bg: 'rgba(16,185,129,0.12)',  text: '#10B981' },
   };
+  const statusOptions = Object.entries(STATUS_BADGE) as [ExpensePaymentStatus, { label: string; bg: string; text: string }][];
   const statusBadge = expense?.status ? STATUS_BADGE[expense.status] : null;
   const heroPadding = compact ? 16 : 20;
   const heroAmountFontSize = compact ? 30 : 36;
@@ -258,35 +366,94 @@ export function ExpenseDetailPanel({ expenseId, compact = false, onClose, onEdit
 
       <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 32, gap: 12 }}>
 
-        {/* Hero amount card */}
+        {/* Hero card */}
         <View style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.divider }}>
           <View style={{ padding: heroPadding, borderBottomWidth: 1, borderBottomColor: colors.divider }}>
-            <Text style={{ color: colors.text.muted, fontSize: 11, fontWeight: '400', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
-              {name || expense.category}
-            </Text>
-            <Text style={{ color: colors.text.primary, fontSize: heroAmountFontSize, fontWeight: '500', lineHeight: heroAmountLineHeight }}>
-              {formatCurrency(expense.amount)}
-            </Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 8 }}>
-              <Text style={{ color: colors.text.secondary, fontSize: compact ? 12 : 13 }}>{date}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ color: colors.text.muted, fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
+                  Expense
+                </Text>
+                <Text style={{ color: colors.text.primary, fontSize: compact ? 18 : 20, fontWeight: '600', lineHeight: compact ? 22 : 24 }} numberOfLines={2}>
+                  {capitalizeDisplayValue(name || expense.category || 'Expense')}
+                </Text>
+                <Text style={{ color: colors.text.secondary, fontSize: compact ? 12 : 13, marginTop: 4 }} numberOfLines={1}>
+                  {capitalizeDisplayValue(merchant || expense.category || 'General')}
+                </Text>
+              </View>
               <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 100, backgroundColor: typeBadgeColors.bg }}>
                 <Text style={{ color: typeBadgeColors.text, fontSize: 11, fontWeight: '600' }}>
                   {expenseType === 'one-time' ? 'One-Time' : 'Recurring'}
                 </Text>
               </View>
+            </View>
+            <Text style={{ color: colors.text.primary, fontSize: heroAmountFontSize, fontWeight: '500', lineHeight: heroAmountLineHeight }}>
+              {formatCurrency(expense.amount)}
+            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginTop: 8, gap: 8 }}>
+              <Text style={{ color: colors.text.secondary, fontSize: compact ? 12 : 13 }}>{date}</Text>
               {statusBadge ? (
                 <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 100, backgroundColor: statusBadge.bg }}>
                   <Text style={{ color: statusBadge.text, fontSize: 11, fontWeight: '600' }}>{statusBadge.label}</Text>
-                </View>
+                  </View>
               ) : null}
             </View>
           </View>
+          <View style={{ flexDirection: 'row' }}>
+            <View style={{ flex: 1, paddingHorizontal: 16, paddingVertical: 14 }}>
+              <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }}>Merchant</Text>
+              <Text style={{ color: colors.text.primary, fontSize: compact ? 13 : 15, fontWeight: '600', marginTop: 4 }} numberOfLines={1}>
+                {capitalizeDisplayValue(merchant || 'Not set')}
+              </Text>
+            </View>
+            <View style={{ width: 1, backgroundColor: colors.divider }} />
+            <View style={{ flex: 1, paddingHorizontal: 16, paddingVertical: 14 }}>
+              <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }}>Category</Text>
+              <Text style={{ color: colors.text.primary, fontSize: compact ? 13 : 15, fontWeight: '600', marginTop: 4 }} numberOfLines={1}>
+                {capitalizeDisplayValue(expense.category || 'General')}
+              </Text>
+            </View>
+          </View>
+        </View>
 
-          {/* Payment breakdown */}
-          <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
-            <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
-              Payment Breakdown
-            </Text>
+        {/* Status */}
+        <View style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.divider, padding: 16 }}>
+          <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>Status</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {statusOptions.map(([option, meta]) => {
+              const isSelected = expense.status === option;
+              return (
+                <Pressable
+                  key={option}
+                  onPress={() => {
+                    if (expense.status === option) return;
+                    updateExpense(expense.id, { status: option }, businessId);
+                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }}
+                  style={{
+                    height: 34,
+                    paddingHorizontal: 12,
+                    borderRadius: 999,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: isSelected ? meta.bg : colors.bg.input,
+                    borderWidth: 1,
+                    borderColor: isSelected ? meta.text : colors.divider,
+                  }}
+                >
+                  <Text style={{ color: isSelected ? meta.text : colors.text.secondary, fontSize: 12, fontWeight: '600' }}>{meta.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* Payment breakdown */}
+        <View style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.divider }}>
+          <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12 }}>
+            <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }}>Payment Breakdown</Text>
+          </View>
+          <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
             {lineItems.map((line, index) => (
               <View
                 key={line.id}
@@ -301,7 +468,7 @@ export function ExpenseDetailPanel({ expenseId, compact = false, onClose, onEdit
               >
                 <View style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
                   <Text style={{ color: colors.text.primary, fontSize: compact ? 12 : 13, fontWeight: '500' }} numberOfLines={1}>{line.label}</Text>
-                  <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 1 }}>{line.category}</Text>
+                  <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 1 }}>{capitalizeDisplayValue(line.category)}</Text>
                 </View>
                 <Text style={{ color: colors.text.primary, fontSize: compact ? 13 : 14, fontWeight: '600' }}>
                   {formatCurrency(line.amount)}
@@ -322,30 +489,34 @@ export function ExpenseDetailPanel({ expenseId, compact = false, onClose, onEdit
           </View>
 
           {[
-            { icon: <User size={15} color={colors.text.tertiary} strokeWidth={2} />, label: 'Supplier / Merchant', value: merchant || '—' },
-            { icon: <Tag size={15} color={colors.text.tertiary} strokeWidth={2} />, label: 'Category', value: expense.category || '—' },
-            { icon: <Calendar size={15} color={colors.text.tertiary} strokeWidth={2} />, label: 'Date', value: date },
-            { icon: <Clock size={15} color={colors.text.tertiary} strokeWidth={2} />, label: 'Created', value: createdAt || '—' },
+            { label: 'Supplier / Merchant', value: merchant || '—', icon: <User size={compact ? 12 : 13} color={colors.text.tertiary} strokeWidth={2} /> },
+            { label: 'Primary Category', value: expense.category || '—', icon: <Tag size={compact ? 12 : 13} color={colors.text.tertiary} strokeWidth={2} /> },
+            { label: 'Expense Type', value: expenseType === 'one-time' ? 'One-Time' : 'Recurring', icon: <Receipt size={compact ? 12 : 13} color={colors.text.tertiary} strokeWidth={2} /> },
+            { label: 'Date', value: date || '—', icon: <Calendar size={compact ? 12 : 13} color={colors.text.tertiary} strokeWidth={2} /> },
+            { label: 'Created', value: createdAt || '—', icon: <Clock size={compact ? 12 : 13} color={colors.text.tertiary} strokeWidth={2} /> },
           ].map((row, index) => (
             <View
               key={row.label}
               style={{
                 flexDirection: 'row',
-                alignItems: 'center',
+                alignItems: 'flex-start',
+                justifyContent: 'space-between',
                 paddingHorizontal: 16,
-                paddingVertical: 12,
+                paddingVertical: compact ? 9 : 10,
                 borderTopWidth: index === 0 ? 1 : 0,
                 borderTopColor: colors.divider,
-                gap: 12,
+                gap: 10,
               }}
             >
-              <View style={{ width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg.input, borderWidth: 1, borderColor: colors.divider }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 {row.icon}
+                <Text style={{ color: colors.text.secondary, fontSize: compact ? 12 : 13 }}>{row.label}</Text>
               </View>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ color: colors.text.muted, fontSize: 11 }}>{row.label}</Text>
-                <Text style={{ color: colors.text.primary, fontSize: detailValueFontSize, fontWeight: '600', marginTop: 1 }} numberOfLines={1}>{row.value}</Text>
-              </View>
+              <Text
+                style={{ color: colors.text.primary, fontSize: compact ? 12 : detailValueFontSize, fontWeight: '600', flex: 1, textAlign: 'right', marginLeft: 16 }}
+              >
+                {capitalizeDisplayValue(row.value)}
+              </Text>
             </View>
           ))}
         </View>

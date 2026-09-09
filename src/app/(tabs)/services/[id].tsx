@@ -1200,6 +1200,31 @@ export default function ServiceDetailScreen() {
           <>
             <View style={{ marginTop: 16 }}>
               <Pressable
+                onPress={() => handleToggleServiceActive(!serviceActive)}
+                disabled={isStatusSaving}
+                className="rounded-full p-4 items-center justify-center active:opacity-80"
+                style={{
+                  backgroundColor: serviceActive ? 'rgba(156, 163, 175, 0.18)' : 'rgba(16, 185, 129, 0.15)',
+                  opacity: isStatusSaving ? 0.65 : 1,
+                }}
+              >
+                <Text
+                  style={{
+                    color: serviceActive ? '#9CA3AF' : '#10B981',
+                    fontWeight: '700',
+                    fontSize: 15,
+                  }}
+                >
+                  {isStatusSaving
+                    ? 'Saving...'
+                    : serviceActive
+                      ? 'Deactivate Service'
+                      : 'Activate Service'}
+                </Text>
+              </Pressable>
+            </View>
+            <View style={{ marginTop: 16 }}>
+              <Pressable
                 onPress={handleSave}
                 className="rounded-full p-4 items-center justify-center active:opacity-80"
                 style={{ backgroundColor: colors.text.primary }}

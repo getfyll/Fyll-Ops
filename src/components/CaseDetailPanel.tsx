@@ -12,6 +12,7 @@ import {
   Check,
   DollarSign,
   ChevronLeft,
+  ChevronDown,
   Edit2,
   Trash2,
   ExternalLink,
@@ -59,6 +60,7 @@ const getCaseTypeIcon = (type: CaseType, color: string, size: number = 20) => {
     case 'Replacement': return <Undo2 {...props} />;
     case 'Refund': return <DollarSign {...props} />;
     case 'Partial Refund': return <Zap {...props} />;
+    case 'Return': return <RefreshCcw {...props} />;
     case 'Goodwill': return <ShieldCheck {...props} />;
     default: return <HelpCircle {...props} />;
   }
@@ -138,6 +140,36 @@ const buildMentionAliasMap = (teamMembers: TeamMember[]) => {
   return aliasMap;
 };
 
+const getCommentTextSegments = (
+  body: string,
+  mentionAliasMap: Map<string, string>,
+) => {
+  const segments: Array<{ text: string; isMention: boolean }> = [];
+  const mentionRegex = /@([A-Za-z0-9_.-]+)/g;
+  let cursor = 0;
+
+  for (const match of body.matchAll(mentionRegex)) {
+    const matchText = match[0];
+    const mentionToken = normalizeMentionToken(match[1] ?? '');
+    const matchIndex = match.index ?? 0;
+    if (matchIndex > cursor) {
+      segments.push({ text: body.slice(cursor, matchIndex), isMention: false });
+    }
+
+    segments.push({
+      text: matchText,
+      isMention: mentionToken === 'everyone' || mentionAliasMap.has(mentionToken),
+    });
+    cursor = matchIndex + matchText.length;
+  }
+
+  if (cursor < body.length) {
+    segments.push({ text: body.slice(cursor), isMention: false });
+  }
+
+  return segments.length > 0 ? segments : [{ text: body, isMention: false }];
+};
+
 const parseAssignedNames = (value?: string) =>
   (value ?? '')
     .split(',')
@@ -158,7 +190,6 @@ function CaseCommentsSection({
   teamMembers: TeamMember[];
 }) {
   const colors = useThemeColors();
-  const isDark = colors.bg.primary === '#111111';
   const { isDesktop } = useBreakpoint();
   const isWebDesktop = Platform.OS === 'web' && isDesktop;
   const queryClient = useQueryClient();
@@ -168,8 +199,18 @@ function CaseCommentsSection({
   const [replyTarget, setReplyTarget] = useState<{ commentId: string; authorName: string } | null>(null);
   const lastTapTimeRef = useRef<Record<string, number>>({});
   const commentBodyFontSize = isDesktop ? 13 : 14;
-  const commentBodyLineHeight = isDesktop ? 19 : 21;
-  const commentRowMaxWidth = isWebDesktop ? '78%' : '92%';
+  const commentBodyLineHeight = isDesktop ? 20 : 22;
+  const commentsListMaxHeight = isWebDesktop ? 340 : 300;
+  const commentsSectionSurface = isWebDesktop
+    ? colors.bg.card
+    : (colors.bg.secondary || '#F3F4F6');
+  const commentsSectionHorizontalPadding = isWebDesktop ? 0 : 18;
+  const commentsSectionContentPadding = isWebDesktop ? 0 : 2;
+  const mentionBg = isWebDesktop ? 'rgba(37, 99, 235, 0.12)' : 'rgba(37, 99, 235, 0.10)';
+  const mentionText = '#1D4ED8';
+  const commentDividerColor = colors.border.light.startsWith('#')
+    ? `${colors.border.light}${isWebDesktop ? '7A' : '5E'}`
+    : colors.border.light;
   const teamMap = useMemo(() => new Map(teamMembers.map((member) => [member.id, member])), [teamMembers]);
   const mentionAliasMap = useMemo(() => buildMentionAliasMap(teamMembers), [teamMembers]);
   const activeMentionQuery = useMemo(() => {
@@ -217,7 +258,7 @@ function CaseCommentsSection({
   );
 
   const reactionsQuery = useQuery({
-    queryKey: ['case-comment-reactions', businessId, threadId, commentIds.join(',')],
+    queryKey: ['case-comment-reactions', businessId, threadId, commentIds],
     enabled: Boolean(businessId) && Boolean(threadId) && commentIds.length > 0 && !isOfflineMode,
     queryFn: () => collaborationData.listCommentReactions(businessId as string, commentIds),
     retry: 0,
@@ -350,26 +391,61 @@ function CaseCommentsSection({
 
   return (
     <View
-      className="p-4 rounded-xl mt-4"
-      style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+      style={{
+        marginTop: 16,
+        backgroundColor: commentsSectionSurface,
+        borderWidth: isWebDesktop ? 1 : 0,
+        borderColor: colors.border.light,
+        borderTopWidth: isWebDesktop ? 1 : 0.5,
+        borderTopColor: colors.border.light,
+        borderRadius: isWebDesktop ? 12 : 0,
+      }}
     >
-      <View className="flex-row items-center gap-2 mb-3">
-        <MessageSquare size={16} color={colors.text.tertiary} strokeWidth={2} />
-        <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase tracking-wider">
-          Comments
-        </Text>
-        <Text style={{ color: colors.text.muted }} className="text-xs ml-auto">
-          {comments.length} {comments.length === 1 ? 'comment' : 'comments'}
-        </Text>
+      <View
+        style={{
+          paddingHorizontal: isWebDesktop ? 16 : commentsSectionHorizontalPadding,
+          paddingTop: isWebDesktop ? 16 : 12,
+          paddingBottom: 12,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border.light,
+        }}
+      >
+        <View className="flex-row items-center gap-2">
+          <MessageSquare size={16} color={colors.text.tertiary} strokeWidth={2} />
+          <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase tracking-wider">
+            Comments
+          </Text>
+          <Text style={{ color: colors.text.muted }} className="text-xs ml-auto">
+            {comments.length} {comments.length === 1 ? 'comment' : 'comments'}
+          </Text>
+        </View>
       </View>
 
       {isOfflineMode ? (
-        <Text style={{ color: colors.text.muted }} className="text-sm">
+        <Text
+          style={{
+            color: colors.text.muted,
+            fontSize: 14,
+            paddingHorizontal: isWebDesktop ? 16 : commentsSectionHorizontalPadding,
+            paddingBottom: 16,
+          }}
+        >
           Comments are unavailable while offline.
         </Text>
       ) : (
         <>
-          <View className="gap-3">
+          <ScrollView
+            style={{ maxHeight: commentsListMaxHeight }}
+            contentContainerStyle={{
+              gap: 3,
+              paddingRight: 4,
+              paddingTop: isWebDesktop ? 12 : 14,
+              paddingBottom: 8,
+              paddingHorizontal: isWebDesktop ? 0 : commentsSectionContentPadding,
+            }}
+            nestedScrollEnabled
+            showsVerticalScrollIndicator={comments.length > 4}
+          >
             {threadQuery.isPending || commentsQuery.isPending ? (
               <Text style={{ color: colors.text.muted }} className="text-sm text-center py-4">
                 Loading comments...
@@ -393,87 +469,135 @@ function CaseCommentsSection({
               </View>
             ) : null}
 
-            {comments.map((comment) => {
+            {comments.map((comment, index) => {
               const author = teamMap.get(comment.author_user_id);
               const isMine = comment.author_user_id === currentUserId;
               const likeCount = reactionState.counts[comment.id] ?? 0;
               const liked = Boolean(reactionState.mine[comment.id]);
+              const showDivider = index < comments.length - 1;
+              const commentSegments = getCommentTextSegments(comment.body, mentionAliasMap);
               return (
-                <View key={comment.id} style={{ alignItems: isMine ? 'flex-end' : 'flex-start', width: '100%' }}>
+                <View
+                  key={comment.id}
+                  style={{
+                    width: '100%',
+                    paddingTop: index === 0 ? 6 : 8,
+                    paddingHorizontal: isWebDesktop ? 16 : commentsSectionHorizontalPadding,
+                    paddingBottom: showDivider ? 14 : 0,
+                    marginBottom: showDivider ? 2 : 0,
+                    borderBottomWidth: showDivider ? 1 : 0,
+                    borderBottomColor: commentDividerColor,
+                  }}
+                >
                   <View
                     className="flex-row gap-2"
                     style={{
-                      flexDirection: isMine ? 'row-reverse' : 'row',
-                      maxWidth: commentRowMaxWidth,
+                      alignItems: 'flex-start',
+                      width: '100%',
                     }}
                   >
                     <CaseCommentAvatar member={author} />
-                    <View style={{ alignItems: isMine ? 'flex-end' : 'flex-start', minWidth: 0, flexShrink: 1 }}>
-                      <View className="flex-row items-center gap-2 mb-1">
+                    <View style={{ minWidth: 0, flex: 1 }}>
+                      <View className="flex-row items-center gap-2 mb-1 pr-2">
                         <Text style={{ color: colors.text.secondary }} className="text-[11px] font-semibold">
-                          {author?.name?.split(' ')[0] ?? currentUserName.split(' ')[0] ?? 'Team'}
+                          {author?.name ?? currentUserName ?? 'Team member'}
                         </Text>
                         <Text style={{ color: colors.text.muted }} className="text-[10px]">
                           {new Date(comment.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </Text>
+                        {isMine ? (
+                          <Text style={{ color: colors.text.muted }} className="text-[10px] font-semibold">
+                            You
+                          </Text>
+                        ) : null}
                       </View>
-                      <Pressable
-                        onPress={() => handleBubbleTap(comment.id, liked)}
-                        className="px-3 py-2 rounded-2xl active:opacity-90"
-                        style={{
-                          backgroundColor: isMine ? '#111111' : (isDark ? '#3A3A3C' : colors.bg.secondary),
-                          borderTopLeftRadius: isMine ? 16 : 6,
-                          borderTopRightRadius: isMine ? 6 : 16,
-                          borderWidth: isMine ? 0 : (isDark ? 0 : 1),
-                          borderColor: colors.border.light,
-                          maxWidth: '100%',
-                          flexShrink: 1,
-                        }}
-                      >
-                        <Text
+                      <View className="flex-row items-start gap-2">
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Pressable
+                            onPress={() => handleBubbleTap(comment.id, liked)}
+                            className="py-1 active:opacity-90"
+                            style={{
+                              maxWidth: '100%',
+                              marginTop: 4,
+                            }}
+                          >
+                            <Text
+                              style={{
+                                color: colors.text.primary,
+                                fontSize: commentBodyFontSize,
+                                lineHeight: commentBodyLineHeight,
+                              }}
+                            >
+                              {commentSegments.map((segment, segmentIndex) => (
+                                <Text
+                                  key={`${comment.id}-segment-${segmentIndex}`}
+                                  style={segment.isMention ? {
+                                    color: mentionText,
+                                    backgroundColor: mentionBg,
+                                    fontWeight: '600',
+                                  } : undefined}
+                                >
+                                  {segment.text}
+                                </Text>
+                              ))}
+                            </Text>
+                          </Pressable>
+                          <Pressable
+                            onPress={() => setReplyTarget({ commentId: comment.id, authorName: author?.name?.split(' ')[0] ?? 'Member' })}
+                            className="mt-2 px-1 active:opacity-70"
+                          >
+                            <Text style={{ color: colors.text.muted }} className="text-[11px] font-bold">Reply</Text>
+                          </Pressable>
+                        </View>
+
+                        <Pressable
+                          onPress={() => {
+                            if (!businessId) return;
+                            reactionMutation.mutate({ commentId: comment.id, liked });
+                          }}
+                          className="items-center active:opacity-80"
                           style={{
-                            color: isMine ? '#FFFFFF' : colors.text.primary,
-                            fontSize: commentBodyFontSize,
-                            lineHeight: commentBodyLineHeight,
-                            flexShrink: 1,
+                            minWidth: 34,
+                            paddingTop: 2,
                           }}
                         >
-                          {comment.body}
-                        </Text>
-                      </Pressable>
-                      {likeCount > 0 && (
-                        <View
-                          className="flex-row items-center gap-1 mt-1"
-                          style={{
-                            alignSelf: isMine ? 'flex-end' : 'flex-start',
-                            backgroundColor: colors.bg.secondary,
-                            paddingHorizontal: 7,
-                            paddingVertical: 3,
-                            borderRadius: 99,
-                          }}
-                        >
-                          <Text style={{ fontSize: 11 }}>👍</Text>
-                          {likeCount > 1 && (
-                            <Text style={{ color: colors.text.muted, fontSize: 11, fontWeight: '600' }}>
+                          <View
+                            style={{
+                              minWidth: 30,
+                              height: 30,
+                              borderRadius: 15,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              backgroundColor: liked || likeCount > 0 ? 'rgba(245, 158, 11, 0.16)' : colors.bg.secondary,
+                              borderWidth: 1,
+                              borderColor: liked || likeCount > 0 ? 'rgba(245, 158, 11, 0.32)' : colors.border.light,
+                            }}
+                          >
+                            <Text style={{ fontSize: 14, opacity: liked || likeCount > 0 ? 1 : 0.7 }}>👍</Text>
+                          </View>
+                          {likeCount > 0 ? (
+                            <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '700', marginTop: 4 }}>
                               {likeCount}
                             </Text>
-                          )}
-                        </View>
-                      )}
-                      <Pressable
-                        onPress={() => setReplyTarget({ commentId: comment.id, authorName: author?.name?.split(' ')[0] ?? 'Member' })}
-                        className="mt-1 px-1 active:opacity-70"
-                      >
-                        <Text style={{ color: colors.text.muted }} className="text-[11px] font-bold">Reply</Text>
-                      </Pressable>
+                          ) : null}
+                        </Pressable>
+                      </View>
                     </View>
                   </View>
                 </View>
               );
             })}
-          </View>
+          </ScrollView>
 
-          <View className="mt-4 pt-4" style={{ borderTopWidth: 1, borderTopColor: colors.border.light }}>
+          <View
+            className="mt-4 pt-4"
+            style={{
+              borderTopWidth: 1,
+              borderTopColor: colors.border.light,
+              paddingHorizontal: isWebDesktop ? 16 : commentsSectionHorizontalPadding,
+              paddingBottom: isWebDesktop ? 16 : 26,
+            }}
+          >
             {activeMentionQuery !== null ? (
               <View
                 className="mb-2 rounded-xl overflow-hidden"
@@ -607,6 +731,7 @@ export function CaseDetailPanel({
   const cases = useFyllStore((s) => s.cases);
   const orders = useFyllStore((s) => s.orders);
   const refundRequests = useFyllStore((s) => s.refundRequests);
+  const returns = useFyllStore((s) => s.returns);
   const updateCase = useFyllStore((s) => s.updateCase);
   const deleteCase = useFyllStore((s) => s.deleteCase);
   const addRefundRequest = useFyllStore((s) => s.addRefundRequest);
@@ -620,8 +745,17 @@ export function CaseDetailPanel({
       statusColorMap[name] = color;
     }
   });
-  const sortedCaseStatuses = caseStatuses
-    .slice()
+  const sortedCaseStatuses = Array.from(
+    caseStatuses.reduce<Map<string, typeof caseStatuses[number]>>((map, option) => {
+      const key = option.name.trim().toLowerCase();
+      if (!key) return map;
+      const existing = map.get(key);
+      if (!existing || (option.order ?? 0) < (existing.order ?? 0)) {
+        map.set(key, option);
+      }
+      return map;
+    }, new Map()).values()
+  )
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name));
 
   const caseItem = useMemo(
@@ -642,6 +776,7 @@ export function CaseDetailPanel({
   const [showNoteModal, setShowNoteModal] = useState(false);
   const [noteText, setNoteText] = useState('');
   const [showResolutionModal, setShowResolutionModal] = useState(false);
+  const [showResolutionTypeMenu, setShowResolutionTypeMenu] = useState(false);
   const [resolutionType, setResolutionType] = useState('No Action Required');
   const [resolutionNotes, setResolutionNotes] = useState('');
   const [resolutionValue, setResolutionValue] = useState('');
@@ -661,6 +796,30 @@ export function CaseDetailPanel({
       setShowCaseActionsModal(false);
     }
   }, [isMobileHeaderContext, showCaseActionsModal]);
+
+  const assignedNames = useMemo(
+    () => parseAssignedNames(caseItem?.assignedTo),
+    [caseItem?.assignedTo]
+  );
+
+  const assignedNameSet = useMemo(
+    () => new Set(assignedNames.map((name) => name.toLowerCase())),
+    [assignedNames]
+  );
+
+  const assignableMembers = useMemo(
+    () => teamMembers.filter((member) => !assignedNameSet.has(member.name.toLowerCase())),
+    [assignedNameSet, teamMembers]
+  );
+
+  const filteredAssignableMembers = useMemo(() => {
+    const query = assigneeQuery.trim().toLowerCase();
+    if (!query) return [];
+    return assignableMembers.filter((member) =>
+      member.name.toLowerCase().includes(query)
+      || member.email.toLowerCase().includes(query)
+    );
+  }, [assigneeQuery, assignableMembers]);
 
   if (!caseItem) {
     return (
@@ -688,18 +847,24 @@ export function CaseDetailPanel({
     })
     : null;
   const currentUserId = currentUser?.id ?? '';
+  const currentUserRole = currentUser?.role ?? null;
   // Cases allow staff to submit refund requests; Orders/Finance keep stricter checks.
-  const canCreateRefundRequest = currentUser?.role === 'admin'
-    || currentUser?.role === 'manager'
-    || currentUser?.role === 'staff';
+  const canCreateRefundRequest = currentUserRole === 'admin'
+    || currentUserRole === 'manager'
+    || currentUserRole === 'staff';
+  const refundRequestReviewerLabel = currentUserRole === 'staff' ? 'manager review' : 'admin review';
   const linkedOrder = caseItem.orderId
     ? (orders.find((order) => order.id === caseItem.orderId) ?? null)
     : null;
+  const linkedReturn = caseItem.returnId
+    ? (returns.find((item) => item.id === caseItem.returnId) ?? null)
+    : returns.find((item) => item.caseId === caseItem.id) ?? null;
   const isRefundCaseType = caseItem.type.toLowerCase().includes('refund');
   const isRefundResolutionType = (caseItem.resolution?.type ?? '').toLowerCase().includes('refund');
   const needsRefundWorkflow = isRefundCaseType || isRefundResolutionType;
+  const refundedAmountForOrder = linkedOrder?.refund?.amount ?? 0;
   const remainingRefundableAmount = linkedOrder
-    ? Math.max(0, linkedOrder.totalAmount - (linkedOrder.refund?.amount ?? 0))
+    ? Math.max(0, linkedOrder.totalAmount - refundedAmountForOrder)
     : 0;
   const openRefundRequestsForOrder = caseItem.orderId
     ? refundRequests.filter((request) => (
@@ -741,9 +906,9 @@ export function CaseDetailPanel({
   const refundButtonActiveBg = '#DC2626';
   const refundButtonActiveBorder = '#B91C1C';
   const refundButtonActiveText = '#FFFFFF';
-  const refundButtonApprovedBg = 'rgba(22, 101, 52, 0.28)';
-  const refundButtonApprovedBorder = 'rgba(74, 222, 128, 0.35)';
-  const refundButtonApprovedText = '#34D399';
+  const refundButtonApprovedBg = isDark ? 'rgba(22, 101, 52, 0.28)' : '#DCFCE7';
+  const refundButtonApprovedBorder = isDark ? 'rgba(74, 222, 128, 0.35)' : '#86EFAC';
+  const refundButtonApprovedText = isDark ? '#34D399' : '#166534';
   const refundButtonBg = canStartRefundRequestFromCase
     ? refundButtonActiveBg
     : isApprovedRefundRequestForOrder
@@ -782,6 +947,8 @@ export function CaseDetailPanel({
     );
     setShowStatusModal(false);
   };
+
+  const selectedStatusColor = statusColorMap[caseItem.status] ?? colors.text.muted;
 
   const handleAddNote = async () => {
     if (!noteText.trim()) return;
@@ -852,30 +1019,6 @@ export function CaseDetailPanel({
     setShowResolutionModal(false);
   };
 
-  const assignedNames = useMemo(
-    () => parseAssignedNames(caseItem.assignedTo),
-    [caseItem.assignedTo]
-  );
-
-  const assignedNameSet = useMemo(
-    () => new Set(assignedNames.map((name) => name.toLowerCase())),
-    [assignedNames]
-  );
-
-  const assignableMembers = useMemo(
-    () => teamMembers.filter((member) => !assignedNameSet.has(member.name.toLowerCase())),
-    [assignedNameSet, teamMembers]
-  );
-
-  const filteredAssignableMembers = useMemo(() => {
-    const query = assigneeQuery.trim().toLowerCase();
-    if (!query) return [];
-    return assignableMembers.filter((member) =>
-      member.name.toLowerCase().includes(query)
-      || member.email.toLowerCase().includes(query)
-    );
-  }, [assigneeQuery, assignableMembers]);
-
   const handleAssignCase = async (assigneeNames?: string[]) => {
     const nextNames = Array.from(new Set((assigneeNames ?? []).map((name) => name.trim()).filter(Boolean)));
     const nextAssignedTo = nextNames.join(', ');
@@ -910,8 +1053,14 @@ export function CaseDetailPanel({
     if (onNavigateToOrder) {
       onNavigateToOrder(caseItem.orderId);
     } else {
-      router.push(`/orders/${caseItem.orderId}`);
+      router.push(`/order/${caseItem.orderId}`);
     }
+  };
+
+  const handleViewReturn = () => {
+    Haptics.selectionAsync();
+    if (!linkedReturn) return;
+    router.push(`/return/${linkedReturn.id}` as any);
   };
 
   const handleOpenOrderThread = async () => {
@@ -984,7 +1133,7 @@ export function CaseDetailPanel({
     setRefundRequestError('');
 
     const nowIso = new Date().toISOString();
-    const nextStatus = currentUser?.role === 'admin' ? 'approved' : 'submitted';
+    const nextStatus = currentUserRole === 'admin' ? 'approved' : 'submitted';
     const noteParts = [`Case ${caseItem.caseNumber}`];
     if (refundRequestNote.trim()) noteParts.push(refundRequestNote.trim());
     const combinedNote = noteParts.join(' - ');
@@ -1036,16 +1185,25 @@ export function CaseDetailPanel({
       }
 
       if (nextStatus === 'submitted' && collaborationBusinessId) {
+        const managerRecipientIds = teamMembers
+          .filter((member) => member.role === 'manager' && member.id !== currentUserId)
+          .map((member) => member.id);
         const adminRecipientIds = teamMembers
           .filter((member) => member.role === 'admin' && member.id !== currentUserId)
           .map((member) => member.id);
-        if (adminRecipientIds.length > 0) {
+        const recipientUserIds = currentUserRole === 'staff'
+          ? (managerRecipientIds.length > 0 ? managerRecipientIds : adminRecipientIds)
+          : adminRecipientIds;
+        const reviewStageLabel = currentUserRole === 'staff' && managerRecipientIds.length > 0
+          ? 'for manager review'
+          : 'for admin review';
+        if (recipientUserIds.length > 0) {
           void sendThreadNotification({
             businessId: collaborationBusinessId,
-            recipientUserIds: adminRecipientIds,
+            recipientUserIds,
             senderUserId: currentUserId,
             authorName: userName,
-            body: `${userName} submitted a refund request from ${caseItem.caseNumber} for ${linkedOrder.orderNumber} (${formatCurrency(parsedAmount)}).`,
+            body: `${userName} submitted a refund request from ${caseItem.caseNumber} for ${linkedOrder.orderNumber} (${formatCurrency(parsedAmount)}) ${reviewStageLabel}.`,
             entityType: 'order',
             entityDisplayName: linkedOrder.orderNumber,
             entityId: linkedOrder.id,
@@ -1326,7 +1484,67 @@ export function CaseDetailPanel({
             {caseItem.customerName}
           </Text>
         </View>
+
+        <View className="flex-row items-center justify-between">
+          <View className="flex-row items-center gap-2">
+            <DollarSign size={14} color={colors.text.muted} strokeWidth={1.8} />
+            <Text style={{ color: colors.text.secondary }} className="text-sm">Original Total</Text>
+          </View>
+          <Text style={{ color: colors.text.primary }} className="text-sm font-semibold text-right ml-4" numberOfLines={1}>
+            {linkedOrder ? formatCurrency(linkedOrder.totalAmount) : '—'}
+          </Text>
+        </View>
+
+        <View className="flex-row items-center justify-between">
+          <View className="flex-row items-center gap-2">
+            <DollarSign size={14} color={colors.text.muted} strokeWidth={1.8} />
+            <Text style={{ color: colors.text.secondary }} className="text-sm">Refunded</Text>
+          </View>
+          <Text
+            style={{ color: refundedAmountForOrder > 0 ? '#DC2626' : colors.text.primary }}
+            className="text-sm font-semibold text-right ml-4"
+            numberOfLines={1}
+          >
+            {linkedOrder ? formatCurrency(refundedAmountForOrder) : '—'}
+          </Text>
+        </View>
+
+        <View className="flex-row items-center justify-between">
+          <View className="flex-row items-center gap-2">
+            <DollarSign size={14} color={colors.text.muted} strokeWidth={1.8} />
+            <Text style={{ color: colors.text.secondary }} className="text-sm">Remaining Balance</Text>
+          </View>
+          <Text style={{ color: colors.text.primary }} className="text-sm font-semibold text-right ml-4" numberOfLines={1}>
+            {linkedOrder ? formatCurrency(remainingRefundableAmount) : '—'}
+          </Text>
+        </View>
       </View>
+
+      {linkedReturn ? (
+        <View className="mt-3 pt-3" style={{ borderTopWidth: 1, borderTopColor: colors.border.light }}>
+          <View className="flex-row items-center justify-between gap-3">
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase tracking-wider mb-1.5">
+                Linked Return
+              </Text>
+              <Text style={{ color: colors.text.primary }} className="text-sm font-semibold" numberOfLines={1}>
+                {linkedReturn.ref} · {linkedReturn.status.replace(/_/g, ' ')}
+              </Text>
+              <Text style={{ color: colors.text.secondary }} className="text-xs mt-1" numberOfLines={1}>
+                {linkedReturn.shippingPayer === 'seller' ? 'Seller pays shipping' : 'Customer pays shipping'}
+              </Text>
+            </View>
+            <Pressable
+              onPress={handleViewReturn}
+              className="px-3 py-1.5 rounded-full flex-row items-center gap-1.5 active:opacity-80"
+              style={{ backgroundColor: linkedOrderActionBg }}
+            >
+              <RefreshCcw size={12} color={linkedOrderActionTextColor} strokeWidth={2} />
+              <Text className="text-xs font-semibold" style={{ color: linkedOrderActionTextColor }}>View Return</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
 
       {caseItem.issueSummary && (
         <View className="mt-3 pt-3" style={{ borderTopWidth: 1, borderTopColor: colors.border.light }}>
@@ -1468,14 +1686,19 @@ export function CaseDetailPanel({
     >
       <View className="flex-row items-center gap-2 mb-3">
         <Check size={16} color={CASE_STATUS_COLORS['Resolved'] || '#10B981'} strokeWidth={2} />
-        <Text style={{ color: CASE_STATUS_COLORS['Resolved'] || '#10B981' }} className="text-xs font-semibold uppercase tracking-wider">
+        <Text
+          style={{ color: CASE_STATUS_COLORS['Resolved'] || '#10B981' }}
+          className="text-xs font-semibold uppercase tracking-wider"
+        >
           Resolution
         </Text>
       </View>
       <View className="gap-3">
         <View className="flex-row justify-between">
           <Text style={{ color: colors.text.secondary }} className="text-sm">Resolution Type</Text>
-          <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">{caseItem.resolution.type}</Text>
+          <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">
+            {caseItem.resolution.type}
+          </Text>
         </View>
         {caseItem.resolution.value != null && caseItem.resolution.value > 0 && (
           <View className="flex-row justify-between">
@@ -1545,44 +1768,67 @@ export function CaseDetailPanel({
       <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase tracking-wider mb-3">
         Update Status
       </Text>
-      <View className="gap-2">
-        {sortedCaseStatuses.map((statusOption) => {
-          const statusName = statusOption.name;
-          const isSelected = statusName === caseItem.status;
-          const color = statusColorMap[statusName] ?? colors.text.muted;
-          return (
-            <Pressable
-              key={statusName}
-              onPress={() => handleStatusChange(statusName)}
-              className="flex-row items-center px-4 py-3 rounded-full active:opacity-70"
-              style={{
-                backgroundColor: isSelected ? color : colors.bg.secondary,
-                borderWidth: isSelected ? 0 : 1,
-                borderColor: colors.border.light,
-              }}
-            >
-              <View
-                className="w-6 h-6 rounded-full items-center justify-center mr-3"
-                style={isSelected ? { backgroundColor: 'rgba(255,255,255,0.3)' } : { backgroundColor: color + '30' }}
+      <Pressable
+        onPress={() => setShowStatusModal((value) => !value)}
+        className="flex-row items-center px-4 py-3 rounded-full active:opacity-70"
+        style={{
+          backgroundColor: selectedStatusColor + '20',
+          borderWidth: 1,
+          borderColor: selectedStatusColor + '55',
+        }}
+      >
+        <View
+          className="w-6 h-6 rounded-full items-center justify-center mr-3"
+          style={{ backgroundColor: selectedStatusColor + '30' }}
+        >
+          <View className="w-2 h-2 rounded-full" style={{ backgroundColor: selectedStatusColor }} />
+        </View>
+        <Text className="font-semibold text-sm flex-1" style={{ color: selectedStatusColor }}>
+          {caseItem.status}
+        </Text>
+        <ChevronDown size={18} color={selectedStatusColor} strokeWidth={2} />
+      </Pressable>
+      {showStatusModal ? (
+        <View className="mt-2 gap-2">
+          {sortedCaseStatuses.map((statusOption) => {
+            const statusName = statusOption.name;
+            const isSelected = statusName === caseItem.status;
+            const color = statusColorMap[statusName] ?? colors.text.muted;
+            return (
+              <Pressable
+                key={statusName}
+                onPress={() => handleStatusChange(statusName)}
+                className="w-full py-3 px-4 rounded-full active:opacity-70 flex-row items-center justify-between"
+                style={{
+                  backgroundColor: isSelected ? color + '20' : colors.bg.secondary,
+                  borderWidth: 1,
+                  borderColor: isSelected ? color + '55' : colors.border.light,
+                }}
               >
-                {isSelected && <Check size={14} color="#FFFFFF" strokeWidth={3} />}
-                {!isSelected && (
+                <View className="flex-row items-center gap-3 flex-1 min-w-0">
                   <View
-                    className="w-2 h-2 rounded-full"
-                    style={{ backgroundColor: color }}
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: 4,
+                      backgroundColor: color,
+                      opacity: isSelected ? 1 : 0.55,
+                    }}
                   />
-                )}
-              </View>
-              <Text
-                className="font-semibold text-sm flex-1"
-                style={{ color: isSelected ? '#FFFFFF' : colors.text.secondary }}
-              >
-                {statusName}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+                  <Text
+                    style={{ color: isSelected ? color : colors.text.primary }}
+                    className="text-sm font-semibold flex-1"
+                    numberOfLines={1}
+                  >
+                    {statusName}
+                  </Text>
+                </View>
+                {isSelected ? <Check size={16} color={color} strokeWidth={2.4} /> : null}
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
     </View>
   );
 
@@ -1753,15 +1999,13 @@ export function CaseDetailPanel({
                     <Text style={{ color: colors.text.primary, fontSize: 24, fontWeight: '700' }} numberOfLines={1}>
                       {caseItem.caseNumber}
                     </Text>
-                    <Pressable
-                      onPress={() => setShowStatusModal(true)}
-                      className="active:opacity-80"
+                    <View
                       style={{ backgroundColor: statusColor + '20', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 }}
                     >
                       <Text style={{ color: statusColor, fontSize: 13, fontWeight: '700' }}>
                         {caseItem.status.toLowerCase()}
                       </Text>
-                    </Pressable>
+                    </View>
                     <View
                       style={{ backgroundColor: CASE_PRIORITY_COLORS[caseItem.priority ?? 'Low'] + '20', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 }}
                     >
@@ -1945,7 +2189,7 @@ export function CaseDetailPanel({
         className="flex-1"
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
-          paddingBottom: 40,
+          paddingBottom: isWebDesktop ? 40 : 0,
           width: '100%',
           maxWidth: isWebDesktop ? webMaxWidth : undefined,
           alignSelf: isWebDesktop ? 'flex-start' : undefined,
@@ -1971,7 +2215,13 @@ export function CaseDetailPanel({
             </View>
           </View>
         ) : (
+          <>
           <View className="px-5 py-4">
+            {/* Status Update Card */}
+            <View className="mb-4">
+              {updateStatusSection}
+            </View>
+
             {/* Case Header Card */}
             <View
               className="p-4 rounded-xl mb-4"
@@ -2043,12 +2293,8 @@ export function CaseDetailPanel({
                 <Text style={{ color: colors.text.muted }} className="text-[9px] font-bold uppercase tracking-widest mb-2">
                   Status
                 </Text>
-                <Pressable
-                  onPress={() => {
-                    Haptics.selectionAsync();
-                    setShowStatusModal(true);
-                  }}
-                  className="self-start px-3.5 py-2 rounded-full active:opacity-70 flex-row items-center gap-2"
+                <View
+                  className="self-start px-3.5 py-2 rounded-full flex-row items-center gap-2"
                   style={{ backgroundColor: statusColor + '20', borderWidth: 1, borderColor: statusColor + '35' }}
                 >
                   <View
@@ -2062,7 +2308,7 @@ export function CaseDetailPanel({
                   <Text style={{ color: statusColor }} className="text-xs font-bold uppercase tracking-wider" numberOfLines={1}>
                     {caseItem.status}
                   </Text>
-                </Pressable>
+                </View>
               </View>
             </View>
 
@@ -2286,6 +2532,37 @@ export function CaseDetailPanel({
                   </View>
                   <Text style={{ color: colors.text.primary }} className="text-sm font-semibold text-right ml-4" numberOfLines={1}>
                     {caseItem.customerName}
+                  </Text>
+                </View>
+                <View className="flex-row items-center justify-between">
+                  <View className="flex-row items-center gap-2">
+                    <DollarSign size={14} color={colors.text.muted} strokeWidth={1.8} />
+                    <Text style={{ color: colors.text.secondary }} className="text-sm">Original Total</Text>
+                  </View>
+                  <Text style={{ color: colors.text.primary }} className="text-sm font-semibold text-right ml-4" numberOfLines={1}>
+                    {linkedOrder ? formatCurrency(linkedOrder.totalAmount) : '—'}
+                  </Text>
+                </View>
+                <View className="flex-row items-center justify-between">
+                  <View className="flex-row items-center gap-2">
+                    <DollarSign size={14} color={colors.text.muted} strokeWidth={1.8} />
+                    <Text style={{ color: colors.text.secondary }} className="text-sm">Refunded</Text>
+                  </View>
+                  <Text
+                    style={{ color: refundedAmountForOrder > 0 ? '#DC2626' : colors.text.primary }}
+                    className="text-sm font-semibold text-right ml-4"
+                    numberOfLines={1}
+                  >
+                    {linkedOrder ? formatCurrency(refundedAmountForOrder) : '—'}
+                  </Text>
+                </View>
+                <View className="flex-row items-center justify-between">
+                  <View className="flex-row items-center gap-2">
+                    <DollarSign size={14} color={colors.text.muted} strokeWidth={1.8} />
+                    <Text style={{ color: colors.text.secondary }} className="text-sm">Remaining Balance</Text>
+                  </View>
+                  <Text style={{ color: colors.text.primary }} className="text-sm font-semibold text-right ml-4" numberOfLines={1}>
+                    {linkedOrder ? formatCurrency(remainingRefundableAmount) : '—'}
                   </Text>
                 </View>
               </View>
@@ -2590,56 +2867,9 @@ export function CaseDetailPanel({
               </View>
             )}
 
-            {/* Status Update Card */}
-            <View
-              className="p-4 rounded-xl mb-4"
-              style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
-            >
-              <Text style={{ color: colors.text.muted }} className="text-xs uppercase font-semibold mb-3">
-                Update Status
-              </Text>
-              <View className="gap-2">
-                {sortedCaseStatuses.map((statusOption) => {
-                  const statusName = statusOption.name;
-                  const isSelected = statusName === caseItem.status;
-                  const color = statusColorMap[statusName] ?? colors.text.muted;
-                  return (
-                    <Pressable
-                      key={statusName}
-                      onPress={() => handleStatusChange(statusName)}
-                      className="w-full py-3 px-4 rounded-full active:opacity-70 flex-row items-center justify-between"
-                      style={{
-                        backgroundColor: isSelected ? color + '24' : colors.bg.secondary,
-                        borderWidth: 1,
-                        borderColor: isSelected ? color + '55' : colors.border.light,
-                      }}
-                    >
-                      <View className="flex-row items-center gap-2">
-                        <View
-                          style={{
-                            width: 8,
-                            height: 8,
-                            borderRadius: 4,
-                            backgroundColor: color,
-                          }}
-                        />
-                        <Text
-                          style={{ color: isSelected ? color : colors.text.primary }}
-                          className="text-sm font-semibold"
-                        >
-                          {statusName}
-                        </Text>
-                      </View>
-                      {isSelected ? <Check size={16} color={color} strokeWidth={2.4} /> : null}
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </View>
-
-            {commentsSection}
-
           </View>
+          {commentsSection}
+          </>
         )}
       </ScrollView>
 
@@ -2678,6 +2908,9 @@ export function CaseDetailPanel({
               </Text>
               <Text style={{ color: colors.text.secondary }} className="text-xs mt-1">
                 Remaining refundable: {formatCurrency(remainingRefundableAmount)}
+              </Text>
+              <Text style={{ color: colors.text.muted }} className="text-[11px] mt-2">
+                {`This request will be sent for ${refundRequestReviewerLabel}.`}
               </Text>
             </View>
 
@@ -2774,51 +3007,6 @@ export function CaseDetailPanel({
             </View>
           </View>
         </KeyboardAvoidingView>
-      </Modal>
-
-      {/* Status Modal */}
-      <Modal visible={showStatusModal} transparent animationType="fade" onRequestClose={() => setShowStatusModal(false)}>
-        <Pressable
-          className="flex-1 items-center justify-center"
-          style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
-          onPress={() => setShowStatusModal(false)}
-        >
-          <View
-            className="w-80 rounded-xl p-4"
-            style={{ backgroundColor: colors.bg.card }}
-          >
-            <Text style={{ color: colors.text.primary }} className="text-lg font-bold mb-4 text-center">
-              Update Status
-            </Text>
-            {sortedCaseStatuses.map((statusOption) => {
-              const statusName = statusOption.name;
-              const color = statusColorMap[statusName] ?? colors.text.muted;
-              const isSelected = statusName === caseItem.status;
-              return (
-                <Pressable
-                  key={statusName}
-                  onPress={() => handleStatusChange(statusName)}
-                  className="flex-row items-center py-3 px-4 rounded-lg mb-2 active:opacity-70"
-                  style={{
-                    backgroundColor: isSelected ? color + '20' : colors.bg.secondary,
-                  }}
-                >
-                  <View
-                    className="w-3 h-3 rounded-full mr-3"
-                    style={{ backgroundColor: color }}
-                  />
-                  <Text
-                    style={{ color: isSelected ? color : colors.text.primary }}
-                    className="font-medium flex-1"
-                  >
-                    {statusName}
-                  </Text>
-                  {isSelected && <Check size={18} color={color} strokeWidth={2} />}
-                </Pressable>
-              );
-            })}
-          </View>
-        </Pressable>
       </Modal>
 
       {/* Delete Confirmation Modal */}
@@ -2927,7 +3115,13 @@ export function CaseDetailPanel({
       </Modal>
 
       {/* Add Resolution Modal */}
-      <Modal visible={showResolutionModal} transparent animationType="fade" onRequestClose={() => { setShowResolutionModal(false); setResolutionType('No Action Required'); setResolutionNotes(''); setResolutionValue(''); }}>
+      <Modal visible={showResolutionModal} transparent animationType="fade" onRequestClose={() => {
+        setShowResolutionModal(false);
+        setShowResolutionTypeMenu(false);
+        setResolutionType('No Action Required');
+        setResolutionNotes('');
+        setResolutionValue('');
+      }}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           className="flex-1 items-center justify-center px-6"
@@ -2937,6 +3131,7 @@ export function CaseDetailPanel({
             className="absolute inset-0"
             onPress={() => {
               setShowResolutionModal(false);
+              setShowResolutionTypeMenu(false);
               setResolutionType('No Action Required');
               setResolutionNotes('');
               setResolutionValue('');
@@ -2948,7 +3143,7 @@ export function CaseDetailPanel({
           >
             <View className="flex-row items-center gap-2 mb-5">
               <Check size={20} color="#10B981" strokeWidth={2} />
-              <Text style={{ color: colors.text.primary }} className="text-xl font-bold tracking-tight">
+              <Text style={{ color: colors.text.primary }} className="text-xl font-semibold tracking-tight">
                 Add Resolution
               </Text>
             </View>
@@ -2957,38 +3152,63 @@ export function CaseDetailPanel({
             <Text style={{ color: colors.text.muted }} className="text-xs uppercase font-semibold mb-2">
               Resolution Type
             </Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={{ flexGrow: 0, marginBottom: 16 }}
-              contentContainerStyle={{ gap: 8 }}
+            <View style={{ marginBottom: 16 }}
             >
-              {resolutionTypeOptions.map((type) => {
-                const isSelected = resolutionType === type;
-                return (
-                  <Pressable
-                    key={type}
-                    onPress={() => {
-                      Haptics.selectionAsync();
-                      setResolutionType(type);
-                    }}
-                    className="px-4 py-2 rounded-full active:opacity-80"
-                    style={{
-                      backgroundColor: isSelected ? '#10B981' : colors.bg.secondary,
-                      borderWidth: 1,
-                      borderColor: isSelected ? '#10B981' : colors.border.light,
-                    }}
-                  >
-                    <Text
-                      style={{ color: isSelected ? '#FFFFFF' : colors.text.secondary }}
-                      className="text-sm font-medium"
-                    >
-                      {type}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
+              <Pressable
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setShowResolutionTypeMenu((current) => !current);
+                }}
+                className="flex-row items-center justify-between py-3 px-4 rounded-xl active:opacity-80"
+                style={{
+                  backgroundColor: colors.bg.secondary,
+                  borderWidth: 1,
+                  borderColor: showResolutionTypeMenu ? colors.accent.primary : colors.border.light,
+                }}
+              >
+                <Text style={{ color: colors.text.primary }} className="text-sm font-medium">
+                  {resolutionType}
+                </Text>
+                <ChevronDown size={18} color={colors.text.muted} strokeWidth={1.8} />
+              </Pressable>
+
+              {showResolutionTypeMenu ? (
+                <View
+                  className="mt-2 rounded-xl overflow-hidden"
+                  style={{
+                    backgroundColor: colors.bg.secondary,
+                    borderWidth: 1,
+                    borderColor: colors.border.light,
+                  }}
+                >
+                  {resolutionTypeOptions.map((type) => {
+                    const isSelected = resolutionType === type;
+                    return (
+                      <Pressable
+                        key={type}
+                        onPress={() => {
+                          Haptics.selectionAsync();
+                          setResolutionType(type);
+                          setShowResolutionTypeMenu(false);
+                        }}
+                        className="flex-row items-center justify-between px-4 py-3 active:opacity-80"
+                        style={{
+                          backgroundColor: isSelected ? (isDark ? colors.bg.card : '#F9FAFB') : colors.bg.secondary,
+                        }}
+                      >
+                        <Text
+                          style={{ color: isSelected ? colors.text.primary : colors.text.secondary }}
+                          className="text-sm font-medium"
+                        >
+                          {type}
+                        </Text>
+                        {isSelected ? <Check size={16} color={colors.accent.primary} strokeWidth={2.2} /> : null}
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ) : null}
+            </View>
 
             {/* Resolution Value (for refunds/credits) */}
             {(resolutionType === 'Refund Issued' || resolutionType === 'Credit Applied') && (
@@ -3039,6 +3259,7 @@ export function CaseDetailPanel({
               <Pressable
                 onPress={() => {
                   setShowResolutionModal(false);
+                  setShowResolutionTypeMenu(false);
                   setResolutionType('No Action Required');
                   setResolutionNotes('');
                   setResolutionValue('');
@@ -3053,9 +3274,12 @@ export function CaseDetailPanel({
               <Pressable
                 onPress={handleAddResolution}
                 className="flex-1 py-4 rounded-full active:opacity-80"
-                style={{ backgroundColor: '#10B981' }}
+                style={{ backgroundColor: isDark ? '#FFFFFF' : '#111111' }}
               >
-                <Text className="text-white text-center font-semibold">
+                <Text
+                  className="text-center font-semibold"
+                  style={{ color: isDark ? '#111111' : '#FFFFFF' }}
+                >
                   Save Resolution
                 </Text>
               </Pressable>

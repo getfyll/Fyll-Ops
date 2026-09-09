@@ -1,9 +1,21 @@
 {
-  "buildCommand": "npx expo export -p web && cp web/OneSignalSDKWorker.js dist/OneSignalSDKWorker.js && cp web/OneSignalSDKUpdaterWorker.js dist/OneSignalSDKUpdaterWorker.js",
+  "buildCommand": "npm run build:vercel",
   "installCommand": "npm install --legacy-peer-deps",
   "outputDirectory": "dist",
   "framework": null,
   "rewrites": [
+    {
+      "source": "/service-worker.js",
+      "destination": "/service-worker.js"
+    },
+    {
+      "source": "/onesignal/:path*",
+      "destination": "/onesignal/:path*"
+    },
+    {
+      "source": "/OneSignalSDK.sw.js",
+      "destination": "/OneSignalSDK.sw.js"
+    },
     {
       "source": "/OneSignalSDKWorker.js",
       "destination": "/OneSignalSDKWorker.js"
@@ -11,6 +23,10 @@
     {
       "source": "/OneSignalSDKUpdaterWorker.js",
       "destination": "/OneSignalSDKUpdaterWorker.js"
+    },
+    {
+      "source": "/integrations/fyll-checkout/:path*",
+      "destination": "/api/integrations/fyll-checkout/:path*"
     },
     {
       "source": "/:path*",

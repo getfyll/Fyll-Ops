@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView } from 'react-native';
-import { X, MoreVertical, Truck, Package, User, Calendar, Clock, Paperclip, FileText, Image as ImageIcon, CheckCircle, XCircle, Send, PlusCircle } from 'lucide-react-native';
+import { View, Text, Pressable, ScrollView, Modal } from 'react-native';
+import { X, MoreVertical, Truck, Package, Paperclip, FileText, Image as ImageIcon, CheckCircle, XCircle, Send, PlusCircle, User, Calendar, Clock, ChevronRight } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import useFyllStore, { type Procurement, formatCurrency } from '@/lib/state/fyll-store';
+import useAuthStore from '@/lib/state/auth-store';
 import { useStatsColors } from '@/lib/theme';
 import { openAttachmentPath } from '@/lib/storage-attachments';
 
@@ -95,21 +96,46 @@ const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
   cancelled: { bg: 'rgba(239, 68, 68, 0.16)',  text: '#EF4444' },
 };
 
+const capitalizeDisplayValue = (value: string): string => {
+  if (!value) return value;
+  return value.charAt(0).toUpperCase() + value.slice(1);
+};
+
+const SYSTEM_CHARGE_PRODUCT_IDS = new Set(['charge-transfer-fees', 'charge-stamp-duty']);
+const isSystemChargeItem = (productId: string): boolean => SYSTEM_CHARGE_PRODUCT_IDS.has(productId);
+
+const formatPanelDate = (value: string | undefined): string => {
+  if (!value) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [year, month, day] = value.split('-');
+    return `${day}/${month}/${year}`;
+  }
+  const parsed = new Date(value).getTime();
+  if (!Number.isFinite(parsed)) return value;
+  return new Date(parsed).toLocaleDateString('en-GB');
+};
+
 // ── props ──
 
 interface ProcurementDetailPanelProps {
   procurementId: string;
   compact?: boolean;
+  statusOptions?: string[];
   onClose: () => void;
   onEdit: (id: string) => void;
   onDelete: (id: string) => void;
+  onMerge?: (id: string) => void;
+  onStatusChange?: (id: string, status: string) => void;
 }
 
-export function ProcurementDetailPanel({ procurementId, compact = false, onClose, onEdit, onDelete }: ProcurementDetailPanelProps) {
+export function ProcurementDetailPanel({ procurementId, compact = false, statusOptions = [], onClose, onEdit, onDelete, onMerge, onStatusChange }: ProcurementDetailPanelProps) {
   const colors = useStatsColors();
+  const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
   const procurements = useFyllStore((s) => s.procurements);
   const products = useFyllStore((s) => s.products);
+  const updateProcurement = useFyllStore((s) => s.updateProcurement);
   const [showActionMenu, setShowActionMenu] = useState<boolean>(false);
+  const [showPoItemsModal, setShowPoItemsModal] = useState<boolean>(false);
 
   const procurement = useMemo(() => procurements.find((p) => p.id === procurementId) ?? null, [procurements, procurementId]);
   const poNumber = useMemo(() => procurement ? resolvePONumber(procurement) : '', [procurement]);
@@ -130,6 +156,7 @@ export function ProcurementDetailPanel({ procurementId, compact = false, onClose
   }, [procurement]);
 
   const statusColors = STATUS_COLORS[status.toLowerCase()] ?? { bg: 'rgba(0,0,0,0.07)', text: '#555555' };
+  const visibleStatusOptions = statusOptions.length > 0 ? statusOptions : ['Draft', 'Sent', 'Confirmed', 'Received', 'Cancelled'];
   const heroPadding = compact ? 16 : 20;
   const heroAmountFontSize = compact ? 30 : 36;
   const heroAmountLineHeight = compact ? 36 : 42;
@@ -141,7 +168,9 @@ export function ProcurementDetailPanel({ procurementId, compact = false, onClose
 
   const itemRows = useMemo(() => {
     if (!procurement) return [];
-    return procurement.items.map((item) => {
+    return procurement.items
+    .filter((item) => !isSystemChargeItem(item.productId))
+    .map((item, index) => {
       // Prefer stored names (set at creation time) over live lookup
       const storedName = item.productName;
       const storedVariant = item.variantName ?? '';
@@ -151,18 +180,60 @@ export function ProcurementDetailPanel({ procurementId, compact = false, onClose
       const resolvedName = product?.name;
       const resolvedVariant = variant ? Object.values(variant.variableValues ?? {}).join(', ') : '';
 
-      const name = storedName ?? resolvedName ?? null;
+      const fallbackName = item.productId.startsWith('charge-payment-') ? `Payment ${index + 1}` : `Line item ${index + 1}`;
+      const name = storedName?.trim() || resolvedName?.trim() || fallbackName;
       const variantLabel = storedVariant || resolvedVariant;
+      const quantityPurchased = item.quantity && item.quantity > 0 ? item.quantity : 0;
+      const quantityReceived = item.quantityReceived && item.quantityReceived > 0 ? item.quantityReceived : quantityPurchased;
 
       return {
-        id: `${item.productId}-${item.variantId}`,
-        name: name ? (variantLabel ? `${name} — ${variantLabel}` : name) : null,
+        id: `${item.productId}-${item.variantId}-${index}`,
+        name: variantLabel ? `${name} — ${variantLabel}` : name,
+        quantityPurchased,
+        quantityReceived,
+        expectedProfit: item.expectedProfit ?? 0,
         costAtPurchase: item.costAtPurchase,
         total: item.costAtPurchase,
+        paymentDate: formatPanelDate(item.paymentDate),
+        isPaymentLine: item.productId.startsWith('charge-payment-'),
       };
-    // Only show rows where we have a valid name
-    }).filter((row) => row.name !== null) as { id: string; name: string; costAtPurchase: number; total: number }[];
+    }) as {
+      id: string;
+      name: string;
+      quantityPurchased: number;
+      quantityReceived: number;
+      expectedProfit: number;
+      costAtPurchase: number;
+      total: number;
+      paymentDate: string;
+      isPaymentLine: boolean;
+    }[];
   }, [procurement, products]);
+  const paymentLineRows = useMemo(() => itemRows.filter((row) => row.isPaymentLine), [itemRows]);
+  const poItemRows = useMemo(() => itemRows.filter((row) => !row.isPaymentLine), [itemRows]);
+  const procurementChargeTotals = useMemo(() => {
+    if (!procurement) return { transfer: 0, stampDuty: 0, total: 0, count: 0 };
+    return procurement.items.reduce((acc, item) => {
+      if (!isSystemChargeItem(item.productId)) {
+        acc.count += 1;
+      }
+      if (item.productId === 'charge-transfer-fees') {
+        acc.transfer += item.costAtPurchase;
+      } else if (item.productId === 'charge-stamp-duty') {
+        acc.stampDuty += item.costAtPurchase;
+      }
+      acc.total = acc.transfer + acc.stampDuty;
+      return acc;
+    }, { transfer: 0, stampDuty: 0, total: 0, count: 0 });
+  }, [procurement]);
+  const paymentBreakdownTotal = useMemo(
+    () => paymentLineRows.reduce((sum, row) => sum + row.total, 0) + procurementChargeTotals.total,
+    [paymentLineRows, procurementChargeTotals]
+  );
+  const nonChargeLineCount = useMemo(
+    () => procurement?.items.filter((item) => !isSystemChargeItem(item.productId)).length ?? 0,
+    [procurement]
+  );
 
   const cleanNotes = useMemo(
     () => (procurement?.notes ?? '').replace(/\[([a-z_]+):([^\]]+)\]/gi, '').trim(),
@@ -275,6 +346,18 @@ export function ProcurementDetailPanel({ procurementId, compact = false, onClose
                 >
                   <Text style={{ color: colors.text.primary }} className="text-sm font-medium">Edit</Text>
                 </Pressable>
+                {onMerge ? (
+                  <Pressable
+                    onPress={() => {
+                      setShowActionMenu(false);
+                      onMerge(procurementId);
+                    }}
+                    className="px-3 py-2.5"
+                    style={{ borderBottomWidth: 1, borderBottomColor: colors.divider }}
+                  >
+                    <Text style={{ color: colors.text.primary }} className="text-sm font-medium">Merge into another PO</Text>
+                  </Pressable>
+                ) : null}
                 <Pressable
                   onPress={() => {
                     setShowActionMenu(false);
@@ -305,36 +388,78 @@ export function ProcurementDetailPanel({ procurementId, compact = false, onClose
         {/* Hero card */}
         <View style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.divider }}>
           <View style={{ padding: heroPadding, borderBottomWidth: 1, borderBottomColor: colors.divider }}>
-            <Text style={{ color: colors.text.muted, fontSize: 11, fontWeight: '400', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
-              {poName}
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ color: colors.text.muted, fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
+                  Procurement
+                </Text>
+                <Text style={{ color: colors.text.primary, fontSize: compact ? 18 : 20, fontWeight: '600', lineHeight: compact ? 22 : 24 }} numberOfLines={2}>
+                  {capitalizeDisplayValue(poName)}
+                </Text>
+                <Text style={{ color: colors.text.secondary, fontSize: compact ? 12 : 13, marginTop: 4 }} numberOfLines={1}>
+                  {capitalizeDisplayValue(procurement.supplierName || 'No supplier')}
+                </Text>
+              </View>
+              <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 100, backgroundColor: statusColors.bg }}>
+                <Text style={{ color: statusColors.text, fontSize: 11, fontWeight: '600' }}>{capitalizeDisplayValue(status)}</Text>
+              </View>
+            </View>
             <Text style={{ color: colors.text.primary, fontSize: heroAmountFontSize, fontWeight: '500', lineHeight: heroAmountLineHeight }}>
               {formatCurrency(procurement.totalCost)}
             </Text>
-            <Text style={{ color: colors.text.muted, fontSize: compact ? 12 : 13, fontWeight: '500', marginTop: 4 }}>
-              {poNumber}
+            <Text style={{ color: colors.text.muted, fontSize: compact ? 12 : 13, fontWeight: '500', marginTop: 6 }}>
+              {poNumber} · Paid on {paidDate}
             </Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8, gap: 8 }}>
-              <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 100, backgroundColor: statusColors.bg }}>
-                <Text style={{ color: statusColors.text, fontSize: 11, fontWeight: '600' }}>{status}</Text>
-              </View>
-              <Text style={{ color: colors.text.secondary, fontSize: compact ? 12 : 13 }}>{paidDate}</Text>
-            </View>
           </View>
-
-          {/* Cost / qty summary */}
           <View style={{ flexDirection: 'row' }}>
-            <View style={{ flex: 1, paddingHorizontal: 20, paddingVertical: 14 }}>
-              <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }}>PO Number</Text>
-              <Text style={{ color: colors.text.primary, fontSize: compact ? 14 : 16, fontWeight: '700', marginTop: 3 }}>{poNumber}</Text>
-            </View>
-            <View style={{ width: 1, backgroundColor: colors.divider }} />
-            <View style={{ flex: 1, paddingHorizontal: 20, paddingVertical: 14 }}>
-              <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }}>Line Items</Text>
-              <Text style={{ color: colors.text.primary, fontSize: compact ? 14 : 16, fontWeight: '700', marginTop: 3 }}>
-                {procurement.items.length}
+            <View style={{ flex: 1, paddingHorizontal: 16, paddingVertical: 14 }}>
+              <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }}>Supplier</Text>
+              <Text style={{ color: colors.text.primary, fontSize: compact ? 13 : 15, fontWeight: '600', marginTop: 3 }} numberOfLines={1}>
+                {capitalizeDisplayValue(procurement.supplierName || 'No supplier')}
               </Text>
             </View>
+            <View style={{ width: 1, backgroundColor: colors.divider }} />
+            <View style={{ flex: 1, paddingHorizontal: 16, paddingVertical: 14 }}>
+              <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }}>Line Items</Text>
+              <Text style={{ color: colors.text.primary, fontSize: compact ? 13 : 15, fontWeight: '600', marginTop: 3 }}>
+                {nonChargeLineCount > 0 ? nonChargeLineCount : procurement.items.length}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Status */}
+        <View style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.divider, padding: 16 }}>
+          <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>Status</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {visibleStatusOptions.map((option) => {
+              const optionColors = STATUS_COLORS[option.toLowerCase()] ?? { bg: colors.bg.input, text: colors.text.secondary };
+              const isSelected = status.trim().toLowerCase() === option.trim().toLowerCase();
+              return (
+                <Pressable
+                  key={option}
+                  onPress={() => {
+                    if (isSelected) return;
+                    onStatusChange?.(procurement.id, option);
+                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }}
+                  style={{
+                    height: 34,
+                    paddingHorizontal: 12,
+                    borderRadius: 999,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: isSelected ? optionColors.bg : colors.bg.input,
+                    borderWidth: 1,
+                    borderColor: isSelected ? optionColors.text : colors.divider,
+                  }}
+                >
+                  <Text style={{ color: isSelected ? optionColors.text : colors.text.secondary, fontSize: 12, fontWeight: '600' }}>
+                    {capitalizeDisplayValue(option)}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
         </View>
 
@@ -344,55 +469,179 @@ export function ProcurementDetailPanel({ procurementId, compact = false, onClose
             <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }}>Details</Text>
           </View>
           {([
-            { icon: <FileText size={15} color={colors.text.tertiary} strokeWidth={2} />, label: 'PO Name', value: poName },
-            { icon: <User size={15} color={colors.text.tertiary} strokeWidth={2} />, label: 'Supplier', value: procurement.supplierName || '—' },
-            { icon: <Calendar size={15} color={colors.text.tertiary} strokeWidth={2} />, label: 'Date Paid', value: paidDate },
-            { icon: <Calendar size={15} color={colors.text.tertiary} strokeWidth={2} />, label: 'Date Received', value: receivedDate },
-            { icon: <Clock size={15} color={colors.text.tertiary} strokeWidth={2} />, label: 'Created', value: createdAt || '—' },
+            { label: 'PO Name', value: poName, icon: <FileText size={compact ? 12 : 13} color={colors.text.tertiary} strokeWidth={2} /> },
+            { label: 'Supplier', value: procurement.supplierName || '—', icon: <User size={compact ? 12 : 13} color={colors.text.tertiary} strokeWidth={2} /> },
+            { label: 'Status', value: status, icon: <Truck size={compact ? 12 : 13} color={colors.text.tertiary} strokeWidth={2} /> },
+            { label: 'Date Paid', value: paidDate || '—', icon: <Calendar size={compact ? 12 : 13} color={colors.text.tertiary} strokeWidth={2} /> },
+            { label: 'Date Received', value: receivedDate || '—', icon: <Calendar size={compact ? 12 : 13} color={colors.text.tertiary} strokeWidth={2} /> },
+            { label: 'Created', value: createdAt || '—', icon: <Clock size={compact ? 12 : 13} color={colors.text.tertiary} strokeWidth={2} /> },
           ] as const).map((row, index) => (
             <View
               key={row.label}
-              style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: index === 0 ? 1 : 0, borderTopColor: colors.divider, gap: 12 }}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'flex-start',
+                justifyContent: 'space-between',
+                paddingHorizontal: 16,
+                paddingVertical: compact ? 9 : 10,
+                borderTopWidth: index === 0 ? 1 : 0,
+                borderTopColor: colors.divider,
+                gap: 10,
+              }}
             >
-              <View style={{ width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg.input, borderWidth: 1, borderColor: colors.divider }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 {row.icon}
+                <Text style={{ color: colors.text.secondary, fontSize: compact ? 12 : 13 }}>{row.label}</Text>
               </View>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ color: colors.text.muted, fontSize: 11 }}>{row.label}</Text>
-                <Text style={{ color: colors.text.primary, fontSize: detailValueFontSize, fontWeight: '600', marginTop: 1 }} numberOfLines={1}>{row.value}</Text>
-              </View>
+              <Text style={{ color: colors.text.primary, fontSize: compact ? 12 : detailValueFontSize, fontWeight: '600', flex: 1, textAlign: 'right', marginLeft: 16 }}>
+                {capitalizeDisplayValue(row.value)}
+              </Text>
             </View>
           ))}
         </View>
 
-        {/* Items */}
-        {itemRows.length > 0 ? (
-          <View style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.divider }}>
-            <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 }}>
-              <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }}>Items</Text>
+        {/* PO Items (collapsed — opens a dedicated list) */}
+        {poItemRows.length > 0 ? (
+          <Pressable
+            onPress={() => setShowPoItemsModal(true)}
+            style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.divider }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14 }}>
+              <View>
+                <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }}>PO Items</Text>
+                <Text style={{ color: colors.text.primary, fontSize: compact ? 12 : 13, fontWeight: '600', marginTop: 4 }}>
+                  {poItemRows.length} item{poItemRows.length === 1 ? '' : 's'}
+                </Text>
+              </View>
+              <ChevronRight size={16} color={colors.text.tertiary} strokeWidth={2} />
             </View>
-            {itemRows.map((item) => (
+          </Pressable>
+        ) : null}
+
+        <Modal
+          visible={showPoItemsModal}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowPoItemsModal(false)}
+        >
+          <Pressable
+            onPress={() => setShowPoItemsModal(false)}
+            style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}
+          >
+            <Pressable
+              onPress={(event) => event.stopPropagation()}
+              style={{
+                maxHeight: '80%',
+                borderTopLeftRadius: 20,
+                borderTopRightRadius: 20,
+                backgroundColor: colors.bg.card,
+                overflow: 'hidden',
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: colors.divider }}>
+                <Text style={{ color: colors.text.primary, fontSize: 16, fontWeight: '700' }}>PO Items</Text>
+                <Pressable onPress={() => setShowPoItemsModal(false)} style={{ padding: 4 }}>
+                  <X size={20} color={colors.text.secondary} strokeWidth={2.5} />
+                </Pressable>
+              </View>
+              <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false}>
+                {poItemRows.map((item, index) => (
+                  <View
+                    key={item.id}
+                    style={{
+                      paddingHorizontal: 18,
+                      paddingVertical: 12,
+                      borderTopWidth: index === 0 ? 0 : 1,
+                      borderTopColor: colors.divider,
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Package size={13} color={colors.text.tertiary} strokeWidth={2} />
+                      <Text style={{ color: colors.text.secondary, fontSize: 13, flex: 1 }} numberOfLines={1}>
+                        {capitalizeDisplayValue(item.name)}
+                      </Text>
+                    </View>
+                    {item.quantityPurchased > 0 ? (
+                      <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 4, marginLeft: 19 }}>
+                        Qty {item.quantityPurchased}
+                      </Text>
+                    ) : null}
+                  </View>
+                ))}
+              </ScrollView>
+            </Pressable>
+          </Pressable>
+        </Modal>
+
+        {/* Payment Breakdown */}
+        {paymentLineRows.length > 0 ? (
+          <View style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.divider }}>
+            <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12 }}>
+              <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }}>Payment Breakdown</Text>
+            </View>
+            {paymentLineRows.map((item, index) => (
               <View
                 key={item.id}
-                style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: 1, borderTopColor: colors.divider, gap: 12 }}
+                style={{
+                  paddingHorizontal: 16,
+                  paddingVertical: compact ? 9 : 10,
+                  borderTopWidth: index === 0 ? 1 : 0,
+                  borderTopColor: colors.divider,
+                }}
               >
-                <View style={{ width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg.input, borderWidth: 1, borderColor: colors.divider }}>
-                  <Package size={15} color={colors.text.tertiary} strokeWidth={2} />
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, minWidth: 0, paddingRight: 12 }}>
+                    <Package size={compact ? 12 : 13} color={colors.text.tertiary} strokeWidth={2} />
+                    <Text style={{ color: colors.text.secondary, fontSize: compact ? 12 : 13 }} numberOfLines={1}>
+                      {capitalizeDisplayValue(item.name)}
+                    </Text>
+                  </View>
+                  <Text style={{ color: colors.text.primary, fontSize: compact ? 12 : detailValueFontSize, fontWeight: '600', textAlign: 'right' }}>
+                    {formatCurrency(item.total)}
+                  </Text>
                 </View>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ color: colors.text.primary, fontSize: detailValueFontSize, fontWeight: '600' }} numberOfLines={1}>{item.name}</Text>
-                  <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 1 }}>Line amount</Text>
-                </View>
-                <Text style={{ color: colors.text.primary, fontSize: compact ? 13 : 14, fontWeight: '600' }}>{formatCurrency(item.total)}</Text>
+                {item.paymentDate ? (
+                  <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 4, marginLeft: compact ? 18 : 19 }}>
+                    Paid {item.paymentDate}
+                  </Text>
+                ) : null}
               </View>
             ))}
+            {procurementChargeTotals.total > 0 ? (
+              <View style={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 10, borderTopWidth: 1, borderTopColor: colors.divider }}>
+                {procurementChargeTotals.transfer > 0 ? (
+                  <View className="flex-row items-center justify-between">
+                    <Text style={{ color: colors.text.muted, fontSize: compact ? 11 : 12 }}>
+                      Transfer fees{procurementChargeTotals.count > 1 ? ` (${procurementChargeTotals.count}x)` : ''}
+                    </Text>
+                    <Text style={{ color: colors.text.secondary, fontSize: compact ? 12 : 13, fontWeight: '600' }}>
+                      {formatCurrency(procurementChargeTotals.transfer)}
+                    </Text>
+                  </View>
+                ) : null}
+                {procurementChargeTotals.stampDuty > 0 ? (
+                  <View className="flex-row items-center justify-between" style={{ marginTop: procurementChargeTotals.transfer > 0 ? 6 : 0 }}>
+                    <Text style={{ color: colors.text.muted, fontSize: compact ? 11 : 12 }}>
+                      Stamp duty{procurementChargeTotals.count > 1 ? ` (${procurementChargeTotals.count}x)` : ''}
+                    </Text>
+                    <Text style={{ color: colors.text.secondary, fontSize: compact ? 12 : 13, fontWeight: '600' }}>
+                      {formatCurrency(procurementChargeTotals.stampDuty)}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 12, paddingBottom: 14, borderTopWidth: 1, borderTopColor: colors.divider }}>
+              <Text style={{ color: colors.text.primary, fontSize: compact ? 12 : 13, fontWeight: '700' }}>Total Cost</Text>
+              <Text style={{ color: colors.text.primary, fontSize: compact ? 14 : 15, fontWeight: '500' }}>{formatCurrency(paymentBreakdownTotal)}</Text>
+            </View>
           </View>
         ) : null}
 
         {/* Attachments */}
         {(procurement.attachments?.length ?? 0) > 0 ? (
           <View style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.divider }}>
-            <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 }}>
+            <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12 }}>
               <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }}>Attachments</Text>
             </View>
             {procurement.attachments!.map((attachment, index) => (

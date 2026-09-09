@@ -1,7 +1,7 @@
 import React from 'react';
 import { Platform, View, Text, ScrollView, Pressable, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ChevronDown, ChevronLeft, ChevronRight, History } from 'lucide-react-native';
+import { ArrowLeft, ChevronRight, History } from 'lucide-react-native';
 import type { AuditLog } from '@/lib/state/fyll-store';
 import type { ThemeColors } from '@/lib/theme';
 import { getAccuracyPercentage } from './utils';
@@ -10,18 +10,22 @@ interface AuditHistoryViewProps {
   isDark: boolean;
   colors: ThemeColors;
   sortedAuditLogs: AuditLog[];
-  expandedAuditId: string | null;
   onBack: () => void;
-  onToggleExpanded: (auditId: string) => void;
+  onSelectAudit: (auditId: string) => void;
 }
+
+const accuracyAccentColor = (discrepancies: number, accuracy: number): string => {
+  if (discrepancies === 0) return '#16A34A';
+  if (accuracy >= 80) return '#F59E0B';
+  return '#EF4444';
+};
 
 export function AuditHistoryView({
   isDark,
   colors,
   sortedAuditLogs,
-  expandedAuditId,
   onBack,
-  onToggleExpanded,
+  onSelectAudit,
 }: AuditHistoryViewProps) {
   const { width } = useWindowDimensions();
   const isLargeLayout = Platform.OS === 'web' || width >= 768;
@@ -53,7 +57,7 @@ export function AuditHistoryView({
               className="w-10 h-10 rounded-full items-center justify-center mr-3"
               style={{ backgroundColor: insetBg, borderWidth: 1, borderColor: cardBorder }}
             >
-              <ChevronLeft size={20} color={colors.text.primary} strokeWidth={2} />
+              <ArrowLeft size={20} color={colors.text.primary} strokeWidth={2} />
             </Pressable>
             <Text style={{ color: colors.text.primary }} className="text-xl font-bold">Audit History</Text>
           </View>
@@ -85,91 +89,47 @@ export function AuditHistoryView({
           </View>
         ) : (
           sortedAuditLogs.map((log) => {
-            const isExpanded = expandedAuditId === log.id;
-            const sortedItems = [...(log.items ?? [])].sort(
-              (a, b) => Math.abs(b.discrepancy) - Math.abs(a.discrepancy)
-            );
-            const accuracy = getAccuracyPercentage(sortedItems);
+            const accuracy = getAccuracyPercentage(log.items ?? []);
+            const accentColor = accuracyAccentColor(log.discrepancies, accuracy);
 
             return (
-              <View key={log.id} className="mb-3">
-                <Pressable
-                  onPress={() => onToggleExpanded(log.id)}
-                  className="rounded-2xl overflow-hidden"
-                  style={{ backgroundColor: cardBg, borderWidth: 1, borderColor: cardBorder }}
-                >
-                  <View className="px-4 py-4 flex-row items-center justify-between">
-                    <View className="flex-row items-center flex-1 pr-2">
-                      {isExpanded ? (
-                        <ChevronDown size={18} color={colors.text.tertiary} strokeWidth={2} />
-                      ) : (
-                        <ChevronRight size={18} color={colors.text.tertiary} strokeWidth={2} />
-                      )}
-                      <View className="ml-2">
-                        <Text style={{ color: colors.text.primary }} className="font-bold">
-                          {new Date(log.completedAt).toLocaleDateString('en-US', {
-                            weekday: 'short',
-                            month: 'short',
-                            day: 'numeric',
-                            year: 'numeric',
-                          })}
-                        </Text>
-                        <Text style={{ color: colors.text.muted }} className="text-xs mt-0.5">
-                          {log.itemsAudited} items • {accuracy}% accurate
-                        </Text>
-                      </View>
-                    </View>
-                    <View
-                      className="px-2 py-1 rounded-md"
-                      style={{ backgroundColor: log.discrepancies === 0 ? 'rgba(34,197,94,0.14)' : 'rgba(245,158,11,0.14)' }}
-                    >
-                      <Text
-                        className="text-xs font-semibold"
-                        style={{ color: log.discrepancies === 0 ? '#15803D' : '#B45309' }}
-                      >
-                        {log.discrepancies === 0 ? 'Accurate' : `${log.discrepancies} off`}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {isExpanded ? (
-                    <View
-                      className="px-4 pb-3"
-                      style={{ borderTopWidth: 1, borderTopColor: cardBorder, backgroundColor: insetBg }}
-                    >
-                      {sortedItems.length === 0 ? (
-                        <Text style={{ color: colors.text.tertiary }} className="text-sm py-3">No item-level details recorded.</Text>
-                      ) : (
-                        sortedItems.map((item) => (
-                          <View
-                            key={`${log.id}-${item.variantId}`}
-                            className="py-3 flex-row items-center justify-between"
-                            style={{ borderBottomWidth: 1, borderBottomColor: cardBorder }}
-                          >
-                            <View className="flex-1 pr-3">
-                              <Text style={{ color: colors.text.secondary }} className="text-sm font-semibold" numberOfLines={1}>
-                                {item.productName}
-                              </Text>
-                              <Text style={{ color: colors.text.muted }} className="text-xs" numberOfLines={1}>
-                                {item.variantName} • SKU {item.sku}
-                              </Text>
-                            </View>
-                            <View className="items-end">
-                              <Text style={{ color: colors.text.tertiary }} className="text-xs">{item.actualStock} / {item.expectedStock}</Text>
-                              <Text
-                                className="text-xs font-semibold mt-1"
-                                style={{ color: item.discrepancy >= 0 ? '#15803D' : '#B91C1C' }}
-                              >
-                                {item.discrepancy >= 0 ? '+' : ''}{item.discrepancy}
-                              </Text>
-                            </View>
-                          </View>
-                        ))
-                      )}
-                    </View>
-                  ) : null}
-                </Pressable>
-              </View>
+              <Pressable
+                key={log.id}
+                onPress={() => onSelectAudit(log.id)}
+                className="flex-row items-center rounded-2xl mb-2.5"
+                style={{ backgroundColor: cardBg, borderWidth: 1, borderColor: cardBorder }}
+              >
+                <View
+                  style={{
+                    width: 4,
+                    borderRadius: 2,
+                    alignSelf: 'stretch',
+                    marginVertical: 14,
+                    marginLeft: 14,
+                    backgroundColor: accentColor,
+                  }}
+                />
+                <View className="flex-1 px-4 py-3.5">
+                  <Text style={{ color: colors.text.primary }} className="font-bold">
+                    {new Date(log.completedAt).toLocaleDateString('en-US', {
+                      weekday: 'short',
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })}
+                  </Text>
+                  <Text style={{ color: colors.text.muted }} className="text-xs mt-0.5">
+                    {log.itemsAudited} items · {log.performedBy ?? 'Team'}
+                  </Text>
+                </View>
+                <View className="items-end pl-2 pr-1">
+                  <Text style={{ color: colors.text.primary }} className="text-base font-bold">{accuracy}%</Text>
+                  <Text style={{ color: colors.text.tertiary }} className="text-xs mt-0.5">
+                    {log.discrepancies === 0 ? 'no variance' : `${log.discrepancies} off`}
+                  </Text>
+                </View>
+                <ChevronRight size={18} color={colors.text.muted} strokeWidth={2} style={{ marginLeft: 4, marginRight: 12 }} />
+              </Pressable>
             );
           })
         )}

@@ -1,7 +1,7 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI } from '@/lib/secure-gemini';
 import { CasePriority, CaseSource, CaseType, CASE_PRIORITIES, CASE_SOURCES, CASE_TYPES } from '@/lib/state/fyll-store';
 
-const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
+const GEMINI_API_KEY = 'server-side';
 const GEMINI_MODEL = process.env.EXPO_PUBLIC_GEMINI_MODEL || '';
 const MAX_RETRIES = 2;
 const RETRY_DELAYS_MS = [1200, 2500];
@@ -44,7 +44,7 @@ export async function parseCaseDraft(params: {
   imageDataUrl?: string;
 }): Promise<CaseDraftData | null> {
   if (!GEMINI_API_KEY) {
-    throw new Error('Gemini API key not configured. Please add EXPO_PUBLIC_GEMINI_API_KEY to your .env file.');
+    throw new Error('Fyll AI is not configured. Add GEMINI_API_KEY as a private Supabase secret.');
   }
 
   const text = params.messageText?.trim();
@@ -137,11 +137,11 @@ async function generateWithModelFallback(
   imageDataUrls: string[] = []
 ): Promise<string> {
   const models = GEMINI_MODEL ? [GEMINI_MODEL] : [
+    'gemini-2.5-flash',
     'gemini-1.5-flash',
     'gemini-1.5-flash-latest',
     'gemini-1.5-flash-002',
     'gemini-1.5-pro',
-    'gemini-2.0-flash',
   ];
 
   let lastError: unknown = null;

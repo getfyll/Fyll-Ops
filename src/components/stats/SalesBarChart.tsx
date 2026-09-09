@@ -14,6 +14,7 @@ interface SalesBarChartProps {
   gridColor?: string;
   textColor?: string;
   showTopValue?: boolean;
+  paddingLeft?: number;
 }
 
 export function SalesBarChart({
@@ -23,6 +24,7 @@ export function SalesBarChart({
   gridColor = '#2A2A2A',
   textColor = '#666666',
   showTopValue = true,
+  paddingLeft = 50,
 }: SalesBarChartProps) {
   const [containerWidth, setContainerWidth] = React.useState(0);
 
@@ -42,7 +44,6 @@ export function SalesBarChart({
           {(() => {
             const chartWidth = containerWidth;
             const chartHeight = height - 40;
-            const paddingLeft = 50;
             const paddingRight = 20;
             const paddingTop = 25;
             const chartRight = chartWidth - paddingRight;

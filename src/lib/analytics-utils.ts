@@ -1,9 +1,9 @@
 // Analytics utility functions for computing real stats from orders
 
-import type { Order, Product, ProductVariant } from './state/fyll-store';
+import type { Order, OrderClassification, Product, ProductVariant } from './state/fyll-store';
 import { normalizeProductType } from './product-utils';
 
-export type TimeRange = '7d' | '30d' | 'year';
+export type TimeRange = '7d' | 'month' | '30d' | 'year';
 export type TabKey = 'sales' | 'orders' | 'customers' | 'inventory' | 'services';
 
 export interface ChartDataPoint {
@@ -22,6 +22,12 @@ export interface StatusBreakdown {
   count: number;
   percentage: number;
   color: string;
+}
+
+export interface CategoryBreakdown {
+  label: OrderClassification;
+  value: number;
+  percentage: number;
 }
 
 export interface TopCustomer {
@@ -151,6 +157,7 @@ export interface AnalyticsResult {
   averageOrderValue: number;
   topAddOns: TopAddOn[];
   revenueBySource: { label: string; value: number; percentage: number }[];
+  revenueByCategory: CategoryBreakdown[];
   addOnMetrics: AddOnMetrics;
   previousAddOnMetrics: AddOnMetrics;
   addOnRevenueChange: number;
@@ -162,8 +169,10 @@ export interface AnalyticsResult {
   statusBreakdown: StatusBreakdown[];
   cancellationsCount: number;
   processingOrders: number;
+  completedOrders: number;
   deliveredOrders: number;
   ordersByPeriod: ChartDataPoint[];
+  ordersByCategory: CategoryBreakdown[];
 
   // ====== CUSTOMERS TAB SPECIFIC ======
   returningCustomers: number;
@@ -180,6 +189,66 @@ export interface AnalyticsResult {
   serviceBreakdown: ServiceBreakdownItem[];
   serviceByPeriod: ChartDataPoint[];
   serviceVariableBreakdown: ServiceVariableBreakdown[];
+}
+
+const normalizeCategoryToken = (value?: string | null): string => (
+  (value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '')
+);
+
+export function getOrderClassification(order: Order): OrderClassification {
+  const explicit = normalizeCategoryToken(order.orderClassification);
+  if (explicit === 'sale') return 'Sale';
+  if (explicit === 'pr' || explicit === 'press') return 'PR';
+  if (explicit === 'gift' || explicit === 'gifting') return 'Gift';
+
+  const paymentMethod = normalizeCategoryToken(order.paymentMethod);
+  if (paymentMethod === 'pr' || paymentMethod === 'press') return 'PR';
+  if (paymentMethod === 'gift' || paymentMethod === 'gifting') return 'Gift';
+
+  const source = normalizeCategoryToken(order.source);
+  if (source === 'pr' || source === 'press') return 'PR';
+  if (source === 'gift' || source === 'gifting') return 'Gift';
+
+  return 'Sale';
+}
+
+export function isSaleOrder(order: Order): boolean {
+  return getOrderClassification(order) === 'Sale';
+}
+
+export function getOrderCategoryBreakdown(orders: Order[]): CategoryBreakdown[] {
+  const counts = new Map<OrderClassification, number>();
+  orders.forEach((order) => {
+    const category = getOrderClassification(order);
+    counts.set(category, (counts.get(category) ?? 0) + 1);
+  });
+  const total = orders.length;
+  return (['Sale', 'PR', 'Gift'] as OrderClassification[])
+    .map((label) => ({
+      label,
+      value: counts.get(label) ?? 0,
+      percentage: total > 0 ? Number((((counts.get(label) ?? 0) / total) * 100).toFixed(1)) : 0,
+    }))
+    .filter((item) => item.value > 0);
+}
+
+export function getRevenueByOrderCategory(orders: Order[]): CategoryBreakdown[] {
+  const totals = new Map<OrderClassification, number>();
+  orders.forEach((order) => {
+    const category = getOrderClassification(order);
+    totals.set(category, (totals.get(category) ?? 0) + order.totalAmount);
+  });
+  const totalRevenue = orders.reduce((sum, order) => sum + order.totalAmount, 0);
+  return (['Sale', 'PR', 'Gift'] as OrderClassification[])
+    .map((label) => ({
+      label,
+      value: totals.get(label) ?? 0,
+      percentage: totalRevenue > 0 ? Number((((totals.get(label) ?? 0) / totalRevenue) * 100).toFixed(1)) : 0,
+    }))
+    .filter((item) => item.value > 0);
 }
 
 /**
@@ -327,6 +396,9 @@ export function getDateRange(range: TimeRange): { start: Date; end: Date } {
       break;
     case '30d':
       start.setDate(start.getDate() - 29);
+      break;
+    case 'month':
+      start.setDate(1);
       break;
     case 'year':
       start.setMonth(0, 1); // January 1st of current year
@@ -790,7 +862,7 @@ export function getServiceRevenueByPeriod(
   if (range === '7d') {
     return groupServiceByDay(orders, products, start, end);
   }
-  if (range === '30d') {
+  if (range === 'month' || range === '30d') {
     return groupServiceByWeek(orders, products, start, end);
   }
   return groupServiceByMonth(orders, products);
@@ -874,21 +946,19 @@ export function groupAddOnsByWeek(
 }
 
 export function groupAddOnsByMonth(orders: Order[]): ChartDataPoint[] {
-  const monthMap = new Map<string, number>();
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const monthRevenue = new Array(12).fill(0);
 
   orders.forEach((order) => {
     const date = getOrderDate(order);
-    const key = `${date.getFullYear()}-${date.getMonth()}`;
-    monthMap.set(key, (monthMap.get(key) || 0) + getAddOnRevenueForOrder(order));
+    const month = date.getMonth();
+    monthRevenue[month] += getAddOnRevenueForOrder(order);
   });
 
-  const result: ChartDataPoint[] = [];
-  monthMap.forEach((value, key) => {
-    const [year, month] = key.split('-').map(Number);
-    const label = new Date(year, month, 1).toLocaleDateString('en-US', { month: 'short' });
-    result.push({ label, value });
-  });
-  return result;
+  return months.map((label, index) => ({
+    label,
+    value: monthRevenue[index],
+  }));
 }
 
 export function getAddOnRevenueByPeriod(
@@ -900,7 +970,7 @@ export function getAddOnRevenueByPeriod(
   if (range === '7d') {
     return groupAddOnsByDay(orders, start, end);
   }
-  if (range === '30d') {
+  if (range === 'month' || range === '30d') {
     return groupAddOnsByWeek(orders, start, end);
   }
   return groupAddOnsByMonth(orders);

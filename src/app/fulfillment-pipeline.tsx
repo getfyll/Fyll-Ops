@@ -8,7 +8,7 @@ import useFyllStore from '@/lib/state/fyll-store';
 import { useThemeColors } from '@/lib/theme';
 import type { FulfillmentStageKey } from '@/components/FulfillmentPipelineCard';
 import { useBreakpoint } from '@/lib/useBreakpoint';
-import { bucketFulfillmentStatus } from '@/lib/fulfillment';
+import { getFulfillmentPipelineBucket, getFulfillmentSnapshot } from '@/lib/fulfillment';
 import { createOrderStatusColorMap, getOrderStatusColor } from '@/lib/order-status-colors';
 
 const STAGES: { key: FulfillmentStageKey; label: string }[] = [
@@ -51,6 +51,63 @@ const formatAge = (iso: string) => {
   return `${days}D AGO`;
 };
 
+const parseDayCount = (label?: string) => {
+  if (!label) return null;
+  const match = label.match(/Day\s+(\d+)\s*\/\s*(\d+)/i);
+  if (!match) return null;
+  const elapsedDays = Number.parseInt(match[1] ?? '', 10);
+  const timelineDays = Number.parseInt(match[2] ?? '', 10);
+  if (!Number.isFinite(elapsedDays) || !Number.isFinite(timelineDays)) return null;
+  return { elapsedDays, timelineDays };
+};
+
+const getTimelineMeta = (snapshot: ReturnType<typeof getFulfillmentSnapshot>) => {
+  const dayCount = parseDayCount(snapshot.dayCountLabel);
+
+  if (snapshot.stage === 'cancelled') {
+    return {
+      label: 'Cancelled',
+      text: '#DC2626',
+      bg: 'rgba(220,38,38,0.12)',
+      dayLabel: null,
+    };
+  }
+
+  if (snapshot.statusMeta.isLate) {
+    return {
+      label: snapshot.stage === 'completed' ? 'Delivered late' : 'Overdue',
+      text: '#DC2626',
+      bg: 'rgba(220,38,38,0.12)',
+      dayLabel: dayCount ? `Day ${dayCount.elapsedDays}/${dayCount.timelineDays}` : null,
+    };
+  }
+
+  if (snapshot.stage === 'completed') {
+    return {
+      label: 'On time',
+      text: '#16A34A',
+      bg: 'rgba(34,197,94,0.12)',
+      dayLabel: null,
+    };
+  }
+
+  if (dayCount && dayCount.elapsedDays >= dayCount.timelineDays) {
+    return {
+      label: 'Due soon',
+      text: '#D97706',
+      bg: 'rgba(245,158,11,0.12)',
+      dayLabel: `Day ${dayCount.elapsedDays}/${dayCount.timelineDays}`,
+    };
+  }
+
+  return {
+    label: 'On track',
+    text: '#2563EB',
+    bg: 'rgba(37,99,235,0.12)',
+    dayLabel: dayCount ? `Day ${dayCount.elapsedDays}/${dayCount.timelineDays}` : null,
+  };
+};
+
 export default function FulfillmentPipelineScreen() {
   const router = useRouter();
   const colors = useThemeColors();
@@ -74,7 +131,7 @@ export default function FulfillmentPipelineScreen() {
 
   const filtered = useMemo(() => {
     return [...orders]
-      .filter((o) => bucketFulfillmentStatus(o.status) === active)
+      .filter((o) => getFulfillmentPipelineBucket(o) === active)
       .sort((a, b) => new Date(b.updatedAt ?? b.createdAt).getTime() - new Date(a.updatedAt ?? a.createdAt).getTime());
   }, [orders, active]);
 
@@ -172,10 +229,12 @@ export default function FulfillmentPipelineScreen() {
               style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
             >
               {filtered.map((order, index) => {
-                const key = bucketFulfillmentStatus(order.status) ?? active;
+                const key = getFulfillmentPipelineBucket(order) ?? active;
                 const color = getOrderStatusColor(order.status, orderStatusColorMap, stageColor(key));
                 const Icon = stageIcon(key);
                 const age = formatAge(order.updatedAt ?? order.createdAt);
+                const fulfillmentSnapshot = getFulfillmentSnapshot(order, new Date(), orderStatuses);
+                const timelineMeta = getTimelineMeta(fulfillmentSnapshot);
 
                 return (
                   <Pressable
@@ -208,6 +267,21 @@ export default function FulfillmentPipelineScreen() {
                         <Text style={{ color: colors.text.tertiary }} className="text-xs mt-0.5" numberOfLines={1}>
                           #{order.orderNumber}
                         </Text>
+                        <View className="flex-row items-center flex-wrap mt-2" style={{ gap: 8 }}>
+                          <View
+                            className="px-2.5 py-1 rounded-full"
+                            style={{ backgroundColor: timelineMeta.bg }}
+                          >
+                            <Text style={{ color: timelineMeta.text }} className="text-[11px] font-semibold">
+                              {timelineMeta.label}
+                            </Text>
+                          </View>
+                          {timelineMeta.dayLabel ? (
+                            <Text style={{ color: colors.text.muted }} className="text-[11px] font-medium">
+                              {timelineMeta.dayLabel}
+                            </Text>
+                          ) : null}
+                        </View>
                       </View>
 
                       <View className="items-end ml-3">

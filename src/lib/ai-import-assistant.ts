@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI } from '@/lib/secure-gemini';
 
 export type ImportEntityType = 'orders' | 'customers' | 'products' | 'expenses';
 export type ImportSelectionType = ImportEntityType | 'auto';
@@ -103,8 +103,8 @@ const FIELD_ALIASES: Record<ImportEntityType, Record<string, string[]>> = {
   },
 };
 
-const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
-const GEMINI_MODEL = process.env.EXPO_PUBLIC_GEMINI_MODEL || 'gemini-1.5-flash';
+const GEMINI_API_KEY = 'server-side';
+const GEMINI_MODEL = process.env.EXPO_PUBLIC_GEMINI_MODEL || 'gemini-2.5-flash';
 
 const normalizeHeader = (value: string) => (
   value

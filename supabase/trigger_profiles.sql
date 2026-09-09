@@ -60,18 +60,20 @@ begin
   end if;
 
   begin
-    insert into public.profiles (id, email, role, business_id, created_at)
+    insert into public.profiles (id, email, role, business_id, created_at, account_type)
     values (
       new.id,
       new.email,
       coalesce(invite_role, 'admin'),
       new_business_id,
-      now()
+      now(),
+      case when invite_business_id is null then 'business_owner' else 'team_member' end
     )
     on conflict (id) do update
       set email = excluded.email,
           role = excluded.role,
-          business_id = excluded.business_id;
+          business_id = excluded.business_id,
+          account_type = excluded.account_type;
   exception
     when others then
       raise notice 'Profile upsert failed: %', SQLERRM;
@@ -79,7 +81,7 @@ begin
 
   if to_regclass('public.team_members') is not null then
     begin
-      insert into public.team_members (user_id, email, name, role, business_id, created_at, last_login)
+      insert into public.team_members (user_id, email, name, role, business_id, created_at, last_login, membership_type)
       values (
         new.id,
         new.email,
@@ -87,7 +89,8 @@ begin
         coalesce(invite_role, 'admin'),
         new_business_id,
         now(),
-        now()
+        now(),
+        case when invite_business_id is null then 'owner' else 'team_member' end
       )
       on conflict (user_id, business_id) do nothing;
     exception

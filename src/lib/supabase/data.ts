@@ -11,31 +11,6 @@ type SupabaseRow<T> = {
 
 const PAGE_SIZE = 1000;
 
-const isDataUri = (value: unknown): value is string => (
-  typeof value === 'string' && value.trim().startsWith('data:')
-);
-
-const sanitizeProductPayload = <T extends Record<string, unknown>>(item: T): T => {
-  const product = { ...item } as Record<string, unknown>;
-
-  if (isDataUri(product.imageUrl)) {
-    delete product.imageUrl;
-  }
-
-  if (Array.isArray(product.variants)) {
-    product.variants = product.variants.map((variant) => {
-      if (!variant || typeof variant !== 'object') return variant;
-      const nextVariant = { ...(variant as Record<string, unknown>) };
-      if (isDataUri(nextVariant.imageUrl)) {
-        delete nextVariant.imageUrl;
-      }
-      return nextVariant;
-    });
-  }
-
-  return product as T;
-};
-
 const upsertCollection = async <T extends WithId>(
   table: string,
   businessId: string,
@@ -46,9 +21,7 @@ const upsertCollection = async <T extends WithId>(
   const rows = items.map((item) => ({
     id: item.id,
     business_id: businessId,
-    data: table === 'products'
-      ? sanitizeProductPayload(item as unknown as Record<string, unknown>)
-      : item,
+    data: item,
     updated_at: timestamp,
   }));
 

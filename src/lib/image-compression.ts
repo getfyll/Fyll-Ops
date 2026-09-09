@@ -16,7 +16,8 @@ const getImageSize = (uri: string) =>
 const compressWebDataUrl = async (
   imageSourceUri: string,
   maxDimension: number,
-  quality: number
+  quality: number,
+  format: 'jpeg' | 'png'
 ): Promise<string> => {
   if (typeof document === 'undefined') return imageSourceUri;
   if (imageSourceUri.startsWith('data:') && !imageSourceUri.startsWith('data:image/')) {
@@ -50,21 +51,24 @@ const compressWebDataUrl = async (
   if (!ctx) return imageSourceUri;
 
   ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
-  return canvas.toDataURL('image/jpeg', quality);
+  return format === 'png'
+    ? canvas.toDataURL('image/png')
+    : canvas.toDataURL('image/jpeg', quality);
 };
 
 export const compressImage = async (
   uriOrDataUrl: string,
-  options?: { maxDimension?: number; quality?: number }
+  options?: { maxDimension?: number; quality?: number; format?: 'jpeg' | 'png' }
 ): Promise<string> => {
   if (!uriOrDataUrl) return uriOrDataUrl;
 
   const maxDimension = options?.maxDimension ?? DEFAULT_MAX_DIMENSION;
   const quality = options?.quality ?? DEFAULT_QUALITY;
+  const format = options?.format ?? 'jpeg';
 
   try {
     if (Platform.OS === 'web') {
-      return await compressWebDataUrl(uriOrDataUrl, maxDimension, quality);
+      return await compressWebDataUrl(uriOrDataUrl, maxDimension, quality, format);
     }
 
     const { width, height } = await getImageSize(uriOrDataUrl);
@@ -77,7 +81,10 @@ export const compressImage = async (
     const result = await ImageManipulator.manipulateAsync(
       uriOrDataUrl,
       [{ resize }],
-      { compress: quality, format: ImageManipulator.SaveFormat.JPEG }
+      {
+        compress: quality,
+        format: format === 'png' ? ImageManipulator.SaveFormat.PNG : ImageManipulator.SaveFormat.JPEG,
+      }
     );
 
     return result.uri;

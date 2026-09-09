@@ -1,12 +1,16 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { View, Text, ScrollView, Pressable, TextInput, KeyboardAvoidingView, Modal, Platform, StyleProp, ViewStyle, Switch } from 'react-native';
+import { View, Text, ScrollView, Pressable, TextInput, KeyboardAvoidingView, Modal, Platform, StyleProp, ViewStyle, Switch, ActivityIndicator } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { X, Plus, Minus, Trash2, ChevronDown, Check, Search, Package, User as UserIcon, Users, Calendar, ChevronLeft, ChevronRight, Sparkles, Clock3, Pencil } from 'lucide-react-native';
+import { X, Plus, Minus, Trash2, ChevronDown, Check, Search, Package, User as UserIcon, Users, Calendar, ChevronLeft, ChevronRight, Sparkles, Clock3, Pencil, ArrowLeft } from 'lucide-react-native';
 import useFyllStore, {
   OrderItem,
   OrderService,
+  ORDER_CLASSIFICATIONS,
+  OrderClassification,
   ServiceFieldType,
+  PrescriptionInfo,
+  type SocialCheckoutDraft,
   generateOrderNumber,
   formatCurrency,
   NIGERIA_STATES,
@@ -14,12 +18,21 @@ import useFyllStore, {
 } from '@/lib/state/fyll-store';
 import useAuthStore from '@/lib/state/auth-store';
 import { cn } from '@/lib/cn';
+import { normalizeDeliveryStateValue } from '@/lib/format-address';
 import { normalizeProductType } from '@/lib/product-utils';
 import * as Haptics from 'expo-haptics';
 import { Button, StickyButtonContainer } from '@/components/Button';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { sendOrderNotification } from '@/hooks/useWebPushNotifications';
+import { addBusinessDays, getCustomerTrackingCode, resolveOrderTimeline } from '@/lib/fulfillment';
 import { useThemeColors } from '@/lib/theme';
+import { PrescriptionSection } from '@/components/PrescriptionSection';
+import { useBusinessSettings } from '@/hooks/useBusinessSettings';
+import { fetchWooCommerceOrder, fetchWooCommerceOrders, type WooNormalizedOrder } from '@/lib/woocommerce';
+import { normalizeWooLookupValue } from '@/lib/woocommerce-link';
+import { DesktopSidebar } from '@/components/DesktopSidebar';
+import { supabaseData } from '@/lib/supabase/data';
+import { queueSocialCheckoutEmail } from '@/lib/supabase/social-checkout-emails';
 
 interface SearchResult {
   productId: string;
@@ -31,6 +44,25 @@ interface SearchResult {
   isService: boolean;
 }
 
+const normalizePickerIdentity = (value: string) => (
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+);
+
+const getSearchResultIdentity = (result: SearchResult) => (
+  normalizePickerIdentity(`${result.productName} ${result.variantName === 'Service' ? '' : result.variantName}`)
+);
+
+const shouldPreferSearchResult = (next: SearchResult, current: SearchResult) => {
+  if ((next.stock > 0) !== (current.stock > 0)) return next.stock > 0;
+  if (Boolean(next.variantName?.trim()) !== Boolean(current.variantName?.trim())) return Boolean(next.variantName?.trim());
+  if (next.stock !== current.stock) return next.stock > current.stock;
+  return next.productName.length < current.productName.length;
+};
+
 interface AiParsedServiceItem {
   serviceName: string;
   quantity?: number;
@@ -38,11 +70,18 @@ interface AiParsedServiceItem {
   notes?: string;
 }
 
+type SelectedWooOrderPreview = {
+  reference: string;
+  customerName: string;
+  customerEmail: string;
+};
+
 type DatePickerTarget =
   | { type: 'order' }
   | { type: 'serviceField'; itemIndex: number; fieldId: string };
 
 type TimePickerTarget = { itemIndex: number; fieldId: string };
+type OrderFlowMode = 'product' | 'service';
 
 const normalizeServiceFieldType = (type?: string): ServiceFieldType => (
   type === 'Date' || type === 'Time' || type === 'Number' || type === 'Select' || type === 'Price' ? type : 'Text'
@@ -88,6 +127,16 @@ const formatTimeDisplay = (value: string | undefined): string => {
   const date = new Date();
   date.setHours(parsed.hour, parsed.minute, 0, 0);
   return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+};
+
+const getInitials = (value: string | undefined): string => {
+  const parts = String(value ?? '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2);
+  if (parts.length === 0) return 'C';
+  return parts.map((part) => part.charAt(0).toUpperCase()).join('');
 };
 
 const buildFallbackAiServiceId = (serviceName: string) => {
@@ -150,34 +199,55 @@ export default function NewOrderScreen() {
     deliveryFee?: string;
     websiteOrderReference?: string;
     notes?: string;
+    source?: string;
+    paymentMethod?: string;
+    socialCheckoutReference?: string;
+    socialCheckoutBill?: string;
+    socialCheckoutAmount?: string;
     items?: string;
     services?: string;
     prefillProductId?: string;
     prefillVariantId?: string;
   }>();
   const insets = useSafeAreaInsets();
-  const { isDesktop } = useBreakpoint();
+  const { isDesktop, width: breakpointWidth } = useBreakpoint();
   const colors = useThemeColors();
   const isDark = colors.bg.primary === '#111111';
   const isDesktopWeb = Platform.OS === 'web' && isDesktop;
-  const canvasBg = !isDark && isDesktopWeb ? '#F3F3F5' : colors.bg.primary;
-  const panelBg = !isDark && isDesktopWeb ? '#FFFFFF' : colors.bg.primary;
+  const isNarrowWeb = Platform.OS === 'web' && breakpointWidth < 1280;
+  const rightColumnWidth = isDesktopWeb ? (isNarrowWeb ? Math.max(320, Math.round(breakpointWidth * 0.3)) : 420) : undefined;
+  const webMaxWidth = 1456;
+  const socialCheckoutReference = params.socialCheckoutReference || '';
+  const socialCheckoutBill = params.socialCheckoutBill || '';
+  const socialCheckoutAmount = Number(params.socialCheckoutAmount) || 0;
+  const hasSocialCheckoutPrefill = Boolean(socialCheckoutReference || socialCheckoutBill);
+  const canvasBg = !isDark && (hasSocialCheckoutPrefill || isDesktopWeb) ? '#FFFFFF' : colors.bg.primary;
+  const panelBg = !isDark && (hasSocialCheckoutPrefill || isDesktopWeb) ? '#FFFFFF' : colors.bg.primary;
   const textPrimaryClass = isDark ? 'text-white' : 'text-gray-900';
   const textSecondaryClass = isDark ? 'text-gray-300' : 'text-gray-600';
   const textMutedClass = isDark ? 'text-gray-400' : 'text-gray-500';
   const cardClass = isDark ? 'bg-[#1A1A1A] border-[#333333]' : 'bg-white border-gray-200';
-  const softCardClass = isDark ? 'bg-[#222222] border-[#333333]' : 'bg-gray-50 border-gray-200';
-  const summaryCardClass = isDark ? 'bg-white border-gray-200' : 'bg-[#111111] border-[#333333]';
-  const summaryPrimaryClass = isDark ? 'text-gray-900' : 'text-white';
-  const summarySecondaryClass = isDark ? 'text-gray-600' : 'text-gray-400';
-  const summaryAccentClass = isDark ? 'text-emerald-600' : 'text-emerald-400';
-  const summaryDividerColor = isDark ? '#E5E7EB' : '#333333';
+  const softCardClass = isDark ? 'bg-[#222222] border-[#333333]' : isDesktopWeb ? 'bg-white border-gray-200' : 'bg-gray-50 border-gray-200';
+  const sectionTitleClass = 'font-semibold text-[15px]';
+  const fieldLabelClass = 'text-xs font-semibold uppercase tracking-wider';
+  const summaryCardClass = cardClass;
+  const summaryPrimaryClass = textPrimaryClass;
+  const summarySecondaryClass = textSecondaryClass;
+  const summaryAccentClass = isDark ? 'text-emerald-400' : 'text-emerald-600';
+  const summaryDividerColor = colors.border.light;
   const datePickerSurface = isDark ? '#1A1A1A' : '#FFFFFF';
   const datePickerSoftBg = isDark ? '#222222' : '#F3F4F6';
   const datePickerBorder = isDark ? '#333333' : '#E5E7EB';
   const datePickerIconColor = isDark ? '#E5E7EB' : '#111111';
+  const selectionModalSurface = isDark ? '#1A1A1A' : '#FFFFFF';
+  const selectionModalSoftBg = isDark ? '#222222' : '#F3F4F6';
+  const selectionModalBorder = isDark ? '#333333' : '#E5E7EB';
+  const selectionModalSelectedBg = isDark ? 'rgba(255,255,255,0.1)' : '#F3F4F6';
+  const selectionModalSelectedText = isDark ? '#FFFFFF' : '#111111';
+  const selectionModalText = isDark ? '#9CA3AF' : '#6B7280';
   const products = useFyllStore((s) => s.products);
   const customServices = useFyllStore((s) => s.customServices);
+  const orderTimelineSettings = useFyllStore((s) => s.orderTimelineSettings);
   const saleSources = useFyllStore((s) => s.saleSources);
   const paymentMethods = useFyllStore((s) => s.paymentMethods);
   const customers = useFyllStore((s) => s.customers);
@@ -186,9 +256,16 @@ export default function NewOrderScreen() {
   const updateVariantStock = useFyllStore((s) => s.updateVariantStock);
   const currentUser = useAuthStore((s) => s.currentUser);
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
+  const {
+    woocommerceStoreUrl,
+    woocommerceConsumerKey,
+    woocommerceConsumerSecret,
+    hasWooCommerceConnection,
+  } = useBusinessSettings();
 
   // Loading state
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isPullingWooOrder, setIsPullingWooOrder] = useState(false);
   const submitGuard = useRef(false);
   const aiServicesHydratedRef = useRef(false);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -202,18 +279,75 @@ export default function NewOrderScreen() {
 
   // Customer info - initialize from AI params if provided
   const [customerName, setCustomerName] = useState(params.customerName || '');
+  const [customerPrescription, setCustomerPrescription] = useState<PrescriptionInfo | undefined>(
+    !hasSocialCheckoutPrefill && params.notes?.trim()
+      ? {
+        text: params.notes.trim(),
+        uploadedAt: new Date().toISOString(),
+      }
+      : undefined
+  );
   const [customerEmail, setCustomerEmail] = useState(params.customerEmail || '');
   const [customerPhone, setCustomerPhone] = useState(params.customerPhone || '');
-  const [deliveryState, setDeliveryState] = useState(params.deliveryState || '');
+  const [deliveryState, setDeliveryState] = useState(() => normalizeDeliveryStateValue(params.deliveryState || ''));
   const [deliveryAddress, setDeliveryAddress] = useState(params.deliveryAddress || '');
+  const [orderTypeId, setOrderTypeId] = useState(orderTimelineSettings.orderTypes[0]?.id ?? orderTimelineSettings.defaultOrderType.id);
+  const [showOrderTypeMenu, setShowOrderTypeMenu] = useState(false);
+  const [orderFlowMode, setOrderFlowMode] = useState<OrderFlowMode>(() => {
+    if (params.services && !params.items) return 'service';
+    return 'product';
+  });
+  const isServiceOrder = orderFlowMode === 'service';
+  const [showOrderFlowChooser, setShowOrderFlowChooser] = useState<boolean>(() => {
+    const hasPresetFlow = Boolean(params.prefillProductId || (params.services && !params.items));
+    const hasPaymentPrefill = Boolean(params.websiteOrderReference || params.notes || hasSocialCheckoutPrefill);
+    return !hasPresetFlow && !hasPaymentPrefill;
+  });
   const [showStateModal, setShowStateModal] = useState(false);
+  const [stateSearchQuery, setStateSearchQuery] = useState('');
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
   const [customerSearchQuery, setCustomerSearchQuery] = useState('');
 
+  useEffect(() => {
+    const hasSelectedType = orderTimelineSettings.orderTypes.some((type) => type.id === orderTypeId);
+    if (!hasSelectedType) {
+      setOrderTypeId(orderTimelineSettings.orderTypes[0]?.id ?? orderTimelineSettings.defaultOrderType.id);
+    }
+  }, [orderTimelineSettings.defaultOrderType.id, orderTimelineSettings.orderTypes, orderTypeId]);
+
+  useEffect(() => {
+    if (isServiceOrder) {
+      setShowOrderTypeMenu(false);
+    }
+  }, [isServiceOrder]);
+
+  useEffect(() => {
+    setItemTypeTab(isServiceOrder ? 'service' : 'product');
+    setShowProductSearch(false);
+    setSearchQuery('');
+  }, [isServiceOrder]);
+
+  useEffect(() => {
+    setItems((previous) => previous.filter((item) => {
+      const product = products.find((candidate) => candidate.id === item.productId);
+      const isService = product ? normalizeProductType(product.productType) === 'service' : false;
+      return isServiceOrder ? isService : !isService;
+    }));
+  }, [isServiceOrder, products]);
+
   // Order details
-  const [source, setSource] = useState(saleSources[0]?.name || '');
-  const [paymentMethod, setPaymentMethod] = useState(paymentMethods[0]?.name || '');
+  const [source, setSource] = useState(() => (
+    params.source
+      ? params.source
+      : saleSources[0]?.name || ''
+  ));
+  const [paymentMethod, setPaymentMethod] = useState(() => (
+    params.paymentMethod
+      ? params.paymentMethod
+      : paymentMethods[0]?.name || ''
+  ));
+  const [orderClassification, setOrderClassification] = useState<OrderClassification>('Sale');
   const [items, setItems] = useState<OrderItem[]>([]);
   const [services, setServices] = useState<OrderService[]>([]);
   const [editingServiceIndex, setEditingServiceIndex] = useState<number | null>(null);
@@ -225,6 +359,11 @@ export default function NewOrderScreen() {
   const [discountCode] = useState('');
   const [discountAmount, setDiscountAmount] = useState('');
   const [websiteOrderRef, setWebsiteOrderRef] = useState(params.websiteOrderReference || '');
+  const [wooLookupOrders, setWooLookupOrders] = useState<WooNormalizedOrder[]>([]);
+  const [isFetchingWooSuggestions, setIsFetchingWooSuggestions] = useState(false);
+  const [showWooSuggestions, setShowWooSuggestions] = useState(false);
+  const [selectedWooOrderPreview, setSelectedWooOrderPreview] = useState<SelectedWooOrderPreview | null>(null);
+  const wooLookupLoadedRef = useRef(false);
 
   const prefillProductId = params.prefillProductId;
   const prefillVariantId = params.prefillVariantId;
@@ -257,6 +396,7 @@ export default function NewOrderScreen() {
   const [showServiceModal, setShowServiceModal] = useState(false);
   const [showSourceModal, setShowSourceModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showOrderClassificationModal, setShowOrderClassificationModal] = useState(false);
   const isProductTabActive = itemTypeTab === 'product' && showProductSearch;
   const isServiceTabActive = itemTypeTab === 'service' && showProductSearch;
   const itemActionButtonColor = colors.text.primary;
@@ -405,20 +545,21 @@ export default function NewOrderScreen() {
     if (!searchQuery.trim()) return [];
     const query = searchQuery.toLowerCase();
 
-    const results: SearchResult[] = [];
+    const resultsByIdentity = new Map<string, SearchResult>();
     products
-      .filter((product) => !product.isDiscontinued) // Exclude discontinued products
+      .filter((product) => !product.isDiscontinued && !product.isArchived)
       .forEach((product) => {
         const isService = normalizeProductType(product.productType) === 'service';
         if (itemTypeTab === 'service' && !isService) return;
         if (itemTypeTab === 'product' && isService) return;
+        if (!isService && product.catalogSource === 'woocommerce-plugin') return;
         product.variants.forEach((variant) => {
           const variantName = Object.values(variant.variableValues).join(' ');
           const matchesProduct = product.name.toLowerCase().includes(query);
           const matchesVariant = variantName.toLowerCase().includes(query);
 
           if (matchesProduct || matchesVariant) {
-            results.push({
+            const result: SearchResult = {
               productId: product.id,
               productName: product.name,
               variantId: variant.id,
@@ -426,11 +567,16 @@ export default function NewOrderScreen() {
               stock: variant.stock,
               price: variant.sellingPrice,
               isService,
-            });
+            };
+            const identity = getSearchResultIdentity(result);
+            const existing = resultsByIdentity.get(identity);
+            if (!existing || shouldPreferSearchResult(result, existing)) {
+              resultsByIdentity.set(identity, result);
+            }
           }
         });
       });
-    return results;
+    return Array.from(resultsByIdentity.values());
   }, [searchQuery, products, itemTypeTab]);
 
   // Customer search results
@@ -443,6 +589,12 @@ export default function NewOrderScreen() {
       c.email.toLowerCase().includes(query)
     );
   }, [customerSearchQuery, customers]);
+
+  const filteredNigeriaStates = useMemo(() => {
+    const query = stateSearchQuery.trim().toLowerCase();
+    if (!query) return NIGERIA_STATES;
+    return NIGERIA_STATES.filter((state) => state.toLowerCase().includes(query));
+  }, [stateSearchQuery]);
 
   // Select existing customer to auto-fill
   const handleSelectCustomer = (customer: Customer) => {
@@ -475,11 +627,20 @@ export default function NewOrderScreen() {
     return services.reduce((sum, service) => sum + service.price, 0);
   }, [services]);
 
-  const deliveryFeeNum = parseFloat(deliveryFee) || 0;
+  const deliveryFeeNum = isServiceOrder ? 0 : parseFloat(deliveryFee) || 0;
   const additionalChargesNum = parseFloat(additionalCharges) || 0;
   const discountAmountNum = parseFloat(discountAmount) || 0;
 
   const totalAmount = subtotal + servicesTotal + deliveryFeeNum + additionalChargesNum - discountAmountNum;
+  const fulfillmentTimelinePreview = useMemo(() => (
+    resolveOrderTimeline({ orderTypeId, deliveryState: isServiceOrder ? '' : deliveryState }, orderTimelineSettings)
+  ), [deliveryState, isServiceOrder, orderTimelineSettings, orderTypeId]);
+  const selectedOrderType = fulfillmentTimelinePreview.orderType;
+  const orderDateValueForPreview = orderDateType === 'today' ? new Date() : selectedDate;
+  const estimatedDeliveryPreview = useMemo(() => {
+    const eta = addBusinessDays(new Date(orderDateValueForPreview), fulfillmentTimelinePreview.maxBusinessDays);
+    return eta.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }, [fulfillmentTimelinePreview.maxBusinessDays, orderDateValueForPreview]);
 
   const handleAddProduct = (result: SearchResult) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -608,6 +769,145 @@ export default function NewOrderScreen() {
     toastTimer.current = setTimeout(() => setToast(null), 2200);
   };
 
+  const applyWooOrderLink = (wooOrder: WooNormalizedOrder) => {
+    setWebsiteOrderRef(wooOrder.websiteOrderReference);
+    setShowWooSuggestions(false);
+    setSelectedWooOrderPreview({
+      reference: wooOrder.websiteOrderReference,
+      customerName: wooOrder.customerName,
+      customerEmail: wooOrder.customerEmail,
+    });
+  };
+
+  const loadWooSuggestions = async () => {
+    if (
+      wooLookupLoadedRef.current
+      || isFetchingWooSuggestions
+      || !hasWooCommerceConnection
+      || !woocommerceStoreUrl
+      || !woocommerceConsumerKey
+      || !woocommerceConsumerSecret
+    ) {
+      return;
+    }
+
+    setIsFetchingWooSuggestions(true);
+    try {
+      const { orders: recentWooOrders } = await fetchWooCommerceOrders({
+        storeUrl: woocommerceStoreUrl,
+        consumerKey: woocommerceConsumerKey,
+        consumerSecret: woocommerceConsumerSecret,
+        limit: 50,
+      });
+      setWooLookupOrders(recentWooOrders);
+      wooLookupLoadedRef.current = true;
+    } catch {
+      // Keep the form usable even if suggestions fail.
+    } finally {
+      setIsFetchingWooSuggestions(false);
+    }
+  };
+
+  const handleWebsiteOrderRefChange = (value: string) => {
+    setWebsiteOrderRef(value);
+
+    if (
+      selectedWooOrderPreview
+      && normalizeWooLookupValue(selectedWooOrderPreview.reference) !== normalizeWooLookupValue(value)
+    ) {
+      setSelectedWooOrderPreview(null);
+    }
+
+    const hasValue = value.trim().length > 0;
+    setShowWooSuggestions(hasValue);
+    if (hasValue && !wooLookupLoadedRef.current) {
+      void loadWooSuggestions();
+    }
+  };
+
+  const handleSelectWooSuggestion = async (wooOrder: WooNormalizedOrder) => {
+    if (!businessId) {
+      showToast('error', 'No business selected.');
+      return;
+    }
+
+    setIsPullingWooOrder(true);
+    try {
+      applyWooOrderLink(wooOrder);
+      showToast('success', `Woo order ${wooOrder.websiteOrderReference} linked.`);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (selectionError) {
+      const message = selectionError instanceof Error && selectionError.message
+        ? selectionError.message
+        : 'Could not pull WooCommerce order.';
+      showToast('error', message);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setIsPullingWooOrder(false);
+    }
+  };
+
+  const wooSuggestions = useMemo(() => {
+    const lookup = normalizeWooLookupValue(websiteOrderRef);
+    if (!lookup) return [] as WooNormalizedOrder[];
+
+    return wooLookupOrders
+      .filter((order) => {
+        const candidates = [
+          order.websiteOrderReference,
+          order.orderNumber,
+          order.customerEmail,
+          order.customerName,
+        ]
+          .map((value) => normalizeWooLookupValue(value))
+          .filter(Boolean);
+
+        return candidates.some((value) => value.includes(lookup));
+      })
+      .slice(0, 6);
+  }, [websiteOrderRef, wooLookupOrders]);
+
+  const handlePullWooOrder = async () => {
+    const reference = websiteOrderRef.trim();
+
+    if (!businessId) {
+      showToast('error', 'No business selected.');
+      return;
+    }
+
+    if (!reference) {
+      showToast('error', 'Enter a WooCommerce order ID first.');
+      return;
+    }
+
+    if (!hasWooCommerceConnection || !woocommerceStoreUrl || !woocommerceConsumerKey || !woocommerceConsumerSecret) {
+      showToast('error', 'Set up WooCommerce first in Settings.');
+      return;
+    }
+
+    setIsPullingWooOrder(true);
+
+    try {
+      const wooOrder = await fetchWooCommerceOrder({
+        storeUrl: woocommerceStoreUrl,
+        consumerKey: woocommerceConsumerKey,
+        consumerSecret: woocommerceConsumerSecret,
+        reference,
+      });
+      applyWooOrderLink(wooOrder);
+      showToast('success', `Woo order ${wooOrder.websiteOrderReference} linked to this draft.`);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (pullError) {
+      const message = pullError instanceof Error && pullError.message
+        ? pullError.message
+        : 'Could not pull WooCommerce order.';
+      showToast('error', message);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setIsPullingWooOrder(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!customerName.trim() || items.length === 0 || isSubmitting || submitGuard.current) return;
     const missingRequiredService = items.some((item) =>
@@ -651,8 +951,8 @@ export default function NewOrderScreen() {
             fullName: customerName.trim(),
             email: customerEmail.trim(),
             phone: customerPhone.trim(),
-            defaultState: deliveryState,
-            defaultAddress: deliveryAddress.trim(),
+            defaultState: isServiceOrder ? '' : deliveryState,
+            defaultAddress: isServiceOrder ? '' : deliveryAddress.trim(),
             createdAt: new Date().toISOString(),
           };
           await addCustomer(newCustomer, businessId);
@@ -662,45 +962,87 @@ export default function NewOrderScreen() {
 
       // Compute the order date - use today or selected date
       const orderDateValue = orderDateType === 'today' ? new Date() : selectedDate;
+      const orderNumber = generateOrderNumber();
+      const orderDateIso = orderDateValue.toISOString();
+      const resolvedTimeline = resolveOrderTimeline({ orderTypeId, deliveryState: isServiceOrder ? '' : deliveryState }, orderTimelineSettings);
+      const fulfillmentOriginalEta = addBusinessDays(new Date(orderDateValue), resolvedTimeline.maxBusinessDays);
 
       const order = {
         id: Math.random().toString(36).substring(2, 15),
-        orderNumber: generateOrderNumber(),
+        orderNumber,
+        customerTrackingCode: getCustomerTrackingCode({ id: '', orderNumber, customerTrackingCode: undefined }),
         websiteOrderReference: websiteOrderRef.trim() || undefined,
         customerId: resolvedCustomerId,
         customerName: customerName.trim(),
+        customerNote: customerPrescription?.text?.trim() || undefined,
         customerEmail: customerEmail.trim(),
         customerPhone: customerPhone.trim(),
-        deliveryState,
-        deliveryAddress: deliveryAddress.trim(),
+        deliveryState: isServiceOrder ? '' : deliveryState,
+        deliveryAddress: isServiceOrder ? '' : deliveryAddress.trim(),
+        orderTypeId: resolvedTimeline.orderType.id,
+        orderTypeName: resolvedTimeline.orderType.name,
         items,
         services,
         additionalCharges: additionalChargesNum,
         additionalChargesNote: additionalChargesNote.trim(),
-        deliveryFee: deliveryFeeNum,
+        deliveryFee: isServiceOrder ? 0 : deliveryFeeNum,
         discountCode: discountCode.trim() || undefined,
         discountAmount: discountAmountNum || undefined,
         paymentMethod,
+        orderClassification,
         status: 'Processing',
         source,
         subtotal,
         totalAmount,
-        orderDate: orderDateValue.toISOString(),
-        createdAt: orderDateValue.toISOString(),
+        prescription: customerPrescription,
+        fulfillmentStartedAt: orderDateIso,
+        fulfillmentTimelineDays: resolvedTimeline.maxBusinessDays,
+        fulfillmentOriginalEta: fulfillmentOriginalEta.toISOString(),
+        fulfillmentEffectiveEta: fulfillmentOriginalEta.toISOString(),
+        orderDate: orderDateIso,
+        createdAt: orderDateIso,
         updatedAt: new Date().toISOString(),
         createdBy: currentUser?.name,
       };
 
       await addOrder(order, businessId);
 
-      // Deduct stock after order is persisted
-      items.forEach((item) => {
-        const product = products.find((p) => p.id === item.productId);
-        const isService = product ? normalizeProductType(product.productType) === 'service' : false;
-        if (!isService) {
-          updateVariantStock(item.productId, item.variantId, -item.quantity);
+      const socialCheckoutCode = /^SC-(.+)$/i.exec(socialCheckoutReference.trim())?.[1];
+      if (socialCheckoutCode && businessId) {
+        try {
+          const checkoutRows = await supabaseData.fetchCollection<SocialCheckoutDraft>('social_checkouts', businessId);
+          const paymentDraft = checkoutRows.find((row) => row.data.id === socialCheckoutCode)?.data;
+          if (paymentDraft) {
+            const linkedAt = new Date().toISOString();
+            await supabaseData.upsertCollection('social_checkouts', businessId, [{
+              ...paymentDraft,
+              status: 'verified',
+              convertedOrderId: order.id,
+              reviewedBy: currentUser?.name,
+              reviewedAt: linkedAt,
+              updatedAt: linkedAt,
+            }]);
+            queueSocialCheckoutEmail({
+              type: 'order_created',
+              businessId,
+              checkoutCode: socialCheckoutCode,
+              orderId: order.id,
+            });
+          }
+        } catch (linkError) {
+          console.warn('Social checkout link update failed:', linkError);
         }
-      });
+      }
+
+      // Deduct stock after order is persisted
+      await Promise.all(
+        items.map((item) => {
+          const product = products.find((p) => p.id === item.productId);
+          const isService = product ? normalizeProductType(product.productType) === 'service' : false;
+          if (isService) return Promise.resolve();
+          return updateVariantStock(item.productId, item.variantId, -item.quantity, businessId);
+        })
+      );
 
       // Send push notification to team
       if (businessId) {
@@ -738,8 +1080,8 @@ export default function NewOrderScreen() {
     const variant = product?.variants.find((v) => v.id === item.variantId);
     const variantName = isService
       ? (product?.categories?.[0] ?? 'Service')
-      : (variant ? Object.values(variant.variableValues).join(' / ') : '');
-    return { productName: product?.name || 'Unknown', variantName, stock: variant?.stock || 0, isService, usesGlobalPricing };
+      : (variant ? Object.values(variant.variableValues).join(' / ') : (item.variantName ?? ''));
+    return { productName: product?.name || item.productName || 'Product unavailable', variantName, stock: variant?.stock || 0, isService, usesGlobalPricing };
   };
 
   const handleServiceVariableUpdate = (itemIndex: number, variableId: string, value: string) => {
@@ -833,26 +1175,21 @@ export default function NewOrderScreen() {
     setTimePickerTarget(null);
   };
 
-  const contentWrapperStyle: StyleProp<ViewStyle> = isDesktop
-    ? { maxWidth: 760, alignSelf: 'center', width: '100%' }
-    : undefined;
+  const contentWrapperStyle: StyleProp<ViewStyle> = isDesktopWeb
+    ? { width: '100%', maxWidth: webMaxWidth, alignSelf: 'flex-start', paddingHorizontal: 28, paddingBottom: 56 }
+    : isDesktop
+      ? { maxWidth: 1120, alignSelf: 'center', width: '100%' }
+      : undefined;
 
   return (
-    <SafeAreaView className="flex-1" style={{ backgroundColor: canvasBg }}>
+    <View className="flex-1 flex-row" style={{ backgroundColor: canvasBg }}>
+      {isDesktop ? <DesktopSidebar /> : null}
+      <SafeAreaView className="flex-1" style={{ backgroundColor: canvasBg }}>
       <View
         style={[
           { flex: 1, backgroundColor: panelBg },
-          !isDark && isDesktopWeb
-            ? {
-                width: '100%',
-                maxWidth: 980,
-                alignSelf: 'center',
-                borderWidth: 1,
-                borderColor: '#E6E6E6',
-                borderRadius: 18,
-                overflow: 'hidden',
-                marginVertical: 12,
-              }
+          isDesktopWeb
+            ? { width: '100%' }
             : null,
         ]}
       >
@@ -861,14 +1198,68 @@ export default function NewOrderScreen() {
           className="flex-1"
         >
         {/* Header */}
+        {isDesktopWeb ? (
+          <View style={{ backgroundColor: colors.bg.primary, borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
+            <View
+              style={{
+                paddingHorizontal: 28,
+                paddingTop: 20,
+                paddingBottom: 12,
+                width: '100%',
+                maxWidth: webMaxWidth,
+                alignSelf: 'flex-start',
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 18 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 }}>
+                  <Pressable
+                    onPress={() => router.back()}
+                    className="active:opacity-70"
+                    style={{ width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}
+                  >
+                    <ArrowLeft size={19} color={colors.text.primary} strokeWidth={2} />
+                  </Pressable>
+                  <Text style={{ color: colors.text.primary, fontSize: 22, fontWeight: '700' }} numberOfLines={1}>
+                    {isServiceOrder ? 'New Service Order' : 'New Product Order'}
+                  </Text>
+                </View>
+
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <Button
+                    onPress={() => router.back()}
+                    fullWidth={false}
+                    size="sm"
+                    variant="ghost"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onPress={handleSubmit}
+                    disabled={!customerName.trim() || items.length === 0 || isSubmitting}
+                    fullWidth={false}
+                    size="sm"
+                    variant="primary"
+                    loading={isSubmitting}
+                    loadingText="Creating..."
+                  >
+                    {isServiceOrder ? 'Create Service Order' : 'Create Order'}
+                  </Button>
+                </View>
+              </View>
+            </View>
+          </View>
+        ) : (
         <View className="flex-row items-center justify-between px-5 py-4" style={{ backgroundColor: colors.bg.card, borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
           <Pressable onPress={() => router.back()} className="w-10 h-10 rounded-full items-center justify-center active:opacity-50" style={{ backgroundColor: colors.bg.secondary }}>
             <X size={24} color={colors.text.primary} strokeWidth={2} />
           </Pressable>
-          <Text className={cn('text-lg font-bold', textPrimaryClass)}>New Order</Text>
+          <Text className={cn('text-lg font-bold', textPrimaryClass)}>
+            {isServiceOrder ? 'New Service Order' : 'New Product Order'}
+          </Text>
           {/* Empty spacer for layout balance */}
           <View className="w-10 h-10" />
         </View>
+        )}
 
         {/* AI-Parsed Banner */}
         {params.aiParsed === 'true' && (
@@ -885,19 +1276,103 @@ export default function NewOrderScreen() {
           </View>
         )}
 
-        <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-          <View style={contentWrapperStyle}>
-          {/* Customer Info Section */}
+        {(() => {
+          const socialCheckoutSection = hasSocialCheckoutPrefill ? (
+            <View className={cn('mx-4 mt-4 rounded-2xl p-4 border', cardClass)}>
+              <View className="flex-row items-center justify-between mb-3">
+                <View>
+                  <Text className={cn(sectionTitleClass, textPrimaryClass)}>Social Checkout Reference</Text>
+                  <Text className={cn('text-xs mt-1', textMutedClass)}>Payment confirmed before order creation.</Text>
+                </View>
+                <View className="rounded-full px-3 py-1.5" style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}>
+                  <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">{socialCheckoutReference || websiteOrderRef}</Text>
+                </View>
+              </View>
+              {socialCheckoutAmount > 0 ? (
+                <View className="flex-row items-center justify-between mb-3">
+                  <Text className={cn('text-sm', textSecondaryClass)}>Paid Amount</Text>
+                  <Text className={cn('text-sm font-semibold', textPrimaryClass)}>{formatCurrency(socialCheckoutAmount)}</Text>
+                </View>
+              ) : null}
+              {socialCheckoutBill.trim() ? (
+                <View className="rounded-2xl p-4" style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}>
+                  <Text className={cn('text-xs font-semibold uppercase tracking-wider mb-2', textMutedClass)}>What They Ordered</Text>
+                  <Text className={cn('text-sm leading-6', textPrimaryClass)}>{socialCheckoutBill.trim()}</Text>
+                </View>
+              ) : null}
+            </View>
+          ) : null;
+
+          const orderFlowSection = (
+          <View className={cn('mx-4 mt-4 rounded-2xl p-4 border', cardClass)}>
+            <Text className={cn(sectionTitleClass, textPrimaryClass)}>Order Flow</Text>
+            <Text className={cn('text-xs mt-1 mb-4', textMutedClass)}>
+              This order stays in one flow. Product orders handle physical items, service orders handle services only.
+            </Text>
+            <View className="flex-row gap-2">
+              <Pressable
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setOrderFlowMode('product');
+                }}
+                className="flex-1 rounded-full items-center justify-center active:opacity-70"
+                style={{
+                  height: 42,
+                  backgroundColor: !isServiceOrder ? colors.text.primary : colors.bg.secondary,
+                  borderWidth: 1,
+                  borderColor: !isServiceOrder ? colors.text.primary : colors.border.light,
+                }}
+              >
+                <Text
+                  className="text-sm font-semibold"
+                  style={{ color: !isServiceOrder ? colors.bg.primary : colors.text.primary }}
+                >
+                  Product Order
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setOrderFlowMode('service');
+                }}
+                className="flex-1 rounded-full items-center justify-center active:opacity-70"
+                style={{
+                  height: 42,
+                  backgroundColor: isServiceOrder ? colors.text.primary : colors.bg.secondary,
+                  borderWidth: 1,
+                  borderColor: isServiceOrder ? colors.text.primary : colors.border.light,
+                }}
+              >
+                <Text
+                  className="text-sm font-semibold"
+                  style={{ color: isServiceOrder ? colors.bg.primary : colors.text.primary }}
+                >
+                  Service Order
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+          );
+
+          const coreDetailsSection = (
           <View className={cn('mx-4 mt-4 rounded-2xl p-4 border', cardClass)}>
             <View className="flex-row items-center justify-between mb-4">
-              <Text className={cn('font-bold text-base', textPrimaryClass)}>Customer Information</Text>
+              <View className="flex-1 pr-3">
+                <Text className={cn(sectionTitleClass, textPrimaryClass)}>Core Details</Text>
+                <Text className={cn('text-xs mt-1', textMutedClass)}>
+                  {isServiceOrder
+                    ? 'Customer and order reference details for this service order.'
+                    : 'Customer, delivery, and order reference details.'}
+                </Text>
+              </View>
               {customers.length > 0 && (
                 <Pressable
                   onPress={() => setShowCustomerSearch(!showCustomerSearch)}
-                  className={cn('px-3 py-2 rounded-xl flex-row items-center active:opacity-70', isDark ? 'bg-[#1C2B3A]' : 'bg-blue-50')}
+                  className="px-3 rounded-full flex-row items-center active:opacity-70"
+                  style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light, height: 34 }}
                 >
-                  <Users size={16} color="#2563EB" strokeWidth={2} />
-                  <Text className={cn('font-semibold text-sm ml-1', isDark ? 'text-blue-300' : 'text-blue-700')}>
+                  <Users size={14} color={colors.text.primary} strokeWidth={2} />
+                  <Text className="font-semibold text-xs ml-1.5" style={{ color: colors.text.primary }}>
                     {selectedCustomerId ? 'Change' : 'Search'}
                   </Text>
                 </Pressable>
@@ -928,8 +1403,20 @@ export default function NewOrderScreen() {
                         className="flex-row items-center p-3 border-b active:opacity-70"
                         style={{ borderBottomColor: colors.border.light }}
                       >
-                        <View className="w-10 h-10 rounded-full bg-emerald-100 items-center justify-center mr-3">
-                          <UserIcon size={18} color="#059669" strokeWidth={2} />
+                        <View
+                          className="w-10 h-10 rounded-full items-center justify-center mr-3"
+                          style={{
+                            backgroundColor: isDark ? '#F3F4F6' : '#111111',
+                            borderWidth: 1,
+                            borderColor: isDark ? '#E5E7EB' : '#2C2C2C',
+                          }}
+                        >
+                          <Text
+                            className="text-xs font-semibold"
+                            style={{ color: isDark ? '#111111' : '#FFFFFF' }}
+                          >
+                            {getInitials(customer.fullName)}
+                          </Text>
                         </View>
                         <View className="flex-1">
                           <Text className={cn('font-semibold text-sm', textPrimaryClass)}>{customer.fullName}</Text>
@@ -966,7 +1453,7 @@ export default function NewOrderScreen() {
             )}
 
             <View className="mb-4">
-              <Text className="text-gray-600 text-sm font-medium mb-2">Full Name *</Text>
+              <Text className={cn(fieldLabelClass, 'mb-1.5')} style={{ color: colors.text.secondary }}>Full Name *</Text>
               <TextInput
                 placeholder="Enter customer name"
                 placeholderTextColor="#9CA3AF"
@@ -978,7 +1465,7 @@ export default function NewOrderScreen() {
             </View>
 
             <View className="mb-4">
-              <Text className="text-gray-600 text-sm font-medium mb-2">Phone Number</Text>
+              <Text className={cn(fieldLabelClass, 'mb-1.5')} style={{ color: colors.text.secondary }}>Phone Number</Text>
               <TextInput
                 placeholder="+234 xxx xxx xxxx"
                 placeholderTextColor="#9CA3AF"
@@ -991,7 +1478,7 @@ export default function NewOrderScreen() {
             </View>
 
             <View className="mb-4">
-              <Text className="text-gray-600 text-sm font-medium mb-2">Email</Text>
+              <Text className={cn(fieldLabelClass, 'mb-1.5')} style={{ color: colors.text.secondary }}>Email</Text>
               <TextInput
                 placeholder="email@example.com"
                 placeholderTextColor="#9CA3AF"
@@ -1004,93 +1491,382 @@ export default function NewOrderScreen() {
               />
             </View>
 
+            {!isServiceOrder && (
+              <>
+                <View className="mb-4">
+                  <Text className={cn(fieldLabelClass, 'mb-1.5')} style={{ color: colors.text.secondary }}>Delivery State</Text>
+                  <Pressable
+                    onPress={() => {
+                      setShowStateModal(!showStateModal);
+                      if (showStateModal) setStateSearchQuery('');
+                    }}
+                    className={cn('rounded-xl px-4 py-3 flex-row items-center justify-between border', softCardClass)}
+                  >
+                    <Text className={cn('text-base', deliveryState ? textPrimaryClass : textMutedClass)}>
+                      {deliveryState || 'Select state'}
+                    </Text>
+                    <ChevronDown size={20} color="#6B7280" strokeWidth={2} />
+                  </Pressable>
+                  {showStateModal && (
+                    <View
+                      className={cn('rounded-xl mt-2 overflow-hidden border', cardClass)}
+                    >
+                      <View className="flex-row items-center px-3" style={{ borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
+                        <Search size={16} color={colors.input.placeholder} strokeWidth={2} />
+                        <TextInput
+                          placeholder="Search state"
+                          placeholderTextColor={colors.input.placeholder}
+                          value={stateSearchQuery}
+                          onChangeText={setStateSearchQuery}
+                          className="flex-1 px-2 py-3 text-sm"
+                          style={{ color: colors.input.text }}
+                        />
+                      </View>
+                      {Platform.OS === 'web' ? (
+                        <View style={{ maxHeight: 260, overflowY: 'auto' } as any}>
+                          {filteredNigeriaStates.length > 0 ? filteredNigeriaStates.map((state) => (
+                            <Pressable
+                              key={state}
+                              onPress={() => {
+                                setDeliveryState(state);
+                                setShowStateModal(false);
+                                setStateSearchQuery('');
+                              }}
+                              className="flex-row items-center justify-between px-4 py-2.5 border-b active:opacity-70"
+                              style={{ borderBottomColor: colors.border.light }}
+                            >
+                              <Text
+                                style={{ color: deliveryState === state ? colors.text.primary : colors.text.secondary }}
+                                className={cn('text-sm', deliveryState === state && 'font-semibold')}
+                              >
+                                {state}
+                              </Text>
+                              {deliveryState === state && <Check size={16} color={colors.text.primary} strokeWidth={2} />}
+                            </Pressable>
+                          )) : (
+                            <Text style={{ color: colors.text.tertiary, fontSize: 13, paddingHorizontal: 16, paddingVertical: 14 }}>
+                              No states match your search.
+                            </Text>
+                          )}
+                        </View>
+                      ) : (
+                        <ScrollView
+                          style={{ maxHeight: 260 }}
+                          showsVerticalScrollIndicator
+                          nestedScrollEnabled
+                          keyboardShouldPersistTaps="handled"
+                        >
+                          {filteredNigeriaStates.length > 0 ? filteredNigeriaStates.map((state) => (
+                            <Pressable
+                              key={state}
+                              onPress={() => {
+                                setDeliveryState(state);
+                                setShowStateModal(false);
+                                setStateSearchQuery('');
+                                Haptics.selectionAsync();
+                              }}
+                              className="flex-row items-center justify-between px-4 py-2.5 border-b active:opacity-70"
+                              style={{ borderBottomColor: colors.border.light }}
+                            >
+                              <Text
+                                style={{ color: deliveryState === state ? colors.text.primary : colors.text.secondary }}
+                                className={cn('text-sm', deliveryState === state && 'font-semibold')}
+                              >
+                                {state}
+                              </Text>
+                              {deliveryState === state && <Check size={16} color={colors.text.primary} strokeWidth={2} />}
+                            </Pressable>
+                          )) : (
+                            <Text style={{ color: colors.text.tertiary, fontSize: 13, paddingHorizontal: 16, paddingVertical: 14 }}>
+                              No states match your search.
+                            </Text>
+                          )}
+                        </ScrollView>
+                      )}
+                    </View>
+                  )}
+                </View>
+
+                <View className="mb-4">
+                  <Text className={cn(fieldLabelClass, 'mb-1.5')} style={{ color: colors.text.secondary }}>Delivery Address</Text>
+                  <TextInput
+                    placeholder="Enter full delivery address"
+                    placeholderTextColor="#9CA3AF"
+                    value={deliveryAddress}
+                    onChangeText={setDeliveryAddress}
+                    multiline
+                    numberOfLines={3}
+                    className={cn('rounded-xl px-4 py-3 text-base border', softCardClass)}
+                    style={{ color: colors.input.text, minHeight: 80, textAlignVertical: 'top' }}
+                  />
+                </View>
+
+              </>
+            )}
+
+          </View>
+          );
+
+          const orderMetaSection = (
+          <View className={cn('mx-4 mt-4 rounded-2xl p-4 border', cardClass)}>
             <View className="mb-4">
-              <Text className="text-gray-600 text-sm font-medium mb-2">Delivery State</Text>
-              <Pressable
-                onPress={() => setShowStateModal(true)}
-                className={cn('rounded-xl px-4 py-3 flex-row items-center justify-between border', softCardClass)}
-              >
-                <Text className={cn('text-base', deliveryState ? textPrimaryClass : textMutedClass)}>
-                  {deliveryState || 'Select state'}
-                </Text>
-                <ChevronDown size={20} color="#6B7280" strokeWidth={2} />
-              </Pressable>
+              <Text className={cn(sectionTitleClass, textPrimaryClass)}>Order Type &amp; Reference</Text>
+              <Text className={cn('text-xs mt-1', textMutedClass)}>Delivery timeline and website order linkage.</Text>
             </View>
 
-            <View className="mb-4">
-              <Text className="text-gray-600 text-sm font-medium mb-2">Delivery Address</Text>
-              <TextInput
-                placeholder="Enter full delivery address"
-                placeholderTextColor="#9CA3AF"
-                value={deliveryAddress}
-                onChangeText={setDeliveryAddress}
-                multiline
-                numberOfLines={3}
-                className={cn('rounded-xl px-4 py-3 text-base border', softCardClass)}
-                style={{ color: colors.input.text, minHeight: 80, textAlignVertical: 'top' }}
-              />
-            </View>
+            {!isServiceOrder && (
+              <View className="mb-4">
+                <Text className={cn(fieldLabelClass, 'mb-2')} style={{ color: colors.text.secondary }}>Order Type</Text>
+                <Pressable
+                  onPress={() => setShowOrderTypeMenu((open) => !open)}
+                  className="rounded-xl px-4 flex-row items-center justify-between active:opacity-70"
+                  style={{
+                    minHeight: 48,
+                    backgroundColor: colors.input.bg,
+                    borderWidth: 1,
+                    borderColor: colors.border.light,
+                  }}
+                >
+                  <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '500' }} numberOfLines={1}>
+                    {selectedOrderType.name}
+                  </Text>
+                  <ChevronDown size={18} color={colors.text.tertiary} strokeWidth={2} />
+                </Pressable>
+                {showOrderTypeMenu ? (
+                  <View
+                    className="mt-2 rounded-2xl overflow-hidden"
+                    style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+                  >
+                    {orderTimelineSettings.orderTypes.map((type, index) => {
+                      const isSelected = type.id === selectedOrderType.id;
+                      return (
+                        <Pressable
+                          key={type.id}
+                          onPress={() => {
+                            Haptics.selectionAsync();
+                            setOrderTypeId(type.id);
+                            setShowOrderTypeMenu(false);
+                          }}
+                          className="flex-row items-center justify-between px-4 py-3 active:opacity-70"
+                          style={index > 0 ? { borderTopWidth: 1, borderTopColor: colors.border.light } : undefined}
+                        >
+                          <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: isSelected ? '600' : '400' }}>
+                            {type.name}
+                          </Text>
+                          {isSelected ? <Check size={16} color={colors.text.primary} strokeWidth={2.4} /> : null}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                ) : null}
+                <View
+                  className="mt-3 rounded-2xl p-4 border"
+                  style={{ backgroundColor: colors.bg.secondary, borderColor: colors.border.light }}
+                >
+                  <Text style={{ color: colors.text.primary }} className="text-sm font-bold">
+                    Estimated delivery: {estimatedDeliveryPreview}
+                  </Text>
+                  <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1">
+                    {fulfillmentTimelinePreview.minBusinessDays}-{fulfillmentTimelinePreview.maxBusinessDays} business days
+                    {fulfillmentTimelinePreview.shippingZone ? ` · ${fulfillmentTimelinePreview.shippingZone.name}` : ''}
+                  </Text>
+                </View>
+              </View>
+            )}
 
-            <View className="mb-4">
-              <Text className="text-gray-600 text-sm font-medium mb-2">Website Order Ref (WooCommerce)</Text>
+            <View>
+              <Text className={cn(fieldLabelClass, 'mb-1.5')} style={{ color: colors.text.secondary }}>Website Order Ref (WooCommerce)</Text>
               <TextInput
-                placeholder="e.g. WC #10234 (optional)"
+                placeholder="e.g. 47581 or WC-47581"
                 placeholderTextColor="#9CA3AF"
                 value={websiteOrderRef}
-                onChangeText={setWebsiteOrderRef}
+                onChangeText={handleWebsiteOrderRefChange}
+                onFocus={() => {
+                  setShowWooSuggestions(Boolean(websiteOrderRef.trim()));
+                  if (!wooLookupLoadedRef.current) {
+                    void loadWooSuggestions();
+                  }
+                }}
                 className={cn('rounded-xl px-4 h-[52px] text-base border', softCardClass)}
                 style={{ color: colors.input.text }}
               />
+
+              {showWooSuggestions && (wooSuggestions.length > 0 || isFetchingWooSuggestions) ? (
+                <View
+                  className={cn('mt-2 rounded-2xl border overflow-hidden', cardClass)}
+                  style={{ backgroundColor: colors.bg.primary }}
+                >
+                  {isFetchingWooSuggestions && wooSuggestions.length === 0 ? (
+                    <View className="px-4 py-3 flex-row items-center">
+                      <ActivityIndicator size="small" color={colors.text.primary} />
+                      <Text className={cn('ml-3 text-sm', textSecondaryClass)}>Loading WooCommerce orders...</Text>
+                    </View>
+                  ) : null}
+                  {wooSuggestions.map((wooOrder, index) => (
+                    <Pressable
+                      key={`${wooOrder.externalId}-${wooOrder.websiteOrderReference}`}
+                      onPress={() => {
+                        void handleSelectWooSuggestion(wooOrder);
+                      }}
+                      className="px-4 py-3 active:opacity-70"
+                      style={{
+                        borderTopWidth: index === 0 ? 0 : 1,
+                        borderTopColor: colors.border.light,
+                      }}
+                    >
+                      <Text className={cn('text-sm font-semibold', textPrimaryClass)}>
+                        {wooOrder.websiteOrderReference}
+                      </Text>
+                      <Text className={cn('mt-1 text-xs', textSecondaryClass)}>
+                        {wooOrder.customerEmail || wooOrder.customerName || 'No customer email'}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
+
+              {selectedWooOrderPreview ? (
+                <View
+                  className={cn('mt-2 rounded-2xl border p-3', cardClass)}
+                  style={{ backgroundColor: colors.bg.secondary }}
+                >
+                  <Text className={cn('text-xs font-semibold uppercase tracking-wider', textMutedClass)}>
+                    Woo order selected
+                  </Text>
+                  <Text className={cn('mt-1 text-sm font-semibold', textPrimaryClass)}>
+                    {selectedWooOrderPreview.reference}
+                  </Text>
+                  <Text className={cn('mt-1 text-xs', textSecondaryClass)}>
+                    {selectedWooOrderPreview.customerEmail || selectedWooOrderPreview.customerName}
+                  </Text>
+                </View>
+              ) : null}
             </View>
-
           </View>
+          );
 
-          {/* Items Section */}
+          const itemsSection = (
           <View className={cn('mx-4 mt-4 rounded-2xl p-4 border', cardClass)}>
-            <View className="flex-row items-center justify-between mb-4">
-              <Text className={cn('font-bold text-base', textPrimaryClass)}>Items *</Text>
-              <View className="flex-row gap-2">
-                <Pressable
-                  onPress={() => {
-                    setItemTypeTab('product');
-                    setShowProductSearch(true);
-                  }}
-                  className="px-4 py-2 rounded-full flex-row items-center active:opacity-70"
-                  style={{
-                    backgroundColor: isProductTabActive ? itemActionButtonColor : 'transparent',
-                    borderWidth: 1.5,
-                    borderColor: itemActionButtonColor,
-                  }}
-                >
-                  <Plus size={16} color={isProductTabActive ? itemActionButtonActiveTextColor : itemActionButtonColor} strokeWidth={2.4} />
-                  <Text
-                    className="font-semibold text-sm ml-1"
-                    style={{ color: isProductTabActive ? itemActionButtonActiveTextColor : itemActionButtonColor }}
-                  >
-                    Add Product
-                  </Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => {
-                    setItemTypeTab('service');
-                    setShowProductSearch(true);
-                  }}
-                  className="px-4 py-2 rounded-full flex-row items-center active:opacity-70"
-                  style={{
-                    backgroundColor: isServiceTabActive ? itemActionButtonColor : 'transparent',
-                    borderWidth: 1.5,
-                    borderColor: itemActionButtonColor,
-                  }}
-                >
-                  <Plus size={16} color={isServiceTabActive ? itemActionButtonActiveTextColor : itemActionButtonColor} strokeWidth={2.4} />
-                  <Text
-                    className="font-semibold text-sm ml-1"
-                    style={{ color: isServiceTabActive ? itemActionButtonActiveTextColor : itemActionButtonColor }}
-                  >
-                    Add Service
-                  </Text>
-                </Pressable>
-              </View>
+            <View className="mb-4">
+              {isDesktop ? (
+                <View className="flex-row items-center justify-between">
+                  <View className="flex-1 pr-3">
+                    <Text className={cn(sectionTitleClass, textPrimaryClass)}>{isServiceOrder ? 'Services *' : 'Products *'}</Text>
+                    <Text className={cn('text-xs mt-1', textMutedClass)}>
+                      {isServiceOrder ? 'Add services from your service catalog.' : 'Add products from your inventory catalog.'}
+                    </Text>
+                  </View>
+                  <View className="flex-row gap-2">
+                    {!isServiceOrder ? (
+                    <Pressable
+                      onPress={() => {
+                        setItemTypeTab('product');
+                        setShowProductSearch(true);
+                      }}
+                      className="px-3 rounded-full flex-row items-center justify-center active:opacity-70"
+                      style={{
+                        backgroundColor: isProductTabActive ? itemActionButtonColor : colors.bg.secondary,
+                        borderWidth: 1,
+                        borderColor: isProductTabActive ? itemActionButtonColor : colors.border.light,
+                        height: 34,
+                      }}
+                    >
+                      <Plus size={14} color={isProductTabActive ? itemActionButtonActiveTextColor : itemActionButtonColor} strokeWidth={2.2} />
+                      <Text
+                        className="font-semibold text-xs ml-1.5"
+                        style={{ color: isProductTabActive ? itemActionButtonActiveTextColor : itemActionButtonColor }}
+                      >
+                        Add Product
+                      </Text>
+                    </Pressable>
+                    ) : null}
+                    {isServiceOrder ? (
+                      <Pressable
+                        onPress={() => {
+                          setItemTypeTab('service');
+                          setShowProductSearch(true);
+                        }}
+                        className="px-3 rounded-full flex-row items-center justify-center active:opacity-70"
+                        style={{
+                          backgroundColor: isServiceTabActive ? itemActionButtonColor : colors.bg.secondary,
+                          borderWidth: 1,
+                          borderColor: isServiceTabActive ? itemActionButtonColor : colors.border.light,
+                          height: 34,
+                        }}
+                      >
+                        <Plus size={14} color={isServiceTabActive ? itemActionButtonActiveTextColor : itemActionButtonColor} strokeWidth={2.2} />
+                        <Text
+                          className="font-semibold text-xs ml-1.5"
+                          style={{ color: isServiceTabActive ? itemActionButtonActiveTextColor : itemActionButtonColor }}
+                        >
+                          Add Service
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                </View>
+              ) : (
+                <>
+                  <View className="flex-col items-stretch">
+                    <View>
+                      <Text className={cn(sectionTitleClass, textPrimaryClass)}>{isServiceOrder ? 'Services *' : 'Products *'}</Text>
+                      <Text className={cn('text-xs mt-1', textMutedClass)}>
+                        {isServiceOrder ? 'Add services from your service catalog.' : 'Add products from your inventory catalog.'}
+                      </Text>
+                    </View>
+                  </View>
+                  <View className="flex-row gap-2 mt-3">
+                    {!isServiceOrder ? (
+                    <Pressable
+                      onPress={() => {
+                        setItemTypeTab('product');
+                        setShowProductSearch(true);
+                      }}
+                      className="px-3 rounded-full flex-row items-center justify-center active:opacity-70"
+                      style={{
+                        flex: 1,
+                        backgroundColor: isProductTabActive ? itemActionButtonColor : colors.bg.secondary,
+                        borderWidth: 1,
+                        borderColor: isProductTabActive ? itemActionButtonColor : colors.border.light,
+                        height: 38,
+                      }}
+                    >
+                      <Plus size={14} color={isProductTabActive ? itemActionButtonActiveTextColor : itemActionButtonColor} strokeWidth={2.2} />
+                      <Text
+                        className="font-semibold text-xs ml-1.5"
+                        style={{ color: isProductTabActive ? itemActionButtonActiveTextColor : itemActionButtonColor }}
+                      >
+                        Add Product
+                      </Text>
+                    </Pressable>
+                    ) : null}
+                    {isServiceOrder ? (
+                      <Pressable
+                        onPress={() => {
+                          setItemTypeTab('service');
+                          setShowProductSearch(true);
+                        }}
+                        className="px-3 rounded-full flex-row items-center justify-center active:opacity-70"
+                        style={{
+                          flex: 1,
+                          backgroundColor: isServiceTabActive ? itemActionButtonColor : colors.bg.secondary,
+                          borderWidth: 1,
+                          borderColor: isServiceTabActive ? itemActionButtonColor : colors.border.light,
+                          height: 38,
+                        }}
+                      >
+                        <Plus size={14} color={isServiceTabActive ? itemActionButtonActiveTextColor : itemActionButtonColor} strokeWidth={2.2} />
+                        <Text
+                          className="font-semibold text-xs ml-1.5"
+                          style={{ color: isServiceTabActive ? itemActionButtonActiveTextColor : itemActionButtonColor }}
+                        >
+                          Add Service
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                </>
+              )}
             </View>
 
             {/* Item Search */}
@@ -1101,7 +1877,7 @@ export default function NewOrderScreen() {
                   <TextInput
                     placeholder={itemTypeTab === 'service'
                       ? 'Search services (e.g., Installation)'
-                      : 'Search products or variants (e.g., Black, Gold)'}
+                      : 'Search products or variants (e.g., Sam, Black, Gold)'}
                     placeholderTextColor="#9CA3AF"
                     value={searchQuery}
                     onChangeText={setSearchQuery}
@@ -1176,19 +1952,21 @@ export default function NewOrderScreen() {
                           </Text>
                         </View>
 
-                        <View className="flex-row items-center bg-gray-100 rounded-lg">
+                        <View
+                          className={cn('flex-row items-center rounded-full border', isDark ? 'bg-[#1C1C1C] border-[#2C2C2C]' : 'bg-gray-100 border-gray-200')}
+                        >
                           <Pressable
                             onPress={() => handleUpdateQuantity(index, -1)}
                             className="p-2 active:opacity-50"
                           >
-                            <Minus size={14} color="#374151" strokeWidth={2} />
+                            <Minus size={14} color={isDark ? '#E5E7EB' : '#374151'} strokeWidth={2} />
                           </Pressable>
                           <Text className={cn('font-bold text-sm w-8 text-center', textPrimaryClass)}>{item.quantity}</Text>
                           <Pressable
                             onPress={() => handleUpdateQuantity(index, 1)}
                             className="p-2 active:opacity-50"
                           >
-                            <Plus size={14} color="#374151" strokeWidth={2} />
+                            <Plus size={14} color={isDark ? '#E5E7EB' : '#374151'} strokeWidth={2} />
                           </Pressable>
                         </View>
 
@@ -1386,17 +2164,22 @@ export default function NewOrderScreen() {
               </View>
             )}
           </View>
+          );
 
-          {items.length > 0 && (
+          const addonsSection = items.length > 0 ? (
             <View className={cn('mx-4 mt-4 rounded-2xl p-4 border', cardClass)}>
               <View className="flex-row items-center justify-between mb-4">
-                <Text className={cn('font-bold text-base', textPrimaryClass)}>Add-ons</Text>
+                <View className="flex-1 pr-3">
+                  <Text className={cn(sectionTitleClass, textPrimaryClass)}>Add-ons</Text>
+                  <Text className={cn('text-xs mt-1', textMutedClass)}>Optional extra services for this order.</Text>
+                </View>
                 <Pressable
                   onPress={() => setShowServiceModal(true)}
-                  className={cn('px-3 py-2 rounded-xl flex-row items-center active:opacity-70', isDark ? 'bg-[#1C2B3A]' : 'bg-blue-50')}
+                  className="px-3 rounded-full flex-row items-center active:opacity-70"
+                  style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light, height: 34 }}
                 >
-                  <Plus size={16} color="#2563EB" strokeWidth={2} />
-                  <Text className={cn('font-semibold text-sm ml-1', isDark ? 'text-blue-300' : 'text-blue-700')}>
+                  <Plus size={14} color={colors.text.primary} strokeWidth={2} />
+                  <Text className="font-semibold text-xs ml-1.5" style={{ color: colors.text.primary }}>
                     Add Add-on
                   </Text>
                 </Pressable>
@@ -1434,26 +2217,33 @@ export default function NewOrderScreen() {
                 <Text className={cn('text-sm text-center py-4', textMutedClass)}>No add-ons added</Text>
               )}
             </View>
-          )}
+          ) : null;
 
-          {/* Fees & Charges Section */}
+          const feesSection = (
           <View className={cn('mx-4 mt-4 rounded-2xl p-4 border', cardClass)}>
-            <Text className={cn('font-bold text-base mb-4', textPrimaryClass)}>Fees & Charges</Text>
-
             <View className="mb-4">
-              <Text className="text-gray-600 text-sm font-medium mb-2">Delivery Fee</Text>
-              <TextInput
-                placeholder="0"
-                placeholderTextColor="#9CA3AF"
-                value={deliveryFee}
-                onChangeText={setDeliveryFee}
-                keyboardType="numeric"
-                className={cn('rounded-xl px-4 py-3 text-base border', softCardClass, textPrimaryClass)}
-              />
+              <Text className={cn(sectionTitleClass, textPrimaryClass)}>Charges</Text>
+              <Text className={cn('text-xs mt-1', textMutedClass)}>
+                {isServiceOrder ? 'Extra charges and discounts for this service order.' : 'Delivery, extra charges, and discounts.'}
+              </Text>
             </View>
 
+            {!isServiceOrder && (
+              <View className="mb-4">
+                <Text className={cn(fieldLabelClass, 'mb-1.5')} style={{ color: colors.text.secondary }}>Delivery Fee</Text>
+                <TextInput
+                  placeholder="0"
+                  placeholderTextColor="#9CA3AF"
+                  value={deliveryFee}
+                  onChangeText={setDeliveryFee}
+                  keyboardType="numeric"
+                  className={cn('rounded-xl px-4 py-3 text-base border', softCardClass, textPrimaryClass)}
+                />
+              </View>
+            )}
+
             <View className="mb-4">
-              <Text className="text-gray-600 text-sm font-medium mb-2">Additional Charges</Text>
+              <Text className={cn(fieldLabelClass, 'mb-1.5')} style={{ color: colors.text.secondary }}>Additional Charges</Text>
               <TextInput
                 placeholder="0"
                 placeholderTextColor="#9CA3AF"
@@ -1466,7 +2256,7 @@ export default function NewOrderScreen() {
 
             {additionalChargesNum > 0 && (
               <View className="mb-4">
-                <Text className="text-gray-600 text-sm font-medium mb-2">Additional Charges Note</Text>
+                <Text className={cn(fieldLabelClass, 'mb-1.5')} style={{ color: colors.text.secondary }}>Additional Charges Note</Text>
                 <TextInput
                   placeholder="Describe the additional charges"
                   placeholderTextColor="#9CA3AF"
@@ -1478,7 +2268,7 @@ export default function NewOrderScreen() {
             )}
 
             <View>
-              <Text className="text-gray-600 text-sm font-medium mb-2">Discount Amount</Text>
+              <Text className={cn(fieldLabelClass, 'mb-1.5')} style={{ color: colors.text.secondary }}>Discount Amount</Text>
               <TextInput
                 placeholder="0"
                 placeholderTextColor="#9CA3AF"
@@ -1489,14 +2279,18 @@ export default function NewOrderScreen() {
               />
             </View>
           </View>
+          );
 
-          {/* Order Details Section */}
+          const orderDetailsSection = (
           <View className={cn('mx-4 mt-4 rounded-2xl p-4 border', cardClass)}>
-            <Text className={cn('font-bold text-base mb-4', textPrimaryClass)}>Order Details</Text>
+            <View className="mb-4">
+              <Text className={cn(sectionTitleClass, textPrimaryClass)}>Order Details</Text>
+              <Text className={cn('text-xs mt-1', textMutedClass)}>Date, sales source, and payment method.</Text>
+            </View>
 
             {/* Order Date */}
             <View className="mb-4">
-              <Text className={cn('text-sm font-medium mb-2', textSecondaryClass)}>Order Date</Text>
+              <Text className={cn(fieldLabelClass, 'mb-1.5')} style={{ color: colors.text.secondary }}>Order Date</Text>
               <View className={cn('flex-row rounded-xl overflow-hidden border', softCardClass)}>
                 <Pressable
                   onPress={() => {
@@ -1554,34 +2348,146 @@ export default function NewOrderScreen() {
             </View>
 
             <View className="mb-4">
-              <Text className={cn('text-sm font-medium mb-2', textSecondaryClass)}>Sales Source</Text>
+              <Text className={cn(fieldLabelClass, 'mb-1.5')} style={{ color: colors.text.secondary }}>Sales Source</Text>
               <Pressable
-                onPress={() => setShowSourceModal(true)}
+                onPress={() => setShowSourceModal(!showSourceModal)}
                 className={cn('rounded-xl px-4 py-3 flex-row items-center justify-between border', softCardClass)}
               >
                 <Text className={cn('text-base', textPrimaryClass)}>{source}</Text>
                 <ChevronDown size={20} color={colors.text.muted} strokeWidth={2} />
               </Pressable>
+              {showSourceModal && (
+                <ScrollView
+                  className={cn('rounded-xl mt-2 border', cardClass)}
+                  style={{ maxHeight: 220 }}
+                  showsVerticalScrollIndicator={false}
+                  nestedScrollEnabled
+                >
+                  {saleSources.map((s) => (
+                    <Pressable
+                      key={s.id}
+                      onPress={() => {
+                        setSource(s.name);
+                        setShowSourceModal(false);
+                        Haptics.selectionAsync();
+                      }}
+                      className="flex-row items-center justify-between px-4 py-2.5 border-b active:opacity-70"
+                      style={{ borderBottomColor: colors.border.light }}
+                    >
+                      <Text
+                        style={{ color: source === s.name ? colors.text.primary : colors.text.secondary }}
+                        className={cn('text-sm', source === s.name && 'font-semibold')}
+                      >
+                        {s.name}
+                      </Text>
+                      {source === s.name && <Check size={16} color={colors.text.primary} strokeWidth={2} />}
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              )}
+            </View>
+
+            <View className="mb-4">
+              <Text className={cn(fieldLabelClass, 'mb-1.5')} style={{ color: colors.text.secondary }}>Order Category</Text>
+              <Pressable
+                onPress={() => setShowOrderClassificationModal(!showOrderClassificationModal)}
+                className={cn('rounded-xl px-4 py-3 flex-row items-center justify-between border', softCardClass)}
+              >
+                <Text className={cn('text-base', textPrimaryClass)}>{orderClassification}</Text>
+                <ChevronDown size={20} color={colors.text.muted} strokeWidth={2} />
+              </Pressable>
+              {showOrderClassificationModal && (
+                <ScrollView
+                  className={cn('rounded-xl mt-2 border', cardClass)}
+                  style={{ maxHeight: 220 }}
+                  showsVerticalScrollIndicator={false}
+                  nestedScrollEnabled
+                >
+                  {ORDER_CLASSIFICATIONS.map((classification) => (
+                    <Pressable
+                      key={classification}
+                      onPress={() => {
+                        setOrderClassification(classification);
+                        setShowOrderClassificationModal(false);
+                        Haptics.selectionAsync();
+                      }}
+                      className="flex-row items-center justify-between px-4 py-2.5 border-b active:opacity-70"
+                      style={{ borderBottomColor: colors.border.light }}
+                    >
+                      <Text
+                        style={{ color: orderClassification === classification ? colors.text.primary : colors.text.secondary }}
+                        className={cn('text-sm', orderClassification === classification && 'font-semibold')}
+                      >
+                        {classification}
+                      </Text>
+                      {orderClassification === classification && <Check size={16} color={colors.text.primary} strokeWidth={2} />}
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              )}
             </View>
 
             <View>
-              <Text className={cn('text-sm font-medium mb-2', textSecondaryClass)}>Payment Method</Text>
+              <Text className={cn(fieldLabelClass, 'mb-1.5')} style={{ color: colors.text.secondary }}>Payment Method</Text>
               <Pressable
-                onPress={() => setShowPaymentModal(true)}
+                onPress={() => setShowPaymentModal(!showPaymentModal)}
                 className={cn('rounded-xl px-4 py-3 flex-row items-center justify-between border', softCardClass)}
               >
                 <Text className={cn('text-base', textPrimaryClass)}>{paymentMethod}</Text>
                 <ChevronDown size={20} color={colors.text.muted} strokeWidth={2} />
               </Pressable>
+              {showPaymentModal && (
+                <ScrollView
+                  className={cn('rounded-xl mt-2 border', cardClass)}
+                  style={{ maxHeight: 220 }}
+                  showsVerticalScrollIndicator={false}
+                  nestedScrollEnabled
+                >
+                  {paymentMethods.map((m) => (
+                    <Pressable
+                      key={m.id}
+                      onPress={() => {
+                        setPaymentMethod(m.name);
+                        setShowPaymentModal(false);
+                        Haptics.selectionAsync();
+                      }}
+                      className="flex-row items-center justify-between px-4 py-2.5 border-b active:opacity-70"
+                      style={{ borderBottomColor: colors.border.light }}
+                    >
+                      <Text
+                        style={{ color: paymentMethod === m.name ? colors.text.primary : colors.text.secondary }}
+                        className={cn('text-sm', paymentMethod === m.name && 'font-semibold')}
+                      >
+                        {m.name}
+                      </Text>
+                      {paymentMethod === m.name && <Check size={16} color={colors.text.primary} strokeWidth={2} />}
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              )}
             </View>
           </View>
+          );
 
-          {/* Order Summary */}
+          const prescriptionSectionEl = (
+          <PrescriptionSection
+            prescription={customerPrescription}
+            onUpdate={setCustomerPrescription}
+            editable
+            staffName={currentUser?.name}
+            containerClassName="mx-4 mt-4"
+          />
+          );
+
+          const summarySection = (
           <View className={cn('mx-4 mt-4 mb-8 rounded-2xl p-4 border', summaryCardClass)}>
-            <Text className={cn('font-bold text-base mb-3', summaryPrimaryClass)}>Order Summary</Text>
+            <View className="mb-3">
+              <Text className={cn(sectionTitleClass, summaryPrimaryClass)}>Summary</Text>
+              <Text className={cn('text-xs mt-1', summarySecondaryClass)}>Final order totals before you create the order.</Text>
+            </View>
 
             <View className="flex-row justify-between mb-2">
-              <Text className={cn('text-sm', summarySecondaryClass)}>Items Subtotal</Text>
+              <Text className={cn('text-sm', summarySecondaryClass)}>{isServiceOrder ? 'Services Subtotal' : 'Items Subtotal'}</Text>
               <Text className={cn('font-semibold', summaryPrimaryClass)}>{formatCurrency(subtotal)}</Text>
             </View>
 
@@ -1618,72 +2524,51 @@ export default function NewOrderScreen() {
               <Text className={cn('font-bold text-2xl', summaryPrimaryClass)}>{formatCurrency(totalAmount)}</Text>
             </View>
           </View>
+          );
 
-          {/* Bottom padding for sticky CTA */}
-          <View className="h-32" />
-          </View>
-        </ScrollView>
+          return (
+            <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
+              <View style={contentWrapperStyle}>
+                {isDesktopWeb ? (
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      {socialCheckoutSection}
+                      {orderFlowSection}
+                      {coreDetailsSection}
+                      {itemsSection}
+                      {addonsSection}
+                      {feesSection}
+                      {prescriptionSectionEl}
+                    </View>
+                    <View style={{ width: rightColumnWidth ?? 420 }}>
+                      {orderMetaSection}
+                      {orderDetailsSection}
+                      {summarySection}
+                    </View>
+                  </View>
+                ) : (
+                  <>
+                    {socialCheckoutSection}
+                    {orderFlowSection}
+                    {coreDetailsSection}
+                    {orderMetaSection}
+                    {itemsSection}
+                    {addonsSection}
+                    {feesSection}
+                    {orderDetailsSection}
+                    {prescriptionSectionEl}
+                    {summarySection}
+                  </>
+                )}
+
+                {/* Bottom padding for sticky CTA */}
+                {!isDesktopWeb && <View className="h-32" />}
+              </View>
+            </ScrollView>
+          );
+        })()}
         </KeyboardAvoidingView>
       </View>
-
-      {/* State Selection Modal - Centered */}
-      <Modal visible={showStateModal} animationType="fade" transparent onRequestClose={() => setShowStateModal(false)}>
-        <View
-          className="flex-1 items-center justify-center"
-          style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)' }}
-        >
-          <Pressable
-            className="absolute inset-0"
-            onPress={() => setShowStateModal(false)}
-          />
-          <View
-            className="w-[90%] rounded-2xl overflow-hidden"
-            style={{ backgroundColor: '#111111', maxHeight: '70%', maxWidth: 400 }}
-          >
-            <View className="flex-row items-center justify-between px-5 py-4 border-b" style={{ borderBottomColor: '#333333' }}>
-              <Text className="text-white font-bold text-lg">Select State</Text>
-              <Pressable
-                onPress={() => setShowStateModal(false)}
-                className="w-8 h-8 rounded-full items-center justify-center active:opacity-50"
-                style={{ backgroundColor: '#222222' }}
-              >
-                <X size={18} color="#888888" strokeWidth={2} />
-              </Pressable>
-            </View>
-            <ScrollView
-              className="px-5 py-4"
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              bounces={true}
-              overScrollMode="always"
-            >
-              {NIGERIA_STATES.map((state) => (
-                <Pressable
-                  key={state}
-                  onPress={() => {
-                    setDeliveryState(state);
-                    setShowStateModal(false);
-                    Haptics.selectionAsync();
-                  }}
-                  className="py-3 px-4 rounded-xl mb-2 active:opacity-70"
-                  style={{ backgroundColor: deliveryState === state ? 'rgba(255,255,255,0.1)' : '#1A1A1A' }}
-                >
-                  <View className="flex-row items-center justify-between">
-                    <Text className={cn(
-                      'text-base',
-                      deliveryState === state ? 'text-white font-semibold' : 'text-gray-400'
-                    )}>
-                      {state}
-                    </Text>
-                    {deliveryState === state && <Check size={20} color="#FFFFFF" strokeWidth={2} />}
-                  </View>
-                </Pressable>
-              ))}
-              <View className="h-4" />
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
 
       {/* Service Selection Modal - Centered */}
       <Modal visible={showServiceModal} animationType="fade" transparent onRequestClose={() => setShowServiceModal(false)}>
@@ -1697,16 +2582,16 @@ export default function NewOrderScreen() {
           />
           <View
             className="w-[90%] rounded-2xl overflow-hidden"
-            style={{ backgroundColor: '#111111', maxWidth: 400, maxHeight: '70%' }}
+            style={{ backgroundColor: selectionModalSurface, maxWidth: 400, maxHeight: '70%', borderWidth: 1, borderColor: selectionModalBorder }}
           >
-            <View className="flex-row items-center justify-between px-5 py-4 border-b" style={{ borderBottomColor: '#333333' }}>
-              <Text className="text-white font-bold text-lg">Add Service</Text>
+            <View className="flex-row items-center justify-between px-5 py-4 border-b" style={{ borderBottomColor: selectionModalBorder }}>
+              <Text className={cn('font-bold text-lg', textPrimaryClass)}>Add Service</Text>
               <Pressable
                 onPress={() => setShowServiceModal(false)}
                 className="w-8 h-8 rounded-full items-center justify-center active:opacity-50"
-                style={{ backgroundColor: '#222222' }}
+                style={{ backgroundColor: selectionModalSoftBg }}
               >
-                <X size={18} color="#888888" strokeWidth={2} />
+                <X size={18} color={colors.text.muted} strokeWidth={2} />
               </Pressable>
             </View>
             <ScrollView
@@ -1720,14 +2605,14 @@ export default function NewOrderScreen() {
                   key={service.id}
                   onPress={() => handleAddService(service.id)}
                   className="flex-row items-center justify-between py-3 px-4 rounded-xl mb-2 active:opacity-70"
-                  style={{ backgroundColor: '#1A1A1A' }}
+                  style={{ backgroundColor: selectionModalSoftBg }}
                 >
-                  <Text className="text-white font-medium text-base">{service.name}</Text>
+                  <Text className={cn('font-medium text-base', textPrimaryClass)}>{service.name}</Text>
                   <Text className="text-green-400 font-bold">{formatCurrency(service.defaultPrice)}</Text>
                 </Pressable>
               ))}
               {customServices.length === 0 && (
-                <Text className="text-gray-400 text-sm text-center py-4">
+                <Text className={cn('text-sm text-center py-4', textMutedClass)}>
                   No add-ons available. Create one in settings first.
                 </Text>
               )}
@@ -1788,122 +2673,6 @@ export default function NewOrderScreen() {
                 </Pressable>
               </View>
             </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Source Selection Modal - Centered */}
-      <Modal visible={showSourceModal} animationType="fade" transparent onRequestClose={() => setShowSourceModal(false)}>
-        <View
-          className="flex-1 items-center justify-center"
-          style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)' }}
-        >
-          <Pressable
-            className="absolute inset-0"
-            onPress={() => setShowSourceModal(false)}
-          />
-          <View
-            className="w-[90%] rounded-2xl overflow-hidden"
-            style={{ backgroundColor: '#111111', maxWidth: 400, maxHeight: '70%' }}
-          >
-            <View className="flex-row items-center justify-between px-5 py-4 border-b" style={{ borderBottomColor: '#333333' }}>
-              <Text className="text-white font-bold text-lg">Sales Source</Text>
-              <Pressable
-                onPress={() => setShowSourceModal(false)}
-                className="w-8 h-8 rounded-full items-center justify-center active:opacity-50"
-                style={{ backgroundColor: '#222222' }}
-              >
-                <X size={18} color="#888888" strokeWidth={2} />
-              </Pressable>
-            </View>
-            <ScrollView
-              className="px-5 py-4"
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              bounces={true}
-            >
-              {saleSources.map((s) => (
-                <Pressable
-                  key={s.id}
-                  onPress={() => {
-                    setSource(s.name);
-                    setShowSourceModal(false);
-                    Haptics.selectionAsync();
-                  }}
-                  className="py-3 px-4 rounded-xl mb-2 active:opacity-70"
-                  style={{ backgroundColor: source === s.name ? 'rgba(255,255,255,0.1)' : '#1A1A1A' }}
-                >
-                  <View className="flex-row items-center justify-between">
-                    <Text className={cn(
-                      'text-base',
-                      source === s.name ? 'text-white font-semibold' : 'text-gray-400'
-                    )}>
-                      {s.name}
-                    </Text>
-                    {source === s.name && <Check size={20} color="#FFFFFF" strokeWidth={2} />}
-                  </View>
-                </Pressable>
-              ))}
-              <View className="h-4" />
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Payment Method Modal - Centered */}
-      <Modal visible={showPaymentModal} animationType="fade" transparent onRequestClose={() => setShowPaymentModal(false)}>
-        <View
-          className="flex-1 items-center justify-center"
-          style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)' }}
-        >
-          <Pressable
-            className="absolute inset-0"
-            onPress={() => setShowPaymentModal(false)}
-          />
-          <View
-            className="w-[90%] rounded-2xl overflow-hidden"
-            style={{ backgroundColor: '#111111', maxWidth: 400, maxHeight: '70%' }}
-          >
-            <View className="flex-row items-center justify-between px-5 py-4 border-b" style={{ borderBottomColor: '#333333' }}>
-              <Text className="text-white font-bold text-lg">Payment Method</Text>
-              <Pressable
-                onPress={() => setShowPaymentModal(false)}
-                className="w-8 h-8 rounded-full items-center justify-center active:opacity-50"
-                style={{ backgroundColor: '#222222' }}
-              >
-                <X size={18} color="#888888" strokeWidth={2} />
-              </Pressable>
-            </View>
-            <ScrollView
-              className="px-5 py-4"
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              bounces={true}
-            >
-              {paymentMethods.map((m) => (
-                <Pressable
-                  key={m.id}
-                  onPress={() => {
-                    setPaymentMethod(m.name);
-                    setShowPaymentModal(false);
-                    Haptics.selectionAsync();
-                  }}
-                  className="py-3 px-4 rounded-xl mb-2 active:opacity-70"
-                  style={{ backgroundColor: paymentMethod === m.name ? 'rgba(255,255,255,0.1)' : '#1A1A1A' }}
-                >
-                  <View className="flex-row items-center justify-between">
-                    <Text className={cn(
-                      'text-base',
-                      paymentMethod === m.name ? 'text-white font-semibold' : 'text-gray-400'
-                    )}>
-                      {m.name}
-                    </Text>
-                    {paymentMethod === m.name && <Check size={20} color="#FFFFFF" strokeWidth={2} />}
-                  </View>
-                </Pressable>
-              ))}
-              <View className="h-4" />
-            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -2175,19 +2944,112 @@ export default function NewOrderScreen() {
         </Pressable>
       </Modal>
 
-      {/* Sticky Bottom CTA */}
-      <StickyButtonContainer bottomInset={insets.bottom}>
-        <View style={contentWrapperStyle}>
-          <Button
-            onPress={handleSubmit}
-            disabled={!customerName.trim() || items.length === 0}
-            loading={isSubmitting}
-            loadingText="Creating..."
+      <Modal
+        visible={showOrderFlowChooser}
+        transparent
+        animationType="fade"
+        onRequestClose={() => router.back()}
+      >
+        <Pressable
+          className="flex-1 items-center justify-center px-5"
+          style={{ backgroundColor: 'rgba(0, 0, 0, 0.45)' }}
+          onPress={() => router.back()}
+        >
+          <Pressable
+            onPress={(e) => e.stopPropagation()}
+            className="w-full rounded-[28px] border p-5"
+            style={{ backgroundColor: colors.bg.card, borderColor: colors.border.light, maxWidth: 460 }}
           >
-            Create Order
-          </Button>
-        </View>
-      </StickyButtonContainer>
+            <View className="flex-row items-start justify-between">
+              <View className="flex-1 pr-4">
+                <Text className={cn('text-2xl font-bold', textPrimaryClass)}>Start New Order</Text>
+                <Text className={cn('text-sm mt-2 leading-6', textSecondaryClass)}>
+                  Choose the type of order first so the rest of the form stays focused.
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => router.back()}
+                className="w-10 h-10 rounded-full items-center justify-center active:opacity-70"
+                style={{ backgroundColor: colors.bg.secondary }}
+              >
+                <X size={20} color={colors.text.primary} strokeWidth={2} />
+              </Pressable>
+            </View>
+
+            <View className="mt-5 gap-3">
+              <Pressable
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setOrderFlowMode('product');
+                  setShowOrderFlowChooser(false);
+                }}
+                className="rounded-[24px] border p-4 active:opacity-80"
+                style={{ borderColor: colors.border.light, backgroundColor: colors.bg.secondary }}
+              >
+                <View className="flex-row items-center">
+                  <View
+                    className="w-11 h-11 rounded-full items-center justify-center mr-3"
+                    style={{ backgroundColor: colors.bg.card }}
+                  >
+                    <Package size={20} color={colors.text.primary} strokeWidth={2} />
+                  </View>
+                  <View className="flex-1">
+                    <Text className={cn('text-base font-semibold', textPrimaryClass)}>Product Order</Text>
+                    <Text className={cn('text-xs mt-1', textMutedClass)}>
+                      For glasses, accessories, packaging, and other physical items.
+                    </Text>
+                  </View>
+                </View>
+              </Pressable>
+
+              <Pressable
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setOrderFlowMode('service');
+                  setShowOrderFlowChooser(false);
+                }}
+                className="rounded-[24px] border p-4 active:opacity-80"
+                style={{ borderColor: colors.border.light, backgroundColor: colors.bg.secondary }}
+              >
+                <View className="flex-row items-center">
+                  <View
+                    className="w-11 h-11 rounded-full items-center justify-center mr-3"
+                    style={{ backgroundColor: colors.bg.card }}
+                  >
+                    <Clock3 size={20} color={colors.text.primary} strokeWidth={2} />
+                  </View>
+                  <View className="flex-1">
+                    <Text className={cn('text-base font-semibold', textPrimaryClass)}>Service Order</Text>
+                    <Text className={cn('text-xs mt-1', textMutedClass)}>
+                      For lab work, fittings, repairs, and other service-only orders.
+                    </Text>
+                  </View>
+                </View>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Sticky Bottom CTA */}
+      {!isDesktopWeb && (
+        <StickyButtonContainer
+          bottomInset={insets.bottom}
+          backgroundColor={colors.bg.card}
+          borderColor={colors.border.light}
+        >
+          <View style={contentWrapperStyle}>
+            <Button
+              onPress={handleSubmit}
+              disabled={!customerName.trim() || items.length === 0}
+              loading={isSubmitting}
+              loadingText="Creating..."
+            >
+              {isServiceOrder ? 'Create Service Order' : 'Create Order'}
+            </Button>
+          </View>
+        </StickyButtonContainer>
+      )}
 
       {toast && (
         <View
@@ -2205,6 +3067,7 @@ export default function NewOrderScreen() {
           </View>
         </View>
       )}
-    </SafeAreaView>
+      </SafeAreaView>
+    </View>
   );
 }

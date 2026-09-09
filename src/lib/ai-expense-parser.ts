@@ -1,9 +1,11 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI } from '@/lib/secure-gemini';
 
-const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
+const GEMINI_API_KEY = 'server-side';
 const GEMINI_MODEL = process.env.EXPO_PUBLIC_GEMINI_MODEL || '';
 const MAX_RETRIES = 2;
 const RETRY_DELAYS_MS = [1200, 2500];
+const SUPPORTED_GEMINI_INLINE_MIME_PREFIXES = ['image/'];
+const SUPPORTED_GEMINI_INLINE_MIME_TYPES = ['application/pdf', 'text/plain'];
 
 export type ExpenseDraftType = 'one-time' | 'recurring';
 export type ExpenseDraftFrequency = 'Monthly' | 'Quarterly' | 'Yearly';
@@ -245,7 +247,7 @@ export async function parseExpenseDraft(params: {
   suppliers?: string[];
 }): Promise<ExpenseDraftData | null> {
   if (!GEMINI_API_KEY) {
-    throw new Error('Gemini API key not configured. Please add EXPO_PUBLIC_GEMINI_API_KEY to your .env file.');
+    throw new Error('Fyll AI is not configured. Add GEMINI_API_KEY as a private Supabase secret.');
   }
 
   const text = params.messageText?.trim();
@@ -357,10 +359,13 @@ async function generateWithRetry(
         return response.text();
       }
 
-      const imageParts = imageDataUrls.map((imageDataUrl) => {
-        const { mimeType, data } = parseDataUrl(imageDataUrl);
-        return { inlineData: { data, mimeType } };
-      });
+      const parsedImageParts = imageDataUrls.map((imageDataUrl) => parseDataUrl(imageDataUrl));
+      const imageParts = parsedImageParts
+        .filter(({ mimeType }) => isSupportedGeminiInlineMimeType(mimeType))
+        .map(({ mimeType, data }) => ({ inlineData: { data, mimeType } }));
+      if (imageParts.length === 0) {
+        throw new Error('Unsupported attachment type for Fyll AI. Please upload image or PDF files.');
+      }
 
       const result = await model.generateContent({
         contents: [
@@ -389,11 +394,11 @@ async function generateWithModelFallback(
   imageDataUrls: string[]
 ): Promise<string> {
   const models = GEMINI_MODEL ? [GEMINI_MODEL] : [
+    'gemini-2.5-flash',
     'gemini-1.5-flash',
     'gemini-1.5-flash-latest',
     'gemini-1.5-flash-002',
     'gemini-1.5-pro',
-    'gemini-2.0-flash',
   ];
 
   let lastError: unknown = null;
@@ -426,6 +431,13 @@ function parseDataUrl(dataUrl: string): { mimeType: string; data: string } {
     throw new Error('Invalid image data');
   }
   return { mimeType: match[1], data: match[2] };
+}
+
+function isSupportedGeminiInlineMimeType(mimeType: string): boolean {
+  const normalized = mimeType.trim().toLowerCase();
+  if (!normalized) return false;
+  if (SUPPORTED_GEMINI_INLINE_MIME_PREFIXES.some((prefix) => normalized.startsWith(prefix))) return true;
+  return SUPPORTED_GEMINI_INLINE_MIME_TYPES.includes(normalized);
 }
 
 function isRetryableGeminiError(error: unknown): boolean {

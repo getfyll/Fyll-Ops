@@ -1,0 +1,6 @@
+order_number,import_group,customer_name,customer_email,customer_phone,delivery_state,delivery_address,payment_method,source,status,order_date,delivery_fee,additional_charges,additional_charges_note,discount_code,discount_amount,product_name,item_sku,item_barcode,quantity,unit_price,website_order_reference
+WC-10021,WC-10021,Aisha Bello,aisha.bello@example.com,+2348012345678,Lagos,"12 Adeyemi Street, Ikeja",Card,WooCommerce,Processing,2026-01-12,2500,0,,NEWYEAR10,1000,Aviator Classic,AVI-GLD-01,,1,129000,10021
+WC-10021,WC-10021,Aisha Bello,aisha.bello@example.com,+2348012345678,Lagos,"12 Adeyemi Street, Ikeja",Card,WooCommerce,Processing,2026-01-12,2500,0,,NEWYEAR10,1000,Wayfarer Prime,WAY-BLK-01,,1,99000,10021
+WC-10022,WC-10022,Tunde Okafor,tunde.okafor@example.com,+2348098765432,FCT,"45 Unity Road, Wuse",Bank Transfer,WooCommerce,Ready for Pickup,2026-01-17,3500,1000,"Express handling",,0,Wayfarer Prime,WAY-BLK-01,123456789012,2,109000,10022
+WC-10023,WC-10023,Chidinma Nwosu,chidinma.nwosu@example.com,+2348032234455,Rivers,"7 Okporo Road, Port Harcourt",POS,WooCommerce,Delivered,2026-02-03,3000,0,,FEB5,500,Aviator Classic,AVI-GLD-01,,1,129000,10023
+WC-10024,WC-10024,Musa Garba,musa.garba@example.com,+2348112347890,Kano,"22 Gwarzo Road, Kano",Card,WooCommerce,Processing,2026-02-10,4000,0,,RAMADAN,1500,Urban Rectangle,URB-SLV-02,,1,89000,10024

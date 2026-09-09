@@ -1,11 +1,17 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { storage } from "@/lib/storage";
-import { supabase } from "@/lib/supabase";
+import { assertSupabaseConfig, supabase } from "@/lib/supabase";
 import useFyllStore from "./fyll-store";
 import { Platform } from 'react-native';
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
+import { slugifyBusinessName } from '@/lib/tracking-url';
+import {
+  areBusinessIdsEquivalent,
+  getCanonicalBusinessId,
+  trimBusinessId,
+} from '@/lib/business-id';
 
 export type TeamRole = 'admin' | 'manager' | 'staff';
 export type InviteStatus = 'pending' | 'joined' | 'cancelled' | 'expired';
@@ -104,6 +110,7 @@ interface AuthStore {
   logout: () => Promise<void>;
   updateProfile: (name: string, email: string) => Promise<void>;
   updatePassword: (currentPassword: string, newPassword: string) => Promise<{ success: boolean; error?: string }>;
+  setOfflineMode: (isOffline: boolean) => void;
 
   // Team actions (admin only)
   refreshTeamData: () => Promise<void>;
@@ -169,23 +176,20 @@ const getAuthErrorMessage = (error: unknown, fallback: string) => {
   }
 };
 
-const normalizeBusinessId = (value: string | null | undefined) => {
-  const trimmed = value?.trim();
-  return trimmed ? trimmed : null;
-};
-
 const resolveAuthBusinessId = async (input: {
   profileBusinessId?: string | null;
   teamBusinessId?: string | null;
   email?: string | null;
   userId?: string | null;
 }) => {
-  const profileBusinessId = normalizeBusinessId(input.profileBusinessId);
-  const teamBusinessId = normalizeBusinessId(input.teamBusinessId);
+  const profileBusinessId = trimBusinessId(input.profileBusinessId);
+  const teamBusinessId = trimBusinessId(input.teamBusinessId);
 
   if (!profileBusinessId) return teamBusinessId;
   if (!teamBusinessId) return profileBusinessId;
-  if (profileBusinessId === teamBusinessId) return profileBusinessId;
+  if (areBusinessIdsEquivalent(profileBusinessId, teamBusinessId)) {
+    return getCanonicalBusinessId(profileBusinessId);
+  }
 
   const normalizedEmail = input.email?.trim().toLowerCase();
   if (normalizedEmail) {
@@ -193,12 +197,16 @@ const resolveAuthBusinessId = async (input: {
       const cachedProfile = await storage.getItem(`fyll_user_profile:${normalizedEmail}`);
       if (cachedProfile) {
         const parsed = JSON.parse(cachedProfile) as { businessId?: string | null };
-        const cachedBusinessId = normalizeBusinessId(parsed.businessId);
-        if (cachedBusinessId === profileBusinessId || cachedBusinessId === teamBusinessId) {
+        const cachedBusinessId = trimBusinessId(parsed.businessId);
+        if (
+          areBusinessIdsEquivalent(cachedBusinessId, profileBusinessId)
+          || areBusinessIdsEquivalent(cachedBusinessId, teamBusinessId)
+        ) {
+          const resolvedBusinessId = getCanonicalBusinessId(cachedBusinessId);
           console.warn(
-            `Business ID mismatch for ${input.userId ?? normalizedEmail}. Using cached match ${cachedBusinessId}.`
+            `Business ID mismatch for ${input.userId ?? normalizedEmail}. Using canonical cached match ${resolvedBusinessId}.`
           );
-          return cachedBusinessId;
+          return resolvedBusinessId;
         }
       }
     } catch (error) {
@@ -208,9 +216,9 @@ const resolveAuthBusinessId = async (input: {
 
   console.warn(
     `Business ID mismatch for ${input.userId ?? normalizedEmail ?? 'unknown user'}: `
-    + `profile=${profileBusinessId}, team_member=${teamBusinessId}. Preferring profile business_id.`
+    + `profile=${profileBusinessId}, team_member=${teamBusinessId}. Preferring canonical profile business_id.`
   );
-  return profileBusinessId;
+  return getCanonicalBusinessId(profileBusinessId);
 };
 
 const normalizeRole = (value?: string | null): TeamRole => {
@@ -218,6 +226,39 @@ const normalizeRole = (value?: string | null): TeamRole => {
     return value;
   }
   return 'admin';
+};
+
+const sendOnboardingWelcomeEmail = async ({
+  type,
+  businessId,
+  toEmail,
+  recipientName,
+  role,
+  inviterName,
+}: {
+  type: 'founder_welcome' | 'team_welcome';
+  businessId: string;
+  toEmail: string;
+  recipientName: string;
+  role?: string | null;
+  inviterName?: string | null;
+}) => {
+  if (!businessId || !toEmail.trim() || !recipientName.trim()) return;
+
+  const { error } = await supabase.functions.invoke('send-onboarding-welcome', {
+    body: {
+      type,
+      businessId,
+      toEmail: toEmail.trim().toLowerCase(),
+      recipientName: recipientName.trim(),
+      role: role ?? null,
+      inviterName: inviterName ?? null,
+    },
+  });
+
+  if (error) {
+    throw error;
+  }
 };
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -242,6 +283,7 @@ const useAuthStore = create<AuthStore>()(
       businessId: null,
       teamMembers: [],
       pendingInvites: [],
+      setOfflineMode: (isOffline) => set({ isOfflineMode: isOffline }),
 
       syncWithSupabaseSession: async () => {
         try {
@@ -301,7 +343,7 @@ const useAuthStore = create<AuthStore>()(
             userId: authUser.id,
           });
           if (!businessId) {
-            await supabase.auth.signOut();
+            await supabase.auth.signOut({ scope: 'local' });
             set({ isAuthLoading: false });
             return { success: false, error: 'Account data not found. Please contact support.' };
           }
@@ -394,6 +436,7 @@ const useAuthStore = create<AuthStore>()(
       login: async (email, password) => {
         try {
           set({ isAuthLoading: true });
+          assertSupabaseConfig();
 
           const normalizedEmail = email.trim().toLowerCase();
           const profileKey = `fyll_user_profile:${normalizedEmail}`;
@@ -434,7 +477,7 @@ const useAuthStore = create<AuthStore>()(
           });
 
           if (!businessId) {
-            await supabase.auth.signOut();
+            await supabase.auth.signOut({ scope: 'local' });
             set({ isAuthLoading: false });
             return {
               success: false,
@@ -652,7 +695,10 @@ const useAuthStore = create<AuthStore>()(
             console.log('Demo data and AsyncStorage cleared for new account');
 
             const businessSettings = {
+              companyName: businessName.trim(),
               businessName: businessName.trim(),
+              businessSlug: slugifyBusinessName(businessName.trim()),
+              businessNameLastUpdatedAt: null,
               businessLogo: null,
               businessPhone: '',
               businessWebsite: '',
@@ -674,6 +720,16 @@ const useAuthStore = create<AuthStore>()(
           } catch (teamError) {
             console.warn('Could not refresh team data:', teamError);
           }
+
+          void sendOnboardingWelcomeEmail({
+            type: 'founder_welcome',
+            businessId,
+            toEmail: normalizedEmail,
+            recipientName: profile?.name ?? name.trim(),
+            role: profile?.role ?? 'admin',
+          }).catch((welcomeError) => {
+            console.warn('Founder welcome email failed (non-fatal):', welcomeError);
+          });
 
           return { success: true };
         } catch (error) {
@@ -698,7 +754,7 @@ const useAuthStore = create<AuthStore>()(
 
         try {
           await Promise.race([
-            supabase.auth.signOut(),
+            supabase.auth.signOut({ scope: 'local' }),
             new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000)),
           ]);
         } catch (error) {
@@ -1229,6 +1285,16 @@ const useAuthStore = create<AuthStore>()(
           });
 
           await get().refreshTeamData();
+          void sendOnboardingWelcomeEmail({
+            type: 'team_welcome',
+            businessId: invite.businessId,
+            toEmail: invite.email,
+            recipientName: name.trim(),
+            role: invite.role,
+            inviterName: invite.invitedBy,
+          }).catch((welcomeError) => {
+            console.warn('Team welcome email failed (non-fatal):', welcomeError);
+          });
           return { success: true };
         } catch (error) {
           set({ isAuthLoading: false });

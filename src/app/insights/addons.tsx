@@ -2,10 +2,10 @@ import React, { useState } from 'react';
 import { View, Text, ScrollView, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
-import { Package, DollarSign } from 'lucide-react-native';
+import { BarChart3, DollarSign } from 'lucide-react-native';
 import { DetailHeader } from '@/components/stats/DetailHeader';
 import { BreakdownTable } from '@/components/stats/BreakdownTable';
-import { HorizontalBarChart } from '@/components/stats/HorizontalBarChart';
+import { SalesBarChart } from '@/components/stats/SalesBarChart';
 import { useAnalytics } from '@/hooks/useAnalytics';
 import { formatCurrency } from '@/lib/state/fyll-store';
 import { TimeRange } from '@/lib/analytics-utils';
@@ -18,41 +18,18 @@ export default function AddonsInsightScreen({ inline }: { inline?: boolean }) {
 
   const timeRangeOptions: { key: TimeRange; label: string }[] = [
     { key: '7d', label: 'Last 7 days' },
+    { key: 'month', label: 'This Month' },
     { key: '30d', label: 'Last 30 days' },
     { key: 'year', label: 'This Year' },
   ];
 
   // Add-ons table rows
-  const addOnRows = analytics.topAddOns.map((item) => ({
+  const addOnRows = analytics.addOnBreakdown.map((item) => ({
     label: item.name,
     value: formatCurrency(item.revenue),
-    subValue: `${item.count} orders`,
+    subValue: `${item.quantity} times`,
     percentage: undefined,
   }));
-
-  // Add-ons for chart
-  const addOnChartData = analytics.topAddOns.map((item) => ({
-    label: item.name,
-    value: item.revenue,
-    percentage: Math.round(
-      (item.revenue /
-        (analytics.topAddOns.reduce((sum, a) => sum + a.revenue, 0) || 1)) *
-      100
-    ),
-  }));
-
-  // Calculate totals
-  const totalAddOnRevenue = analytics.topAddOns.reduce(
-    (sum, item) => sum + item.revenue,
-    0
-  );
-  const totalAddOnOrders = analytics.topAddOns.reduce(
-    (sum, item) => sum + item.count,
-    0
-  );
-
-  // Top add-on
-  const topAddOn = analytics.topAddOns[0];
 
   return (
     <View className="flex-1" style={{ backgroundColor: colors.bg.screen }}>
@@ -60,8 +37,8 @@ export default function AddonsInsightScreen({ inline }: { inline?: boolean }) {
       <SafeAreaView className="flex-1" edges={['top']}>
         {!inline && (
           <DetailHeader
-            title="Add-ons Analytics"
-            subtitle="Service and add-on performance"
+            title="Add-ons Revenue"
+            subtitle="Full add-on performance"
           />
         )}
 
@@ -111,77 +88,42 @@ export default function AddonsInsightScreen({ inline }: { inline?: boolean }) {
                 Total Add-on Revenue
               </Text>
             </View>
-            <Text
-              style={{ color: colors.text.primary }}
-              className="text-4xl font-bold"
-            >
-              {formatCurrency(totalAddOnRevenue)}
+              <Text
+                style={{ color: colors.text.primary }}
+                className="text-4xl font-bold"
+              >
+              {formatCurrency(analytics.addOnMetrics.revenue)}
             </Text>
             <Text
               style={{ color: colors.text.secondary }}
               className="text-base mt-1"
             >
-              From {totalAddOnOrders} orders
+              From {analytics.addOnMetrics.addOnItems} add-on items
             </Text>
           </View>
 
-          {/* Top Add-on Card */}
-          {topAddOn && (
+          {/* Add-ons by Period */}
+          {analytics.addOnByPeriod.some((point) => point.value > 0) && (
             <View
               className="rounded-2xl p-5 mt-4"
               style={colors.getCardStyle()}
             >
-              <View className="flex-row items-center mb-2">
-                <Package size={20} color={colors.text.tertiary} strokeWidth={2} />
+              <View className="flex-row items-center mb-4">
+                <BarChart3 size={18} color={colors.text.tertiary} strokeWidth={2} />
                 <Text
-                  style={{ color: colors.text.tertiary }}
-                  className="text-sm font-medium ml-2"
+                  style={{ color: colors.text.primary }}
+                  className={` font-bold ml-2`}
                 >
-                  Top Add-on
+                  Add-ons by Period
                 </Text>
               </View>
-              <Text
-                style={{ color: colors.text.primary }}
-                className="text-2xl font-bold"
-              >
-                {topAddOn.name}
-              </Text>
-              <View className="flex-row items-center mt-2">
-                <Text
-                  style={{ color: colors.success }}
-                  className="text-lg font-semibold"
-                >
-                  {formatCurrency(topAddOn.revenue)}
-                </Text>
-                <Text
-                  style={{ color: colors.text.tertiary }}
-                  className="text-sm ml-2"
-                >
-                  from {topAddOn.count} orders
-                </Text>
-              </View>
-            </View>
-          )}
-
-          {/* Add-ons Revenue Chart */}
-          {addOnChartData.length > 0 && (
-            <View
-              className="rounded-2xl p-5 mt-4"
-              style={colors.getCardStyle()}
-            >
-              <Text
-                style={{ color: colors.text.primary }}
-                className="text-lg font-bold mb-4"
-              >
-                Revenue by Add-on
-              </Text>
-              <HorizontalBarChart
-                data={addOnChartData}
+              <SalesBarChart
+                data={analytics.addOnByPeriod}
+                height={180}
                 barColor={colors.bar}
-                backgroundColor={colors.barBg}
-                textColor={colors.text.primary}
-                secondaryTextColor={colors.text.tertiary}
-                formatValue={(v) => formatCurrency(v)}
+                gridColor={colors.barBg}
+                textColor={colors.text.tertiary}
+                showTopValue={false}
               />
             </View>
           )}

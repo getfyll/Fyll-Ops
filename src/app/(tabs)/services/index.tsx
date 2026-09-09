@@ -13,6 +13,9 @@ import { DESKTOP_PAGE_HEADER_MIN_HEIGHT, getStandardPageHeadingStyle } from '@/l
 import { SplitViewLayout } from '@/components/SplitViewLayout';
 import { ServiceDetailPanel } from '@/components/ServiceDetailPanel';
 import { getSettingsWebPanelStyles } from '@/lib/settings-web-panel';
+import { InventoryMobileFab } from '@/components/InventoryMobileFab';
+import { ResolvedAttachmentImage } from '@/components/ResolvedAttachmentImage';
+import { capitalizeDisplayLabel } from '@/lib/display-format';
 
 export default function ServicesScreen() {
   const colors = useThemeColors();
@@ -23,10 +26,12 @@ export default function ServicesScreen() {
   const isWebDesktop = Platform.OS === 'web' && isDesktop;
   const showSplitView = !isMobile && !isWebDesktop;
   const pageHeadingStyle = getStandardPageHeadingStyle(isMobile);
+  const mobileSectionHeadingStyle = isMobile
+    ? { ...pageHeadingStyle, fontWeight: '600' as const }
+    : pageHeadingStyle;
   const desktopHeaderMinHeight = DESKTOP_PAGE_HEADER_MIN_HEIGHT;
   const openedFromSettings = from === 'settings';
   const panelStyles = getSettingsWebPanelStyles(openedFromSettings, colors.bg.primary, colors.border.light);
-  const settingsHeaderTopPadding = openedFromSettings ? 28 : 24;
   const separatorColor = isDark ? 'rgba(255,255,255,0.08)' : '#E5E7EB';
 
   const products = useFyllStore((s) => s.products);
@@ -122,7 +127,7 @@ export default function ServicesScreen() {
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 14 }}>
           <Text style={{ color: colors.text.primary, flex: 1.6 }} className="text-sm font-semibold" numberOfLines={1}>
-            {service.name}
+            {capitalizeDisplayLabel(service.name)}
           </Text>
           <Text style={{ color: colors.text.secondary, flex: 1 }} className="text-sm" numberOfLines={1}>
             {category}
@@ -176,7 +181,7 @@ export default function ServicesScreen() {
 
           <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <View>
-              <Text style={{ color: colors.text.primary, ...pageHeadingStyle }}>
+              <Text style={{ color: colors.text.primary, ...mobileSectionHeadingStyle }}>
                 Services
               </Text>
               <Text style={{ color: colors.text.muted }} className="text-sm mt-1">
@@ -189,7 +194,7 @@ export default function ServicesScreen() {
               style={{ paddingHorizontal: 14, height: 44, flexDirection: 'row', backgroundColor: colors.accent.primary }}
             >
               <Plus size={18} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={2.5} />
-              <Text style={{ color: isDark ? '#000000' : '#FFFFFF' }} className="font-semibold ml-1.5 text-sm">Add</Text>
+              <Text style={{ color: isDark ? '#000000' : '#FFFFFF' }} className="font-semibold ml-1.5 text-sm">Add Service</Text>
             </Pressable>
           </View>
         </View>
@@ -230,6 +235,8 @@ export default function ServicesScreen() {
             const category = service.serviceTags?.[0] ?? '—';
             const price = service.variants[0]?.sellingPrice ?? 0;
             const isSelected = showSplitView && selectedServiceId === service.id;
+            const statusLabel = service.isDiscontinued ? 'Inactive' : 'Active';
+            const statusColor = service.isDiscontinued ? '#9CA3AF' : '#10B981';
 
             return (
               <Pressable
@@ -239,30 +246,53 @@ export default function ServicesScreen() {
                 style={{
                   backgroundColor: colors.bg.card,
                   borderRadius: 16,
-                  padding: 16,
+                  overflow: 'hidden',
                   marginBottom: 12,
-                  borderWidth: 1,
-                  borderColor: colors.border.light,
-                  borderLeftWidth: 1,
-                  borderLeftColor: colors.border.light,
+                  borderWidth: 0.5,
+                  borderColor: separatorColor,
+                  borderLeftWidth: 0.5,
+                  borderLeftColor: separatorColor,
                   ...getActiveSplitCardStyle({ isSelected, showSplitView, isDark, colors }),
                 }}
               >
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">
-                      {service.name}
-                    </Text>
-                    <Text style={{ color: colors.text.muted }} className="text-xs mt-2">
-                      {category}
-                    </Text>
-                    <Text style={{ color: colors.text.primary }} className="text-sm font-semibold mt-2">
-                      {formatCurrency(price)}
-                    </Text>
+                <View className="p-3 flex-row items-center">
+                  <View className="flex-row items-center flex-1">
+                    {service.imageUrl ? (
+                      <View className="w-12 h-12 rounded-lg overflow-hidden" style={{ borderWidth: 0.5, borderColor: separatorColor }}>
+                        <ResolvedAttachmentImage
+                          imageUrl={service.imageUrl}
+                          style={{ width: 48, height: 48 }}
+                          resizeMode="cover"
+                        />
+                      </View>
+                    ) : (
+                      <View
+                        className="w-12 h-12 rounded-xl items-center justify-center"
+                        style={{ backgroundColor: 'rgba(16, 185, 129, 0.15)' }}
+                      >
+                        <Briefcase size={22} color="#10B981" strokeWidth={1.6} />
+                      </View>
+                    )}
+                    <View className="ml-3 flex-1">
+                      <Text style={{ color: colors.text.primary }} className="font-semibold text-base">
+                        {capitalizeDisplayLabel(service.name)}
+                      </Text>
+                      <Text style={{ color: colors.text.muted }} className="text-xs mt-0.5">
+                        {category} · {formatCurrency(price)}
+                      </Text>
+                    </View>
                   </View>
-                  {showSplitView && (
-                    <ChevronRight size={18} color={colors.text.muted} strokeWidth={2} />
-                  )}
+                  <View className="flex-row items-center">
+                    <View
+                      className="rounded-full px-3 py-1 flex-row items-center mr-2"
+                      style={{ backgroundColor: `${statusColor}20` }}
+                    >
+                      <Text style={{ color: statusColor }} className="text-xs font-semibold">
+                        {statusLabel}
+                      </Text>
+                    </View>
+                    <ChevronRight size={20} color={colors.text.tertiary} strokeWidth={2} />
+                  </View>
                 </View>
               </Pressable>
             );
@@ -281,30 +311,23 @@ export default function ServicesScreen() {
       <View style={panelStyles.inner}>
       <SafeAreaView className="flex-1" edges={isWebDesktop ? [] : ['top']}>
         {isWebDesktop ? (
-          <ScrollView
-            style={{ flex: 1 }}
-            contentContainerStyle={{
-              paddingHorizontal: 28,
-              paddingTop: isWebDesktop ? 0 : settingsHeaderTopPadding,
-              paddingBottom: 40,
-              width: '100%',
-              maxWidth: 1456,
-              alignSelf: 'flex-start',
-            }}
-            showsVerticalScrollIndicator={false}
-          >
-            <View
-              style={{
-                minHeight: desktopHeaderMinHeight,
-                borderBottomWidth: 1,
-                borderBottomColor: separatorColor,
-                marginBottom: 12,
-                justifyContent: 'center',
-                marginHorizontal: -28,
-                paddingHorizontal: 28,
-              }}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <View style={{ flex: 1 }}>
+            <View style={{ borderBottomWidth: 1, borderBottomColor: separatorColor }}>
+              <View
+                style={{
+                  width: '100%',
+                  maxWidth: 1400,
+                  alignSelf: 'flex-start',
+                  minHeight: desktopHeaderMinHeight,
+                  paddingLeft: 20,
+                  paddingRight: 20,
+                  paddingTop: 20,
+                  paddingBottom: 16,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 12,
+                }}
+              >
                 {openedFromSettings ? (
                   <Pressable
                     onPress={handleBackToSettings}
@@ -338,77 +361,91 @@ export default function ServicesScreen() {
               </View>
             </View>
 
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <ScrollView
+              style={{ flex: 1 }}
+              contentContainerStyle={{
+                width: '100%',
+                maxWidth: 1400,
+                alignSelf: 'flex-start',
+                paddingLeft: 20,
+                paddingRight: 20,
+                paddingTop: 24,
+                paddingBottom: 40,
+              }}
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <View
+                  className="flex-row items-center rounded-full px-4"
+                  style={{
+                    height: 44,
+                    width: '30%',
+                    maxWidth: 420,
+                    minWidth: 320,
+                    backgroundColor: colors.input.bg,
+                    borderWidth: 1,
+                    borderColor: colors.border.light,
+                  }}
+                >
+                  <Search size={18} color={colors.text.muted} strokeWidth={2} />
+                  <TextInput
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    placeholder="Search services..."
+                    placeholderTextColor={colors.input.placeholder}
+                    style={{ flex: 1, marginLeft: 8, color: colors.input.text, fontSize: 14 }}
+                  />
+                </View>
+              </View>
+
               <View
-                className="flex-row items-center rounded-full px-4"
                 style={{
-                  height: 44,
-                  width: '30%',
-                  maxWidth: 420,
-                  minWidth: 320,
-                  backgroundColor: colors.input.bg,
+                  marginTop: 16,
                   borderWidth: 1,
-                  borderColor: colors.border.light,
+                  borderColor: separatorColor,
+                  borderRadius: 16,
+                  overflow: 'hidden',
+                  backgroundColor: colors.bg.card,
                 }}
               >
-                <Search size={18} color={colors.text.muted} strokeWidth={2} />
-                <TextInput
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                  placeholder="Search services..."
-                  placeholderTextColor={colors.input.placeholder}
-                  style={{ flex: 1, marginLeft: 8, color: colors.input.text, fontSize: 14 }}
-                />
-              </View>
-            </View>
-
-            <View
-              style={{
-                marginTop: 16,
-                borderWidth: 1,
-                borderColor: separatorColor,
-                borderRadius: 16,
-                overflow: 'hidden',
-                backgroundColor: colors.bg.card,
-              }}
-            >
-              <View style={{ backgroundColor: colors.bg.card, borderBottomWidth: 1, borderBottomColor: separatorColor }}>
-                <View style={{ flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 12 }}>
-                  <Text style={{ color: colors.text.muted, flex: 1.6 }} className="text-xs font-semibold">
-                    SERVICE
-                  </Text>
-                  <Text style={{ color: colors.text.muted, flex: 1 }} className="text-xs font-semibold">
-                    TAG
-                  </Text>
-                  <Text style={{ color: colors.text.muted, width: 140 }} className="text-xs font-semibold">
-                    PRICE
-                  </Text>
-                  <Text style={{ color: colors.text.muted, width: 140 }} className="text-xs font-semibold">
-                    ADDED
-                  </Text>
-                  <Text style={{ color: colors.text.muted, flex: 1, textAlign: 'right' }} className="text-xs font-semibold">
-                    STATUS
-                  </Text>
-                </View>
-              </View>
-
-              {filteredServices.length === 0 ? (
-                <View style={{ padding: 40, alignItems: 'center' }}>
-                  <View style={{ width: 80, height: 80, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginBottom: 16, backgroundColor: colors.border.light }}>
-                    <Briefcase size={36} color={colors.text.muted} strokeWidth={1.5} />
+                <View style={{ backgroundColor: colors.bg.card, borderBottomWidth: 1, borderBottomColor: separatorColor }}>
+                  <View style={{ flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 12 }}>
+                    <Text style={{ color: colors.text.muted, flex: 1.6 }} className="text-xs font-semibold">
+                      SERVICE
+                    </Text>
+                    <Text style={{ color: colors.text.muted, flex: 1 }} className="text-xs font-semibold">
+                      TAG
+                    </Text>
+                    <Text style={{ color: colors.text.muted, width: 140 }} className="text-xs font-semibold">
+                      PRICE
+                    </Text>
+                    <Text style={{ color: colors.text.muted, width: 140 }} className="text-xs font-semibold">
+                      ADDED
+                    </Text>
+                    <Text style={{ color: colors.text.muted, flex: 1, textAlign: 'right' }} className="text-xs font-semibold">
+                      STATUS
+                    </Text>
                   </View>
-                  <Text style={{ color: colors.text.tertiary, fontSize: 16, marginBottom: 4 }}>No services found</Text>
-                  <Text style={{ color: colors.text.muted, fontSize: 14, marginBottom: 16 }}>Add your first service to get started</Text>
-                  <Pressable onPress={handleAddService} style={{ backgroundColor: colors.accent.primary, borderRadius: 999, paddingHorizontal: 24, paddingVertical: 12, flexDirection: 'row', alignItems: 'center' }}>
-                    <Plus size={16} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={2.5} />
-                    <Text style={{ color: isDark ? '#000000' : '#FFFFFF', fontWeight: '600', marginLeft: 6 }}>Create First Service</Text>
-                  </Pressable>
                 </View>
-              ) : (
-                filteredServices.map(renderRow)
-              )}
-            </View>
-          </ScrollView>
+
+                {filteredServices.length === 0 ? (
+                  <View style={{ padding: 40, alignItems: 'center' }}>
+                    <View style={{ width: 80, height: 80, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginBottom: 16, backgroundColor: colors.border.light }}>
+                      <Briefcase size={36} color={colors.text.muted} strokeWidth={1.5} />
+                    </View>
+                    <Text style={{ color: colors.text.tertiary, fontSize: 16, marginBottom: 4 }}>No services found</Text>
+                    <Text style={{ color: colors.text.muted, fontSize: 14, marginBottom: 16 }}>Add your first service to get started</Text>
+                    <Pressable onPress={handleAddService} style={{ backgroundColor: colors.accent.primary, borderRadius: 999, paddingHorizontal: 24, paddingVertical: 12, flexDirection: 'row', alignItems: 'center' }}>
+                      <Plus size={16} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={2.5} />
+                      <Text style={{ color: isDark ? '#000000' : '#FFFFFF', fontWeight: '600', marginLeft: 6 }}>Create First Service</Text>
+                    </Pressable>
+                  </View>
+                ) : (
+                  filteredServices.map(renderRow)
+                )}
+              </View>
+            </ScrollView>
+          </View>
         ) : showSplitView ? (
           <SplitViewLayout
             detailContent={splitDetailContent}
@@ -420,6 +457,9 @@ export default function ServicesScreen() {
         ) : (
           compactMasterContent
         )}
+        {!isWebDesktop ? (
+          <InventoryMobileFab currentSection="services" />
+        ) : null}
       </SafeAreaView>
       </View>
     </View>

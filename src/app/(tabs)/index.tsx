@@ -1,7 +1,8 @@
-import React, { useMemo, useState, useCallback, useEffect } from 'react';
-import { View, Text, ScrollView, Pressable, Platform, Modal } from 'react-native';
+import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
+import { View, Text, ScrollView, Pressable, Platform, Modal, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   TrendingDown,
@@ -19,18 +20,31 @@ import {
   Bell,
   X,
   MessageCircle,
+  Clock3,
+  Calendar,
   User as UserIcon,
+  Truck,
+  CircleAlert,
+  Printer,
+  MoreHorizontal,
+  Settings,
+  RotateCcw,
+  Megaphone,
+  Search,
+  Wallet,
+  Check,
 } from 'lucide-react-native';
-import useFyllStore, { formatCurrency, Order, Product } from '@/lib/state/fyll-store';
+import useFyllStore, { formatCurrency, getSocialCheckoutEffectiveStatus, Order, Product, type PartnerJob, type SocialCheckoutDraft } from '@/lib/state/fyll-store';
 import { useThemeColors } from '@/lib/theme';
 import * as Haptics from 'expo-haptics';
 import { getPlatformBreakdown } from '@/lib/analytics-utils';
 import useAuthStore from '@/lib/state/auth-store';
 import { collaborationData, type CollaborationNotification } from '@/lib/supabase/collaboration';
 import { supabase } from '@/lib/supabase';
+import { supabaseData } from '@/lib/supabase/data';
 import { isTeamThreadEntityId, getTeamThreadDisplayNameFromEntityId } from '@/lib/team-threads';
 import { FulfillmentPipelineCard, type FulfillmentStageKey } from '@/components/FulfillmentPipelineCard';
-import { bucketFulfillmentStatus } from '@/lib/fulfillment';
+import { getFulfillmentPipelineBucket } from '@/lib/fulfillment';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { WebContainer } from '@/components/web/WebContainer';
@@ -38,13 +52,21 @@ import { WebPageHeader } from '@/components/web/WebPageHeader';
 import { WebCard } from '@/components/web/WebCard';
 import { InteractiveLineChart } from '@/components/stats/InteractiveLineChart';
 import { InteractiveBarChart } from '@/components/stats/InteractiveBarChart';
+import { SkeletonBox } from '@/components/SkeletonLoader';
 import { storage } from '@/lib/storage';
+import { getFyllPrintQueue } from '@/lib/fyll-print-queue';
 import { createOrderStatusColorMap, getOrderStatusColor } from '@/lib/order-status-colors';
 import { taskData, type Task } from '@/lib/supabase/tasks';
+import { triggerTaskEventReminders } from '@/hooks/useWebPushNotifications';
+import { useBusinessSettings } from '@/hooks/useBusinessSettings';
+import { isBusinessFeatureEnabled } from '@/lib/feature-access';
 
 const ORDER_NOTIFICATIONS_SEEN_KEY_PREFIX = 'dashboard-order-notifications-seen';
+const ONBOARDING_DISMISSED_KEY_PREFIX = 'dashboard-onboarding-dismissed';
 const getOrderNotificationsSeenKey = (businessId: string) =>
   `${ORDER_NOTIFICATIONS_SEEN_KEY_PREFIX}:${businessId}`;
+const getOnboardingDismissedKey = (businessId: string) =>
+  `${ONBOARDING_DISMISSED_KEY_PREFIX}:${businessId}`;
 
 const formatTaskDueDate = (value?: string | null) => {
   if (!value) return 'No date';
@@ -72,9 +94,10 @@ interface MetricCardProps {
   trend?: number;
   icon: React.ReactNode;
   onPress?: () => void;
+  loading?: boolean;
 }
 
-function MetricCard({ title, value, subtitle, trend, icon, onPress }: MetricCardProps) {
+function MetricCard({ title, value, subtitle, trend, icon, onPress, loading = false }: MetricCardProps) {
   const colors = useThemeColors();
   return (
     <View style={{ flex: 1, minWidth: 0 }}>
@@ -91,7 +114,9 @@ function MetricCard({ title, value, subtitle, trend, icon, onPress }: MetricCard
           >
             {icon}
           </View>
-          {trend !== undefined && (
+          {loading ? (
+            <SkeletonBox width={44} height={22} rounded="full" />
+          ) : trend !== undefined ? (
             <View className="flex-row items-center px-2 py-1 rounded-full" style={{ backgroundColor: trend >= 0 ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)' }}>
               {trend >= 0 ? (
                 <ArrowUpRight size={12} color="#22C55E" strokeWidth={2.5} />
@@ -102,15 +127,145 @@ function MetricCard({ title, value, subtitle, trend, icon, onPress }: MetricCard
                 {Math.abs(trend)}%
               </Text>
             </View>
-          )}
-          {onPress && !trend && (
+          ) : null}
+          {onPress && !trend && !loading && (
             <ChevronRight size={16} color={colors.text.tertiary} strokeWidth={2} />
           )}
         </View>
-        <Text style={{ color: colors.text.tertiary }} className="text-xs font-medium tracking-wide uppercase mb-1">{title}</Text>
-        <Text style={{ color: colors.text.primary }} className="text-2xl font-bold tracking-tight">{value}</Text>
-        {subtitle && <Text style={{ color: colors.text.muted }} className="text-xs mt-1">{subtitle}</Text>}
+        {loading ? (
+          <>
+            <SkeletonBox width="68%" height={11} rounded="md" />
+            <View style={{ height: 10 }} />
+            <SkeletonBox width="48%" height={24} rounded="md" />
+            <View style={{ height: 8 }} />
+            <SkeletonBox width="58%" height={11} rounded="md" />
+          </>
+        ) : (
+          <>
+            <Text style={{ color: colors.text.tertiary }} className="text-xs font-medium tracking-wide uppercase mb-1">{title}</Text>
+            <Text style={{ color: colors.text.primary }} className="text-2xl font-bold tracking-tight">{value}</Text>
+            {subtitle && <Text style={{ color: colors.text.muted }} className="text-xs mt-1">{subtitle}</Text>}
+          </>
+        )}
       </Pressable>
+    </View>
+  );
+}
+
+type OnboardingStep = {
+  id: string;
+  title: string;
+  shortLabel: string;
+  description: string;
+  complete: boolean;
+  actionLabel: string;
+  route: string;
+  settingsPanel?: string;
+};
+
+function OnboardingChecklistCard({
+  steps,
+  onDismiss,
+  onStepPress,
+  inset = true,
+}: {
+  steps: OnboardingStep[];
+  onDismiss: () => void;
+  onStepPress: (step: OnboardingStep) => void;
+  inset?: boolean;
+}) {
+  const colors = useThemeColors();
+  const isDark = colors.bg.primary === '#111111';
+  const completedCount = steps.filter((step) => step.complete).length;
+  const progress = steps.length > 0 ? completedCount / steps.length : 0;
+  const nextStep = steps.find((step) => !step.complete);
+
+  return (
+    <View className={inset ? 'px-5 pt-4' : undefined}>
+      <View
+        className="rounded-3xl p-4"
+        style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+      >
+        <View className="flex-row items-start justify-between" style={{ gap: 12 }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ color: colors.text.primary }} className="text-base font-bold">Complete your setup</Text>
+            <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1">
+              {completedCount}/{steps.length} done
+            </Text>
+          </View>
+          <Pressable
+            onPress={onDismiss}
+            className="w-9 h-9 rounded-full items-center justify-center active:opacity-70"
+            style={{ backgroundColor: colors.bg.secondary }}
+          >
+            <X size={16} color={colors.text.tertiary} strokeWidth={2.2} />
+          </Pressable>
+        </View>
+
+        <View className="mt-4 flex-row">
+          <View className="rounded-full overflow-hidden" style={{ width: 120, height: 6, backgroundColor: colors.bg.secondary }}>
+            <View style={{ width: `${Math.round(progress * 100)}%`, height: 6, backgroundColor: colors.text.primary }} />
+          </View>
+        </View>
+
+        <View className="flex-row flex-wrap mt-3" style={{ marginHorizontal: -4 }}>
+          {steps.map((step) => (
+            <Pressable
+              key={step.id}
+              onPress={() => onStepPress(step)}
+              style={{ width: '33.333%', padding: 4 }}
+              className="active:opacity-70"
+            >
+              <View
+                className="rounded-2xl flex-row items-center"
+                style={{
+                  paddingVertical: 12,
+                  paddingHorizontal: 8,
+                  gap: 8,
+                  backgroundColor: isDark ? colors.bg.elevated : colors.bg.secondary,
+                  borderWidth: isDark ? 1 : 0,
+                  borderColor: colors.border.light,
+                }}
+              >
+                <View
+                  className="w-7 h-7 rounded-full items-center justify-center"
+                  style={{
+                    backgroundColor: step.complete ? colors.text.primary : 'transparent',
+                    borderWidth: step.complete ? 0 : 1.5,
+                    borderColor: colors.border.medium ?? colors.border.light,
+                  }}
+                >
+                  {step.complete ? <Check size={15} color={colors.bg.primary} strokeWidth={3} /> : null}
+                </View>
+                <Text
+                  style={{
+                    color: step.complete ? colors.text.tertiary : colors.text.primary,
+                    textDecorationLine: step.complete ? 'line-through' : 'none',
+                  }}
+                  className="text-sm font-semibold flex-1"
+                  numberOfLines={1}
+                >
+                  {step.shortLabel}
+                </Text>
+              </View>
+            </Pressable>
+          ))}
+        </View>
+
+        {nextStep ? (
+          <View className="mt-4 flex-row">
+            <Pressable
+              onPress={() => onStepPress(nextStep)}
+              className="rounded-full items-center justify-center active:opacity-80"
+              style={{ height: 40, paddingHorizontal: 20, backgroundColor: colors.text.primary }}
+            >
+              <Text style={{ color: colors.bg.primary }} className="text-sm font-semibold">
+                {nextStep.title}
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -144,6 +299,97 @@ function AuditBanner({ onPress, inset = true }: AuditBannerProps) {
           </Text>
         </View>
         <ChevronRight size={20} color="#8B5CF6" strokeWidth={2} />
+      </View>
+    </Pressable>
+  );
+
+  if (!inset) return content;
+
+  return <View className="px-5 pt-4">{content}</View>;
+}
+
+function EventBanner({
+  title,
+  subtitle,
+  onPress,
+  inset = true,
+}: {
+  title: string;
+  subtitle: string;
+  onPress: () => void;
+  inset?: boolean;
+}) {
+  const colors = useThemeColors();
+  const isDark = colors.bg.primary === '#111111';
+  const bannerBackground = isDark ? 'rgba(37,99,235,0.14)' : '#EFF6FF';
+  const bannerBorder = isDark ? 'rgba(96,165,250,0.34)' : '#BFDBFE';
+  const iconBackground = isDark ? 'rgba(37,99,235,0.18)' : '#DBEAFE';
+  const titleColor = isDark ? '#BFDBFE' : '#1D4ED8';
+  const subtitleColor = isDark ? '#93C5FD' : '#2563EB';
+
+  const content = (
+    <Pressable
+      onPress={onPress}
+      className="rounded-2xl p-4 active:opacity-90"
+      style={{ backgroundColor: bannerBackground, borderWidth: 1, borderColor: bannerBorder }}
+    >
+      <View className="flex-row items-center">
+        <View
+          className="w-12 h-12 rounded-xl items-center justify-center mr-4"
+          style={{ backgroundColor: iconBackground }}
+        >
+          <Calendar size={24} color="#2563EB" strokeWidth={2} />
+        </View>
+        <View className="flex-1">
+          <Text style={{ color: titleColor }} className="font-bold text-base">
+            {title}
+          </Text>
+          <Text style={{ color: subtitleColor }} className="text-sm mt-0.5">
+            {subtitle}
+          </Text>
+        </View>
+        <ChevronRight size={20} color={subtitleColor} strokeWidth={2} />
+      </View>
+    </Pressable>
+  );
+
+  if (!inset) return content;
+
+  return <View className="px-5 pt-4">{content}</View>;
+}
+
+function PrintQueueBanner({
+  count,
+  onPress,
+  inset = true,
+}: {
+  count: number;
+  onPress: () => void;
+  inset?: boolean;
+}) {
+  const colors = useThemeColors();
+  const content = (
+    <Pressable
+      onPress={onPress}
+      className="rounded-2xl p-4 active:opacity-90"
+      style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+    >
+      <View className="flex-row items-center">
+        <View
+          className="w-12 h-12 rounded-xl items-center justify-center mr-4"
+          style={{ backgroundColor: colors.bg.secondary }}
+        >
+          <Printer size={23} color={colors.text.primary} strokeWidth={2} />
+        </View>
+        <View className="flex-1">
+          <Text style={{ color: colors.text.primary }} className="font-bold text-base">
+            Fyll Print queue
+          </Text>
+          <Text style={{ color: colors.text.secondary }} className="text-sm mt-0.5">
+            {count} label{count === 1 ? '' : 's'} waiting to print
+          </Text>
+        </View>
+        <ChevronRight size={20} color={colors.text.tertiary} strokeWidth={2} />
       </View>
     </Pressable>
   );
@@ -192,6 +438,214 @@ function NotificationBell({ count, onPress }: { count: number; onPress: () => vo
         </View>
       )}
     </Pressable>
+  );
+}
+
+function WebMoreMenu() {
+  const router = useRouter();
+  const colors = useThemeColors();
+
+  return (
+    <View style={{ position: 'relative', zIndex: 40 }}>
+      <Pressable
+        onPress={() => router.push('/(tabs)/settings' as any)}
+        className="rounded-full px-4 flex-row items-center active:opacity-80"
+        style={{
+          backgroundColor: colors.bg.card,
+          height: 44,
+          borderWidth: 1,
+          borderColor: colors.border.light,
+        }}
+      >
+        <MoreHorizontal size={18} color={colors.text.primary} strokeWidth={2.5} />
+        <Text style={{ color: colors.text.primary }} className="font-semibold ml-2 text-sm">
+          More
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function WebFeatureSearchMenu() {
+  const router = useRouter();
+  const colors = useThemeColors();
+  const { featureAccess } = useBusinessSettings();
+  const [isOpen, setIsOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const dropdownWidth = 390;
+  const isDark = colors.bg.primary === '#111111';
+  const featureItems = [
+    { label: 'Dashboard', description: 'Home overview and quick actions', route: '/(tabs)', Icon: BarChart3, keywords: 'home overview dashboard' },
+    { label: 'New Order', description: 'Create a customer order', route: '/new-order', Icon: Plus, keywords: 'create order sales checkout' },
+    { label: 'Orders', description: 'Search, filter, and manage orders', route: '/(tabs)/orders', Icon: ShoppingCart, keywords: 'orders status customer sales' },
+    { label: 'Inventory', description: 'Products, services, stock, barcode labels', route: '/(tabs)/inventory', Icon: Package, keywords: 'products stock inventory barcode labels' },
+    { label: 'Warehouse', description: 'Warehouse items and stock counts', route: '/(tabs)/inventory/warehouse', Icon: Package, keywords: 'warehouse bins supplies stock' },
+    { label: 'Delivery', description: 'Dispatch tracking and shipping labels', route: '/(tabs)/deliveries', Icon: Truck, keywords: 'delivery dispatch shipping courier label' },
+    { label: 'Fyll Print', description: 'Shipping and inventory print queues', route: '/fyll-print', Icon: Printer, keywords: 'print label queue barcode shipping' },
+    { label: 'Returns', description: 'Return requests and workflows', route: '/returns', Icon: RotateCcw, keywords: 'returns refund exchange customer proof' },
+    { label: 'Cases', description: 'Support cases and customer issues', route: '/(tabs)/cases', Icon: FileText, keywords: 'cases support issues complaints' },
+    { label: 'Customers', description: 'Customer profiles and history', route: '/(tabs)/customers', Icon: Users, keywords: 'customers contacts profiles' },
+    { label: 'Announcements', description: 'Compose customer announcements', route: '/(tabs)/announcements', Icon: Megaphone, keywords: 'announcements email customers broadcast' },
+    { label: 'Announcement Setup', description: 'Email template, sender, and reply-to settings', route: '/(tabs)/announcements?announcementSection=setup', Icon: Settings, keywords: 'announcement setup email template sender reply to' },
+    { label: 'Threads', description: 'Team conversations', route: '/(tabs)/threads', Icon: MessageCircle, keywords: 'threads comments messages collaboration' },
+    { label: 'Tasks', description: 'Assigned work and reminders', route: '/(tabs)/tasks', Icon: ClipboardList, keywords: 'tasks reminders assignments' },
+    { label: 'Finance', description: 'Revenue, expenses, refunds, procurement', route: '/(tabs)/finance', Icon: DollarSign, keywords: 'finance revenue expenses refunds procurement salary' },
+    { label: 'Insights', description: 'Performance analytics', route: '/(tabs)/insights', Icon: BarChart3, keywords: 'insights analytics reports stats' },
+    { label: 'Business Settings', description: 'Business profile, links, and operations settings', route: '/business-settings', Icon: Settings, keywords: 'settings business links return tracking delivery confirmation' },
+    { label: 'WooCommerce Settings', description: 'Website store integration settings', route: '/woocommerce-settings', Icon: Settings, keywords: 'woocommerce website integration sync' },
+    { label: 'Import Products', description: 'Upload product CSV data', route: '/import-products', Icon: Package, keywords: 'import csv products upload' },
+  ];
+  const normalizedQuery = query.trim().toLowerCase();
+  const featureForRoute = (route: string) => {
+    if (route.includes('/deliveries')) return 'delivery' as const;
+    if (route.includes('/fyll-print')) return 'fyllPrint' as const;
+    if (route.includes('/returns')) return 'returns' as const;
+    if (route.includes('/cases')) return 'cases' as const;
+    if (route.includes('/announcements')) return 'announcements' as const;
+    if (route.includes('/threads')) return 'threads' as const;
+    if (route.includes('/tasks')) return 'tasks' as const;
+    if (route.includes('/finance')) return 'finance' as const;
+    if (route.includes('/insights')) return 'insights' as const;
+    if (route.includes('/woocommerce-settings')) return 'woocommerce' as const;
+    return null;
+  };
+  const enabledFeatureItems = featureItems.filter((item) => {
+    const feature = featureForRoute(item.route);
+    if (!feature) return true;
+    if (feature === 'woocommerce' && !isBusinessFeatureEnabled(featureAccess, 'additionalIntegrations')) return false;
+    return isBusinessFeatureEnabled(featureAccess, feature);
+  });
+  const visibleItems = normalizedQuery
+    ? enabledFeatureItems.filter((item) => {
+        const searchable = `${item.label} ${item.description} ${item.keywords}`.toLowerCase();
+        return searchable.includes(normalizedQuery);
+      })
+    : enabledFeatureItems.slice(0, 8);
+
+  return (
+    <View style={{ position: 'relative', zIndex: 10000, elevation: 10000 }}>
+      <Pressable
+        onPress={() => setIsOpen((prev) => !prev)}
+        className="rounded-full px-4 flex-row items-center active:opacity-80"
+        style={{
+          backgroundColor: colors.bg.card,
+          height: 44,
+          borderWidth: 1,
+          borderColor: colors.border.light,
+        }}
+      >
+        <Search size={18} color={colors.text.primary} strokeWidth={2.5} />
+        <Text style={{ color: colors.text.primary }} className="font-semibold ml-2 text-sm">
+          Search
+        </Text>
+      </Pressable>
+
+      {isOpen ? (
+        <View
+          style={{
+            position: 'absolute',
+            top: 52,
+            left: '50%',
+            marginLeft: -(dropdownWidth / 2),
+            width: dropdownWidth,
+            maxHeight: 520,
+            borderRadius: 24,
+            padding: 10,
+            backgroundColor: colors.bg.card,
+            borderWidth: 1,
+            borderColor: colors.border.light,
+            shadowColor: '#000000',
+            shadowOpacity: isDark ? 0.38 : 0.14,
+            shadowRadius: 22,
+            shadowOffset: { width: 0, height: 12 },
+            zIndex: 10001,
+            elevation: 10001,
+          }}
+        >
+          <View
+            style={{
+              height: 46,
+              borderRadius: 18,
+              backgroundColor: colors.bg.secondary,
+              borderWidth: 1,
+              borderColor: colors.border.light,
+              flexDirection: 'row',
+              alignItems: 'center',
+              paddingHorizontal: 14,
+              marginBottom: 8,
+            }}
+          >
+            <Search size={17} color={colors.text.tertiary} strokeWidth={2.3} />
+            <TextInput
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Search menus and features"
+              placeholderTextColor={colors.text.muted}
+              autoFocus
+              style={{
+                flex: 1,
+                marginLeft: 10,
+                color: colors.text.primary,
+                fontSize: 14,
+                fontWeight: '500',
+                outlineStyle: 'none' as any,
+              }}
+            />
+            {query ? (
+              <Pressable onPress={() => setQuery('')} style={{ padding: 4 }}>
+                <X size={16} color={colors.text.tertiary} strokeWidth={2.4} />
+              </Pressable>
+            ) : null}
+          </View>
+
+          <ScrollView style={{ maxHeight: 442 }} showsVerticalScrollIndicator={false}>
+            {visibleItems.length > 0 ? (
+              visibleItems.map(({ label, description, route, Icon }) => (
+                <Pressable
+                  key={`${route}-${label}`}
+                  onPress={() => {
+                    setIsOpen(false);
+                    setQuery('');
+                    router.push(route as any);
+                  }}
+                  className="flex-row items-center rounded-2xl active:opacity-75"
+                  style={{ paddingHorizontal: 12, paddingVertical: 11 }}
+                >
+                  <View
+                    style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: 13,
+                      backgroundColor: colors.bg.secondary,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginRight: 11,
+                    }}
+                  >
+                    <Icon size={17} color={colors.text.primary} strokeWidth={2.2} />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600' }} numberOfLines={1}>
+                      {label}
+                    </Text>
+                    <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '400', marginTop: 1 }} numberOfLines={1}>
+                      {description}
+                    </Text>
+                  </View>
+                  <ChevronRight size={16} color={colors.text.tertiary} strokeWidth={2.2} />
+                </Pressable>
+              ))
+            ) : (
+              <View style={{ paddingHorizontal: 14, paddingVertical: 18 }}>
+                <Text style={{ color: colors.text.secondary, fontSize: 13, fontWeight: '500' }}>
+                  No matching menu or feature found.
+                </Text>
+              </View>
+            )}
+          </ScrollView>
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -244,23 +698,17 @@ function NotificationPanel({
 
   const getNotificationText = useCallback((n: CollaborationNotification) => {
     const payload = n.payload as any;
-    // Try profile name from actor_user_id, then payload authorName, then fallback
-    const authorName =
-      (n.actor_user_id ? profilesMap.get(n.actor_user_id) : null)
-      ?? payload?.authorName
-      ?? 'A team member';
     const eType = n.entity_type ?? payload?.entityType;
     const eId = n.entity_id ?? payload?.entityId;
 
-    // Build entity label
     let entityLabel = '';
     if (eType === 'order' && eId) {
       const orderNum = orderNumberMap.get(eId);
-      entityLabel = orderNum ? `Order #${orderNum}` : 'an order';
+      entityLabel = orderNum ? `thread #${orderNum}` : 'a thread';
     } else if (eType === 'case' && eId) {
       entityLabel = isTeamThreadEntityId(eId)
         ? getTeamThreadDisplayNameFromEntityId(eId)
-        : 'a case';
+        : 'a thread';
     } else if (eType === 'task') {
       entityLabel = 'a task';
     }
@@ -268,20 +716,188 @@ function NotificationPanel({
     const context = entityLabel ? ` in ${entityLabel}` : '';
 
     if (payload?.type === 'task_assigned') {
+      const authorName =
+        (n.actor_user_id ? profilesMap.get(n.actor_user_id) : null)
+        ?? payload?.authorName
+        ?? 'A team member';
       return `${authorName} assigned you a task${context}`;
     }
     if (payload?.type === 'task_completed') {
+      const authorName =
+        (n.actor_user_id ? profilesMap.get(n.actor_user_id) : null)
+        ?? payload?.authorName
+        ?? 'A team member';
       return `${authorName} completed a task${context}`;
     }
     if (payload?.type === 'task_due_reminder') {
-      return `Task reminder${context}`;
+      if (payload?.isOverdue) {
+        return `Task overdue${context}`;
+      }
+      return `Task due today${context}`;
+    }
+    if (payload?.type === 'task_event_reminder') {
+      return payload?.reminderStage === 'now'
+        ? `Event starting now${context}`
+        : `Event in 30 min${context}`;
+    }
+    if (payload?.type === 'delivery_confirmation_received') {
+      const customerName = typeof payload?.customerName === 'string' && payload.customerName.trim()
+        ? payload.customerName.trim()
+        : 'A customer';
+      return `${customerName} confirmed delivery${context}`;
+    }
+    if (payload?.type === 'delivery_confirmation_pending') {
+      const customerName = typeof payload?.customerName === 'string' && payload.customerName.trim()
+        ? payload.customerName.trim()
+        : 'A customer';
+      return `${customerName} reported pending delivery${context}`;
+    }
+    if (payload?.type === 'social_checkout_payment_submitted') {
+      const customerName = typeof payload?.customerName === 'string' && payload.customerName.trim()
+        ? payload.customerName.trim()
+        : 'A customer';
+      const amount = typeof payload?.amount === 'string' && payload.amount.trim()
+        ? ` ${payload.amount.trim()}`
+        : '';
+      return `${customerName} submitted payment proof${amount}`;
+    }
+    if (payload?.type === 'payment_received') {
+      const customerName = typeof payload?.customerName === 'string' && payload.customerName.trim()
+        ? payload.customerName.trim()
+        : 'A customer';
+      const amount = typeof payload?.amount === 'string' && payload.amount.trim()
+        ? ` ${payload.amount.trim()}`
+        : '';
+      const sourceLabel = typeof payload?.sourceLabel === 'string' && payload.sourceLabel.trim()
+        ? payload.sourceLabel.trim()
+        : 'payment';
+      return `${customerName} made a ${sourceLabel} payment${amount}`;
+    }
+    if (payload?.type === 'return_request_submitted') {
+      const customerName = typeof payload?.customerName === 'string' && payload.customerName.trim()
+        ? payload.customerName.trim()
+        : 'A customer';
+      const returnRef = typeof payload?.returnRef === 'string' && payload.returnRef.trim()
+        ? ` ${payload.returnRef.trim()}`
+        : '';
+      return `${customerName} submitted return request${returnRef}`;
+    }
+    if (payload?.type === 'storefront_order_created') {
+      const customerName = typeof payload?.customerName === 'string' && payload.customerName.trim()
+        ? payload.customerName.trim()
+        : 'A customer';
+      const orderNumber = typeof payload?.orderNumber === 'string' && payload.orderNumber.trim()
+        ? ` #${payload.orderNumber.trim()}`
+        : '';
+      return `New storefront order${orderNumber} from ${customerName}`;
     }
 
-    if (n.event_type === 'mention') {
-      return `${authorName} mentioned you${context}`;
+    if (payload?.type === 'partner_job_event') {
+      return typeof payload?.heading === 'string' && payload.heading.trim()
+        ? payload.heading.trim()
+        : 'Partner job update';
     }
-    return `${authorName} replied${context}`;
+    if (eType === 'task') {
+      return 'New comment in task';
+    }
+    if (eType === 'case') {
+      return entityLabel ? `New comment in ${entityLabel}` : 'New comment in case';
+    }
+    return `New message${context}`;
   }, [orderNumberMap, profilesMap]);
+
+  const isTaskNotification = useCallback((n: CollaborationNotification) => {
+    const payload = n.payload as any;
+    const eType = n.entity_type ?? payload?.entityType;
+    return eType === 'task'
+      || payload?.type === 'task_assigned'
+      || payload?.type === 'task_completed'
+      || payload?.type === 'task_due_reminder'
+      || payload?.type === 'task_event_reminder';
+  }, []);
+
+  const isOrderUpdateNotification = useCallback((n: CollaborationNotification) => {
+    const payload = n.payload as any;
+    return payload?.type === 'delivery_confirmation_received'
+      || payload?.type === 'delivery_confirmation_pending'
+      || payload?.type === 'storefront_order_created';
+  }, []);
+
+  const isPaymentNotification = useCallback((n: CollaborationNotification) => {
+    const payload = n.payload as any;
+    return payload?.type === 'social_checkout_payment_submitted'
+      || payload?.type === 'payment_received';
+  }, []);
+
+  const isReturnNotification = useCallback((n: CollaborationNotification) => {
+    const payload = n.payload as any;
+    return payload?.type === 'return_request_submitted';
+  }, []);
+
+  const taskNotifications = useMemo(
+    () => notifications.filter((n) => isTaskNotification(n)),
+    [isTaskNotification, notifications]
+  );
+
+  const orderUpdateNotifications = useMemo(
+    () => notifications.filter((n) => isOrderUpdateNotification(n)),
+    [isOrderUpdateNotification, notifications]
+  );
+
+  const paymentNotifications = useMemo(
+    () => notifications.filter((n) => isPaymentNotification(n)),
+    [isPaymentNotification, notifications]
+  );
+
+  const returnNotifications = useMemo(
+    () => notifications.filter((n) => isReturnNotification(n)),
+    [isReturnNotification, notifications]
+  );
+
+  const threadNotifications = useMemo(
+    () => notifications.filter((n) => !isTaskNotification(n) && !isOrderUpdateNotification(n) && !isPaymentNotification(n) && !isReturnNotification(n)),
+    [isOrderUpdateNotification, isPaymentNotification, isReturnNotification, isTaskNotification, notifications]
+  );
+
+  const getNotificationIconMeta = useCallback((n: CollaborationNotification) => {
+    const payload = n.payload as any;
+    if (payload?.type === 'task_completed') {
+      return { icon: ClipboardList, color: '#059669', bg: 'rgba(5,150,105,0.14)' };
+    }
+    if (payload?.type === 'task_due_reminder') {
+      return {
+        icon: Clock3,
+        color: payload?.isOverdue ? '#DC2626' : '#D97706',
+        bg: payload?.isOverdue ? 'rgba(220,38,38,0.14)' : 'rgba(217,119,6,0.14)',
+      };
+    }
+    if (payload?.type === 'task_event_reminder') {
+      return {
+        icon: Calendar,
+        color: payload?.reminderStage === 'now' ? '#2563EB' : '#0F766E',
+        bg: payload?.reminderStage === 'now' ? 'rgba(37,99,235,0.14)' : 'rgba(15,118,110,0.14)',
+      };
+    }
+    if (payload?.type === 'delivery_confirmation_received') {
+      return { icon: Truck, color: '#059669', bg: 'rgba(5,150,105,0.14)' };
+    }
+    if (payload?.type === 'delivery_confirmation_pending') {
+      return { icon: CircleAlert, color: '#D97706', bg: 'rgba(217,119,6,0.14)' };
+    }
+    if (payload?.type === 'social_checkout_payment_submitted' || payload?.type === 'payment_received') {
+      return { icon: Wallet, color: '#7C3AED', bg: 'rgba(124,58,237,0.14)' };
+    }
+    if (payload?.type === 'return_request_submitted') {
+      return { icon: RotateCcw, color: '#2563EB', bg: 'rgba(37,99,235,0.14)' };
+    }
+    if (payload?.type === 'storefront_order_created') {
+      return { icon: Package, color: '#059669', bg: 'rgba(5,150,105,0.14)' };
+    }
+    if (isTaskNotification(n)) {
+      return { icon: ClipboardList, color: '#2563EB', bg: 'rgba(37,99,235,0.14)' };
+    }
+    return { icon: MessageCircle, color: colors.accent.primary, bg: `${colors.accent.primary}15` };
+  }, [colors.accent.primary, isTaskNotification]);
 
   const unreadCount = notifications.filter((n) => !n.is_read).length;
 
@@ -298,6 +914,85 @@ function NotificationPanel({
   const handleOrderPress = (orderId: string) => {
     onClose();
     router.push(`/order/${orderId}` as any);
+  };
+
+  const renderNotificationItem = (n: CollaborationNotification, compact: boolean) => {
+    const notifText = getNotificationText(n);
+    const bodyPreview = (n.payload as any)?.body;
+    const truncatedPreview = typeof bodyPreview === 'string' && bodyPreview.length > 80
+      ? `${bodyPreview.slice(0, 77)}...`
+      : bodyPreview;
+    const iconMeta = getNotificationIconMeta(n);
+    const NotificationIcon = iconMeta.icon;
+
+    return (
+      <Pressable
+        key={n.id}
+        onPress={() => onNotificationPress(n)}
+        style={{
+          flexDirection: 'row',
+          alignItems: 'flex-start',
+          paddingHorizontal: compact ? 18 : 20,
+          paddingVertical: compact ? 14 : 16,
+          backgroundColor: n.is_read ? 'transparent' : `${colors.accent.primary}08`,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border.light,
+        }}
+      >
+        <View
+          style={{
+            width: compact ? 36 : 40,
+            height: compact ? 36 : 40,
+            borderRadius: compact ? 10 : 12,
+            backgroundColor: n.is_read ? colors.bg.secondary : iconMeta.bg,
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginRight: compact ? 12 : 14,
+          }}
+        >
+          <NotificationIcon
+            size={compact ? 16 : 18}
+            color={n.is_read ? colors.text.muted : iconMeta.color}
+            strokeWidth={2}
+          />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text
+            style={{
+              color: colors.text.primary,
+              fontSize: compact ? 13 : 14,
+              fontWeight: n.is_read ? '400' : '600',
+            }}
+            numberOfLines={1}
+          >
+            {notifText}
+          </Text>
+          {truncatedPreview ? (
+            <Text
+              style={{ color: colors.text.tertiary, fontSize: compact ? 12 : 13, marginTop: 2 }}
+              numberOfLines={1}
+            >
+              "{truncatedPreview}"
+            </Text>
+          ) : null}
+          <Text style={{ color: colors.text.muted, fontSize: compact ? 11 : 12, marginTop: 2 }}>
+            {formatTimeAgo(n.created_at)}
+          </Text>
+        </View>
+        {!n.is_read && (
+          <View
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: 4,
+              backgroundColor: '#DC2626',
+              marginTop: compact ? 4 : 6,
+              marginLeft: 8,
+            }}
+          />
+        )}
+      </Pressable>
+    );
   };
 
   const renderNewOrderItem = (order: Order, compact: boolean) => (
@@ -418,86 +1113,36 @@ function NotificationPanel({
               </View>
             ) : notifications.length > 0 ? (
               <>
-                {recentOrders.length > 0 && (
+                {taskNotifications.length > 0 && (
                   <View style={{ paddingHorizontal: 18, paddingTop: 10, paddingBottom: 4 }}>
-                    <Text style={{ color: colors.text.muted, fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' }}>Thread Activity</Text>
+                    <Text style={{ color: colors.text.muted, fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' }}>Tasks</Text>
                   </View>
                 )}
-                {notifications.map((n) => {
-                  const notifText = getNotificationText(n);
-                  const bodyPreview = (n.payload as any)?.body;
-                  const truncatedPreview = typeof bodyPreview === 'string' && bodyPreview.length > 80
-                    ? bodyPreview.slice(0, 77) + '...'
-                    : bodyPreview;
-                  return (
-                  <Pressable
-                    key={n.id}
-                    onPress={() => onNotificationPress(n)}
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'flex-start',
-                      paddingHorizontal: 18,
-                      paddingVertical: 14,
-                      backgroundColor: n.is_read ? 'transparent' : `${colors.accent.primary}08`,
-                      borderBottomWidth: 1,
-                      borderBottomColor: colors.border.light,
-                    }}
-                  >
-                    <View
-                      style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: 10,
-                        backgroundColor: n.is_read ? colors.bg.secondary : `${colors.accent.primary}15`,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        marginRight: 12,
-                      }}
-                    >
-                      <MessageCircle
-                        size={16}
-                        color={n.is_read ? colors.text.muted : colors.accent.primary}
-                        strokeWidth={2}
-                      />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text
-                        style={{
-                          color: colors.text.primary,
-                          fontSize: 13,
-                          fontWeight: n.is_read ? '400' : '600',
-                        }}
-                        numberOfLines={1}
-                      >
-                        {notifText}
-                      </Text>
-                      {truncatedPreview ? (
-                        <Text
-                          style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 2 }}
-                          numberOfLines={1}
-                        >
-                          "{truncatedPreview}"
-                        </Text>
-                      ) : null}
-                      <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 2 }}>
-                        {formatTimeAgo(n.created_at)}
-                      </Text>
-                    </View>
-                    {!n.is_read && (
-                      <View
-                        style={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: 4,
-                          backgroundColor: '#DC2626',
-                          marginTop: 4,
-                          marginLeft: 8,
-                        }}
-                      />
-                    )}
-                  </Pressable>
-                  );
-                })}
+                {taskNotifications.map((n) => renderNotificationItem(n, true))}
+                {orderUpdateNotifications.length > 0 && (
+                  <View style={{ paddingHorizontal: 18, paddingTop: 10, paddingBottom: 4 }}>
+                    <Text style={{ color: colors.text.muted, fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' }}>Order Updates</Text>
+                  </View>
+                )}
+                {orderUpdateNotifications.map((n) => renderNotificationItem(n, true))}
+                {paymentNotifications.length > 0 && (
+                  <View style={{ paddingHorizontal: 18, paddingTop: 10, paddingBottom: 4 }}>
+                    <Text style={{ color: colors.text.muted, fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' }}>Payments</Text>
+                  </View>
+                )}
+                {paymentNotifications.map((n) => renderNotificationItem(n, true))}
+                {returnNotifications.length > 0 && (
+                  <View style={{ paddingHorizontal: 18, paddingTop: 10, paddingBottom: 4 }}>
+                    <Text style={{ color: colors.text.muted, fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' }}>Returns</Text>
+                  </View>
+                )}
+                {returnNotifications.map((n) => renderNotificationItem(n, true))}
+                {threadNotifications.length > 0 && (
+                  <View style={{ paddingHorizontal: 18, paddingTop: 10, paddingBottom: 4 }}>
+                    <Text style={{ color: colors.text.muted, fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' }}>Threads</Text>
+                  </View>
+                )}
+                {threadNotifications.map((n) => renderNotificationItem(n, true))}
               </>
             ) : null}
           </ScrollView>
@@ -565,86 +1210,36 @@ function NotificationPanel({
             </View>
           ) : notifications.length > 0 ? (
             <>
-              {recentOrders.length > 0 && (
+              {taskNotifications.length > 0 && (
                 <View style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: 4 }}>
-                  <Text style={{ color: colors.text.muted, fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' }}>Thread Activity</Text>
+                  <Text style={{ color: colors.text.muted, fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' }}>Tasks</Text>
                 </View>
               )}
-              {notifications.map((n) => {
-                const notifText = getNotificationText(n);
-                const bodyPreview = (n.payload as any)?.body;
-                const truncatedPreview = typeof bodyPreview === 'string' && bodyPreview.length > 80
-                  ? bodyPreview.slice(0, 77) + '...'
-                  : bodyPreview;
-                return (
-                <Pressable
-                  key={n.id}
-                  onPress={() => onNotificationPress(n)}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'flex-start',
-                    paddingHorizontal: 20,
-                    paddingVertical: 16,
-                    backgroundColor: n.is_read ? 'transparent' : `${colors.accent.primary}08`,
-                    borderBottomWidth: 1,
-                    borderBottomColor: colors.border.light,
-                  }}
-                >
-                  <View
-                    style={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: 12,
-                      backgroundColor: n.is_read ? colors.bg.secondary : `${colors.accent.primary}15`,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      marginRight: 14,
-                    }}
-                  >
-                    <MessageCircle
-                      size={18}
-                      color={n.is_read ? colors.text.muted : colors.accent.primary}
-                      strokeWidth={2}
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text
-                      style={{
-                        color: colors.text.primary,
-                        fontSize: 14,
-                        fontWeight: n.is_read ? '400' : '600',
-                      }}
-                      numberOfLines={1}
-                    >
-                      {notifText}
-                    </Text>
-                    {truncatedPreview ? (
-                      <Text
-                        style={{ color: colors.text.tertiary, fontSize: 13, marginTop: 2 }}
-                        numberOfLines={1}
-                      >
-                        "{truncatedPreview}"
-                      </Text>
-                    ) : null}
-                    <Text style={{ color: colors.text.muted, fontSize: 12, marginTop: 2 }}>
-                      {formatTimeAgo(n.created_at)}
-                    </Text>
-                  </View>
-                  {!n.is_read && (
-                    <View
-                      style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: 4,
-                        backgroundColor: '#DC2626',
-                        marginTop: 6,
-                        marginLeft: 8,
-                      }}
-                    />
-                  )}
-                </Pressable>
-                );
-              })}
+              {taskNotifications.map((n) => renderNotificationItem(n, false))}
+              {orderUpdateNotifications.length > 0 && (
+                <View style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: 4 }}>
+                  <Text style={{ color: colors.text.muted, fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' }}>Order Updates</Text>
+                </View>
+              )}
+              {orderUpdateNotifications.map((n) => renderNotificationItem(n, false))}
+              {paymentNotifications.length > 0 && (
+                <View style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: 4 }}>
+                  <Text style={{ color: colors.text.muted, fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' }}>Payments</Text>
+                </View>
+              )}
+              {paymentNotifications.map((n) => renderNotificationItem(n, false))}
+              {returnNotifications.length > 0 && (
+                <View style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: 4 }}>
+                  <Text style={{ color: colors.text.muted, fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' }}>Returns</Text>
+                </View>
+              )}
+              {returnNotifications.map((n) => renderNotificationItem(n, false))}
+              {threadNotifications.length > 0 && (
+                <View style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: 4 }}>
+                  <Text style={{ color: colors.text.muted, fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' }}>Threads</Text>
+                </View>
+              )}
+              {threadNotifications.map((n) => renderNotificationItem(n, false))}
             </>
           ) : null}
         </ScrollView>
@@ -699,36 +1294,138 @@ function RecentOrderItem({ order, productById, statusColorMap, onPress, isLast =
   );
 }
 
+interface RecentPartnerJobItemProps {
+  job: PartnerJob;
+  partnerName: string;
+  onPress: () => void;
+  isLast?: boolean;
+}
+
+function RecentPartnerJobItem({ job, partnerName, onPress, isLast = false }: RecentPartnerJobItemProps) {
+  const colors = useThemeColors();
+
+  const normalizedStatus = String(job.status ?? '').trim().toLowerCase().replace(/[_-]+/g, ' ');
+  const statusMeta = normalizedStatus.includes('cancel')
+    ? { label: 'Cancelled', color: '#DC2626', background: 'rgba(220,38,38,0.12)' }
+    : normalizedStatus.includes('ready')
+      ? { label: 'Ready for pickup', color: '#2563EB', background: 'rgba(37,99,235,0.12)' }
+      : normalizedStatus.includes('progress')
+        ? { label: 'In progress', color: '#B45309', background: 'rgba(180,83,9,0.12)' }
+        : normalizedStatus.includes('sent to business') || normalizedStatus.includes('returned')
+          ? { label: 'Sent to business', color: '#16A34A', background: 'rgba(22,163,74,0.12)' }
+          : normalizedStatus.includes('sent')
+            ? { label: 'Sent to partner', color: '#6B7280', background: 'rgba(107,114,128,0.12)' }
+            : { label: normalizedStatus ? normalizedStatus.replace(/\b\w/g, (char) => char.toUpperCase()) : 'Status', color: '#6B7280', background: 'rgba(107,114,128,0.12)' };
+
+  return (
+    <View>
+      <Pressable
+        onPress={onPress}
+        className="flex-row items-center py-3 active:opacity-70"
+        style={isLast ? undefined : { borderBottomWidth: 1, borderBottomColor: colors.border.light }}
+      >
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={{ color: colors.text.primary }} className="font-semibold text-sm" numberOfLines={1}>
+            {job.customerName || 'Customer'}
+          </Text>
+          <Text style={{ color: colors.text.tertiary }} className="text-xs mt-0.5" numberOfLines={1}>
+            {job.jobType || job.itemLabel || 'Partner job'} • {partnerName || 'No partner'}
+          </Text>
+        </View>
+        <View style={{ alignItems: 'flex-end', flexShrink: 0, marginLeft: 12 }}>
+          <View
+            className="px-2 py-1 rounded-md"
+            style={{ backgroundColor: statusMeta.background, maxWidth: 150 }}
+          >
+            <Text style={{ color: statusMeta.color }} className="text-xs font-semibold" numberOfLines={1}>
+              {statusMeta.label}
+            </Text>
+          </View>
+        </View>
+      </Pressable>
+    </View>
+  );
+}
+
 export default function DashboardScreen() {
   const router = useRouter();
   const colors = useThemeColors();
+  const isDark = colors.bg.primary === '#111111';
   const tabBarHeight = useTabBarHeight();
   const { isDesktop } = useBreakpoint();
   const isWebDesktop = Platform.OS === 'web' && isDesktop;
   const products = useFyllStore((s) => s.products);
   const orders = useFyllStore((s) => s.orders);
+  const partners = useFyllStore((s) => s.partners);
+  const partnerJobs = useFyllStore((s) => s.partnerJobs);
   const cases = useFyllStore((s) => s.cases);
   const orderStatuses = useFyllStore((s) => s.orderStatuses);
+  const paymentMethods = useFyllStore((s) => s.paymentMethods);
   const expenseRequests = useFyllStore((s) => s.expenseRequests);
   const customers = useFyllStore((s) => s.customers);
+  const isBackgroundSyncing = useFyllStore((s) => s.isBackgroundSyncing);
   const hasAuditForMonth = useFyllStore((s) => s.hasAuditForMonth);
+  const { businessName, businessPhone, returnAddress, storefrontEnabled, featureAccess, isLoading: isLoadingBusinessSettings } = useBusinessSettings();
+  const canUseStorefront = isBusinessFeatureEnabled(featureAccess, 'storefront');
+  const canUseCases = isBusinessFeatureEnabled(featureAccess, 'cases');
+  const canUseSocialCheckout = isBusinessFeatureEnabled(featureAccess, 'socialCheckout');
+  const canUseTasks = isBusinessFeatureEnabled(featureAccess, 'tasks');
+  const canUseFinance = isBusinessFeatureEnabled(featureAccess, 'finance');
+  const canUseInsights = isBusinessFeatureEnabled(featureAccess, 'insights');
 
   const userName = useAuthStore((s) => s.currentUser?.name ?? '');
   const currentUserId = useAuthStore((s) => s.currentUser?.id ?? '');
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
   const userRole = useAuthStore((s) => s.currentUser?.role ?? 'staff');
+  const teamMembers = useAuthStore((s) => s.teamMembers);
+  const pendingInvites = useAuthStore((s) => s.pendingInvites);
   const queryClient = useQueryClient();
+  const eventReminderTriggerKeyRef = useRef<string | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [orderNotificationsSeenAt, setOrderNotificationsSeenAt] = useState(0);
-  const shouldShowMobileTaskTable = !isWebDesktop && (userRole === 'admin' || userRole === 'manager');
+  const [eventNowTick, setEventNowTick] = useState(() => Date.now());
+  const [pendingPrintQueueCount, setPendingPrintQueueCount] = useState(0);
+  const [onboardingDismissed, setOnboardingDismissed] = useState(false);
+  const [onboardingDismissedLoaded, setOnboardingDismissedLoaded] = useState(false);
+  const [showInitialDashboardSkeleton, setShowInitialDashboardSkeleton] = useState(true);
+  const shouldShowHomeTaskCard = canUseTasks && (!isWebDesktop || userRole === 'staff');
+
+  const refreshPrintQueueCount = useCallback(() => {
+    let isCancelled = false;
+    void getFyllPrintQueue()
+      .then((queue) => {
+        if (isCancelled) return;
+        setPendingPrintQueueCount(queue.inventory.length + queue.shipping.length);
+      })
+      .catch(() => {
+        if (isCancelled) return;
+        setPendingPrintQueueCount(0);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
+  useFocusEffect(refreshPrintQueueCount);
+
+  useEffect(() => {
+    if (!showInitialDashboardSkeleton) return;
+    const timer = setTimeout(() => setShowInitialDashboardSkeleton(false), 900);
+    return () => clearTimeout(timer);
+  }, [showInitialDashboardSkeleton]);
 
   useEffect(() => {
     let isCancelled = false;
 
     if (!businessId) {
       setOrderNotificationsSeenAt(0);
+      setOnboardingDismissed(false);
+      setOnboardingDismissedLoaded(false);
       return;
     }
+
+    setOnboardingDismissedLoaded(false);
 
     void storage.getItem(getOrderNotificationsSeenKey(businessId)).then((value) => {
       if (isCancelled) return;
@@ -737,6 +1434,17 @@ export default function DashboardScreen() {
     }).catch(() => {
       if (isCancelled) return;
       setOrderNotificationsSeenAt(0);
+    });
+
+    void storage.getItem(getOnboardingDismissedKey(businessId)).then((value) => {
+      if (isCancelled) return;
+      setOnboardingDismissed(value === 'true');
+    }).catch(() => {
+      if (isCancelled) return;
+      setOnboardingDismissed(false);
+    }).finally(() => {
+      if (isCancelled) return;
+      setOnboardingDismissedLoaded(true);
     });
 
     return () => {
@@ -751,6 +1459,13 @@ export default function DashboardScreen() {
     setOrderNotificationsSeenAt((previous) => Math.max(previous, seenAt));
     void storage.setItem(getOrderNotificationsSeenKey(businessId), String(seenAt));
   }, [showNotifications, businessId]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setEventNowTick(Date.now());
+    }, 60_000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Notification queries
   const notificationsQuery = useQuery({
@@ -783,11 +1498,33 @@ export default function DashboardScreen() {
 
   const mobileHomeTasksQuery = useQuery({
     queryKey: ['dashboard-mobile-tasks', businessId, userRole, currentUserId],
-    enabled: Boolean(businessId) && shouldShowMobileTaskTable,
+    enabled: Boolean(businessId),
     queryFn: () => taskData.listTasks(businessId!),
     staleTime: 30_000,
     refetchOnWindowFocus: false,
   });
+
+  const socialCheckoutDraftsQuery = useQuery({
+    queryKey: ['dashboard-social-checkouts', businessId],
+    enabled: Boolean(businessId),
+    queryFn: async () => {
+      const rows = await supabaseData.fetchCollection<SocialCheckoutDraft>('social_checkouts', businessId!);
+      return rows.map((row) => row.data);
+    },
+    staleTime: 30_000,
+    refetchInterval: 15000,
+    refetchOnWindowFocus: true,
+  });
+
+  useEffect(() => {
+    if (!businessId) return;
+    const bucketKey = `${businessId}:${Math.floor(Date.now() / (5 * 60 * 1000))}`;
+    if (eventReminderTriggerKeyRef.current === bucketKey) return;
+    eventReminderTriggerKeyRef.current = bucketKey;
+    void triggerTaskEventReminders({ businessId, reminderIso: new Date().toISOString() }).catch((error) => {
+      console.warn('Could not trigger task event reminders:', error);
+    });
+  }, [businessId, eventNowTick]);
 
   // Fetch profiles for author name display in notifications
   const profilesQuery = useQuery({
@@ -809,16 +1546,82 @@ export default function DashboardScreen() {
     [notificationsQuery.data]
   );
   const mobileHomeScopedTasks = useMemo(() => {
-    if (!shouldShowMobileTaskTable) return [] as Task[];
+    if (!shouldShowHomeTaskCard) return [] as Task[];
     const rawTasks = mobileHomeTasksQuery.data ?? [];
     const filtered = rawTasks.filter((task) => task.status !== 'done');
-    return [...filtered].sort((left, right) => {
+    const scoped = userRole === 'staff'
+      ? filtered.filter((task) => (
+        task.created_by === currentUserId
+        || (task.assignee_user_ids ?? []).includes(currentUserId)
+      ))
+      : filtered;
+
+    return [...scoped].sort((left, right) => {
+      if (userRole === 'staff') {
+        return new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime();
+      }
       const leftDue = left.due_date ? new Date(`${left.due_date}T00:00:00`).getTime() : Number.MAX_SAFE_INTEGER;
       const rightDue = right.due_date ? new Date(`${right.due_date}T00:00:00`).getTime() : Number.MAX_SAFE_INTEGER;
       if (leftDue !== rightDue) return leftDue - rightDue;
       return new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime();
     });
-  }, [shouldShowMobileTaskTable, mobileHomeTasksQuery.data]);
+  }, [shouldShowHomeTaskCard, mobileHomeTasksQuery.data, userRole, currentUserId]);
+
+  const homeRelevantEvents = useMemo(() => {
+    if (!currentUserId) return [] as Task[];
+    return (mobileHomeTasksQuery.data ?? [])
+      .filter((task) => task.item_type === 'event' && task.status !== 'done' && Boolean(task.starts_at))
+      .filter((task) => (
+        task.created_by === currentUserId
+        || (task.assignee_user_ids ?? []).includes(currentUserId)
+      ))
+      .sort((left, right) => {
+        const leftStart = left.starts_at ? new Date(left.starts_at).getTime() : Number.MAX_SAFE_INTEGER;
+        const rightStart = right.starts_at ? new Date(right.starts_at).getTime() : Number.MAX_SAFE_INTEGER;
+        return leftStart - rightStart;
+      });
+  }, [currentUserId, mobileHomeTasksQuery.data]);
+
+  const upcomingHomeEvent = useMemo(() => {
+    const nowMs = eventNowTick;
+    const thirtyMinutesFromNow = nowMs + (30 * 60 * 1000);
+    return homeRelevantEvents.find((task) => {
+      const startMs = task.starts_at ? new Date(task.starts_at).getTime() : Number.NaN;
+      const endMs = task.ends_at ? new Date(task.ends_at).getTime() : Number.NaN;
+      if (!Number.isFinite(startMs)) return false;
+      const isHappeningNow = Number.isFinite(endMs)
+        ? nowMs >= startMs && nowMs <= endMs
+        : Math.abs(nowMs - startMs) <= 5 * 60 * 1000;
+      if (isHappeningNow) return true;
+      return startMs > nowMs && startMs <= thirtyMinutesFromNow;
+    }) ?? null;
+  }, [eventNowTick, homeRelevantEvents]);
+
+  const upcomingHomeEventMeta = useMemo(() => {
+    if (!upcomingHomeEvent?.starts_at) return null;
+    const startDate = new Date(upcomingHomeEvent.starts_at);
+    if (Number.isNaN(startDate.getTime())) return null;
+    const nowMs = eventNowTick;
+    const startMs = startDate.getTime();
+    const endMs = upcomingHomeEvent.ends_at ? new Date(upcomingHomeEvent.ends_at).getTime() : Number.NaN;
+    const isHappeningNow = Number.isFinite(endMs)
+      ? nowMs >= startMs && nowMs <= endMs
+      : Math.abs(nowMs - startMs) <= 5 * 60 * 1000;
+    const timeLabel = startDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+    if (isHappeningNow) {
+      return {
+        title: 'Event Happening Now',
+        subtitle: `${upcomingHomeEvent.title} • ${timeLabel}`,
+      };
+    }
+
+    const diffMinutes = Math.max(1, Math.round((startMs - nowMs) / 60000));
+    return {
+      title: 'Upcoming Event',
+      subtitle: `${upcomingHomeEvent.title} • ${timeLabel} in ${diffMinutes} min`,
+    };
+  }, [eventNowTick, upcomingHomeEvent]);
   const mobileHomeTaskRows = useMemo(
     () => mobileHomeScopedTasks.slice(0, 5),
     [mobileHomeScopedTasks]
@@ -847,7 +1650,51 @@ export default function DashboardScreen() {
     // Navigate using joined thread entity info, or fall back to payload
     const eType = n.entity_type ?? (n.payload as any)?.entityType;
     const eId = n.entity_id ?? (n.payload as any)?.entityId;
+    const payloadType = (n.payload as any)?.type;
+    if (payloadType === 'social_checkout_payment_submitted') {
+      const checkoutCode = typeof (n.payload as any)?.checkoutCode === 'string' && (n.payload as any).checkoutCode.trim()
+        ? (n.payload as any).checkoutCode.trim()
+        : eId;
+      if (checkoutCode) {
+        router.push(`/social-checkout/${encodeURIComponent(checkoutCode)}` as any);
+      } else {
+        router.push('/(tabs)/payments' as any);
+      }
+      return;
+    }
+    if (payloadType === 'payment_received') {
+      const source = typeof (n.payload as any)?.source === 'string' ? (n.payload as any).source.trim().toLowerCase() : '';
+      const checkoutCode = typeof (n.payload as any)?.checkoutCode === 'string' ? (n.payload as any).checkoutCode.trim() : '';
+      const paymentId = typeof (n.payload as any)?.paymentId === 'string' ? (n.payload as any).paymentId.trim() : '';
+      if (source === 'social_checkout' && checkoutCode) {
+        router.push(`/social-checkout/${encodeURIComponent(checkoutCode)}` as any);
+      } else if (paymentId) {
+        router.push(`/storefront-payment/${encodeURIComponent(paymentId)}` as any);
+      } else {
+        router.push('/(tabs)/payments' as any);
+      }
+      return;
+    }
+    if (payloadType === 'partner_job_event') {
+      router.push('/partners?partnerSection=jobs' as any);
+      return;
+    }
+    if (payloadType === 'return_request_submitted') {
+      const returnId = typeof (n.payload as any)?.returnId === 'string' && (n.payload as any).returnId.trim()
+        ? (n.payload as any).returnId.trim()
+        : eId;
+      if (returnId) {
+        router.push(`/return/${encodeURIComponent(returnId)}` as any);
+      } else {
+        router.push('/returns' as any);
+      }
+      return;
+    }
     if (eType === 'order' && eId) {
+      if (payloadType === 'delivery_confirmation_received' || payloadType === 'delivery_confirmation_pending') {
+        router.push(`/order/${encodeURIComponent(eId)}` as any);
+        return;
+      }
       router.push(`/threads?orderId=${encodeURIComponent(eId)}` as any);
     } else if (eType === 'case' && eId) {
       if (isTeamThreadEntityId(eId)) {
@@ -855,6 +1702,8 @@ export default function DashboardScreen() {
       } else {
         router.push(`/threads?caseEntityId=${encodeURIComponent(eId)}` as any);
       }
+    } else if (eType === 'task' && eId) {
+      router.push(`/(tabs)/task/${encodeURIComponent(eId)}` as any);
     }
   }, [queryClient, router]);
 
@@ -891,6 +1740,23 @@ export default function DashboardScreen() {
 
   const recentOrdersWeb = useMemo(() => sortedOrdersByDate.slice(0, 10), [sortedOrdersByDate]);
 
+  const partnerById = useMemo(() => {
+    const map = new Map<string, string>();
+    partners.forEach((partner) => {
+      map.set(partner.id, partner.name);
+    });
+    return map;
+  }, [partners]);
+
+  const sortedPartnerJobsByDate = useMemo(() => {
+    return [...partnerJobs].sort(
+      (a, b) =>
+        new Date(b.dispatchedAt ?? b.createdAt).getTime() - new Date(a.dispatchedAt ?? a.createdAt).getTime()
+    );
+  }, [partnerJobs]);
+
+  const recentPartnerJobs = useMemo(() => sortedPartnerJobsByDate.slice(0, 5), [sortedPartnerJobsByDate]);
+
   const productById = useMemo(() => {
     const map = new Map<string, Product>();
     products.forEach((product) => {
@@ -918,6 +1784,121 @@ export default function DashboardScreen() {
     () => cases.filter((caseItem) => caseItem.status !== 'Closed' && caseItem.status !== 'Resolved').length,
     [cases]
   );
+  const activePartnerJobsCount = useMemo(
+    () => partnerJobs.filter((job) => job.status !== 'collected' && job.status !== 'billed' && job.status !== 'cancelled').length,
+    [partnerJobs]
+  );
+  const pendingPaymentCount = useMemo(
+    () => (socialCheckoutDraftsQuery.data ?? []).filter((draft) => getSocialCheckoutEffectiveStatus(draft) === 'payment_submitted').length,
+    [socialCheckoutDraftsQuery.data]
+  );
+  const onboardingSteps = useMemo<OnboardingStep[]>(() => [
+    {
+      id: 'business-profile',
+      title: 'Set up business profile',
+      shortLabel: 'Business',
+      description: 'Add your business name, contact details, and return address.',
+      complete: Boolean(businessName.trim() && businessPhone.trim() && returnAddress.trim()),
+      actionLabel: 'Open',
+      route: '/business-settings?from=settings',
+      settingsPanel: 'business-settings',
+    },
+    {
+      id: 'payment-methods',
+      title: 'Add payment methods',
+      shortLabel: 'Payments',
+      description: 'Create payment labels customers and staff can use.',
+      complete: paymentMethods.length > 0,
+      actionLabel: 'Add',
+      route: '/settings?section=payment-methods',
+    },
+    {
+      id: 'order-flow',
+      title: 'Review fulfillment flow',
+      shortLabel: 'Fulfillment',
+      description: 'Confirm the status steps your orders move through.',
+      complete: orderStatuses.length >= 3,
+      actionLabel: 'Review',
+      route: '/settings?section=order-statuses',
+    },
+    {
+      id: 'catalog',
+      title: 'Add products or services',
+      shortLabel: 'Catalog',
+      description: 'Put at least one sellable item into your catalog.',
+      complete: products.length > 0,
+      actionLabel: 'Add',
+      route: '/new-product',
+    },
+    {
+      id: 'first-order',
+      title: 'Create first order',
+      shortLabel: 'First order',
+      description: 'Test your workflow with a real or sample order.',
+      complete: orders.length > 0,
+      actionLabel: 'Create',
+      route: '/new-order',
+    },
+    {
+      id: 'team',
+      title: 'Invite your team',
+      shortLabel: 'Team',
+      description: 'Add staff who will process orders with you.',
+      complete: teamMembers.length > 1 || pendingInvites.some((invite) => invite.status !== 'cancelled'),
+      actionLabel: 'Invite',
+      route: '/invitations?from=settings',
+      settingsPanel: 'invitations',
+    },
+    ...(canUseStorefront ? [{
+      id: 'storefront',
+      title: 'Enable storefront',
+      shortLabel: 'Storefront',
+      description: 'Turn on your public storefront when you are ready.',
+      complete: storefrontEnabled,
+      actionLabel: 'Open',
+      route: '/storefront-settings?from=settings',
+      settingsPanel: 'storefront-settings',
+    }] : []),
+  ], [businessName, businessPhone, canUseStorefront, returnAddress, orderStatuses.length, orders.length, paymentMethods.length, pendingInvites, products.length, storefrontEnabled, teamMembers.length]);
+  const onboardingComplete = onboardingSteps.every((step) => step.complete);
+  const onboardingReady = onboardingDismissedLoaded && !isLoadingBusinessSettings;
+  const showOnboardingChecklist = onboardingReady && (userRole === 'admin' || userRole === 'manager') && !onboardingDismissed && !onboardingComplete;
+  const hasDashboardBodyData = orders.length > 0
+    || products.length > 0
+    || customers.length > 0
+    || cases.length > 0
+    || expenseRequests.length > 0
+    || (socialCheckoutDraftsQuery.data?.length ?? 0) > 0
+    || (mobileHomeTasksQuery.data?.length ?? 0) > 0;
+  const dashboardDataPending = isBackgroundSyncing
+    || mobileHomeTasksQuery.isPending
+    || socialCheckoutDraftsQuery.isPending;
+  const shouldShowDashboardSkeleton = showInitialDashboardSkeleton || dashboardDataPending;
+
+  const handleDismissOnboarding = () => {
+    setOnboardingDismissed(true);
+    if (businessId) {
+      void storage.setItem(getOnboardingDismissedKey(businessId), 'true');
+    }
+  };
+
+  const handleOnboardingStepPress = (step: OnboardingStep) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    if (Platform.OS === 'web' && step.settingsPanel) {
+      router.push({
+        pathname: '/settings',
+        params: {
+          panel: step.settingsPanel,
+          from: 'settings',
+          ...(step.id === 'storefront' ? { menu: 'integrations' } : null),
+        },
+      } as any);
+      return;
+    }
+    router.push(step.route as any);
+  };
 
   const stats = useMemo(() => {
     const now = new Date();
@@ -933,11 +1914,11 @@ export default function DashboardScreen() {
     let pendingOrders = 0;
 
     orders.forEach((order) => {
-      const status = order.status;
-      if (status !== 'Delivered' && status !== 'Refunded') {
+      const status = order.status.trim().toLowerCase();
+      if (status !== 'delivered' && status !== 'completed' && status !== 'refunded') {
         pendingOrders += 1;
       }
-      if (status === 'Refunded') return;
+      if (status === 'refunded') return;
 
       const orderDate = new Date(order.orderDate ?? order.createdAt);
       const month = orderDate.getMonth();
@@ -979,7 +1960,7 @@ export default function DashboardScreen() {
     };
 
     orders.forEach((o) => {
-      const key = bucketFulfillmentStatus(o.status);
+      const key = getFulfillmentPipelineBucket(o);
       if (!key) return;
       counts[key] += 1;
     });
@@ -1230,6 +2211,45 @@ export default function DashboardScreen() {
     </WebCard>
   );
 
+  const WebRecentPartnerJobs = (
+    <WebCard style={{ padding: 0, flex: 1 }}>
+      <View style={{ padding: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Text style={{ color: colors.text.primary }} className="text-base font-bold">
+          Partner Jobs
+        </Text>
+        <Pressable
+          onPress={() => router.push('/partners?partnerSection=jobs')}
+          className="flex-row items-center px-2 py-1 active:opacity-70"
+        >
+          <Text style={{ color: colors.text.primary }} className="text-xs font-semibold mr-1">
+            View All
+          </Text>
+          <ChevronRight size={14} color={colors.text.primary} strokeWidth={2} />
+        </Pressable>
+      </View>
+
+      {recentPartnerJobs.length === 0 ? (
+        <View style={{ paddingHorizontal: 18, paddingBottom: 18 }}>
+          <Text style={{ color: colors.text.muted }} className="text-sm">
+            No partner jobs yet.
+          </Text>
+        </View>
+      ) : (
+        <View style={{ borderTopWidth: 1, borderTopColor: colors.border.light, paddingHorizontal: 18 }}>
+          {recentPartnerJobs.map((job, idx) => (
+            <RecentPartnerJobItem
+              key={job.id}
+              job={job}
+              partnerName={partnerById.get(job.partnerId) ?? ''}
+              onPress={() => router.push('/partners?partnerSection=jobs')}
+              isLast={idx === recentPartnerJobs.length - 1}
+            />
+          ))}
+        </View>
+      )}
+    </WebCard>
+  );
+
   const WebMostSoldProducts = (
     <WebCard style={{ padding: 0, flex: 1 }}>
       <View style={{ padding: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -1400,6 +2420,90 @@ export default function DashboardScreen() {
     </WebCard>
   );
 
+  const WebStaffTasksCard = (
+    <WebCard style={{ padding: 0, flex: 1 }}>
+      <View style={{ padding: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 }}>
+          <View
+            className="w-10 h-10 rounded-xl items-center justify-center mr-3"
+            style={{ backgroundColor: colors.bg.secondary }}
+          >
+            <ClipboardList size={20} color={colors.text.primary} strokeWidth={2} />
+          </View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ color: colors.text.primary }} className="font-bold text-base" numberOfLines={1}>
+              Your Tasks
+            </Text>
+            <Text style={{ color: colors.text.tertiary }} className="text-xs" numberOfLines={1}>
+              {mobileHomeScopedTasks.length} added or assigned
+            </Text>
+          </View>
+        </View>
+        <Pressable onPress={() => router.push('/(tabs)/tasks' as any)} className="flex-row items-center px-2 py-1 active:opacity-70">
+          <Text style={{ color: colors.text.primary }} className="text-xs font-semibold mr-1">
+            View All
+          </Text>
+          <ChevronRight size={14} color={colors.text.primary} strokeWidth={2} />
+        </Pressable>
+      </View>
+
+      {mobileHomeTasksQuery.isPending || shouldShowDashboardSkeleton ? (
+        <View style={{ paddingHorizontal: 18, paddingBottom: 18, gap: 12 }}>
+          {[0, 1, 2].map((index) => (
+            <View key={`web-task-skeleton-${index}`} className="flex-row items-center" style={{ gap: 10 }}>
+              <SkeletonBox width={28} height={28} rounded="full" />
+              <View style={{ flex: 1 }}>
+                <SkeletonBox width="72%" height={13} rounded="md" />
+                <View style={{ height: 7 }} />
+                <SkeletonBox width="48%" height={11} rounded="md" />
+              </View>
+              <SkeletonBox width={62} height={22} rounded="full" />
+            </View>
+          ))}
+        </View>
+      ) : mobileHomeTaskRows.length === 0 ? (
+        <View style={{ paddingHorizontal: 18, paddingBottom: 18 }}>
+          <Text style={{ color: colors.text.muted }} className="text-sm">
+            No open tasks assigned or created by you.
+          </Text>
+        </View>
+      ) : (
+        <View style={{ borderTopWidth: 1, borderTopColor: colors.border.light }}>
+          {mobileHomeTaskRows.map((task, index) => {
+            const status = getTaskStatusMeta(task.status);
+            return (
+              <Pressable
+                key={task.id}
+                onPress={() => router.push(`/(tabs)/task/${task.id}` as any)}
+                className="active:opacity-70"
+                style={{
+                  borderBottomWidth: index === mobileHomeTaskRows.length - 1 ? 0 : 1,
+                  borderBottomColor: colors.border.light,
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingVertical: 14 }}>
+                  <Text style={{ color: colors.text.primary, flex: 1.5 }} className="text-sm font-semibold" numberOfLines={1}>
+                    {toSentenceCase(task.title)}
+                  </Text>
+                  <Text style={{ color: colors.text.tertiary, width: 92, textAlign: 'right' }} className="text-sm">
+                    {formatTaskDueDate(task.due_date)}
+                  </Text>
+                  <View style={{ width: 110, alignItems: 'flex-end' }}>
+                    <View className="px-2 py-1 rounded-md" style={{ backgroundColor: status.background }}>
+                      <Text style={{ color: status.color }} className="text-xs font-semibold" numberOfLines={1}>
+                        {status.label}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
+    </WebCard>
+  );
+
   if (isWebDesktop) {
     return (
       <View className="flex-1" style={{ backgroundColor: colors.bg.primary }}>
@@ -1424,10 +2528,6 @@ export default function DashboardScreen() {
                 subtitle={userName ? `Welcome back, ${userName}` : 'Welcome back'}
                 actions={
                   <>
-                    <NotificationBell
-                      count={unreadNotificationCount}
-                      onPress={() => setShowNotifications((prev) => !prev)}
-                    />
                     <Pressable
                       onPress={() => router.push('/new-order')}
                       className="rounded-full px-4 flex-row items-center active:opacity-80"
@@ -1441,16 +2541,12 @@ export default function DashboardScreen() {
                         New Order
                       </Text>
                     </Pressable>
-                    <Pressable
-                      onPress={() => router.push('/scan')}
-                      className="rounded-full px-4 flex-row items-center active:opacity-80"
-                      style={{ backgroundColor: colors.bg.card, height: 44, borderWidth: 1, borderColor: colors.border.light }}
-                    >
-                      <Scan size={18} color={colors.text.primary} strokeWidth={2.5} />
-                      <Text style={{ color: colors.text.primary }} className="font-semibold ml-2 text-sm">
-                        Scan
-                      </Text>
-                    </Pressable>
+                    <WebFeatureSearchMenu />
+                    <WebMoreMenu />
+                    <NotificationBell
+                      count={unreadNotificationCount}
+                      onPress={() => setShowNotifications((prev) => !prev)}
+                    />
                   </>
                 }
               />
@@ -1458,6 +2554,28 @@ export default function DashboardScreen() {
               {showAuditBanner ? (
                 <View style={{ marginTop: 16 }}>
                   <AuditBanner onPress={() => handleQuickAction('/inventory-audit')} inset={false} />
+                </View>
+              ) : null}
+
+              {upcomingHomeEvent && upcomingHomeEventMeta ? (
+                <View style={{ marginTop: 16 }}>
+                  <EventBanner
+                    title={upcomingHomeEventMeta.title}
+                    subtitle={upcomingHomeEventMeta.subtitle}
+                    onPress={() => router.push(`/(tabs)/task/${upcomingHomeEvent.id}` as any)}
+                    inset={false}
+                  />
+                </View>
+              ) : null}
+
+              {showOnboardingChecklist ? (
+                <View style={{ marginTop: 16 }}>
+                  <OnboardingChecklistCard
+                    steps={onboardingSteps}
+                    onDismiss={handleDismissOnboarding}
+                    onStepPress={handleOnboardingStepPress}
+                    inset={false}
+                  />
                 </View>
               ) : null}
 
@@ -1478,14 +2596,16 @@ export default function DashboardScreen() {
                     trend={stats.revenueChange}
                     icon={<DollarSign size={18} color={colors.text.primary} strokeWidth={2.5} />}
                     onPress={() => handleCardPress('/insights')}
+                    loading={shouldShowDashboardSkeleton}
                   />
                 )}
                 <MetricCard
-                  title="Orders"
-                  value={String(stats.totalOrders)}
-                  subtitle={`${stats.pendingOrders} active`}
+                  title="Active Orders"
+                  value={String(stats.pendingOrders)}
+                  subtitle={`${stats.totalOrders} total`}
                   icon={<ShoppingCart size={18} color={colors.text.primary} strokeWidth={2.5} />}
                   onPress={() => handleCardPress('/orders')}
+                  loading={shouldShowDashboardSkeleton}
                 />
                 <MetricCard
                   title="Inventory Items"
@@ -1493,6 +2613,7 @@ export default function DashboardScreen() {
                   subtitle={`${products.length} products`}
                   icon={<Package size={18} color={colors.text.primary} strokeWidth={2.5} />}
                   onPress={() => handleCardPress('/inventory')}
+                  loading={shouldShowDashboardSkeleton}
                 />
                 <MetricCard
                   title="Customers"
@@ -1500,13 +2621,7 @@ export default function DashboardScreen() {
                   subtitle="Total customers"
                   icon={<Users size={18} color={colors.text.primary} strokeWidth={2.5} />}
                   onPress={() => handleCardPress('/customers')}
-                />
-                <MetricCard
-                  title="Cases"
-                  value={String(openCasesCount)}
-                  subtitle={`${cases.length} total`}
-                  icon={<FileText size={18} color={colors.text.primary} strokeWidth={2.5} />}
-                  onPress={() => handleCardPress('/cases')}
+                  loading={shouldShowDashboardSkeleton}
                 />
               </View>
 
@@ -1517,9 +2632,19 @@ export default function DashboardScreen() {
                 <View style={{ flex: 1, minWidth: 0 }}>{WebOrderVolume}</View>
               </View>
 
+              {userRole === 'staff' ? (
+                <View style={{ marginTop: 16 }}>
+                  {WebStaffTasksCard}
+                </View>
+              ) : null}
+
               <View style={{ marginTop: 16, flexDirection: 'row', alignItems: 'stretch', gap: 16 }}>
                 <View style={{ flex: 1.4, minWidth: 0 }}>{WebRecentOrders}</View>
                 <View style={{ flex: 1, minWidth: 0 }}>{WebMostSoldProducts}</View>
+              </View>
+
+              <View style={{ marginTop: 16 }}>
+                {WebRecentPartnerJobs}
               </View>
             </WebContainer>
           </ScrollView>
@@ -1566,6 +2691,29 @@ export default function DashboardScreen() {
             <AuditBanner onPress={() => handleQuickAction('/inventory-audit')} />
           )}
 
+          {upcomingHomeEvent && upcomingHomeEventMeta ? (
+            <EventBanner
+              title={upcomingHomeEventMeta.title}
+              subtitle={upcomingHomeEventMeta.subtitle}
+              onPress={() => router.push(`/(tabs)/task/${upcomingHomeEvent.id}` as any)}
+            />
+          ) : null}
+
+          {pendingPrintQueueCount > 0 ? (
+            <PrintQueueBanner
+              count={pendingPrintQueueCount}
+              onPress={() => router.push('/fyll-print' as any)}
+            />
+          ) : null}
+
+          {showOnboardingChecklist ? (
+            <OnboardingChecklistCard
+              steps={onboardingSteps}
+              onDismiss={handleDismissOnboarding}
+              onStepPress={handleOnboardingStepPress}
+            />
+          ) : null}
+
           {/* Hero Revenue Card — admin & manager only */}
           {(userRole === 'admin' || userRole === 'manager') && (
           <View className="px-5 pt-4">
@@ -1575,7 +2723,9 @@ export default function DashboardScreen() {
             >
               <View className="flex-row items-center justify-between mb-4">
                 <Text style={{ color: colors.text.muted }} className="text-sm font-medium">Total Revenue</Text>
-                {stats.revenueChange !== 0 && (
+                {shouldShowDashboardSkeleton ? (
+                  <SkeletonBox width={48} height={24} rounded="full" />
+                ) : stats.revenueChange !== 0 ? (
                   <View style={{ backgroundColor: stats.revenueChange >= 0 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999 }}>
                     {stats.revenueChange >= 0 ? (
                       <ArrowUpRight size={12} color="#22C55E" strokeWidth={2.5} />
@@ -1586,25 +2736,35 @@ export default function DashboardScreen() {
                       {Math.abs(stats.revenueChange)}%
                     </Text>
                   </View>
-                )}
+                ) : null}
               </View>
-              <Text style={{ color: colors.text.primary }} className="text-4xl font-bold tracking-tight mb-1">
-                {formatCurrency(stats.totalRevenue)}
-              </Text>
-              <Text style={{ color: colors.text.muted }} className="text-sm">This month</Text>
+              {shouldShowDashboardSkeleton ? (
+                <>
+                  <SkeletonBox width="72%" height={38} rounded="md" />
+                  <View style={{ height: 8 }} />
+                  <SkeletonBox width="30%" height={14} rounded="md" />
+                </>
+              ) : (
+                <>
+                  <Text style={{ color: colors.text.primary }} className="text-4xl font-bold tracking-tight mb-1">
+                    {formatCurrency(stats.totalRevenue)}
+                  </Text>
+                  <Text style={{ color: colors.text.muted }} className="text-sm">This month</Text>
+                </>
+              )}
 
               <View className="flex-row mt-4 pt-4" style={{ borderTopWidth: 1, borderTopColor: colors.border.light }}>
                 <View className="flex-1">
                   <Text style={{ color: colors.text.muted }} className="text-xs">Products</Text>
-                  <Text style={{ color: colors.text.primary }} className="font-semibold">{formatCurrency(stats.productSales)}</Text>
+                  {shouldShowDashboardSkeleton ? <SkeletonBox width="78%" height={14} rounded="md" /> : <Text style={{ color: colors.text.primary }} className="font-semibold">{formatCurrency(stats.productSales)}</Text>}
                 </View>
                 <View className="flex-1">
                   <Text style={{ color: colors.text.muted }} className="text-xs">Delivery</Text>
-                  <Text style={{ color: colors.text.primary }} className="font-semibold">{formatCurrency(stats.deliveryFees)}</Text>
+                  {shouldShowDashboardSkeleton ? <SkeletonBox width="78%" height={14} rounded="md" /> : <Text style={{ color: colors.text.primary }} className="font-semibold">{formatCurrency(stats.deliveryFees)}</Text>}
                 </View>
                 <View className="flex-1">
                   <Text style={{ color: colors.text.muted }} className="text-xs">Services</Text>
-                  <Text style={{ color: colors.text.primary }} className="font-semibold">{formatCurrency(stats.servicesRevenue)}</Text>
+                  {shouldShowDashboardSkeleton ? <SkeletonBox width="78%" height={14} rounded="md" /> : <Text style={{ color: colors.text.primary }} className="font-semibold">{formatCurrency(stats.servicesRevenue)}</Text>}
                 </View>
               </View>
             </View>
@@ -1620,6 +2780,7 @@ export default function DashboardScreen() {
                 subtitle={`${stats.totalOrders} total`}
                 icon={<ShoppingCart size={20} color={colors.text.primary} strokeWidth={2} />}
                 onPress={() => handleCardPress('/(tabs)/orders')}
+                loading={shouldShowDashboardSkeleton}
               />
               <MetricCard
                 title="Products"
@@ -1627,40 +2788,31 @@ export default function DashboardScreen() {
                 subtitle="in catalog"
                 icon={<BarChart3 size={20} color={colors.text.primary} strokeWidth={2} />}
                 onPress={() => handleCardPress('/(tabs)/inventory')}
+                loading={shouldShowDashboardSkeleton}
               />
             </View>
           </View>
 
           <View className="px-5 pt-6">
-            <Pressable
-              onPress={() => handleCardPress('/cases')}
-              className="rounded-2xl p-4 active:opacity-80"
-              style={{
-                backgroundColor: colors.bg.card,
-                borderWidth: 1,
-                borderColor: colors.border.light,
-              }}
-            >
-              <View className="flex-row items-center">
-                <View
-                  className="w-10 h-10 rounded-xl items-center justify-center mr-3"
-                  style={{ backgroundColor: 'rgba(245,158,11,0.14)' }}
+            <View className="flex-row gap-3">
+              {canUseCases ? (
+                <Pressable
+                  onPress={() => handleCardPress('/cases')}
+                  className="flex-1 rounded-2xl p-4 active:opacity-80"
+                  style={{
+                    backgroundColor: colors.bg.card,
+                    borderWidth: 1,
+                    borderColor: colors.border.light,
+                    position: 'relative',
+                  }}
                 >
-                  <FileText size={20} color="#F59E0B" strokeWidth={2.5} />
-                </View>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ color: colors.text.primary }} className="font-bold text-sm">Cases</Text>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mt-0.5">
-                    {openCasesCount > 0
-                      ? `${openCasesCount} open case${openCasesCount === 1 ? '' : 's'} needing attention`
-                      : 'View all customer cases'}
-                  </Text>
-                </View>
-                <View className="flex-row items-center" style={{ columnGap: 10 }}>
                   {openCasesCount > 0 ? (
                     <View
                       className="rounded-full items-center justify-center"
                       style={{
+                        position: 'absolute',
+                        top: 10,
+                        right: 10,
                         minWidth: 22,
                         height: 22,
                         paddingHorizontal: 6,
@@ -1672,22 +2824,33 @@ export default function DashboardScreen() {
                       </Text>
                     </View>
                   ) : null}
-                  <ChevronRight size={16} color={colors.text.tertiary} strokeWidth={2} />
-                </View>
-              </View>
-            </Pressable>
-          </View>
+                  <View
+                    className="w-10 h-10 rounded-xl items-center justify-center mb-3"
+                    style={{ backgroundColor: 'rgba(245,158,11,0.14)' }}
+                  >
+                    <FileText size={20} color="#F59E0B" strokeWidth={2.5} />
+                  </View>
+                  <View className="flex-row items-center justify-between">
+                    <Text style={{ color: colors.text.primary }} className="font-bold text-sm">Cases</Text>
+                  </View>
+                  <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1" numberOfLines={2}>
+                    {openCasesCount > 0 ? 'Open cases' : 'Customer cases'}
+                  </Text>
+                </Pressable>
+              ) : null}
 
-          {/* Finance & Insights navigation cards */}
-          {(userRole === 'admin' || userRole === 'manager') && (
-            <View className="px-5 pt-6">
-              <View className="flex-row gap-3">
+              {canUseSocialCheckout ? (
                 <Pressable
-                  onPress={() => router.push('/(tabs)/finance' as any)}
+                  onPress={() => handleCardPress('/payments')}
                   className="flex-1 rounded-2xl p-4 active:opacity-80"
-                  style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light, position: 'relative' }}
+                  style={{
+                    backgroundColor: colors.bg.card,
+                    borderWidth: 1,
+                    borderColor: colors.border.light,
+                    position: 'relative',
+                  }}
                 >
-                  {financeCardBadgeCount > 0 ? (
+                  {pendingPaymentCount > 0 ? (
                     <View
                       className="rounded-full items-center justify-center"
                       style={{
@@ -1697,25 +2860,71 @@ export default function DashboardScreen() {
                         minWidth: 22,
                         height: 22,
                         paddingHorizontal: 6,
-                        backgroundColor: '#2563EB',
+                        backgroundColor: '#8B5CF6',
                       }}
                     >
                       <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '700' }}>
-                        {financeCardBadgeCount > 99 ? '99+' : financeCardBadgeCount}
+                        {pendingPaymentCount > 99 ? '99+' : pendingPaymentCount}
                       </Text>
                     </View>
                   ) : null}
-                  <View className="w-9 h-9 rounded-xl items-center justify-center mb-2" style={{ backgroundColor: 'rgba(16,185,129,0.12)' }}>
-                    <DollarSign size={18} color="#10B981" strokeWidth={2.5} />
+                  <View
+                    className="w-10 h-10 rounded-xl items-center justify-center mb-3"
+                    style={{ backgroundColor: 'rgba(139,92,246,0.12)' }}
+                  >
+                    <Wallet size={20} color="#8B5CF6" strokeWidth={2.5} />
                   </View>
-                  <Text style={{ color: colors.text.primary }} className="font-bold text-sm">Finance</Text>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mt-0.5">
-                    {userRole === 'admin'
-                      ? `${financeCardBadgeCount} requests pending`
-                      : 'Expenses & procurement'}
+                  <View className="flex-row items-center justify-between">
+                    <Text style={{ color: colors.text.primary }} className="font-bold text-sm">Payments</Text>
+                  </View>
+                  <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1" numberOfLines={2}>
+                    {pendingPaymentCount > 0 ? 'Pending review' : 'Social checkout links'}
                   </Text>
                 </Pressable>
-                {userRole === 'admin' && (
+              ) : null}
+            </View>
+          </View>
+
+          {/* Finance & Insights navigation cards */}
+          {(userRole === 'admin' || userRole === 'manager') && (canUseFinance || canUseInsights) && (
+            <View className="px-5 pt-6">
+              <View className="flex-row gap-3">
+                {canUseFinance ? (
+                  <Pressable
+                    onPress={() => router.push('/(tabs)/finance' as any)}
+                    className="flex-1 rounded-2xl p-4 active:opacity-80"
+                    style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light, position: 'relative' }}
+                  >
+                    {financeCardBadgeCount > 0 ? (
+                      <View
+                        className="rounded-full items-center justify-center"
+                        style={{
+                          position: 'absolute',
+                          top: 10,
+                          right: 10,
+                          minWidth: 22,
+                          height: 22,
+                          paddingHorizontal: 6,
+                          backgroundColor: '#2563EB',
+                        }}
+                      >
+                        <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '700' }}>
+                          {financeCardBadgeCount > 99 ? '99+' : financeCardBadgeCount}
+                        </Text>
+                      </View>
+                    ) : null}
+                    <View className="w-9 h-9 rounded-xl items-center justify-center mb-2" style={{ backgroundColor: 'rgba(16,185,129,0.12)' }}>
+                      <DollarSign size={18} color="#10B981" strokeWidth={2.5} />
+                    </View>
+                    <Text style={{ color: colors.text.primary }} className="font-bold text-sm">Finance</Text>
+                    <Text style={{ color: colors.text.tertiary }} className="text-xs mt-0.5">
+                      {userRole === 'admin'
+                        ? `${financeCardBadgeCount} requests pending`
+                        : 'Expenses & procurement'}
+                    </Text>
+                  </Pressable>
+                ) : null}
+                {userRole === 'admin' && canUseInsights ? (
                   <Pressable
                     onPress={() => router.push('/(tabs)/insights' as any)}
                     className="flex-1 rounded-2xl p-4 active:opacity-80"
@@ -1727,10 +2936,58 @@ export default function DashboardScreen() {
                     <Text style={{ color: colors.text.primary }} className="font-bold text-sm">Insights</Text>
                     <Text style={{ color: colors.text.tertiary }} className="text-xs mt-0.5">Sales & trends</Text>
                   </Pressable>
-                )}
+                ) : null}
               </View>
             </View>
           )}
+
+          {/* Partner Jobs */}
+          <View className="px-5 pt-6">
+            <Pressable
+              onPress={() => router.push('/partners?partnerSection=jobs' as any)}
+              className="w-full rounded-2xl p-4 active:opacity-80"
+              style={{
+                backgroundColor: colors.bg.card,
+                borderWidth: 1,
+                borderColor: colors.border.light,
+                position: 'relative',
+              }}
+            >
+              {activePartnerJobsCount > 0 ? (
+                <View
+                  className="rounded-full items-center justify-center"
+                  style={{
+                    position: 'absolute',
+                    top: '50%',
+                    marginTop: -11,
+                    right: 14,
+                    minWidth: 22,
+                    height: 22,
+                    paddingHorizontal: 6,
+                    backgroundColor: isDark ? '#FFFFFF' : '#000000',
+                  }}
+                >
+                  <Text style={{ color: isDark ? '#000000' : '#FFFFFF', fontSize: 11, fontWeight: '700' }}>
+                    {activePartnerJobsCount > 99 ? '99+' : activePartnerJobsCount}
+                  </Text>
+                </View>
+              ) : null}
+              <View className="flex-row items-center">
+                <View
+                  className="w-10 h-10 rounded-xl items-center justify-center mr-3"
+                  style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)' }}
+                >
+                  <Truck size={20} color={isDark ? '#FFFFFF' : '#000000'} strokeWidth={2.5} />
+                </View>
+                <View className="flex-1 pr-10">
+                  <Text style={{ color: colors.text.primary }} className="font-bold text-sm">Partner Jobs</Text>
+                  <Text style={{ color: colors.text.tertiary }} className="text-xs mt-0.5" numberOfLines={1}>
+                    {activePartnerJobsCount > 0 ? `${activePartnerJobsCount} active job${activePartnerJobsCount === 1 ? '' : 's'}` : 'No active jobs'}
+                  </Text>
+                </View>
+              </View>
+            </Pressable>
+          </View>
 
           {/* Fulfillment Pipeline */}
           <View className="px-5 pt-6">
@@ -1741,7 +2998,131 @@ export default function DashboardScreen() {
             />
           </View>
 
-          {shouldShowMobileTaskTable ? (
+          {/* Recent Orders Feed */}
+          {(shouldShowDashboardSkeleton || recentOrdersMobile.length > 0) && (
+            <View className="px-5 pt-6">
+              <View
+                className="rounded-2xl p-4"
+                style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+              >
+                <View className="flex-row items-center mb-2">
+                  <View className="w-10 h-10 rounded-xl items-center justify-center mr-3" style={{ backgroundColor: colors.bg.secondary }}>
+                    <ShoppingCart size={20} color={colors.text.primary} strokeWidth={2} />
+                  </View>
+                  <View className="flex-1">
+                    <Text style={{ color: colors.text.primary }} className="font-bold text-base">Recent Orders</Text>
+                    {shouldShowDashboardSkeleton ? (
+                      <SkeletonBox width={72} height={11} rounded="md" />
+                    ) : (
+                      <Text style={{ color: colors.text.tertiary }} className="text-xs">Last {recentOrdersMobile.length} orders</Text>
+                    )}
+                  </View>
+                  <Pressable
+                    onPress={() => router.push('/(tabs)/orders')}
+                    className="flex-row items-center px-3 py-1.5 rounded-full active:opacity-70"
+                    style={{ backgroundColor: colors.bg.secondary }}
+                  >
+                    <Text style={{ color: colors.text.primary }} className="text-xs font-semibold mr-1">View All</Text>
+                    <ChevronRight size={14} color={colors.text.primary} strokeWidth={2} />
+                  </Pressable>
+                </View>
+                {shouldShowDashboardSkeleton ? (
+                  Array.from({ length: 4 }).map((_, index) => (
+                    <View
+                      key={`recent-order-skeleton-${index}`}
+                      className="flex-row items-center"
+                      style={{
+                        paddingVertical: 12,
+                        borderTopWidth: index === 0 ? 0 : 1,
+                        borderTopColor: colors.border.light,
+                      }}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <SkeletonBox width="58%" height={13} rounded="md" />
+                        <View style={{ height: 8 }} />
+                        <SkeletonBox width="42%" height={11} rounded="md" />
+                      </View>
+                      <SkeletonBox width={78} height={22} rounded="full" />
+                    </View>
+                  ))
+                ) : (
+                  recentOrdersMobile.map((order, index) => (
+                    <RecentOrderItem
+                      key={order.id}
+                      order={order}
+                      productById={productById}
+                      statusColorMap={orderStatusColorMap}
+                      onPress={() => router.push(`/order/${order.id}`)}
+                      isLast={index === recentOrdersMobile.length - 1}
+                    />
+                  ))
+                )}
+              </View>
+            </View>
+          )}
+
+          {(shouldShowDashboardSkeleton || recentPartnerJobs.length > 0) && (
+            <View className="px-5 pt-6">
+              <View
+                className="rounded-2xl p-4"
+                style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+              >
+                <View className="flex-row items-center mb-2">
+                  <View className="w-10 h-10 rounded-xl items-center justify-center mr-3" style={{ backgroundColor: colors.bg.secondary }}>
+                    <Truck size={20} color={colors.text.primary} strokeWidth={2} />
+                  </View>
+                  <View className="flex-1">
+                    <Text style={{ color: colors.text.primary }} className="font-bold text-base">Partner Jobs</Text>
+                    {shouldShowDashboardSkeleton ? (
+                      <SkeletonBox width={96} height={11} rounded="md" />
+                    ) : (
+                      <Text style={{ color: colors.text.tertiary }} className="text-xs">Last {recentPartnerJobs.length} jobs</Text>
+                    )}
+                  </View>
+                  <Pressable
+                    onPress={() => router.push('/partners?partnerSection=jobs')}
+                    className="flex-row items-center px-3 py-1.5 rounded-full active:opacity-70"
+                    style={{ backgroundColor: colors.bg.secondary }}
+                  >
+                    <Text style={{ color: colors.text.primary }} className="text-xs font-semibold mr-1">View All</Text>
+                    <ChevronRight size={14} color={colors.text.primary} strokeWidth={2} />
+                  </Pressable>
+                </View>
+                {shouldShowDashboardSkeleton ? (
+                  Array.from({ length: 4 }).map((_, index) => (
+                    <View
+                      key={`partner-job-skeleton-${index}`}
+                      className="flex-row items-center"
+                      style={{
+                        paddingVertical: 12,
+                        borderTopWidth: index === 0 ? 0 : 1,
+                        borderTopColor: colors.border.light,
+                      }}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <SkeletonBox width="54%" height={13} rounded="md" />
+                        <View style={{ height: 8 }} />
+                        <SkeletonBox width="48%" height={11} rounded="md" />
+                      </View>
+                      <SkeletonBox width={88} height={22} rounded="full" />
+                    </View>
+                  ))
+                ) : (
+                  recentPartnerJobs.map((job, index) => (
+                    <RecentPartnerJobItem
+                      key={job.id}
+                      job={job}
+                      partnerName={partnerById.get(job.partnerId) ?? ''}
+                      onPress={() => router.push('/partners?partnerSection=jobs')}
+                      isLast={index === recentPartnerJobs.length - 1}
+                    />
+                  ))
+                )}
+              </View>
+            </View>
+          )}
+
+          {shouldShowHomeTaskCard ? (
             <View className="px-5 pt-6">
               <View
                 className="rounded-2xl overflow-hidden"
@@ -1753,10 +3134,10 @@ export default function DashboardScreen() {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={{ color: colors.text.primary }} className="font-bold text-base">
-                      Tasks
+                      {userRole === 'staff' ? 'Your Tasks' : 'Tasks'}
                     </Text>
                     <Text style={{ color: colors.text.tertiary }} className="text-xs">
-                      {mobileHomeScopedTasks.length} active
+                      {userRole === 'staff' ? `${mobileHomeScopedTasks.length} added or assigned` : `${mobileHomeScopedTasks.length} active`}
                     </Text>
                   </View>
                   <Pressable
@@ -1770,7 +3151,7 @@ export default function DashboardScreen() {
                 </View>
 
                 <View style={{ borderTopWidth: 1, borderTopColor: colors.border.light }}>
-                  {mobileHomeTasksQuery.isPending
+                  {mobileHomeTasksQuery.isPending || shouldShowDashboardSkeleton
                     ? Array.from({ length: 5 }).map((_, index) => (
                       <View
                         key={`task-loading-${index}`}
@@ -1783,20 +3164,28 @@ export default function DashboardScreen() {
                           borderBottomColor: colors.border.light,
                         }}
                       >
-                        <Text style={{ flex: 1.6, color: colors.text.tertiary, fontSize: 13, fontWeight: '500' }}>Loading...</Text>
-                        <Text style={{ width: 70, textAlign: 'right', color: colors.text.muted, fontSize: 12 }}>--</Text>
-                        <Text style={{ width: 94, textAlign: 'right', color: colors.text.muted, fontSize: 12 }}>--</Text>
+                        <View style={{ flex: 1.6 }}>
+                          <SkeletonBox width="72%" height={13} rounded="md" />
+                          <View style={{ height: 7 }} />
+                          <SkeletonBox width="48%" height={11} rounded="md" />
+                        </View>
+                        <View style={{ width: 70, alignItems: 'flex-end' }}>
+                          <SkeletonBox width={52} height={12} rounded="md" />
+                        </View>
+                        <View style={{ width: 94, alignItems: 'flex-end' }}>
+                          <SkeletonBox width={72} height={22} rounded="full" />
+                        </View>
                       </View>
                     ))
                     : null}
 
-                  {!mobileHomeTasksQuery.isPending
+                  {!mobileHomeTasksQuery.isPending && !shouldShowDashboardSkeleton
                     ? mobileHomeTaskRows.map((task, index) => {
                       const status = getTaskStatusMeta(task.status);
                       return (
                         <Pressable
                           key={task.id}
-                          onPress={() => router.push(`/task/${task.id}` as any)}
+                          onPress={() => router.push(`/(tabs)/task/${task.id}` as any)}
                           className="active:opacity-70"
                           style={{
                             flexDirection: 'row',
@@ -1829,46 +3218,8 @@ export default function DashboardScreen() {
             </View>
           ) : null}
 
-          {/* Recent Orders Feed */}
-          {recentOrdersMobile.length > 0 && (
-            <View className="px-5 pt-6">
-              <View
-                className="rounded-2xl p-4"
-                style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
-              >
-                <View className="flex-row items-center mb-2">
-                  <View className="w-10 h-10 rounded-xl items-center justify-center mr-3" style={{ backgroundColor: colors.bg.secondary }}>
-                    <ShoppingCart size={20} color={colors.text.primary} strokeWidth={2} />
-                  </View>
-                  <View className="flex-1">
-                    <Text style={{ color: colors.text.primary }} className="font-bold text-base">Recent Orders</Text>
-                    <Text style={{ color: colors.text.tertiary }} className="text-xs">Last {recentOrdersMobile.length} orders</Text>
-                  </View>
-                  <Pressable
-                    onPress={() => router.push('/(tabs)/orders')}
-                    className="flex-row items-center px-3 py-1.5 rounded-full active:opacity-70"
-                    style={{ backgroundColor: colors.bg.secondary }}
-                  >
-                    <Text style={{ color: colors.text.primary }} className="text-xs font-semibold mr-1">View All</Text>
-                    <ChevronRight size={14} color={colors.text.primary} strokeWidth={2} />
-                  </Pressable>
-                </View>
-                {recentOrdersMobile.map((order, index) => (
-                  <RecentOrderItem
-                    key={order.id}
-                    order={order}
-                    productById={productById}
-                    statusColorMap={orderStatusColorMap}
-                    onPress={() => router.push(`/order/${order.id}`)}
-                    isLast={index === recentOrdersMobile.length - 1}
-                  />
-                ))}
-              </View>
-            </View>
-          )}
-
           {/* Most Sold Products - Mobile */}
-          {mostSoldProducts.length > 0 && (
+          {(shouldShowDashboardSkeleton || mostSoldProducts.length > 0) && (
             <View className="px-5 pt-6">
               <View
                 className="rounded-2xl overflow-hidden"
@@ -1880,7 +3231,11 @@ export default function DashboardScreen() {
                   </View>
                   <View className="flex-1">
                     <Text style={{ color: colors.text.primary }} className="font-bold text-base">Most Sold</Text>
-                    <Text style={{ color: colors.text.tertiary }} className="text-xs">Top {Math.min(mostSoldProducts.length, 5)} products by quantity</Text>
+                    {shouldShowDashboardSkeleton ? (
+                      <SkeletonBox width={112} height={11} rounded="md" />
+                    ) : (
+                      <Text style={{ color: colors.text.tertiary }} className="text-xs">Top {Math.min(mostSoldProducts.length, 5)} products by quantity</Text>
+                    )}
                   </View>
                   <Pressable
                     onPress={() => router.push('/insights/best-sellers')}
@@ -1892,7 +3247,24 @@ export default function DashboardScreen() {
                   </Pressable>
                 </View>
                 <View style={{ borderTopWidth: 1, borderTopColor: colors.border.light }}>
-                  {mostSoldProducts.slice(0, 5).map((row, idx, arr) => (
+                  {shouldShowDashboardSkeleton ? Array.from({ length: 4 }).map((_, idx) => (
+                    <View
+                      key={`most-sold-skeleton-${idx}`}
+                      style={{
+                        borderBottomWidth: idx === 3 ? 0 : 1,
+                        borderBottomColor: colors.border.light,
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14 }}>
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <SkeletonBox width="58%" height={13} rounded="md" />
+                          <View style={{ height: 8 }} />
+                          <SkeletonBox width="36%" height={11} rounded="md" />
+                        </View>
+                        <SkeletonBox width={28} height={18} rounded="md" />
+                      </View>
+                    </View>
+                  )) : mostSoldProducts.slice(0, 5).map((row, idx, arr) => (
                     <Pressable
                       key={row.productId}
                       onPress={() => router.push(`/product/${row.productId}`)}
@@ -1947,7 +3319,17 @@ export default function DashboardScreen() {
                   <ChevronRight size={14} color={colors.text.primary} strokeWidth={2} />
                 </Pressable>
               </View>
-              {platformData.length === 0 ? (
+              {shouldShowDashboardSkeleton ? (
+                Array.from({ length: 4 }).map((_, index) => (
+                  <View key={`platform-source-skeleton-${index}`} className="mb-3">
+                    <View className="flex-row items-center justify-between mb-1.5">
+                      <SkeletonBox width="38%" height={14} rounded="md" />
+                      <SkeletonBox width={58} height={14} rounded="md" />
+                    </View>
+                    <SkeletonBox width="100%" height={12} rounded="full" />
+                  </View>
+                ))
+              ) : platformData.length === 0 ? (
                 <Text style={{ color: colors.text.muted }} className="text-sm text-center py-4">No orders yet</Text>
               ) : (
                 platformData.slice(0, 4).map((item) => (

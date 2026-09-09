@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, TextInput, Pressable, Platform, Switch, useWindowDimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, ChevronDown, Plus, X, Briefcase, Check } from 'lucide-react-native';
+import { ArrowLeft, ChevronDown, Plus, X, Check } from 'lucide-react-native';
 import useFyllStore, {
   generateProductId,
   generateVariantBarcode,
@@ -48,10 +48,10 @@ export default function NewServiceScreen() {
   const useDesktopCanvas = shouldCenterForm && !isDark;
   const canvasBg = useDesktopCanvas ? '#F3F3F5' : colors.bg.primary;
   const panelBg = useDesktopCanvas ? '#FFFFFF' : colors.bg.primary;
-  const centeredFormMaxWidth = Math.min(860, Math.round(width * 0.72));
-  const horizontalInset = isCompactLayout ? 14 : 20;
   const cardClass = cn('rounded-2xl p-4 border', isDark ? 'bg-[#1A1A1A] border-[#333333]' : 'bg-white border-gray-200');
   const softSurfaceClass = cn('rounded-2xl p-4 border', isDark ? 'bg-[#151515] border-[#2C2C2C]' : 'bg-gray-50 border-gray-200');
+  const sectionTitleClass = 'font-semibold text-[15px]';
+  const fieldLabelClass = 'text-xs font-semibold uppercase tracking-wider';
   const addProduct = useFyllStore((s) => s.addProduct);
   const currentUser = useAuthStore((s) => s.currentUser);
   const businessId = useAuthStore((s) => s.businessId);
@@ -271,7 +271,7 @@ export default function NewServiceScreen() {
           useDesktopCanvas
             ? {
                 width: '100%',
-                maxWidth: 1100,
+                maxWidth: 1160,
                 alignSelf: 'center',
                 borderWidth: 1,
                 borderColor: '#E6E6E6',
@@ -290,16 +290,13 @@ export default function NewServiceScreen() {
           <Pressable
             onPress={() => router.back()}
             className="w-10 h-10 rounded-xl items-center justify-center active:opacity-50"
-            style={{ backgroundColor: 'transparent' }}
+            style={{ backgroundColor: colors.bg.secondary }}
           >
             <ArrowLeft size={20} color={colors.text.primary} strokeWidth={2} />
           </Pressable>
           <View className="items-center">
             <Text style={{ color: colors.text.primary }} className="text-lg font-semibold">
               New Service
-            </Text>
-            <Text style={{ color: colors.text.tertiary }} className="text-xs">
-              Capture service offerings without inventory
             </Text>
           </View>
           <View className="w-10 h-10" />
@@ -312,30 +309,24 @@ export default function NewServiceScreen() {
           enableOnAndroid={true}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{
-            paddingHorizontal: horizontalInset,
-            paddingTop: isWeb ? 24 : 0,
-            paddingBottom: isWeb ? 40 : 24,
+            paddingHorizontal: 20,
+            paddingBottom: 24,
             width: '100%',
-            maxWidth: shouldCenterForm ? centeredFormMaxWidth : undefined,
-            alignSelf: shouldCenterForm ? 'center' : 'stretch',
+            maxWidth: isWeb ? 1120 : undefined,
+            alignSelf: isWeb ? 'center' : 'stretch',
           }}
         >
           {/* Service Details */}
           <View className="mt-4">
             <View className={cardClass}>
-              <View className="flex-row items-center mb-4">
-                <View className={cn('w-10 h-10 rounded-xl items-center justify-center mr-3', isDark ? 'bg-[#222222]' : 'bg-gray-100')}>
-                  <Briefcase size={20} color={colors.text.primary} strokeWidth={2} />
-                </View>
-                <View>
-                  <Text style={{ color: colors.text.primary }} className="font-bold text-base">Service Details</Text>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs">Define what this service includes</Text>
-                </View>
+              <View className="mb-4">
+                <Text style={{ color: colors.text.primary }} className={sectionTitleClass}>Core Details</Text>
+                <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1">Main service details and pricing.</Text>
               </View>
 
               <View className="gap-4">
                 <View>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs font-medium mb-1.5 uppercase tracking-wider">Name</Text>
+                  <Text style={{ color: colors.text.secondary }} className={cn(fieldLabelClass, 'mb-1.5')}>Service Name</Text>
                   <TextInput
                     value={name}
                     onChangeText={setName}
@@ -354,7 +345,7 @@ export default function NewServiceScreen() {
                 </View>
 
                 <View>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs font-medium mb-1.5 uppercase tracking-wider">Description</Text>
+                  <Text style={{ color: colors.text.secondary }} className={cn(fieldLabelClass, 'mb-1.5')}>Description</Text>
                   <TextInput
                     value={description}
                     onChangeText={setDescription}
@@ -374,34 +365,35 @@ export default function NewServiceScreen() {
                   />
                 </View>
 
-                <View
-                  style={{
-                    flexDirection: isCompactLayout ? 'column' : 'row',
-                    alignItems: isCompactLayout ? 'stretch' : 'center',
-                    gap: 12,
-                    borderWidth: 1,
-                    borderColor: colors.border.light,
-                    borderRadius: 14,
-                    paddingHorizontal: 14,
-                    paddingVertical: 12,
-                    backgroundColor: colors.input.bg,
-                  }}
-                >
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">
-                      Global pricing
-                    </Text>
-                    <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1">
-                      One fixed service price for all variable selections.
-                    </Text>
+                <View className="border-t pt-4" style={{ borderTopColor: colors.border.light, borderTopWidth: 1 }}>
+                  <View
+                    style={{
+                      flexDirection: isCompactLayout ? 'column' : 'row',
+                      alignItems: isCompactLayout ? 'stretch' : 'center',
+                      gap: 12,
+                    }}
+                  >
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={{ color: colors.text.primary }} className={sectionTitleClass}>
+                        Global Pricing
+                      </Text>
+                      <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1">
+                        One fixed service price for all variable selections.
+                      </Text>
+                    </View>
+                    <Switch
+                      value={serviceUsesGlobalPricing}
+                      onValueChange={setServiceUsesGlobalPricing}
+                      trackColor={{ false: '#767577', true: '#D1D5DB' }}
+                      thumbColor={serviceUsesGlobalPricing ? '#374151' : '#FFFFFF'}
+                    />
                   </View>
-                  <Switch value={serviceUsesGlobalPricing} onValueChange={setServiceUsesGlobalPricing} />
                 </View>
 
                 <View style={{ flexDirection: isCompactLayout ? 'column' : 'row', gap: 12 }}>
                   {serviceUsesGlobalPricing && (
                     <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={{ color: colors.text.tertiary }} className="text-xs font-medium mb-1.5 uppercase tracking-wider">Price</Text>
+                      <Text style={{ color: colors.text.secondary }} className={cn(fieldLabelClass, 'mb-1.5')}>Price</Text>
                       <TextInput
                         value={price}
                         onChangeText={setPrice}
@@ -421,7 +413,7 @@ export default function NewServiceScreen() {
                     </View>
                   )}
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={{ color: colors.text.tertiary }} className="text-xs font-medium mb-1.5 uppercase tracking-wider">Duration</Text>
+                    <Text style={{ color: colors.text.secondary }} className={cn(fieldLabelClass, 'mb-1.5')}>Duration</Text>
                     <TextInput
                       value={duration}
                       onChangeText={setDuration}
@@ -446,7 +438,7 @@ export default function NewServiceScreen() {
           {/* Tags */}
           <View className={cn('mt-4', cardClass)}>
             <View className="flex-row items-center justify-between mb-3">
-              <Text style={{ color: colors.text.primary }} className="font-semibold text-sm">Tags</Text>
+              <Text style={{ color: colors.text.primary }} className={sectionTitleClass}>Tags</Text>
             </View>
             <View className="flex-row flex-wrap gap-2">
               {serviceTags.map((tag) => (
@@ -498,11 +490,11 @@ export default function NewServiceScreen() {
           {/* Variables */}
           <View className={cn('mt-4', cardClass)}>
             <View className="flex-row items-center justify-between mb-3">
-              <Text style={{ color: colors.text.primary }} className="font-semibold text-sm">Variables</Text>
+              <Text style={{ color: colors.text.primary }} className={sectionTitleClass}>Variables</Text>
               <Pressable
                 onPress={handleAddServiceVariable}
                 className="flex-row items-center px-3 rounded-full active:opacity-80"
-                style={{ backgroundColor: isDark ? '#1F1F1F' : '#F5F5F5', height: 32 }}
+                style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light, height: 34 }}
               >
                 <Plus size={14} color={colors.text.primary} strokeWidth={2} />
                 <Text style={{ color: colors.text.primary }} className="text-xs font-semibold ml-1.5">Add Variable</Text>
@@ -520,11 +512,12 @@ export default function NewServiceScreen() {
                     className={cn('rounded-2xl p-3 border', softSurfaceClass)}
                   >
                     <View style={{ width: '100%', gap: 8 }}>
-                      {isMobileWeb ? (
-                        <>
-                          <TextInput
-                            value={variable.name}
-                            onChangeText={(value) => handleUpdateServiceVariable(variable.id, { name: value })}
+                    {isMobileWeb ? (
+                      <>
+                        <Text style={{ color: colors.text.secondary }} className={cn(fieldLabelClass, 'mb-1.5')}>Variable Name</Text>
+                        <TextInput
+                          value={variable.name}
+                          onChangeText={(value) => handleUpdateServiceVariable(variable.id, { name: value })}
                             placeholder="Variable name"
                             placeholderTextColor={colors.input.placeholder}
                             style={{
@@ -534,11 +527,12 @@ export default function NewServiceScreen() {
                               borderRadius: 12,
                               paddingHorizontal: 12,
                               color: colors.input.text,
-                              height: CONTROL_HEIGHT,
-                            }}
-                          />
-                          <Pressable
-                            onPress={() => setOpenVariableTypeId((current) => (current === variable.id ? null : variable.id))}
+                            height: CONTROL_HEIGHT,
+                          }}
+                        />
+                        <Text style={{ color: colors.text.secondary }} className={cn(fieldLabelClass, 'mb-1.5')}>Variable Type</Text>
+                        <Pressable
+                          onPress={() => setOpenVariableTypeId((current) => (current === variable.id ? null : variable.id))}
                             className="active:opacity-80"
                             style={{
                               backgroundColor: colors.input.bg,
@@ -645,7 +639,7 @@ export default function NewServiceScreen() {
 
                     {variable.type === 'Select' && (
                       <View style={{ marginTop: 10 }}>
-                        <Text style={{ color: colors.text.tertiary }} className="text-xs font-medium mb-2">Values</Text>
+                        <Text style={{ color: colors.text.secondary }} className={cn(fieldLabelClass, 'mb-2')}>Values</Text>
                         <View className="flex-row flex-wrap gap-2">
                           {normalizedOptions.map((option) => (
                             <View
@@ -767,7 +761,7 @@ export default function NewServiceScreen() {
                 );
               })}
               {serviceVariables.length === 0 && (
-                <Text style={{ color: colors.text.tertiary }} className="text-sm">Add variables to capture service requirements.</Text>
+                <Text style={{ color: colors.text.tertiary }} className="text-sm">Add variables only when this service needs options.</Text>
               )}
             </View>
           </View>
@@ -775,11 +769,11 @@ export default function NewServiceScreen() {
           {/* Additional Fields */}
           <View className={cn('mt-4', cardClass)}>
             <View className="flex-row items-center justify-between mb-3">
-              <Text style={{ color: colors.text.primary }} className="font-semibold text-sm">Additional Fields</Text>
+              <Text style={{ color: colors.text.primary }} className={sectionTitleClass}>Additional Fields</Text>
               <Pressable
                 onPress={handleAddServiceField}
                 className="flex-row items-center px-3 rounded-full active:opacity-80"
-                style={{ backgroundColor: isDark ? '#1F1F1F' : '#F5F5F5', height: 32 }}
+                style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light, height: 34 }}
               >
                 <Plus size={14} color={colors.text.primary} strokeWidth={2} />
                 <Text style={{ color: colors.text.primary }} className="text-xs font-semibold ml-1.5">Add Field</Text>
@@ -795,6 +789,7 @@ export default function NewServiceScreen() {
                   <View style={{ width: '100%', gap: 8 }}>
                     {isMobileWeb ? (
                       <>
+                        <Text style={{ color: colors.text.secondary }} className={cn(fieldLabelClass, 'mb-1.5')}>Field Label</Text>
                         <TextInput
                           value={field.label}
                           onChangeText={(value) => handleUpdateServiceField(field.id, { label: value })}
@@ -810,6 +805,7 @@ export default function NewServiceScreen() {
                             height: CONTROL_HEIGHT,
                           }}
                         />
+                        <Text style={{ color: colors.text.secondary }} className={cn(fieldLabelClass, 'mb-1.5')}>Field Type</Text>
                         <Pressable
                           onPress={() => setOpenFieldTypeId((current) => (current === field.id ? null : field.id))}
                           className="active:opacity-80"
@@ -918,7 +914,7 @@ export default function NewServiceScreen() {
 
                   {fieldType === 'Select' && (
                     <View style={{ marginTop: 10 }}>
-                      <Text style={{ color: colors.text.tertiary }} className="text-xs font-medium mb-2">Options</Text>
+                      <Text style={{ color: colors.text.secondary }} className={cn(fieldLabelClass, 'mb-2')}>Options</Text>
                       <View className="flex-row flex-wrap gap-2">
                         {normalizedFieldOptions.map((option) => (
                           <View
@@ -1038,41 +1034,26 @@ export default function NewServiceScreen() {
                 );
               })}
               {serviceFields.length === 0 && (
-                <Text style={{ color: colors.text.tertiary }} className="text-sm">Add typed fields like Text, Number, Date, Time, Price, or Select for order-time capture.</Text>
+                <Text style={{ color: colors.text.tertiary }} className="text-sm">Add extra fields only when the service needs order-time details.</Text>
               )}
             </View>
           </View>
 
           {/* Status */}
           <View className={cn('mt-4', cardClass)}>
-            <Text style={{ color: colors.text.primary }} className="font-semibold text-sm mb-3">Status</Text>
-            <View className="flex-row items-center gap-3">
-              <Pressable
-                onPress={() => setServiceActive(true)}
-                className="px-4 py-2 rounded-full active:opacity-80"
-                style={{
-                  backgroundColor: serviceActive ? 'rgba(16, 185, 129, 0.15)' : (isDark ? '#1F1F1F' : '#F3F4F6'),
-                  borderWidth: 1,
-                  borderColor: serviceActive ? '#10B981' : colors.border.light,
-                }}
-              >
-                <Text style={{ color: serviceActive ? '#10B981' : '#6B7280' }} className="text-xs font-semibold">
-                  Active
+            <View className="flex-row items-center justify-between">
+              <View className="flex-1 pr-4">
+                <Text style={{ color: colors.text.primary }} className={sectionTitleClass}>Mark as Inactive</Text>
+                <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1">
+                  Hide this service from new order pickers.
                 </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setServiceActive(false)}
-                className="px-4 py-2 rounded-full active:opacity-80"
-                style={{
-                  backgroundColor: !serviceActive ? 'rgba(148, 163, 184, 0.2)' : (isDark ? '#1F1F1F' : '#F3F4F6'),
-                  borderWidth: 1,
-                  borderColor: !serviceActive ? '#94A3B8' : colors.border.light,
-                }}
-              >
-                <Text style={{ color: !serviceActive ? '#64748B' : '#6B7280' }} className="text-xs font-semibold">
-                  Deactivate
-                </Text>
-              </Pressable>
+              </View>
+              <Switch
+                value={!serviceActive}
+                onValueChange={(value) => setServiceActive(!value)}
+                trackColor={{ false: '#767577', true: '#9CA3AF' }}
+                thumbColor="#FFFFFF"
+              />
             </View>
           </View>
 
@@ -1082,14 +1063,16 @@ export default function NewServiceScreen() {
       </View>
 
       <StickyButtonContainer bottomInset={insets.bottom}>
-        <Button
-          onPress={handleSubmit}
-          disabled={!isValid}
-          loading={isSubmitting}
-          loadingText="Creating..."
-        >
-          Create Service
-        </Button>
+        <View style={{ width: '100%', maxWidth: 1120, alignSelf: 'center' }}>
+          <Button
+            onPress={handleSubmit}
+            disabled={!isValid}
+            loading={isSubmitting}
+            loadingText="Creating..."
+          >
+            Create Service
+          </Button>
+        </View>
       </StickyButtonContainer>
 
       {showSuccessToast && (

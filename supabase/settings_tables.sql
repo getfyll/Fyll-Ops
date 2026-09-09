@@ -296,13 +296,41 @@ drop policy if exists business_settings_delete_own_business on public.business_s
 
 create policy business_settings_select_own_business
   on public.business_settings for select
-  using (business_id = (select business_id from public.profiles where id = auth.uid()));
+  using (
+    business_id = (
+      select p.business_id
+      from public.profiles p
+      where p.id::text = (select auth.uid())::text
+      limit 1
+    )
+  );
 create policy business_settings_insert_own_business
   on public.business_settings for insert
-  with check (business_id = (select business_id from public.profiles where id = auth.uid()));
+  with check (
+    business_id = (
+      select p.business_id
+      from public.profiles p
+      where p.id::text = (select auth.uid())::text
+      limit 1
+    )
+  );
 create policy business_settings_update_own_business
   on public.business_settings for update
-  using (business_id = (select business_id from public.profiles where id = auth.uid()));
+  using (
+    business_id = (
+      select p.business_id
+      from public.profiles p
+      where p.id::text = (select auth.uid())::text
+      limit 1
+    )
+  );
 create policy business_settings_delete_own_business
   on public.business_settings for delete
-  using (business_id = (select business_id from public.profiles where id = auth.uid()));
+  using (
+    business_id = (
+      select p.business_id
+      from public.profiles p
+      where p.id::text = (select auth.uid())::text
+      limit 1
+    )
+  );

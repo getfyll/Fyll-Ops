@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, Pressable, TextInput, Image, ActivityIndicator, Alert } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, Pressable, TextInput, Image, ActivityIndicator, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
-import { ChevronLeft, Building2, Camera, X, Check, Phone, Globe, MapPin } from 'lucide-react-native';
+import { ArrowLeft, Building2, Camera, X, Check, Phone, Globe, MapPin } from 'lucide-react-native';
 import { useThemeColors } from '@/lib/theme';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import * as Haptics from 'expo-haptics';
@@ -11,36 +11,89 @@ import { useBusinessSettings } from '@/hooks/useBusinessSettings';
 import { compressImage } from '@/lib/image-compression';
 import { getSettingsWebPanelStyles, isFromSettingsRoute } from '@/lib/settings-web-panel';
 import { useSettingsBack } from '@/lib/useSettingsBack';
+import useAuthStore from '@/lib/state/auth-store';
+import { uploadBusinessPublicAsset } from '@/lib/storage-attachments';
+
+const MAX_LOGO_PICK_SIZE_BYTES = 400 * 1024;
+const MAX_LOGO_DATA_URL_BYTES = 400 * 1024;
+
+const estimateDataUrlBytes = (value: string) => {
+  const base64MarkerIndex = value.indexOf('base64,');
+  if (base64MarkerIndex === -1) return value.length;
+  const base64 = value.slice(base64MarkerIndex + 'base64,'.length);
+  const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0;
+  return Math.floor((base64.length * 3) / 4) - padding;
+};
 
 export default function BusinessSettingsScreen() {
   const { from } = useLocalSearchParams<{ from?: string | string[] }>();
   const goBack = useSettingsBack();
   const colors = useThemeColors();
+  const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
+  const openedFromSettings = isFromSettingsRoute(from);
   const panelStyles = getSettingsWebPanelStyles(
-    isFromSettingsRoute(from),
+    openedFromSettings,
     colors.bg.primary,
     colors.border.light
   );
-  const { businessName, businessLogo, businessPhone, businessWebsite, returnAddress, isLoading, saveSettings } = useBusinessSettings();
+  const {
+    companyName,
+    businessName,
+    businessSlug,
+    canEditBusinessName,
+    businessNameNextEditableAt,
+    businessLogo,
+    businessPhone,
+    businessWebsite,
+    returnAddress,
+    isLoading,
+    saveSettings,
+  } = useBusinessSettings();
 
-  const [name, setName] = useState('');
+  const [company, setCompany] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [logo, setLogo] = useState<string | null>(null);
   const [phone, setPhone] = useState('');
   const [website, setWebsite] = useState('');
   const [address, setAddress] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = (type: 'success' | 'error', message: string) => {
+    setToast({ type, message });
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+    }
+    toastTimerRef.current = setTimeout(() => setToast(null), 2800);
+  };
 
   // Initialize form with current values
   useEffect(() => {
     if (!isLoading) {
-      setName(businessName);
+      setCompany(companyName);
+      setDisplayName(businessName);
       setLogo(businessLogo);
       setPhone(businessPhone);
       setWebsite(businessWebsite);
       setAddress(returnAddress);
     }
-  }, [isLoading, businessName, businessLogo, businessPhone, businessWebsite, returnAddress]);
+  }, [
+    isLoading,
+    companyName,
+    businessName,
+    businessLogo,
+    businessPhone,
+    businessWebsite,
+    returnAddress,
+  ]);
+
+  useEffect(() => () => {
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+    }
+  }, []);
 
   const handlePickImage = async () => {
     try {
@@ -59,12 +112,35 @@ export default function BusinessSettingsScreen() {
       });
 
       if (!result.canceled && result.assets[0]) {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        const compressedUri = await compressImage(result.assets[0].uri);
+        const asset = result.assets[0];
+        if (asset.fileSize && asset.fileSize > MAX_LOGO_PICK_SIZE_BYTES) {
+          const message = 'Logo is too large. Use an image under 400 KB.';
+          setError(message);
+          showToast('error', message);
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          return;
+        }
+
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        const compressedUri = await compressImage(asset.uri, { maxDimension: 900, quality: 0.62, format: 'png' });
+        if (compressedUri.startsWith('data:image/') && estimateDataUrlBytes(compressedUri) > MAX_LOGO_DATA_URL_BYTES) {
+          const message = 'Logo is still too large after compression. Try a smaller image.';
+          setError(message);
+          showToast('error', message);
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          return;
+        }
+
+        setError(null);
         setLogo(compressedUri);
       }
-    } catch {
-      Alert.alert('Error', 'Failed to pick image');
+    } catch (pickerError) {
+      const message = pickerError instanceof Error && pickerError.message
+        ? `Failed to pick logo. ${pickerError.message}`
+        : 'Failed to pick logo.';
+      setError(message);
+      showToast('error', message);
+      Alert.alert('Error', message);
     }
   };
 
@@ -78,29 +154,70 @@ export default function BusinessSettingsScreen() {
     setIsSaving(true);
 
     try {
+      let nextLogo = logo;
+
+      if (
+        businessId
+        && nextLogo
+        && /^(data:image\/|blob:|file:)/i.test(nextLogo)
+      ) {
+        const uploadedLogo = await uploadBusinessPublicAsset({
+          businessId,
+          folder: 'business-logo',
+          uri: nextLogo,
+          fileName: `${displayName.trim() || company.trim() || 'business'}-logo.png`,
+          mimeType: 'image/png',
+          compressImages: true,
+        });
+        nextLogo = uploadedLogo.publicUrl;
+        setLogo(uploadedLogo.publicUrl);
+      }
+
       const result = await saveSettings({
-        businessLogo: logo,
+        companyName: company.trim(),
+        businessName: displayName.trim(),
+        businessLogo: nextLogo,
         businessPhone: phone.trim(),
         businessWebsite: website.trim(),
         returnAddress: address.trim(),
       });
 
       if (result.success) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        showToast('success', 'Business settings saved.');
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         goBack();
       } else {
-        setError(result.error || 'Failed to save settings');
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        const message = result.error || 'Failed to save settings.';
+        setError(message);
+        showToast('error', message);
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       }
-    } catch {
-      setError('Failed to save settings');
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } catch (saveError) {
+      const message = saveError instanceof Error && saveError.message
+        ? `Failed to save settings. ${saveError.message}`
+        : 'Failed to save settings.';
+      setError(message);
+      showToast('error', message);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setIsSaving(false);
     }
   };
 
-  const hasChanges = logo !== businessLogo || phone !== businessPhone || website !== businessWebsite || address !== returnAddress;
+  const nextBusinessNameEditLabel = businessNameNextEditableAt
+    ? new Date(businessNameNextEditableAt).toLocaleDateString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      })
+    : null;
+  const trackingSlugLabel = businessSlug || displayName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+  const hasChanges = company.trim() !== companyName.trim()
+    || displayName.trim() !== businessName.trim()
+    || logo !== businessLogo
+    || phone !== businessPhone
+    || website !== businessWebsite
+    || address !== returnAddress;
   const primaryPillButtonStyle = {
     backgroundColor: colors.text.primary,
     borderRadius: 999,
@@ -123,8 +240,43 @@ export default function BusinessSettingsScreen() {
     <View style={panelStyles.outer}>
       <View style={panelStyles.inner}>
       <SafeAreaView className="flex-1" edges={['top']}>
+        {toast ? (
+          <View
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              top: 18,
+              left: 16,
+              right: 16,
+              alignItems: 'center',
+              zIndex: 9999,
+              elevation: 9999,
+            }}
+          >
+            <View
+              style={{
+                maxWidth: 420,
+                borderRadius: 999,
+                backgroundColor: toast.type === 'success' ? '#111111' : '#EF4444',
+                paddingHorizontal: 16,
+                paddingVertical: 12,
+              }}
+            >
+              <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '600', textAlign: 'center' }}>
+                {toast.message}
+              </Text>
+            </View>
+          </View>
+        ) : null}
         {/* Header */}
-        <View className="px-5 pt-4 pb-3 flex-row items-center justify-between" style={{ borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
+        <View
+          className="px-5 pt-4 pb-3 flex-row items-center justify-between"
+          style={{
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border.light,
+            ...(Platform.OS === 'web' ? { paddingTop: 10, paddingBottom: 10 } : {}),
+          }}
+        >
           <View className="flex-row items-center">
             <Pressable
               onPress={() => {
@@ -132,30 +284,40 @@ export default function BusinessSettingsScreen() {
                 goBack();
               }}
               className="w-10 h-10 rounded-xl items-center justify-center mr-3 active:opacity-50"
-              style={{ backgroundColor: colors.bg.secondary }}
+              style={{ backgroundColor: 'transparent' }}
             >
-              <ChevronLeft size={20} color={colors.text.primary} strokeWidth={2} />
+              <ArrowLeft size={20} color={colors.text.primary} strokeWidth={2} />
             </Pressable>
-            <Text style={{ color: colors.text.primary }} className="text-xl font-bold">Business Settings</Text>
+            <Text
+              style={{
+                color: colors.text.primary,
+                fontSize: Platform.OS === 'web' ? 14 : 20,
+                lineHeight: Platform.OS === 'web' ? 18 : 24,
+                fontWeight: '600',
+              }}
+            >
+              Business Settings
+            </Text>
           </View>
 
-          {hasChanges && (
-            <Pressable
-              onPress={handleSave}
-              disabled={isSaving}
-              className="px-4 h-10 rounded-full items-center justify-center active:opacity-80"
-              style={[primaryPillButtonStyle, { opacity: isSaving ? 0.7 : 1 }]}
-            >
-              {isSaving ? (
-                <ActivityIndicator size="small" color={colors.bg.primary} />
-              ) : (
-                <View className="flex-row items-center">
-                  <Check size={16} color={colors.bg.primary} strokeWidth={2} />
-                  <Text style={primaryPillTextStyle} className="font-semibold text-sm ml-1">Save</Text>
-                </View>
-              )}
-            </Pressable>
-          )}
+          <Pressable
+            onPress={handleSave}
+            disabled={isSaving || !hasChanges}
+            className="px-4 h-10 rounded-full items-center justify-center active:opacity-80"
+            style={[
+              hasChanges ? primaryPillButtonStyle : { backgroundColor: colors.bg.secondary, borderRadius: 999, borderWidth: 1, borderColor: colors.border.light },
+              { opacity: isSaving ? 0.7 : 1, minWidth: 96 },
+            ]}
+          >
+            {isSaving ? (
+              <ActivityIndicator size="small" color={hasChanges ? colors.bg.primary : colors.text.tertiary} />
+            ) : (
+              <View className="flex-row items-center">
+                <Check size={16} color={hasChanges ? colors.bg.primary : colors.text.tertiary} strokeWidth={2} />
+                <Text style={{ color: hasChanges ? colors.bg.primary : colors.text.tertiary }} className="font-semibold text-sm ml-1">Save</Text>
+              </View>
+            )}
+          </Pressable>
         </View>
 
         <KeyboardAwareScrollView className="flex-1 px-5 pt-4" showsVerticalScrollIndicator={false} enableOnAndroid extraScrollHeight={100}>
@@ -200,7 +362,7 @@ export default function BusinessSettingsScreen() {
               </Pressable>
 
               <Text style={{ color: colors.text.muted }} className="text-xs mt-2 text-center">
-                Optional. Square images work best.
+                Optional. Square images work best. Max 400 KB. Large logos are compressed automatically.
               </Text>
             </View>
           </View>
@@ -209,12 +371,12 @@ export default function BusinessSettingsScreen() {
           <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase mb-3 tracking-wider">Business Information</Text>
 
           <View className="rounded-xl p-4 mb-6" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
-            {/* Business Name */}
+            {/* Company Name */}
             <View className="mb-4">
               <View className="flex-row items-center mb-2">
                 <Building2 size={16} color={colors.text.tertiary} strokeWidth={2} />
-                <Text style={{ color: colors.text.secondary }} className="text-sm font-medium ml-2">Business Name</Text>
-                <Text style={{ color: colors.text.muted }} className="text-xs ml-2">Locked</Text>
+                <Text style={{ color: colors.text.secondary }} className="text-sm font-medium ml-2">Company Name</Text>
+                <Text style={{ color: colors.text.muted }} className="text-xs ml-2">Fixed</Text>
               </View>
 
               <View
@@ -222,14 +384,14 @@ export default function BusinessSettingsScreen() {
                 style={{
                   backgroundColor: colors.bg.secondary,
                   borderWidth: 1,
-                  borderColor: colors.input.border,
+                  borderColor: colors.border.light,
                   height: 50,
                   justifyContent: 'center'
                 }}
               >
                 <TextInput
-                  value={name}
-                  placeholder="Enter your business name"
+                  value={company}
+                  placeholder="Registered company name"
                   placeholderTextColor={colors.input.placeholder}
                   style={{ color: colors.text.primary, fontSize: 14 }}
                   selectionColor={colors.text.primary}
@@ -239,7 +401,54 @@ export default function BusinessSettingsScreen() {
               </View>
 
               <Text style={{ color: colors.text.muted }} className="text-xs mt-2">
-                Business name is fixed after setup.
+                This is your legal or registered company name and cannot be changed here.
+              </Text>
+            </View>
+
+            {/* Business Name */}
+            <View className="mb-4">
+              <View className="flex-row items-center mb-2">
+                <Building2 size={16} color={colors.text.tertiary} strokeWidth={2} />
+                <Text style={{ color: colors.text.secondary }} className="text-sm font-medium ml-2">Business Name</Text>
+                <Text style={{ color: colors.text.muted }} className="text-xs ml-2">
+                  {canEditBusinessName ? 'Editable' : 'Locked'}
+                </Text>
+              </View>
+
+              <View
+                className="rounded-xl px-4"
+                style={{
+                  backgroundColor: canEditBusinessName ? colors.input.bg : colors.bg.secondary,
+                  borderWidth: 1,
+                  borderColor: colors.border.light,
+                  height: 50,
+                  justifyContent: 'center'
+                }}
+              >
+                <TextInput
+                  value={displayName}
+                  onChangeText={setDisplayName}
+                  placeholder="Customer-facing business name"
+                  placeholderTextColor={colors.input.placeholder}
+                  style={{ color: colors.input.text, fontSize: 14 }}
+                  selectionColor={colors.text.primary}
+                  editable={canEditBusinessName}
+                  autoCapitalize="words"
+                />
+              </View>
+
+              <Text style={{ color: colors.text.muted }} className="text-xs mt-2">
+                This is used for your customer tracking URL and as the text fallback on the tracking page when no logo is set.
+              </Text>
+              {trackingSlugLabel ? (
+                <Text style={{ color: colors.text.muted }} className="text-xs mt-1">
+                  Tracking slug: /{trackingSlugLabel}/order-tracking
+                </Text>
+              ) : null}
+              <Text style={{ color: colors.text.muted }} className="text-xs mt-1">
+                {canEditBusinessName
+                  ? 'You can change this business name once every 12 months.'
+                  : `Business name can only be changed once every 12 months. Next edit available ${nextBusinessNameEditLabel}.`}
               </Text>
             </View>
 
@@ -255,7 +464,7 @@ export default function BusinessSettingsScreen() {
                 style={{
                   backgroundColor: colors.input.bg,
                   borderWidth: 1,
-                  borderColor: colors.input.border,
+                  borderColor: colors.border.light,
                   height: 50,
                   justifyContent: 'center'
                 }}
@@ -284,7 +493,7 @@ export default function BusinessSettingsScreen() {
                 style={{
                   backgroundColor: colors.input.bg,
                   borderWidth: 1,
-                  borderColor: colors.input.border,
+                  borderColor: colors.border.light,
                   height: 50,
                   justifyContent: 'center'
                 }}
@@ -317,7 +526,7 @@ export default function BusinessSettingsScreen() {
               style={{
                 backgroundColor: colors.input.bg,
                 borderWidth: 1,
-                borderColor: colors.input.border,
+                borderColor: colors.border.light,
                 minHeight: 100
               }}
             >
@@ -342,31 +551,32 @@ export default function BusinessSettingsScreen() {
             <Text className="text-red-500 text-xs text-center mb-4">{error}</Text>
           ) : null}
 
-          {/* Save Button (for bottom of screen) */}
-          <Pressable
-            onPress={handleSave}
-            disabled={isSaving || !hasChanges}
-            className="rounded-full items-center active:opacity-80"
-            style={{
-              backgroundColor: hasChanges ? colors.text.primary : colors.bg.secondary,
-              borderWidth: hasChanges ? 0 : 1,
-              borderColor: hasChanges ? 'transparent' : colors.border.light,
-              height: 54,
-              justifyContent: 'center',
-              opacity: isSaving ? 0.7 : 1,
-            }}
-          >
-            {isSaving ? (
-              <ActivityIndicator size="small" color={hasChanges ? colors.bg.primary : colors.text.tertiary} />
-            ) : (
-              <Text
-                style={{ color: hasChanges ? colors.bg.primary : colors.text.tertiary }}
-                className="font-semibold text-base"
-              >
-                Save Changes
-              </Text>
-            )}
-          </Pressable>
+          {!openedFromSettings ? (
+            <Pressable
+              onPress={handleSave}
+              disabled={isSaving || !hasChanges}
+              className="rounded-full items-center active:opacity-80"
+              style={{
+                backgroundColor: hasChanges ? colors.text.primary : colors.bg.secondary,
+                borderWidth: hasChanges ? 0 : 1,
+                borderColor: hasChanges ? 'transparent' : colors.border.light,
+                height: 54,
+                justifyContent: 'center',
+                opacity: isSaving ? 0.7 : 1,
+              }}
+            >
+              {isSaving ? (
+                <ActivityIndicator size="small" color={hasChanges ? colors.bg.primary : colors.text.tertiary} />
+              ) : (
+                <Text
+                  style={{ color: hasChanges ? colors.bg.primary : colors.text.tertiary }}
+                  className="font-semibold text-base"
+                >
+                  Save Changes
+                </Text>
+              )}
+            </Pressable>
+          ) : null}
 
           <View className="h-24" />
         </KeyboardAwareScrollView>

@@ -12,6 +12,16 @@ const isServiceProduct = (product: Product): boolean => {
   );
 };
 
+const isInventoryCountableProduct = (product: Product): boolean => {
+  if (isServiceProduct(product)) return false;
+  if (product.isArchived || product.isDiscontinued) return false;
+  if (product.catalogSource === 'woocommerce-plugin') return false;
+  if (product.createdBy === 'WooCommerce Sync') return false;
+  if (product.wooCommerceProductId || product.sourceProductId || product.websiteProductId) return false;
+  if (product.variants.some((variant) => variant.wooCommerceProductId || variant.sourceProductId)) return false;
+  return true;
+};
+
 export interface InventoryOverview {
   totalProducts: number;
   totalVariants: number;
@@ -118,7 +128,7 @@ export function calculateInventoryOverview(products: Product[], globalThreshold?
   let totalProducts = 0;
 
   products.forEach((product) => {
-    if (isServiceProduct(product)) return;
+    if (!isInventoryCountableProduct(product)) return;
     totalProducts++;
     const threshold = globalThreshold ?? product.lowStockThreshold ?? 5;
 
@@ -272,7 +282,7 @@ export function groupRestocksByPeriod(
 
   if (timeRange === '7d') {
     return groupRestocksByDay(restockLogs, start, end);
-  } else if (timeRange === '30d') {
+  } else if (timeRange === 'month' || timeRange === '30d') {
     return groupRestocksByWeek(restockLogs, start, end);
   } else {
     return groupRestocksByMonth(restockLogs);

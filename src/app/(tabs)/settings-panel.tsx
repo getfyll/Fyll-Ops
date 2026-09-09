@@ -4,7 +4,10 @@ import { Redirect, useLocalSearchParams } from 'expo-router';
 import TeamManagementScreen from '@/app/team';
 import InvitationsScreen from '@/app/invitations';
 import BusinessSettingsScreen from '@/app/business-settings';
+import StorefrontSettingsScreen from '@/app/storefront-settings';
+import WooCommerceSettingsScreen from '@/app/woocommerce-settings';
 import OrderAutomationScreen from '@/app/order-automation';
+import EmailSettingsScreen from '@/app/email-settings';
 import AccountSettingsScreen from '@/app/account-settings';
 import DebugBusinessScreen from '@/app/debug-business';
 import CategoryManagerScreen from '@/app/category-manager';
@@ -19,6 +22,8 @@ import ServicesScreen from '@/app/(tabs)/services';
 import InsightsScreen from '@/app/(tabs)/insights';
 import FinanceScreen from '@/app/(tabs)/finance';
 import TasksScreen from '@/app/(tabs)/tasks';
+import WarehouseSettingsScreen from '@/app/warehouse-settings';
+import PlatformAdminScreen from '@/app/platform-admin';
 
 export default function SettingsPanelScreen() {
   const { panel } = useLocalSearchParams<{ panel?: string | string[] }>();
@@ -31,8 +36,14 @@ export default function SettingsPanelScreen() {
       return <InvitationsScreen />;
     case 'business-settings':
       return <BusinessSettingsScreen />;
+    case 'storefront-settings':
+      return <StorefrontSettingsScreen />;
+    case 'woocommerce-settings':
+      return <WooCommerceSettingsScreen />;
     case 'order-automation':
       return <OrderAutomationScreen />;
+    case 'email-settings':
+      return <EmailSettingsScreen />;
     case 'account-settings':
       return <AccountSettingsScreen />;
     case 'debug-business':
@@ -61,6 +72,10 @@ export default function SettingsPanelScreen() {
       return <FinanceScreen />;
     case 'tasks':
       return <TasksScreen />;
+    case 'warehouse-settings':
+      return <WarehouseSettingsScreen />;
+    case 'platform-admin':
+      return <PlatformAdminScreen />;
     default:
       return <Redirect href="/settings" />;
   }

@@ -19,6 +19,7 @@ export default function OrdersInsightScreen({ inline }: { inline?: boolean }) {
 
   const timeRangeOptions: { key: TimeRange; label: string }[] = [
     { key: '7d', label: 'Last 7 days' },
+    { key: 'month', label: 'This Month' },
     { key: '30d', label: 'Last 30 days' },
     { key: 'year', label: 'This Year' },
   ];
@@ -29,6 +30,12 @@ export default function OrdersInsightScreen({ inline }: { inline?: boolean }) {
     value: item.count,
     percentage: item.percentage,
     color: item.color,
+  }));
+
+  const categoryRows = analytics.ordersByCategory.map((item) => ({
+    label: item.label,
+    value: item.value,
+    percentage: item.percentage,
   }));
 
   // Top orders by value
@@ -136,13 +143,13 @@ export default function OrdersInsightScreen({ inline }: { inline?: boolean }) {
                 style={{ color: colors.text.tertiary }}
                 className="text-xs font-medium mb-1"
               >
-                Delivered
+                Completed
               </Text>
               <Text
                 style={{ color: colors.success }}
                 className="text-xl font-bold"
               >
-                {analytics.deliveredOrders}
+                {analytics.completedOrders}
               </Text>
             </View>
 
@@ -190,7 +197,7 @@ export default function OrdersInsightScreen({ inline }: { inline?: boolean }) {
           >
             <Text
               style={{ color: colors.text.primary }}
-              className="text-lg font-bold mb-4"
+              className={` font-bold mb-4`}
             >
               Orders Over Time
             </Text>
@@ -214,6 +221,19 @@ export default function OrdersInsightScreen({ inline }: { inline?: boolean }) {
                 percentage: 'Share',
               }}
               emptyMessage="No orders yet"
+            />
+          </View>
+
+          <View className="mt-4">
+            <BreakdownTable
+              title="Orders by Category"
+              data={categoryRows}
+              columns={{
+                label: 'Category',
+                value: 'Count',
+                percentage: 'Share',
+              }}
+              emptyMessage="No category data yet"
             />
           </View>
 

@@ -44,7 +44,7 @@ export interface ServiceTypeBreakdown {
   percentage: number;
 }
 
-export type TimeRange = '7d' | '30d' | 'year';
+export type TimeRange = '7d' | 'month' | '30d' | 'year';
 
 // Generate mock data based on time range
 export function generateMockStatsData(timeRange: TimeRange) {
@@ -73,7 +73,7 @@ export function generateMockStatsData(timeRange: TimeRange) {
       return { label: day, value };
     });
     previousPeriodSales = totalSales * (0.6 + Math.random() * 0.3);
-  } else if (timeRange === '30d') {
+  } else if (timeRange === 'month' || timeRange === '30d') {
     // Show 4 weeks
     salesByPeriod = ['W1', 'W2', 'W3', 'W4'].map((week) => {
       const value = Math.floor(Math.random() * 400000) + 200000;

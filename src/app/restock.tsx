@@ -17,6 +17,7 @@ export default function RestockScreen() {
   const products = useFyllStore((s) => s.products);
   const restockVariant = useFyllStore((s) => s.restockVariant);
   const currentUser = useAuthStore((s) => s.currentUser);
+  const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
 
   const product = useMemo(() => products.find((p) => p.id === productId), [products, productId]);
   const variant = useMemo(() => product?.variants.find((v) => v.id === variantId), [product, variantId]);
@@ -51,7 +52,7 @@ export default function RestockScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     // Perform restock
-    restockVariant(productId, variantId, quantityNum, currentUser?.name);
+    await restockVariant(productId, variantId, quantityNum, currentUser?.name, businessId);
 
     // Small delay for visual feedback
     await new Promise((resolve) => setTimeout(resolve, 300));

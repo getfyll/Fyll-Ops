@@ -230,6 +230,54 @@ const writeFallbackThreadSeenMarkers = async (
   await storage.setItem(getFallbackThreadSeenMarkersKey(businessId, userId), JSON.stringify(markers));
 };
 
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const getErrorMessage = (error: unknown) => (
+  error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
+    ? error.message
+    : String(error ?? '')
+);
+
+const isTransientNetworkError = (error: unknown) => {
+  const message = getErrorMessage(error).toLowerCase();
+  return (
+    message.includes('failed to fetch')
+    || message.includes('networkerror')
+    || message.includes('connection')
+    || message.includes('load failed')
+  );
+};
+
+const fetchThreadEntityRows = async (
+  businessId: string,
+  entityType: CollaborationEntityType
+): Promise<Array<{ id: string; entity_id: string }>> => {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const { data, error } = await supabase
+        .from('collaboration_threads')
+        .select('id, entity_id')
+        .eq('business_id', businessId)
+        .eq('entity_type', entityType);
+
+      if (!error) return (data ?? []) as Array<{ id: string; entity_id: string }>;
+      if (!isTransientNetworkError(error) || attempt === 1) {
+        console.warn('Collaboration thread lookup failed:', error.message);
+        return [];
+      }
+    } catch (error) {
+      if (!isTransientNetworkError(error) || attempt === 1) {
+        console.warn('Collaboration thread lookup failed:', getErrorMessage(error));
+        return [];
+      }
+    }
+
+    await wait(400);
+  }
+
+  return [];
+};
+
 const setFallbackThreadSeenAt = async (
   businessId: string,
   userId: string,
@@ -996,13 +1044,9 @@ const getThreadCommentCountsByEntity = async (
   entityType: CollaborationEntityType
 ): Promise<Record<string, number>> => {
   // 1. Get all threads for this entity type
-  const { data: threads, error: threadError } = await supabase
-    .from('collaboration_threads')
-    .select('id, entity_id')
-    .eq('business_id', businessId)
-    .eq('entity_type', entityType);
+  const threads = await fetchThreadEntityRows(businessId, entityType);
 
-  if (threadError || !threads?.length) return {};
+  if (!threads.length) return {};
 
   const threadIdToEntityId = new Map<string, string>();
   threads.forEach((t) => threadIdToEntityId.set(t.id, t.entity_id));
@@ -1034,13 +1078,9 @@ const getUnreadNotificationCountsByEntity = async (
   entityType: CollaborationEntityType
 ): Promise<Record<string, number>> => {
   // 1. Get threads for this entity type to map thread_id → entity_id
-  const { data: threads, error: threadError } = await supabase
-    .from('collaboration_threads')
-    .select('id, entity_id')
-    .eq('business_id', businessId)
-    .eq('entity_type', entityType);
+  const threads = await fetchThreadEntityRows(businessId, entityType);
 
-  if (threadError || !threads?.length) return {};
+  if (!threads.length) return {};
 
   const threadIdToEntityId = new Map<string, string>();
   threads.forEach((t) => threadIdToEntityId.set(t.id, t.entity_id));

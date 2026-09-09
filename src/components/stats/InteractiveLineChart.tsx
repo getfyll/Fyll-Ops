@@ -36,6 +36,7 @@ export function InteractiveLineChart({
   onSelectIndex,
   formatYLabel,
   maxXLabels = 8,
+  paddingLeft = 52,
 }: {
   data: LineChartDatum[];
   height?: number;
@@ -46,6 +47,7 @@ export function InteractiveLineChart({
   onSelectIndex?: (index: number | null) => void;
   formatYLabel?: (value: number) => string;
   maxXLabels?: number;
+  paddingLeft?: number;
 }) {
   const [width, setWidth] = useState<number>(0);
 
@@ -57,7 +59,6 @@ export function InteractiveLineChart({
   const chart = useMemo(() => {
     if (!width || data.length < 2) return null;
 
-    const paddingLeft = 52;
     const paddingRight = 12;
     const paddingTop = 18;
     const paddingBottom = 30;
@@ -100,7 +101,7 @@ export function InteractiveLineChart({
       pathData,
       areaPath,
     };
-  }, [data, formatYLabel, height, width]);
+  }, [data, formatYLabel, height, width, paddingLeft]);
 
   if (data.length < 2) return null;
 

@@ -5,41 +5,34 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { OrderEditForm } from '@/components/OrderEditForm';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { useThemeColors } from '@/lib/theme';
+import { DesktopSidebar } from '@/components/DesktopSidebar';
 
 export default function OrderEditScreen() {
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, returnTo } = useLocalSearchParams<{ id: string; returnTo?: string | string[] }>();
   const orderId = typeof id === 'string' ? id : '';
+  const returnTarget = Array.isArray(returnTo) ? returnTo[0] : returnTo;
+  const shouldReturnToFinanceRevenue = returnTarget === 'finance-revenue';
   const { isDesktop } = useBreakpoint();
   const colors = useThemeColors();
   const isWebDesktop = Platform.OS === 'web' && isDesktop;
+  const handleClose = () => {
+    if (shouldReturnToFinanceRevenue) {
+      router.replace('/finance?section=revenue' as any);
+      return;
+    }
+    router.back();
+  };
 
   if (isWebDesktop) {
     return (
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: colors.bg.primary,
-          alignItems: 'center',
-          paddingVertical: 24,
-        }}
-      >
-        <View
-          style={{
-            width: '100%',
-            maxWidth: 640,
-            flex: 1,
-            borderRadius: 20,
-            overflow: 'hidden',
-            backgroundColor: colors.bg.secondary,
-            borderWidth: 1,
-            borderColor: colors.border.light,
-          }}
-        >
+      <View className="flex-1 flex-row" style={{ backgroundColor: colors.bg.primary }}>
+        <DesktopSidebar />
+        <View style={{ flex: 1, backgroundColor: colors.bg.primary }}>
           <OrderEditForm
             orderId={orderId}
             showHeader
-            onClose={() => router.back()}
+            onClose={handleClose}
           />
         </View>
       </View>
@@ -51,7 +44,7 @@ export default function OrderEditScreen() {
       <OrderEditForm
         orderId={orderId}
         showHeader
-        onClose={() => router.back()}
+        onClose={handleClose}
       />
     </SafeAreaView>
   );

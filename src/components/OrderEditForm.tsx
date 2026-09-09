@@ -1,15 +1,20 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { View, Text, ScrollView, Pressable, TextInput, KeyboardAvoidingView, Modal, Platform, Switch } from 'react-native';
+import { View, Text, ScrollView, Pressable, TextInput, KeyboardAvoidingView, Modal, Platform, Switch, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { X, Plus, Minus, Trash2, ChevronDown, Check, Search, Package, User as UserIcon, Users, Calendar, ChevronLeft, ChevronRight, Pencil, Clock3 } from 'lucide-react-native';
+import { X, Plus, Minus, Trash2, ChevronDown, Check, Search, Package, User as UserIcon, Users, Calendar, ChevronLeft, ChevronRight, Pencil, Clock3, ArrowLeft } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
-import useFyllStore, { OrderItem, OrderService, ServiceFieldType, formatCurrency, NIGERIA_STATES, Customer } from '@/lib/state/fyll-store';
+import useFyllStore, { OrderItem, OrderService, ServiceFieldType, formatCurrency, NIGERIA_STATES, Customer, ORDER_CLASSIFICATIONS, OrderClassification } from '@/lib/state/fyll-store';
 import useAuthStore from '@/lib/state/auth-store';
 import { cn } from '@/lib/cn';
 import * as Haptics from 'expo-haptics';
 import { Button, StickyButtonContainer } from '@/components/Button';
 import { normalizeProductType } from '@/lib/product-utils';
 import { useThemeColors } from '@/lib/theme';
+import { useBreakpoint } from '@/lib/useBreakpoint';
+import { addBusinessDays, resolveOrderTimeline } from '@/lib/fulfillment';
+import { useBusinessSettings } from '@/hooks/useBusinessSettings';
+import { fetchWooCommerceOrder, fetchWooCommerceOrders, type WooNormalizedOrder } from '@/lib/woocommerce';
+import { normalizeWooLookupValue } from '@/lib/woocommerce-link';
 
 interface SearchResult {
   productId: string;
@@ -20,6 +25,31 @@ interface SearchResult {
   price: number;
   isService?: boolean;
 }
+
+const normalizePickerIdentity = (value: string) => (
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+);
+
+const getSearchResultIdentity = (result: SearchResult) => (
+  normalizePickerIdentity(`${result.productName} ${result.variantName}`)
+);
+
+const shouldPreferSearchResult = (next: SearchResult, current: SearchResult) => {
+  if ((next.stock > 0) !== (current.stock > 0)) return next.stock > 0;
+  if (Boolean(next.variantName?.trim()) !== Boolean(current.variantName?.trim())) return Boolean(next.variantName?.trim());
+  if (next.stock !== current.stock) return next.stock > current.stock;
+  return next.productName.length < current.productName.length;
+};
+
+type SelectedWooOrderPreview = {
+  reference: string;
+  customerName: string;
+  customerEmail: string;
+};
 
 type DatePickerTarget =
   | { type: 'order' }
@@ -122,10 +152,16 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const colors = useThemeColors();
+  const { isDesktop, width: breakpointWidth } = useBreakpoint();
+  const isDesktopWeb = Platform.OS === 'web' && isDesktop;
+  const isNarrowWeb = Platform.OS === 'web' && breakpointWidth < 1280;
+  const rightColumnWidth = isDesktopWeb ? (isNarrowWeb ? Math.max(320, Math.round(breakpointWidth * 0.3)) : 420) : undefined;
+  const webMaxWidth = 1456;
+  const softFieldBorderColor = colors.border.light;
   const inputContainerStyle = {
     backgroundColor: colors.input.bg,
     borderWidth: 1,
-    borderColor: colors.input.border,
+    borderColor: softFieldBorderColor,
   } as const;
   const inputTextStyle = { color: colors.input.text } as const;
   const labelTextStyle = { color: colors.text.secondary } as const;
@@ -136,11 +172,18 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
   const paymentMethods = useFyllStore((s) => s.paymentMethods);
   const customers = useFyllStore((s) => s.customers);
   const orders = useFyllStore((s) => s.orders);
+  const orderTimelineSettings = useFyllStore((s) => s.orderTimelineSettings);
   const updateOrder = useFyllStore((s) => s.updateOrder);
   const addCustomer = useFyllStore((s) => s.addCustomer);
   const updateVariantStock = useFyllStore((s) => s.updateVariantStock);
   const currentUser = useAuthStore((s) => s.currentUser);
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
+  const {
+    woocommerceStoreUrl,
+    woocommerceConsumerKey,
+    woocommerceConsumerSecret,
+    hasWooCommerceConnection,
+  } = useBusinessSettings();
   const [isInitialized, setIsInitialized] = useState(false);
   const originalItemsRef = useRef<OrderItem[]>([]);
   const order = useMemo(() => orders.find((entry) => entry.id === orderId), [orders, orderId]);
@@ -155,6 +198,7 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
 
   // Loading state
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isPullingWooOrder, setIsPullingWooOrder] = useState(false);
   const submitGuard = useRef(false);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -167,11 +211,13 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
 
   // Customer info
   const [customerName, setCustomerName] = useState('');
+  const [customerNote, setCustomerNote] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [deliveryState, setDeliveryState] = useState('');
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [showStateModal, setShowStateModal] = useState(false);
+  const [stateSearchQuery, setStateSearchQuery] = useState('');
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
   const [customerSearchQuery, setCustomerSearchQuery] = useState('');
@@ -179,6 +225,9 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
   // Order details
   const [source, setSource] = useState(saleSources[0]?.name || '');
   const [paymentMethod, setPaymentMethod] = useState(paymentMethods[0]?.name || '');
+  const [orderClassification, setOrderClassification] = useState<OrderClassification>('Sale');
+  const [orderTypeId, setOrderTypeId] = useState('');
+  const [showOrderTypeMenu, setShowOrderTypeMenu] = useState(false);
   const [items, setItems] = useState<OrderItem[]>([]);
   const [services, setServices] = useState<OrderService[]>([]);
   const [editingServiceIndex, setEditingServiceIndex] = useState<number | null>(null);
@@ -190,6 +239,11 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
   const [discountCode, setDiscountCode] = useState('');
   const [discountAmount, setDiscountAmount] = useState('');
   const [websiteOrderRef, setWebsiteOrderRef] = useState('');
+  const [wooLookupOrders, setWooLookupOrders] = useState<WooNormalizedOrder[]>([]);
+  const [isFetchingWooSuggestions, setIsFetchingWooSuggestions] = useState(false);
+  const [showWooSuggestions, setShowWooSuggestions] = useState(false);
+  const [selectedWooOrderPreview, setSelectedWooOrderPreview] = useState<SelectedWooOrderPreview | null>(null);
+  const wooLookupLoadedRef = useRef(false);
 
   // UI state
   const [searchQuery, setSearchQuery] = useState('');
@@ -198,6 +252,7 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
   const [showServiceModal, setShowServiceModal] = useState(false);
   const [showSourceModal, setShowSourceModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showOrderClassificationModal, setShowOrderClassificationModal] = useState(false);
 
   // Order Date state
   const [orderDateType, setOrderDateType] = useState<'today' | 'another'>('today');
@@ -223,13 +278,16 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
     const isToday = isSameDay(resolvedDate, new Date());
 
     setCustomerName(order.customerName ?? '');
+    setCustomerNote(order.customerNote ?? '');
     setCustomerEmail(order.customerEmail ?? '');
     setCustomerPhone(order.customerPhone ?? '');
     setDeliveryState(order.deliveryState ?? '');
     setDeliveryAddress(order.deliveryAddress ?? '');
+    setOrderTypeId(order.orderTypeId ?? orderTimelineSettings.orderTypes[0]?.id ?? orderTimelineSettings.defaultOrderType.id);
     setSelectedCustomerId(order.customerId ?? null);
     setSource(order.source || saleSources[0]?.name || '');
     setPaymentMethod(order.paymentMethod || paymentMethods[0]?.name || '');
+    setOrderClassification(order.orderClassification ?? 'Sale');
     setItems(order.items ?? []);
     setServices(order.services ?? []);
     setDeliveryFee(String(order.deliveryFee ?? 0));
@@ -238,6 +296,13 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
     setDiscountCode(order.discountCode ?? '');
     setDiscountAmount(order.discountAmount != null ? String(order.discountAmount) : '');
     setWebsiteOrderRef(order.websiteOrderReference ?? '');
+    setSelectedWooOrderPreview(order.websiteOrderReference
+      ? {
+        reference: order.websiteOrderReference,
+        customerName: order.customerName ?? '',
+        customerEmail: order.customerEmail ?? '',
+      }
+      : null);
     setOrderDateType(isToday ? 'today' : 'another');
     setSelectedDate(resolvedDate);
     setCalendarViewDate(resolvedDate);
@@ -245,7 +310,27 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
 
     originalItemsRef.current = order.items ?? [];
     setIsInitialized(true);
-  }, [order, isInitialized, paymentMethods, saleSources]);
+  }, [order, isInitialized, orderTimelineSettings.defaultOrderType.id, orderTimelineSettings.orderTypes, paymentMethods, saleSources]);
+
+  const availableOrderTypes = useMemo(() => {
+    return orderTimelineSettings.orderTypes;
+  }, [orderTimelineSettings.orderTypes]);
+
+  const resolvedOrderTimeline = useMemo(() => (
+    resolveOrderTimeline(
+      {
+        orderTypeId,
+        orderTypeName: order?.orderTypeName,
+        deliveryState,
+      },
+      orderTimelineSettings
+    )
+  ), [deliveryState, order?.orderTypeName, orderTimelineSettings, orderTypeId]);
+
+  const orderTimelinePreviewDate = useMemo(() => {
+    const baseDate = orderDateType === 'today' ? new Date() : selectedDate;
+    return addBusinessDays(new Date(baseDate), resolvedOrderTimeline.maxBusinessDays);
+  }, [orderDateType, resolvedOrderTimeline.maxBusinessDays, selectedDate]);
 
   // Search results - searches both product names and variant values
   // Excludes discontinued products
@@ -253,20 +338,21 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
     if (!searchQuery.trim()) return [];
     const query = searchQuery.toLowerCase();
 
-    const results: SearchResult[] = [];
+    const resultsByIdentity = new Map<string, SearchResult>();
     products
-      .filter((product) => !product.isDiscontinued) // Exclude discontinued products
+      .filter((product) => !product.isDiscontinued && !product.isArchived)
       .forEach((product) => {
         const isService = normalizeProductType(product.productType) === 'service';
         if (itemTypeTab === 'service' && !isService) return;
         if (itemTypeTab === 'product' && isService) return;
+        if (!isService && product.catalogSource === 'woocommerce-plugin') return;
         product.variants.forEach((variant) => {
           const variantName = Object.values(variant.variableValues).join(' ');
           const matchesProduct = product.name.toLowerCase().includes(query);
           const matchesVariant = variantName.toLowerCase().includes(query);
 
           if (matchesProduct || matchesVariant) {
-            results.push({
+            const result: SearchResult = {
               productId: product.id,
               productName: product.name,
               variantId: variant.id,
@@ -274,11 +360,16 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
               stock: variant.stock,
               price: variant.sellingPrice,
               isService,
-            });
+            };
+            const identity = getSearchResultIdentity(result);
+            const existing = resultsByIdentity.get(identity);
+            if (!existing || shouldPreferSearchResult(result, existing)) {
+              resultsByIdentity.set(identity, result);
+            }
           }
         });
       });
-    return results;
+    return Array.from(resultsByIdentity.values());
   }, [searchQuery, products, itemTypeTab]);
 
   // Customer search results
@@ -291,6 +382,12 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
       c.email.toLowerCase().includes(query)
     );
   }, [customerSearchQuery, customers]);
+
+  const filteredNigeriaStates = useMemo(() => {
+    const query = stateSearchQuery.trim().toLowerCase();
+    if (!query) return NIGERIA_STATES;
+    return NIGERIA_STATES.filter((state) => state.toLowerCase().includes(query));
+  }, [stateSearchQuery]);
 
   // Select existing customer to auto-fill
   const handleSelectCustomer = (customer: Customer) => {
@@ -463,6 +560,145 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
     toastTimer.current = setTimeout(() => setToast(null), 2200);
   };
 
+  const applyWooOrderLink = (wooOrder: WooNormalizedOrder) => {
+    setWebsiteOrderRef(wooOrder.websiteOrderReference);
+    setShowWooSuggestions(false);
+    setSelectedWooOrderPreview({
+      reference: wooOrder.websiteOrderReference,
+      customerName: wooOrder.customerName,
+      customerEmail: wooOrder.customerEmail,
+    });
+  };
+
+  const loadWooSuggestions = async () => {
+    if (
+      wooLookupLoadedRef.current
+      || isFetchingWooSuggestions
+      || !hasWooCommerceConnection
+      || !woocommerceStoreUrl
+      || !woocommerceConsumerKey
+      || !woocommerceConsumerSecret
+    ) {
+      return;
+    }
+
+    setIsFetchingWooSuggestions(true);
+    try {
+      const { orders: recentWooOrders } = await fetchWooCommerceOrders({
+        storeUrl: woocommerceStoreUrl,
+        consumerKey: woocommerceConsumerKey,
+        consumerSecret: woocommerceConsumerSecret,
+        limit: 50,
+      });
+      setWooLookupOrders(recentWooOrders);
+      wooLookupLoadedRef.current = true;
+    } catch {
+      // Keep edit form usable if suggestions fail.
+    } finally {
+      setIsFetchingWooSuggestions(false);
+    }
+  };
+
+  const handleWebsiteOrderRefChange = (value: string) => {
+    setWebsiteOrderRef(value);
+
+    if (
+      selectedWooOrderPreview
+      && normalizeWooLookupValue(selectedWooOrderPreview.reference) !== normalizeWooLookupValue(value)
+    ) {
+      setSelectedWooOrderPreview(null);
+    }
+
+    const hasValue = value.trim().length > 0;
+    setShowWooSuggestions(hasValue);
+    if (hasValue && !wooLookupLoadedRef.current) {
+      void loadWooSuggestions();
+    }
+  };
+
+  const handleSelectWooSuggestion = async (wooOrder: WooNormalizedOrder) => {
+    if (!businessId) {
+      showToast('error', 'No business selected.');
+      return;
+    }
+
+    setIsPullingWooOrder(true);
+    try {
+      applyWooOrderLink(wooOrder);
+      showToast('success', `Woo order ${wooOrder.websiteOrderReference} linked.`);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (selectionError) {
+      const message = selectionError instanceof Error && selectionError.message
+        ? selectionError.message
+        : 'Could not pull WooCommerce order.';
+      showToast('error', message);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setIsPullingWooOrder(false);
+    }
+  };
+
+  const wooSuggestions = useMemo(() => {
+    const lookup = normalizeWooLookupValue(websiteOrderRef);
+    if (!lookup) return [] as WooNormalizedOrder[];
+
+    return wooLookupOrders
+      .filter((entry) => {
+        const candidates = [
+          entry.websiteOrderReference,
+          entry.orderNumber,
+          entry.customerEmail,
+          entry.customerName,
+        ]
+          .map((value) => normalizeWooLookupValue(value))
+          .filter(Boolean);
+
+        return candidates.some((value) => value.includes(lookup));
+      })
+      .slice(0, 6);
+  }, [websiteOrderRef, wooLookupOrders]);
+
+  const handlePullWooOrder = async () => {
+    const reference = websiteOrderRef.trim();
+
+    if (!businessId) {
+      showToast('error', 'No business selected.');
+      return;
+    }
+
+    if (!reference) {
+      showToast('error', 'Enter a WooCommerce order ID first.');
+      return;
+    }
+
+    if (!hasWooCommerceConnection || !woocommerceStoreUrl || !woocommerceConsumerKey || !woocommerceConsumerSecret) {
+      showToast('error', 'Set up WooCommerce first in Settings.');
+      return;
+    }
+
+    setIsPullingWooOrder(true);
+
+    try {
+      const wooOrder = await fetchWooCommerceOrder({
+        storeUrl: woocommerceStoreUrl,
+        consumerKey: woocommerceConsumerKey,
+        consumerSecret: woocommerceConsumerSecret,
+        reference,
+      });
+      applyWooOrderLink(wooOrder);
+      showToast('success', `Woo order ${wooOrder.websiteOrderReference} linked to this order.`);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (pullError) {
+      const message = pullError instanceof Error && pullError.message
+        ? pullError.message
+        : 'Could not pull WooCommerce order.';
+      showToast('error', message);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setIsPullingWooOrder(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!order || !customerName.trim() || items.length === 0 || isSubmitting || submitGuard.current) return;
 
@@ -506,42 +742,70 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
 
       // Compute the order date - use today or selected date
       const orderDateValue = orderDateType === 'today' ? new Date() : selectedDate;
+      const resolvedTimeline = resolveOrderTimeline(
+        {
+          orderTypeId,
+          orderTypeName: order.orderTypeName,
+          deliveryState,
+        },
+        orderTimelineSettings
+      );
+      const fulfillmentStartedAt = orderDateValue.toISOString();
+      const nextOriginalEta = addBusinessDays(new Date(orderDateValue), resolvedTimeline.maxBusinessDays);
+      const preserveRevisedEta = Boolean(
+        order.fulfillmentEffectiveEta &&
+        order.fulfillmentOriginalEta &&
+        order.fulfillmentEffectiveEta !== order.fulfillmentOriginalEta
+      );
+      const nextEffectiveEta = preserveRevisedEta
+        ? order.fulfillmentEffectiveEta
+        : nextOriginalEta.toISOString();
 
       // Restore stock from the original order items
-      originalItemsRef.current.forEach((item) => {
-        const isService = isServiceOrderItem(item);
-        if (!isService) {
-          updateVariantStock(item.productId, item.variantId, item.quantity);
-        }
-      });
+      await Promise.all(
+        originalItemsRef.current.map((item) => {
+          const isService = isServiceOrderItem(item);
+          if (isService) return Promise.resolve();
+          return updateVariantStock(item.productId, item.variantId, item.quantity, businessId);
+        })
+      );
 
       // Deduct stock for the updated items
-      items.forEach((item) => {
-        const isService = isServiceOrderItem(item);
-        if (!isService) {
-          updateVariantStock(item.productId, item.variantId, -item.quantity);
-        }
-      });
+      await Promise.all(
+        items.map((item) => {
+          const isService = isServiceOrderItem(item);
+          if (isService) return Promise.resolve();
+          return updateVariantStock(item.productId, item.variantId, -item.quantity, businessId);
+        })
+      );
 
       await updateOrder(order.id, {
         websiteOrderReference: websiteOrderRef.trim() || undefined,
         customerId: resolvedCustomerId,
         customerName: customerName.trim(),
+        customerNote: customerNote.trim() || undefined,
         customerEmail: customerEmail.trim(),
         customerPhone: customerPhone.trim(),
         deliveryState,
         deliveryAddress: deliveryAddress.trim(),
+        orderTypeId: resolvedTimeline.orderType.id,
+        orderTypeName: resolvedTimeline.orderType.name,
         items,
         services,
         additionalCharges: additionalChargesNum,
         additionalChargesNote: additionalChargesNote.trim(),
         deliveryFee: deliveryFeeNum,
         discountCode: discountCode.trim() || undefined,
-        discountAmount: discountAmountNum || undefined,
-        paymentMethod,
-        source,
-        subtotal,
+      discountAmount: discountAmountNum || undefined,
+      paymentMethod,
+      orderClassification,
+      source,
+      subtotal,
         totalAmount,
+        fulfillmentStartedAt,
+        fulfillmentTimelineDays: resolvedTimeline.maxBusinessDays,
+        fulfillmentOriginalEta: nextOriginalEta.toISOString(),
+        fulfillmentEffectiveEta: nextEffectiveEta,
         orderDate: orderDateValue.toISOString(),
         updatedAt: new Date().toISOString(),
         updatedBy: currentUser?.name,
@@ -567,8 +831,8 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
     const variant = product?.variants.find((v) => v.id === item.variantId);
     const variantName = isService
       ? (product?.categories?.[0] ?? 'Service')
-      : (variant ? Object.values(variant.variableValues).join(' / ') : '');
-    return { productName: product?.name || 'Unknown', variantName, stock: variant?.stock || 0, isService, usesGlobalPricing };
+      : (variant ? Object.values(variant.variableValues).join(' / ') : (item.variantName ?? ''));
+    return { productName: product?.name || item.productName || 'Product unavailable', variantName, stock: variant?.stock || 0, isService, usesGlobalPricing };
   };
 
   const handleServiceVariableUpdate = (itemIndex: number, variableId: string, value: string) => {
@@ -687,6 +951,57 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
         className="flex-1"
       >
         {showHeader && (
+          isDesktopWeb ? (
+            <View style={{ backgroundColor: colors.bg.primary, borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
+              <View
+                style={{
+                  paddingHorizontal: 28,
+                  paddingTop: 20,
+                  paddingBottom: 12,
+                  width: '100%',
+                  maxWidth: webMaxWidth,
+                  alignSelf: 'flex-start',
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 18 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 }}>
+                    <Pressable
+                      onPress={handleClose}
+                      className="active:opacity-70"
+                      style={{ width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}
+                    >
+                      <ArrowLeft size={19} color={colors.text.primary} strokeWidth={2} />
+                    </Pressable>
+                    <Text style={{ color: colors.text.primary, fontSize: 22, fontWeight: '700' }} numberOfLines={1}>
+                      Edit Order
+                    </Text>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <Button
+                      onPress={handleClose}
+                      fullWidth={false}
+                      size="sm"
+                      variant="ghost"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onPress={handleSubmit}
+                      disabled={!customerName.trim() || items.length === 0 || isSubmitting}
+                      fullWidth={false}
+                      size="sm"
+                      variant="primary"
+                      loading={isSubmitting}
+                      loadingText="Saving..."
+                    >
+                      Save Changes
+                    </Button>
+                  </View>
+                </View>
+              </View>
+            </View>
+          ) : (
           <View
             className="flex-row items-center justify-between px-5 py-4"
             style={{ backgroundColor: colors.bg.primary, borderBottomWidth: 1, borderBottomColor: colors.border.light }}
@@ -701,10 +1016,11 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
             <Text style={{ color: colors.text.primary }} className="text-lg font-bold">Edit Order</Text>
             <View className="w-10 h-10" />
           </View>
+          )
         )}
 
-        <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-          {/* Customer Info Section */}
+        {(() => {
+          const coreDetailsSection = (
           <View className="mx-4 mt-4 rounded-2xl p-4" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
             <View className="flex-row items-center justify-between mb-4">
               <Text style={{ color: colors.text.primary }} className="font-bold text-base">Customer Information</Text>
@@ -737,7 +1053,7 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
                   />
                 </View>
                 {customerSearchResults.length > 0 && (
-                  <View className="mt-2 rounded-xl overflow-hidden border" style={{ borderColor: colors.input.border, backgroundColor: colors.input.bg }}>
+                  <View className="mt-2 rounded-xl overflow-hidden border" style={{ borderColor: softFieldBorderColor, backgroundColor: colors.input.bg }}>
                     {customerSearchResults.slice(0, 5).map((customer) => (
                       <Pressable
                         key={customer.id}
@@ -824,7 +1140,10 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
             <View className="mb-4">
               <Text style={labelTextStyle} className="text-sm font-medium mb-2">Delivery State</Text>
               <Pressable
-                onPress={() => setShowStateModal(true)}
+                onPress={() => {
+                  setShowStateModal(!showStateModal);
+                  if (showStateModal) setStateSearchQuery('');
+                }}
                 className="rounded-xl px-4 py-3 flex-row items-center justify-between"
                 style={inputContainerStyle}
               >
@@ -833,6 +1152,85 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
                 </Text>
                 <ChevronDown size={20} color={colors.text.tertiary} strokeWidth={2} />
               </Pressable>
+              {showStateModal && (
+                <View
+                  className="rounded-xl mt-2 overflow-hidden border"
+                  style={{ backgroundColor: colors.bg.card, borderColor: colors.border.light }}
+                >
+                  <View className="flex-row items-center px-3" style={{ borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
+                    <Search size={16} color={colors.input.placeholder} strokeWidth={2} />
+                    <TextInput
+                      placeholder="Search state"
+                      placeholderTextColor={colors.input.placeholder}
+                      value={stateSearchQuery}
+                      onChangeText={setStateSearchQuery}
+                      className="flex-1 px-2 py-3 text-sm"
+                      style={inputTextStyle}
+                    />
+                  </View>
+                  {Platform.OS === 'web' ? (
+                    <View style={{ maxHeight: 260, overflowY: 'auto' } as any}>
+                      {filteredNigeriaStates.length > 0 ? filteredNigeriaStates.map((state) => (
+                        <Pressable
+                          key={state}
+                          onPress={() => {
+                            setDeliveryState(state);
+                            setShowStateModal(false);
+                            setStateSearchQuery('');
+                          }}
+                          className="flex-row items-center justify-between px-4 py-2.5 border-b active:opacity-70"
+                          style={{ borderBottomColor: colors.border.light }}
+                        >
+                          <Text
+                            style={{ color: deliveryState === state ? colors.text.primary : colors.text.secondary }}
+                            className={cn('text-sm', deliveryState === state && 'font-semibold')}
+                          >
+                            {state}
+                          </Text>
+                          {deliveryState === state && <Check size={16} color={colors.text.primary} strokeWidth={2} />}
+                        </Pressable>
+                      )) : (
+                        <Text style={{ color: colors.text.tertiary, fontSize: 13, paddingHorizontal: 16, paddingVertical: 14 }}>
+                          No states match your search.
+                        </Text>
+                      )}
+                    </View>
+                  ) : (
+                    <ScrollView
+                      style={{ maxHeight: 260 }}
+                      showsVerticalScrollIndicator
+                      nestedScrollEnabled
+                      keyboardShouldPersistTaps="handled"
+                    >
+                      {filteredNigeriaStates.length > 0 ? filteredNigeriaStates.map((state) => (
+                        <Pressable
+                          key={state}
+                          onPress={() => {
+                            setDeliveryState(state);
+                            setShowStateModal(false);
+                            setStateSearchQuery('');
+                            Haptics.selectionAsync();
+                          }}
+                          className="flex-row items-center justify-between px-4 py-2.5 border-b active:opacity-70"
+                          style={{ borderBottomColor: colors.border.light }}
+                        >
+                          <Text
+                            style={{ color: deliveryState === state ? colors.text.primary : colors.text.secondary }}
+                            className={cn('text-sm', deliveryState === state && 'font-semibold')}
+                          >
+                            {state}
+                          </Text>
+                          {deliveryState === state && <Check size={16} color={colors.text.primary} strokeWidth={2} />}
+                        </Pressable>
+                      )) : (
+                        <Text style={{ color: colors.text.tertiary, fontSize: 13, paddingHorizontal: 16, paddingVertical: 14 }}>
+                          No states match your search.
+                        </Text>
+                      )}
+                    </ScrollView>
+                  )}
+                </View>
+              )}
             </View>
 
             <View className="mb-4">
@@ -850,20 +1248,170 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
             </View>
 
             <View className="mb-4">
+              <Text style={labelTextStyle} className="text-sm font-medium mb-2">Customer Note</Text>
+              <TextInput
+                placeholder="Add customer note (optional)"
+                placeholderTextColor={colors.input.placeholder}
+                value={customerNote}
+                onChangeText={setCustomerNote}
+                multiline
+                numberOfLines={3}
+                className="rounded-xl px-4 py-3 text-base"
+                style={[inputContainerStyle, inputTextStyle, { minHeight: 80, textAlignVertical: 'top' }]}
+              />
+            </View>
+          </View>
+          );
+
+          const orderMetaSection = (
+          <View className="mx-4 mt-4 rounded-2xl p-4" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
+            <Text style={{ color: colors.text.primary }} className="font-bold text-base mb-4">Order Type &amp; Reference</Text>
+
+            <View className="mb-4">
+              <Text style={labelTextStyle} className="text-sm font-medium mb-2">Order Type</Text>
+              <Pressable
+                onPress={() => setShowOrderTypeMenu((open) => !open)}
+                className="rounded-xl px-4 flex-row items-center justify-between active:opacity-70"
+                style={[inputContainerStyle, { minHeight: 48 }]}
+              >
+                <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '500' }} numberOfLines={1}>
+                  {resolvedOrderTimeline.orderType.name}
+                </Text>
+                <ChevronDown size={18} color={colors.text.tertiary} strokeWidth={2} />
+              </Pressable>
+              {showOrderTypeMenu ? (
+                <View
+                  className="mt-2 rounded-2xl overflow-hidden"
+                  style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+                >
+                  {availableOrderTypes.map((type, index) => {
+                    const isSelected = type.id === resolvedOrderTimeline.orderType.id;
+                    return (
+                      <Pressable
+                        key={`${type.id}-${type.shippingZoneId ?? 'global'}`}
+                        onPress={() => {
+                          if (Platform.OS !== 'web') Haptics.selectionAsync();
+                          setOrderTypeId(type.id);
+                          setShowOrderTypeMenu(false);
+                        }}
+                        className="flex-row items-center justify-between px-4 py-3 active:opacity-70"
+                        style={index > 0 ? { borderTopWidth: 1, borderTopColor: colors.border.light } : undefined}
+                      >
+                        <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: isSelected ? '600' : '400' }}>
+                          {type.name}
+                        </Text>
+                        {isSelected ? <Check size={16} color={colors.text.primary} strokeWidth={2.4} /> : null}
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ) : null}
+              <View
+                className="mt-3 rounded-2xl p-4 border"
+                style={{ backgroundColor: colors.bg.secondary, borderColor: colors.border.light }}
+              >
+                <Text style={{ color: colors.text.primary }} className="text-sm font-bold">
+                  Estimated delivery: {orderTimelinePreviewDate.toLocaleDateString(undefined, {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                  })}
+                </Text>
+                <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1">
+                  {resolvedOrderTimeline.minBusinessDays}-{resolvedOrderTimeline.maxBusinessDays} total business days
+                  {resolvedOrderTimeline.shippingZone ? ` · ${resolvedOrderTimeline.shippingZone.name}` : ''}
+                </Text>
+                <Text style={{ color: colors.text.muted }} className="text-xs mt-1">
+                  {resolvedOrderTimeline.shippingZone
+                    ? `${resolvedOrderTimeline.orderType.minBusinessDays}-${resolvedOrderTimeline.orderType.maxBusinessDays} processing days + ${resolvedOrderTimeline.shippingZone.minBusinessDays}-${resolvedOrderTimeline.shippingZone.maxBusinessDays} delivery days`
+                    : `${resolvedOrderTimeline.orderType.minBusinessDays}-${resolvedOrderTimeline.orderType.maxBusinessDays} processing days`}
+                </Text>
+              </View>
+            </View>
+
+            <View>
               <Text style={labelTextStyle} className="text-sm font-medium mb-2">Website Order Ref (WooCommerce)</Text>
               <TextInput
-                placeholder="e.g. WC #10234 (optional)"
+                placeholder="e.g. 47581 or WC-47581"
                 placeholderTextColor={colors.input.placeholder}
                 value={websiteOrderRef}
-                onChangeText={setWebsiteOrderRef}
+                onChangeText={handleWebsiteOrderRefChange}
+                onFocus={() => {
+                  setShowWooSuggestions(Boolean(websiteOrderRef.trim()));
+                  if (!wooLookupLoadedRef.current) {
+                    void loadWooSuggestions();
+                  }
+                }}
                 className="rounded-xl px-4 h-[52px] text-base"
                 style={[inputContainerStyle, inputTextStyle]}
               />
+
+              {showWooSuggestions && (wooSuggestions.length > 0 || isFetchingWooSuggestions) ? (
+                <View
+                  className="mt-2 rounded-2xl overflow-hidden"
+                  style={{
+                    backgroundColor: colors.bg.primary,
+                    borderWidth: 1,
+                    borderColor: colors.border.light,
+                  }}
+                >
+                  {isFetchingWooSuggestions && wooSuggestions.length === 0 ? (
+                    <View className="px-4 py-3 flex-row items-center">
+                      <ActivityIndicator size="small" color={colors.text.primary} />
+                      <Text className="ml-3 text-sm" style={{ color: colors.text.secondary }}>
+                        Loading WooCommerce orders...
+                      </Text>
+                    </View>
+                  ) : null}
+                  {wooSuggestions.map((wooOrder, index) => (
+                    <Pressable
+                      key={`${wooOrder.externalId}-${wooOrder.websiteOrderReference}`}
+                      onPress={() => {
+                        void handleSelectWooSuggestion(wooOrder);
+                      }}
+                      className="px-4 py-3 active:opacity-70"
+                      style={{
+                        borderTopWidth: index === 0 ? 0 : 1,
+                        borderTopColor: colors.border.light,
+                      }}
+                    >
+                      <Text className="text-sm font-semibold" style={{ color: colors.text.primary }}>
+                        {wooOrder.websiteOrderReference}
+                      </Text>
+                      <Text className="mt-1 text-xs" style={{ color: colors.text.secondary }}>
+                        {wooOrder.customerEmail || wooOrder.customerName || 'No customer email'}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
+
+              {selectedWooOrderPreview ? (
+                <View
+                  className="mt-2 rounded-2xl p-3"
+                  style={{
+                    backgroundColor: colors.bg.secondary,
+                    borderWidth: 1,
+                    borderColor: colors.border.light,
+                  }}
+                >
+                  <Text className="text-xs font-semibold uppercase tracking-wider" style={{ color: colors.text.tertiary }}>
+                    Woo order selected
+                  </Text>
+                  <Text className="mt-1 text-sm font-semibold" style={{ color: colors.text.primary }}>
+                    {selectedWooOrderPreview.reference}
+                  </Text>
+                  <Text className="mt-1 text-xs" style={{ color: colors.text.secondary }}>
+                    {selectedWooOrderPreview.customerEmail || selectedWooOrderPreview.customerName}
+                  </Text>
+                </View>
+              ) : null}
             </View>
 
           </View>
+          );
 
-          {/* Items Section */}
+          const itemsSection = (
           <View className="mx-4 mt-4 rounded-2xl p-4" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
             <View className="flex-row items-center justify-between mb-4">
               <Text style={{ color: colors.text.primary }} className="font-bold text-base">Items *</Text>
@@ -877,7 +1425,7 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
                   style={{
                     backgroundColor: itemTypeTab === 'product' && showProductSearch ? colors.text.primary : 'transparent',
                     borderWidth: 1.5,
-                    borderColor: itemTypeTab === 'product' && showProductSearch ? colors.text.primary : colors.input.border,
+                    borderColor: itemTypeTab === 'product' && showProductSearch ? colors.text.primary : softFieldBorderColor,
                   }}
                 >
                   <Plus
@@ -901,7 +1449,7 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
                   style={{
                     backgroundColor: itemTypeTab === 'service' && showProductSearch ? colors.text.primary : 'transparent',
                     borderWidth: 1.5,
-                    borderColor: itemTypeTab === 'service' && showProductSearch ? colors.text.primary : colors.input.border,
+                    borderColor: itemTypeTab === 'service' && showProductSearch ? colors.text.primary : softFieldBorderColor,
                   }}
                 >
                   <Plus
@@ -940,7 +1488,7 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
                 </View>
 
                 {searchResults.length > 0 && (
-                  <View className="mt-2 rounded-xl border max-h-60" style={{ backgroundColor: colors.input.bg, borderColor: colors.input.border }}>
+                  <View className="mt-2 rounded-xl border max-h-60" style={{ backgroundColor: colors.input.bg, borderColor: softFieldBorderColor }}>
                     <ScrollView nestedScrollEnabled>
                       {searchResults.map((result) => {
                         const isSelected = items.some(
@@ -1007,7 +1555,14 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
                           </Text>
                         </View>
 
-                        <View className="flex-row items-center rounded-lg" style={{ backgroundColor: colors.bg.secondary }}>
+                        <View
+                          className="flex-row items-center rounded-full"
+                          style={{
+                            backgroundColor: colors.bg.secondary,
+                            borderWidth: 1,
+                            borderColor: colors.border.light,
+                          }}
+                        >
                           <Pressable
                             onPress={() => handleUpdateQuantity(index, -1)}
                             className="p-2 active:opacity-50"
@@ -1226,9 +1781,9 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
               </View>
             )}
           </View>
+          );
 
-          {/* Add-ons Section */}
-          {items.length > 0 && (
+          const addonsSection = items.length > 0 ? (
           <View className="mx-4 mt-4 rounded-2xl p-4" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
             <View className="flex-row items-center justify-between mb-4">
               <Text style={{ color: colors.text.primary }} className="font-bold text-base">Add-ons</Text>
@@ -1238,7 +1793,7 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
                 style={{
                   backgroundColor: 'transparent',
                   borderWidth: 1.5,
-                  borderColor: colors.input.border,
+                  borderColor: softFieldBorderColor,
                 }}
               >
                 <Plus size={16} color={colors.text.secondary} strokeWidth={2} />
@@ -1274,9 +1829,9 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
               <Text style={{ color: colors.text.muted }} className="text-sm text-center py-4">No add-ons added</Text>
             )}
           </View>
-          )}
+          ) : null;
 
-          {/* Fees & Charges Section */}
+          const feesSection = (
           <View className="mx-4 mt-4 rounded-2xl p-4" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
             <Text style={{ color: colors.text.primary }} className="font-bold text-base mb-4">Fees & Charges</Text>
 
@@ -1333,15 +1888,16 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
               />
             </View>
           </View>
+          );
 
-          {/* Order Details Section */}
+          const orderDetailsSection = (
           <View className="mx-4 mt-4 rounded-2xl p-4" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
             <Text style={{ color: colors.text.primary }} className="font-bold text-base mb-4">Order Details</Text>
 
             {/* Order Date */}
             <View className="mb-4">
               <Text style={labelTextStyle} className="text-sm font-medium mb-2">Order Date</Text>
-              <View className="flex-row rounded-xl overflow-hidden border" style={{ borderColor: colors.input.border }}>
+              <View className="flex-row rounded-xl overflow-hidden border" style={{ borderColor: softFieldBorderColor }}>
                 <Pressable
                   onPress={() => {
                     if (Platform.OS !== 'web') Haptics.selectionAsync();
@@ -1401,29 +1957,129 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
             <View className="mb-4">
               <Text style={labelTextStyle} className="text-sm font-medium mb-2">Sales Source</Text>
               <Pressable
-                onPress={() => setShowSourceModal(true)}
+                onPress={() => setShowSourceModal(!showSourceModal)}
                 className="rounded-xl px-4 py-3 flex-row items-center justify-between"
                 style={inputContainerStyle}
               >
                 <Text style={{ color: colors.input.text }} className="text-base">{source}</Text>
                 <ChevronDown size={20} color={colors.text.tertiary} strokeWidth={2} />
               </Pressable>
+              {showSourceModal && (
+                <ScrollView
+                  className="rounded-xl mt-2 overflow-hidden border"
+                  style={{ backgroundColor: colors.bg.card, borderColor: colors.border.light, maxHeight: 220 }}
+                  showsVerticalScrollIndicator={false}
+                  nestedScrollEnabled
+                >
+                  {saleSources.map((s) => (
+                    <Pressable
+                      key={s.id}
+                      onPress={() => {
+                        setSource(s.name);
+                        setShowSourceModal(false);
+                        if (Platform.OS !== 'web') Haptics.selectionAsync();
+                      }}
+                      className="flex-row items-center justify-between px-4 py-2.5 border-b active:opacity-70"
+                      style={{ borderBottomColor: colors.border.light }}
+                    >
+                      <Text
+                        style={{ color: source === s.name ? colors.text.primary : colors.text.secondary }}
+                        className={cn('text-sm', source === s.name && 'font-semibold')}
+                      >
+                        {s.name}
+                      </Text>
+                      {source === s.name && <Check size={16} color={colors.text.primary} strokeWidth={2} />}
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              )}
+            </View>
+
+            <View className="mb-4">
+              <Text style={labelTextStyle} className="text-sm font-medium mb-2">Order Category</Text>
+              <Pressable
+                onPress={() => setShowOrderClassificationModal(!showOrderClassificationModal)}
+                className="rounded-xl px-4 py-3 flex-row items-center justify-between"
+                style={inputContainerStyle}
+              >
+                <Text style={{ color: colors.input.text }} className="text-base">{orderClassification}</Text>
+                <ChevronDown size={20} color={colors.text.tertiary} strokeWidth={2} />
+              </Pressable>
+              {showOrderClassificationModal && (
+                <ScrollView
+                  className="rounded-xl mt-2 overflow-hidden border"
+                  style={{ backgroundColor: colors.bg.card, borderColor: colors.border.light, maxHeight: 220 }}
+                  showsVerticalScrollIndicator={false}
+                  nestedScrollEnabled
+                >
+                  {ORDER_CLASSIFICATIONS.map((classification) => (
+                    <Pressable
+                      key={classification}
+                      onPress={() => {
+                        setOrderClassification(classification);
+                        setShowOrderClassificationModal(false);
+                        if (Platform.OS !== 'web') Haptics.selectionAsync();
+                      }}
+                      className="flex-row items-center justify-between px-4 py-2.5 border-b active:opacity-70"
+                      style={{ borderBottomColor: colors.border.light }}
+                    >
+                      <Text
+                        style={{ color: orderClassification === classification ? colors.text.primary : colors.text.secondary }}
+                        className={cn('text-sm', orderClassification === classification && 'font-semibold')}
+                      >
+                        {classification}
+                      </Text>
+                      {orderClassification === classification && <Check size={16} color={colors.text.primary} strokeWidth={2} />}
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              )}
             </View>
 
             <View>
               <Text style={labelTextStyle} className="text-sm font-medium mb-2">Payment Method</Text>
               <Pressable
-                onPress={() => setShowPaymentModal(true)}
+                onPress={() => setShowPaymentModal(!showPaymentModal)}
                 className="rounded-xl px-4 py-3 flex-row items-center justify-between"
                 style={inputContainerStyle}
               >
                 <Text style={{ color: colors.input.text }} className="text-base">{paymentMethod}</Text>
                 <ChevronDown size={20} color={colors.text.tertiary} strokeWidth={2} />
               </Pressable>
+              {showPaymentModal && (
+                <ScrollView
+                  className="rounded-xl mt-2 overflow-hidden border"
+                  style={{ backgroundColor: colors.bg.card, borderColor: colors.border.light, maxHeight: 220 }}
+                  showsVerticalScrollIndicator={false}
+                  nestedScrollEnabled
+                >
+                  {paymentMethods.map((m) => (
+                    <Pressable
+                      key={m.id}
+                      onPress={() => {
+                        setPaymentMethod(m.name);
+                        setShowPaymentModal(false);
+                        if (Platform.OS !== 'web') Haptics.selectionAsync();
+                      }}
+                      className="flex-row items-center justify-between px-4 py-2.5 border-b active:opacity-70"
+                      style={{ borderBottomColor: colors.border.light }}
+                    >
+                      <Text
+                        style={{ color: paymentMethod === m.name ? colors.text.primary : colors.text.secondary }}
+                        className={cn('text-sm', paymentMethod === m.name && 'font-semibold')}
+                      >
+                        {m.name}
+                      </Text>
+                      {paymentMethod === m.name && <Check size={16} color={colors.text.primary} strokeWidth={2} />}
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              )}
             </View>
           </View>
+          );
 
-          {/* Order Summary */}
+          const summarySection = (
           <View className="mx-4 mt-4 mb-8 rounded-2xl p-4" style={{ backgroundColor: '#111111' }}>
             <Text className="text-white font-bold text-base mb-3">Order Summary</Text>
 
@@ -1465,70 +2121,44 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
               <Text className="text-white font-bold text-2xl">{formatCurrency(totalAmount)}</Text>
             </View>
           </View>
+          );
 
-          {/* Bottom padding for sticky CTA */}
-          <View className="h-32" />
-        </ScrollView>
-      </KeyboardAvoidingView>
-
-      {/* State Selection Modal - Centered */}
-      <Modal visible={showStateModal} animationType="fade" transparent onRequestClose={() => setShowStateModal(false)}>
-        <View
-          className="flex-1 items-center justify-center"
-          style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)' }}
-        >
-          <Pressable
-            className="absolute inset-0"
-            onPress={() => setShowStateModal(false)}
-          />
-          <View
-            className="w-[90%] rounded-2xl overflow-hidden"
-            style={{ backgroundColor: '#111111', maxHeight: '70%', maxWidth: 400 }}
-          >
-            <View className="flex-row items-center justify-between px-5 py-4 border-b" style={{ borderBottomColor: '#333333' }}>
-              <Text className="text-white font-bold text-lg">Select State</Text>
-              <Pressable
-                onPress={() => setShowStateModal(false)}
-                className="w-8 h-8 rounded-full items-center justify-center active:opacity-50"
-                style={{ backgroundColor: '#222222' }}
-              >
-                <X size={18} color="#888888" strokeWidth={2} />
-              </Pressable>
-            </View>
-            <ScrollView
-              className="px-5 py-4"
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              bounces={true}
-              overScrollMode="always"
-            >
-              {NIGERIA_STATES.map((state) => (
-                <Pressable
-                  key={state}
-                  onPress={() => {
-                    setDeliveryState(state);
-                    setShowStateModal(false);
-                    Haptics.selectionAsync();
-                  }}
-                  className="py-3 px-4 rounded-xl mb-2 active:opacity-70"
-                  style={{ backgroundColor: deliveryState === state ? 'rgba(255,255,255,0.1)' : '#1A1A1A' }}
-                >
-                  <View className="flex-row items-center justify-between">
-                    <Text className={cn(
-                      'text-base',
-                      deliveryState === state ? 'text-white font-semibold' : 'text-gray-400'
-                    )}>
-                      {state}
-                    </Text>
-                    {deliveryState === state && <Check size={20} color="#FFFFFF" strokeWidth={2} />}
+          return (
+            <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
+              {isDesktopWeb ? (
+                <View style={{ width: '100%', maxWidth: webMaxWidth, alignSelf: 'flex-start', paddingHorizontal: 28, paddingBottom: 56 }}>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      {coreDetailsSection}
+                      {itemsSection}
+                      {addonsSection}
+                      {feesSection}
+                    </View>
+                    <View style={{ width: rightColumnWidth ?? 420 }}>
+                      {orderMetaSection}
+                      {orderDetailsSection}
+                      {summarySection}
+                    </View>
                   </View>
-                </Pressable>
-              ))}
-              <View className="h-4" />
+                </View>
+              ) : (
+                <>
+                  {coreDetailsSection}
+                  {orderMetaSection}
+                  {itemsSection}
+                  {addonsSection}
+                  {feesSection}
+                  {orderDetailsSection}
+                  {summarySection}
+                </>
+              )}
+
+              {/* Bottom padding for sticky CTA */}
+              {!isDesktopWeb && <View className="h-32" />}
             </ScrollView>
-          </View>
-        </View>
-      </Modal>
+          );
+        })()}
+      </KeyboardAvoidingView>
 
       {/* Service Selection Modal - Centered */}
       <Modal visible={showServiceModal} animationType="fade" transparent onRequestClose={() => setShowServiceModal(false)}>
@@ -1610,7 +2240,7 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
                 onChangeText={setServicePriceInput}
                 keyboardType="numeric"
                 className="rounded-xl px-4 py-3 text-base"
-                style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.input.border, color: colors.input.text }}
+                style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: softFieldBorderColor, color: colors.input.text }}
               />
               <View className="flex-row gap-3 mt-4">
                 <Pressable
@@ -1629,122 +2259,6 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
                 </Pressable>
               </View>
             </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Source Selection Modal - Centered */}
-      <Modal visible={showSourceModal} animationType="fade" transparent onRequestClose={() => setShowSourceModal(false)}>
-        <View
-          className="flex-1 items-center justify-center"
-          style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)' }}
-        >
-          <Pressable
-            className="absolute inset-0"
-            onPress={() => setShowSourceModal(false)}
-          />
-          <View
-            className="w-[90%] rounded-2xl overflow-hidden"
-            style={{ backgroundColor: '#111111', maxWidth: 400, maxHeight: '70%' }}
-          >
-            <View className="flex-row items-center justify-between px-5 py-4 border-b" style={{ borderBottomColor: '#333333' }}>
-              <Text className="text-white font-bold text-lg">Sales Source</Text>
-              <Pressable
-                onPress={() => setShowSourceModal(false)}
-                className="w-8 h-8 rounded-full items-center justify-center active:opacity-50"
-                style={{ backgroundColor: '#222222' }}
-              >
-                <X size={18} color="#888888" strokeWidth={2} />
-              </Pressable>
-            </View>
-            <ScrollView
-              className="px-5 py-4"
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              bounces={true}
-            >
-              {saleSources.map((s) => (
-                <Pressable
-                  key={s.id}
-                  onPress={() => {
-                    setSource(s.name);
-                    setShowSourceModal(false);
-                    Haptics.selectionAsync();
-                  }}
-                  className="py-3 px-4 rounded-xl mb-2 active:opacity-70"
-                  style={{ backgroundColor: source === s.name ? 'rgba(255,255,255,0.1)' : '#1A1A1A' }}
-                >
-                  <View className="flex-row items-center justify-between">
-                    <Text className={cn(
-                      'text-base',
-                      source === s.name ? 'text-white font-semibold' : 'text-gray-400'
-                    )}>
-                      {s.name}
-                    </Text>
-                    {source === s.name && <Check size={20} color="#FFFFFF" strokeWidth={2} />}
-                  </View>
-                </Pressable>
-              ))}
-              <View className="h-4" />
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Payment Method Modal - Centered */}
-      <Modal visible={showPaymentModal} animationType="fade" transparent onRequestClose={() => setShowPaymentModal(false)}>
-        <View
-          className="flex-1 items-center justify-center"
-          style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)' }}
-        >
-          <Pressable
-            className="absolute inset-0"
-            onPress={() => setShowPaymentModal(false)}
-          />
-          <View
-            className="w-[90%] rounded-2xl overflow-hidden"
-            style={{ backgroundColor: '#111111', maxWidth: 400, maxHeight: '70%' }}
-          >
-            <View className="flex-row items-center justify-between px-5 py-4 border-b" style={{ borderBottomColor: '#333333' }}>
-              <Text className="text-white font-bold text-lg">Payment Method</Text>
-              <Pressable
-                onPress={() => setShowPaymentModal(false)}
-                className="w-8 h-8 rounded-full items-center justify-center active:opacity-50"
-                style={{ backgroundColor: '#222222' }}
-              >
-                <X size={18} color="#888888" strokeWidth={2} />
-              </Pressable>
-            </View>
-            <ScrollView
-              className="px-5 py-4"
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              bounces={true}
-            >
-              {paymentMethods.map((m) => (
-                <Pressable
-                  key={m.id}
-                  onPress={() => {
-                    setPaymentMethod(m.name);
-                    setShowPaymentModal(false);
-                    Haptics.selectionAsync();
-                  }}
-                  className="py-3 px-4 rounded-xl mb-2 active:opacity-70"
-                  style={{ backgroundColor: paymentMethod === m.name ? 'rgba(255,255,255,0.1)' : '#1A1A1A' }}
-                >
-                  <View className="flex-row items-center justify-between">
-                    <Text className={cn(
-                      'text-base',
-                      paymentMethod === m.name ? 'text-white font-semibold' : 'text-gray-400'
-                    )}>
-                      {m.name}
-                    </Text>
-                    {paymentMethod === m.name && <Check size={20} color="#FFFFFF" strokeWidth={2} />}
-                  </View>
-                </Pressable>
-              ))}
-              <View className="h-4" />
-            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -2016,16 +2530,18 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
       </Modal>
 
       {/* Sticky Bottom CTA */}
-      <StickyButtonContainer bottomInset={insets.bottom}>
-        <Button
-          onPress={handleSubmit}
-          disabled={!customerName.trim() || items.length === 0}
-          loading={isSubmitting}
-          loadingText="Saving..."
-        >
-          Save Changes
-        </Button>
-      </StickyButtonContainer>
+      {!isDesktopWeb && (
+        <StickyButtonContainer bottomInset={insets.bottom}>
+          <Button
+            onPress={handleSubmit}
+            disabled={!customerName.trim() || items.length === 0}
+            loading={isSubmitting}
+            loadingText="Saving..."
+          >
+            Save Changes
+          </Button>
+        </StickyButtonContainer>
+      )}
 
       {toast && (
         <View

@@ -1,8 +1,9 @@
 import React, { useState, useCallback, ReactNode } from 'react';
-import { View, ScrollView, Pressable, Text, Image, Modal, Platform } from 'react-native';
+import { View, ScrollView, Pressable, Text, Modal, Platform } from 'react-native';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { useThemeColors } from '@/lib/theme';
 import { X, ChevronRight, PanelLeftClose, PanelLeftOpen, Package } from 'lucide-react-native';
+import { ResolvedAttachmentImage } from './ResolvedAttachmentImage';
 
 interface SplitViewLayoutProps {
   children: ReactNode;
@@ -252,22 +253,23 @@ interface DetailSectionProps {
   titleRight?: ReactNode;
   children: ReactNode;
   noCard?: boolean;
+  titleBottomSpacing?: number;
 }
 
-export function DetailSection({ title, titleRight, children, noCard = false }: DetailSectionProps) {
+export function DetailSection({ title, titleRight, children, noCard = false, titleBottomSpacing = 12 }: DetailSectionProps) {
   const colors = useThemeColors();
 
   return (
     <View style={{ paddingHorizontal: 20, paddingTop: 16 }}>
       {title && (
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: titleBottomSpacing }}>
           <Text
             style={{
               color: colors.text.tertiary,
-              fontSize: 12,
-              fontWeight: '600',
+              fontSize: 10,
+              fontWeight: '500',
               textTransform: 'uppercase',
-              letterSpacing: 0.5,
+              letterSpacing: 1.2,
             }}
           >
             {title}
@@ -337,8 +339,8 @@ export function DetailImagePreview({ imageUrl, onPress }: DetailImagePreviewProp
           backgroundColor: colors.bg.tertiary,
         }}
       >
-        <Image
-          source={{ uri: imageUrl }}
+        <ResolvedAttachmentImage
+          imageUrl={imageUrl}
           style={{ width: '100%', height: '100%' }}
           resizeMode="cover"
         />
@@ -375,8 +377,8 @@ export function DetailImagePreview({ imageUrl, onPress }: DetailImagePreviewProp
           }}
           onPress={() => setShowFullImage(false)}
         >
-          <Image
-            source={{ uri: imageUrl }}
+          <ResolvedAttachmentImage
+            imageUrl={imageUrl}
             style={{ width: '90%', height: '70%' }}
             resizeMode="contain"
           />
@@ -474,12 +476,12 @@ export function DetailKeyValue({ label, value, valueColor }: DetailKeyValueProps
         paddingVertical: 8,
       }}
     >
-      <Text style={{ color: colors.text.tertiary, fontSize: 14 }}>{label}</Text>
+      <Text style={{ color: colors.text.tertiary, fontSize: 12 }}>{label}</Text>
       <Text
         style={{
           color: valueColor || colors.text.primary,
-          fontSize: 14,
-          fontWeight: '600',
+          fontSize: 12,
+          fontWeight: '400',
         }}
       >
         {value}

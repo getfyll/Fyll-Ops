@@ -1,13 +1,13 @@
-import React, { useMemo, useEffect, useState } from 'react';
-import { View, Text, Pressable, ScrollView, Platform } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View, Text, Pressable, ScrollView, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Printer, Share2 } from 'lucide-react-native';
+import { ArrowLeft, ListPlus, Printer, Check } from 'lucide-react-native';
 import useFyllStore, { ProductVariant } from '@/lib/state/fyll-store';
 import { useThemeColors } from '@/lib/theme';
+import { addFyllPrintQueueItem, createInventoryPrintQueueItems } from '@/lib/fyll-print-queue';
 import * as Haptics from 'expo-haptics';
 import * as Print from 'expo-print';
-import * as Sharing from 'expo-sharing';
 import Svg, { Rect } from 'react-native-svg';
 import { generateQrMatrix, generateQrSvg } from '@/lib/qrcode';
 
@@ -26,9 +26,8 @@ const PRODUCT_LABEL_SIZE_PRESETS: {
   widthMm: number;
   heightMm: number;
 }[] = [
-  { id: '30x50', label: '30x50mm', widthMm: 30, heightMm: 50 },
+  { id: '50x30', label: '50x30mm · Standard', widthMm: 50, heightMm: 30 },
   { id: '40x30', label: '40x30mm', widthMm: 40, heightMm: 30 },
-  { id: '50x30', label: '50x30mm', widthMm: 50, heightMm: 30 },
 ];
 
 export default function LabelPrintScreen() {
@@ -36,7 +35,10 @@ export default function LabelPrintScreen() {
   const router = useRouter();
   const { productId, variantId, bulk } = useLocalSearchParams<{ productId: string; variantId?: string; bulk?: string }>();
   const isBulk = bulk === '1';
-  const [selectedLabelSizeId, setSelectedLabelSizeId] = useState<string>('30x50');
+  const [selectedLabelSizeId, setSelectedLabelSizeId] = useState<string>('50x30');
+  const [isPrinting, setIsPrinting] = useState(false);
+  const [isQueueing, setIsQueueing] = useState(false);
+  const [queueNotice, setQueueNotice] = useState(false);
 
   const products = useFyllStore((s) => s.products);
   const selectedLabelSize = useMemo(
@@ -56,42 +58,6 @@ export default function LabelPrintScreen() {
   const getFullName = (variant: ProductVariant) => `${product?.name ?? ''} — ${getVariantName(variant)}`;
   const getProductCode = (variant: ProductVariant) => variant.barcode || variant.sku || 'fyll';
 
-  // Inject print styles for web to hide everything except the label preview
-  useEffect(() => {
-    if (Platform.OS === 'web' && typeof document !== 'undefined') {
-      const styleId = 'label-print-styles';
-      let styleEl = document.getElementById(styleId);
-
-      if (!styleEl) {
-        styleEl = document.createElement('style');
-        styleEl.id = styleId;
-        styleEl.textContent = `
-          @media print {
-            body * {
-              visibility: hidden !important;
-            }
-            .printable-label-container,
-            .printable-label-container * {
-              visibility: visible !important;
-            }
-            .printable-label-container {
-              position: absolute !important;
-              left: 50% !important;
-              top: 50% !important;
-              transform: translate(-50%, -50%) !important;
-            }
-          }
-        `;
-        document.head.appendChild(styleEl);
-      }
-
-      return () => {
-        const el = document.getElementById(styleId);
-        if (el) el.remove();
-      };
-    }
-  }, []);
-
   if (!product || variantsToPrint.length === 0) {
     return (
       <SafeAreaView className="flex-1 items-center justify-center" style={{ backgroundColor: colors.bg.primary }}>
@@ -107,25 +73,41 @@ export default function LabelPrintScreen() {
     targets: ProductVariant[],
     size: { widthMm: number; heightMm: number },
   ) => {
-    const targetWidthMm = Number.isFinite(size.widthMm) && size.widthMm > 0 ? size.widthMm : 30;
-    const targetHeightMm = Number.isFinite(size.heightMm) && size.heightMm > 0 ? size.heightMm : 50;
-    const qrSizeMm = Math.max(16, Math.min(targetWidthMm - 6, targetHeightMm - 20, 24));
+    const targetWidthMm = Number.isFinite(size.widthMm) && size.widthMm > 0 ? size.widthMm : 50;
+    const targetHeightMm = Number.isFinite(size.heightMm) && size.heightMm > 0 ? size.heightMm : 30;
+    const isLandscape = targetWidthMm >= targetHeightMm;
+    const qrSizeMm = isLandscape
+      ? Math.max(14, Math.min(targetHeightMm - 8, 22))
+      : Math.max(14, Math.min(targetWidthMm - 8, 24));
 
     const labels = targets
       .map((item, index) => {
         const productCode = getProductCode(item);
         const qrSvg = productCode ? generateQrSvg(productCode, Math.round(qrSizeMm * 1.8)) : '';
-        const safeSku = escapeHtml(item.sku ?? '');
+        const safeSku = escapeHtml(item.sku || productCode);
         const safeName = escapeHtml(getFullName(item));
         const pageBreak = index < targets.length - 1 ? 'page-break-after: always;' : '';
+        const qrCell = `
+          <td class="qr-cell">
+            <div class="qr-wrap">${qrSvg.replace('<svg ', '<svg class="qr" ')}</div>
+            <div class="code-text">${escapeHtml(productCode)}</div>
+          </td>
+        `;
+        const textCell = `
+          <td class="text-cell">
+            <div class="sku">${safeSku}</div>
+            <div class="product-name">${safeName}</div>
+          </td>
+        `;
+        // Landscape uses a single row (QR beside text); portrait stacks them as two rows.
+        // Either way this is a plain HTML table, not Flexbox/Grid — see note in the <style> block.
+        const rowTable = isLandscape
+          ? `<table class="row-table"><tr>${qrCell}${textCell}</tr></table>`
+          : `<table class="row-table"><tr>${qrCell}</tr><tr>${textCell}</tr></table>`;
 
         return `
           <div class="label-page" style="${pageBreak}">
-            <div class="label">
-              ${qrSvg.replace('<svg ', '<svg class="qr" ')}
-              <div class="sku">${safeSku}</div>
-              <div class="product-name">${safeName}</div>
-            </div>
+            <div class="label">${rowTable}</div>
           </div>
         `;
       })
@@ -142,25 +124,30 @@ export default function LabelPrintScreen() {
               size: ${targetWidthMm}mm ${targetHeightMm}mm;
               margin: 0;
             }
-            * {
+            *, *::before, *::after {
               margin: 0;
               padding: 0;
               box-sizing: border-box;
             }
             body {
-              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+              font-family: Arial, Helvetica, sans-serif;
               width: ${targetWidthMm}mm;
               height: ${targetHeightMm}mm;
               padding: 0;
               background: #fff;
+              color: #000;
             }
+            /*
+              Layout uses a plain HTML table, not Flexbox or CSS Grid — iOS's native print/PDF
+              export pipeline (used when saving to Files or sharing a PDF from the system print
+              sheet) has proven unreliable with both. Tables are the one technique with truly
+              universal support across PDF renderers.
+            */
             .label-page {
               width: ${targetWidthMm}mm;
               height: ${targetHeightMm}mm;
-              padding: 1.5mm;
-              display: flex;
-              align-items: center;
-              justify-content: center;
+              padding: 1.3mm;
+              overflow: hidden;
             }
             .label-page:last-child {
               page-break-after: auto;
@@ -168,33 +155,42 @@ export default function LabelPrintScreen() {
             .label {
               width: 100%;
               height: 100%;
-              border: 1px solid #E5E7EB;
-              border-radius: 3px;
-              display: flex;
-              flex-direction: column;
-              align-items: center;
-              justify-content: center;
-              padding: 1mm;
+              border: 0.4mm solid #000;
+              border-radius: 1.5mm;
+              padding: 1.5mm 2mm;
+              overflow: hidden;
             }
-            .qr {
-              width: ${qrSizeMm}mm;
-              height: ${qrSizeMm}mm;
-            }
+            .row-table { width: 100%; height: 100%; border-collapse: collapse; table-layout: fixed; }
+            .row-table td { vertical-align: middle; padding: 0; }
+            .qr-cell { width: ${isLandscape ? `${qrSizeMm + 4}mm` : '100%'}; text-align: center; ${isLandscape ? '' : `height: ${qrSizeMm + 6}mm;`} }
+            .qr-wrap { width: ${qrSizeMm}mm; height: ${qrSizeMm}mm; margin: 0 auto; }
+            .qr { width: 100%; height: 100%; display: block; }
+            .code-text { font-size: 5.5pt; font-weight: 600; letter-spacing: 0.3px; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 0.6mm; }
+            .text-cell { text-align: ${isLandscape ? 'left' : 'center'}; padding-${isLandscape ? 'left' : 'top'}: 2.2mm; overflow: hidden; }
             .sku {
-              font-size: 8pt;
-              font-weight: 600;
-              letter-spacing: 1px;
-              margin-top: 1.5mm;
-              color: #111;
+              font-size: 8.5pt;
+              font-weight: 800;
+              letter-spacing: 0.2px;
+              color: #000;
+              line-height: 1.15;
+              overflow-wrap: anywhere;
+              overflow: hidden;
+              display: -webkit-box;
+              -webkit-line-clamp: 2;
+              -webkit-box-orient: vertical;
             }
             .product-name {
-              font-size: 7pt;
-              font-weight: 700;
-              text-align: center;
-              margin-top: 1mm;
+              font-size: 7.5pt;
+              font-weight: 600;
               color: #111;
-              line-height: 1.2;
-              max-height: 12mm;
+              line-height: 1.25;
+              max-height: 9.5mm;
+              margin-top: 1mm;
+              overflow: hidden;
+              overflow-wrap: anywhere;
+              display: -webkit-box;
+              -webkit-line-clamp: 3;
+              -webkit-box-orient: vertical;
             }
           </style>
         </head>
@@ -211,7 +207,9 @@ export default function LabelPrintScreen() {
   };
 
   const handlePrint = async () => {
+    if (isPrinting) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setIsPrinting(true);
 
     try {
       await Print.printAsync({
@@ -221,44 +219,29 @@ export default function LabelPrintScreen() {
       });
     } catch (error) {
       console.log('Print error:', error);
+    } finally {
+      setIsPrinting(false);
     }
   };
 
-  const handleSavePdf = async () => {
+  const handleAddToQueue = async () => {
+    if (!product || variantsToPrint.length === 0 || isQueueing) return;
+
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
-    try {
-      if (Platform.OS === 'web') {
-        // Web already provides "Save as PDF" in the browser print dialog.
-        await handlePrint();
-        return;
-      }
-
-      const file = await Print.printToFileAsync({
-        html: buildLabelHtml(variantsToPrint, selectedLabelSize),
-        width: labelSizePoints.width,
-        height: labelSizePoints.height,
-      });
-
-      const canShare = await Sharing.isAvailableAsync();
-      if (!canShare) return;
-
-      await Sharing.shareAsync(file.uri, {
-        mimeType: 'application/pdf',
-        dialogTitle: 'Product Label PDF',
-        UTI: 'com.adobe.pdf',
-      });
-    } catch (error) {
-      console.log('Save PDF error:', error);
+    setIsQueueing(true);
+    const queueItems = createInventoryPrintQueueItems(product, variantsToPrint);
+    for (const item of queueItems) {
+      await addFyllPrintQueueItem(item);
     }
+    setIsQueueing(false);
+    setQueueNotice(true);
+    setTimeout(() => setQueueNotice(false), 2500);
   };
 
-  const tipsText =
-    Platform.OS === 'web'
-      ? 'Mobile browser limitation: iPhone/iPad web printing supports AirPrint printers only. Most Bluetooth-only thermal printers will not appear. For reliable team printing, use Wi-Fi/Ethernet thermal printers (AirPrint/Mopria) or print from desktop with drivers.'
-      : 'Printing uses your device’s system print dialog. Make sure the printer is paired/connected to this device (and on the same Wi‑Fi if needed) so it appears in the printer list.';
   const previewAspectRatio = selectedLabelSize.widthMm / selectedLabelSize.heightMm;
   const previewWidth = previewAspectRatio >= 1 ? 260 : 180;
+  const isLandscape = selectedLabelSize.widthMm >= selectedLabelSize.heightMm;
+  const qrBoxSize = isLandscape ? 78 : 96;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg.primary }}>
@@ -273,198 +256,159 @@ export default function LabelPrintScreen() {
               {isBulk ? 'Bulk Labels' : 'Print Label'}
             </Text>
             <Text style={{ color: colors.text.tertiary }} className="text-xs">
-              {isBulk ? `${variantsToPrint.length} label${variantsToPrint.length === 1 ? '' : 's'} ready` : 'Thermal Label Preview'}
+              {isBulk ? `${variantsToPrint.length} label${variantsToPrint.length === 1 ? '' : 's'} · ${selectedLabelSize.widthMm}x${selectedLabelSize.heightMm}mm` : `${selectedLabelSize.widthMm}x${selectedLabelSize.heightMm}mm`}
             </Text>
           </View>
         </View>
 
-        <ScrollView style={{ flex: 1, backgroundColor: colors.bg.secondary }} contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 24 }} showsVerticalScrollIndicator={false}>
-          <View className="rounded-xl p-4 mb-4" style={{ backgroundColor: colors.bg.primary, borderWidth: 1, borderColor: colors.border.light }}>
-            <Text style={{ color: colors.text.tertiary }} className="text-xs font-medium uppercase tracking-wider mb-3">Label Size</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              {PRODUCT_LABEL_SIZE_PRESETS.map((preset) => {
-                const active = preset.id === selectedLabelSize.id;
-                return (
-                  <Pressable
-                    key={preset.id}
-                    onPress={() => setSelectedLabelSizeId(preset.id)}
-                    style={{
-                      borderWidth: 1,
-                      borderColor: active ? '#111111' : colors.border.light,
-                      backgroundColor: active ? '#111111' : colors.bg.secondary,
-                      borderRadius: 999,
-                      paddingHorizontal: 12,
-                      height: 34,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Text style={{ color: active ? '#FFFFFF' : colors.text.primary, fontSize: 12, fontWeight: '700' }}>
-                      {preset.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 20, paddingTop: 16 }}>
+          {PRODUCT_LABEL_SIZE_PRESETS.map((preset) => {
+            const active = preset.id === selectedLabelSize.id;
+            return (
+              <Pressable
+                key={preset.id}
+                onPress={() => setSelectedLabelSizeId(preset.id)}
+                style={{
+                  borderWidth: 1,
+                  borderColor: active ? '#111111' : colors.border.light,
+                  backgroundColor: active ? '#111111' : colors.bg.secondary,
+                  borderRadius: 999,
+                  paddingHorizontal: 12,
+                  height: 34,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Text style={{ color: active ? '#FFFFFF' : colors.text.primary, fontSize: 12, fontWeight: '700' }}>
+                  {preset.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
 
-          {/* Label Preview Card */}
-          <View className="printable-label-container">
-            <View>
-              <Text style={{ color: colors.text.tertiary }} className="text-xs font-medium uppercase tracking-wider mb-3 print:hidden">
-                Label Preview ({selectedLabelSize.widthMm}mm x {selectedLabelSize.heightMm}mm)
-              </Text>
-
-              {/* Simulated Label - without price */}
-              <View className="gap-4 mb-6">
-                {variantsToPrint.map((item) => {
-                  const productCode = getProductCode(item);
-                  const qrMatrix = generateQrMatrix(productCode);
-                  return (
-                    <View
-                      key={item.id}
-                      className="overflow-hidden"
-                      style={{
-                        alignSelf: 'center',
-                        backgroundColor: '#FFFFFF',
-                        borderRadius: 12,
-                        borderWidth: 1,
-                        borderColor: colors.border.light,
-                        width: previewWidth,
-                        aspectRatio: previewAspectRatio,
-                        padding: 8,
-                        shadowColor: '#000',
-                        shadowOffset: { width: 0, height: 2 },
-                        shadowOpacity: 0.08,
-                        shadowRadius: 6,
-                        elevation: 5,
-                      }}
+        <ScrollView
+          style={{ flex: 1, backgroundColor: colors.bg.secondary }}
+          contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 24, flexGrow: 1, justifyContent: 'center' }}
+          showsVerticalScrollIndicator={false}
+        >
+          <View className="gap-4">
+            {variantsToPrint.map((item) => {
+              const productCode = getProductCode(item);
+              const qrMatrix = generateQrMatrix(productCode);
+              return (
+                <View
+                  key={item.id}
+                  className="overflow-hidden"
+                  style={{
+                    alignSelf: 'center',
+                    backgroundColor: '#FFFFFF',
+                    borderRadius: 10,
+                    borderWidth: 1.5,
+                    borderColor: '#111111',
+                    width: previewWidth,
+                    aspectRatio: previewAspectRatio,
+                    padding: 10,
+                    flexDirection: isLandscape ? 'row' : 'column',
+                    alignItems: 'center',
+                    justifyContent: isLandscape ? 'flex-start' : 'center',
+                    gap: 10,
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.08,
+                    shadowRadius: 6,
+                    elevation: 5,
+                  }}
+                >
+                  <View style={{ alignItems: 'center', flexShrink: 0 }}>
+                    <Svg
+                      width={qrBoxSize}
+                      height={qrBoxSize}
+                      viewBox={`0 0 ${qrMatrix.length} ${qrMatrix.length}`}
                     >
-                      <View
-                        style={{
-                          flex: 1,
-                          backgroundColor: '#FFFFFF',
-                          borderRadius: 8,
-                          borderWidth: 1,
-                          borderColor: '#F3F4F6',
-                          padding: 6,
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                      >
-                        <Svg
-                          width={selectedLabelSize.widthMm >= 50 ? 156 : 148}
-                          height={selectedLabelSize.widthMm >= 50 ? 156 : 148}
-                          viewBox={`0 0 ${qrMatrix.length} ${qrMatrix.length}`}
-                        >
-                          {qrMatrix.map((row, rowIndex) =>
-                            row.map((filled, colIndex) =>
-                              filled ? (
-                                <Rect
-                                  key={`${rowIndex}-${colIndex}`}
-                                  x={colIndex}
-                                  y={rowIndex}
-                                  width={1}
-                                  height={1}
-                                  fill="#0F172A"
-                                />
-                              ) : null
-                            )
-                          )}
-                        </Svg>
-                      </View>
-                      <View className="items-center mt-4">
-                        <Text style={{ color: colors.text.secondary }} className="text-[10px] font-bold tracking-[0.3px]">
-                          {item.sku}
-                        </Text>
-                        <Text
-                          style={{ color: colors.text.primary }}
-                          className="text-[11px] font-semibold text-center mt-1"
-                          numberOfLines={2}
-                        >
-                          {getFullName(item)}
-                        </Text>
-                      </View>
-                    </View>
-                  );
-                })}
-              </View>
-            </View>
-          </View>
-
-          {/* Product Details */}
-          <View>
-            <View className="rounded-xl p-4 mb-4" style={{ backgroundColor: colors.bg.primary, borderWidth: 1, borderColor: colors.border.light }}>
-              <Text style={{ color: colors.text.tertiary }} className="text-xs font-medium mb-3">LABEL CONTENT</Text>
-
-              {isBulk ? (
-                <View className="gap-3">
-                  <View>
-                    <Text style={{ color: colors.text.muted }} className="text-xs">Total Labels</Text>
-                    <Text style={{ color: colors.text.primary }} className="font-semibold">{variantsToPrint.length}</Text>
+                      {qrMatrix.map((row, rowIndex) =>
+                        row.map((filled, colIndex) =>
+                          filled ? (
+                            <Rect
+                              key={`${rowIndex}-${colIndex}`}
+                              x={colIndex}
+                              y={rowIndex}
+                              width={1}
+                              height={1}
+                              fill="#000000"
+                            />
+                          ) : null
+                        )
+                      )}
+                    </Svg>
+                    <Text style={{ color: '#555555', fontSize: 8, fontWeight: '600', marginTop: 3 }} numberOfLines={1}>
+                      {productCode}
+                    </Text>
                   </View>
-                  <View>
-                    <Text style={{ color: colors.text.muted }} className="text-xs">Variants</Text>
-                    {variantsToPrint.map((item) => (
-                      <Text key={item.id} style={{ color: colors.text.primary }} className="text-sm font-medium">
-                        {getVariantName(item)}
-                      </Text>
-                    ))}
+                  <View style={{ flex: 1, alignItems: isLandscape ? 'flex-start' : 'center', justifyContent: 'center', minWidth: 0 }}>
+                    <Text
+                      style={{ color: '#000000', fontSize: 11, fontWeight: '800', letterSpacing: 0.2, textAlign: isLandscape ? 'left' : 'center' }}
+                      numberOfLines={2}
+                    >
+                      {item.sku || productCode}
+                    </Text>
+                    <Text
+                      style={{ color: '#111111', fontSize: 9.5, fontWeight: '600', marginTop: 4, textAlign: isLandscape ? 'left' : 'center' }}
+                      numberOfLines={3}
+                    >
+                      {getFullName(item)}
+                    </Text>
                   </View>
                 </View>
-              ) : (
-                <>
-                  <View className="mb-3">
-                    <Text style={{ color: colors.text.muted }} className="text-xs">Barcode (QR)</Text>
-                    <Text style={{ color: colors.text.primary }} className="font-semibold">{variantsToPrint[0]?.barcode || variantsToPrint[0]?.sku}</Text>
-                  </View>
-
-                  <View className="mb-3">
-                    <Text style={{ color: colors.text.muted }} className="text-xs">SKU Number</Text>
-                    <Text style={{ color: colors.text.primary }} className="font-semibold">{variantsToPrint[0]?.sku}</Text>
-                  </View>
-
-                  <View>
-                    <Text style={{ color: colors.text.muted }} className="text-xs">Product Name + Variant</Text>
-                    <Text style={{ color: colors.text.primary }} className="font-semibold">{variantsToPrint[0] ? getFullName(variantsToPrint[0]) : ''}</Text>
-                  </View>
-                </>
-              )}
-            </View>
+              );
+            })}
           </View>
-
-          {/* Info Note */}
-          <View>
-            <View className="rounded-xl p-4 mb-6" style={{ backgroundColor: 'rgba(59, 130, 246, 0.1)', borderWidth: 1, borderColor: 'rgba(59, 130, 246, 0.2)' }}>
-              <Text style={{ color: '#3B82F6' }} className="text-sm">
-                {tipsText}
-              </Text>
-            </View>
-          </View>
-
-          <View className="h-32" />
         </ScrollView>
 
         {/* Bottom Actions */}
-        <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: 20, paddingBottom: 32, paddingTop: 16, backgroundColor: colors.bg.primary, borderTopWidth: 1, borderTopColor: colors.border.light }}>
+        <View style={{ paddingHorizontal: 20, paddingBottom: 32, paddingTop: 14, backgroundColor: colors.bg.primary, borderTopWidth: 1, borderTopColor: colors.border.light }}>
+          {queueNotice ? (
+            <View className="flex-row items-center justify-center mb-3">
+              <Check size={14} color="#16A34A" strokeWidth={2.5} />
+              <Text style={{ color: '#16A34A', fontSize: 12, fontWeight: '600', marginLeft: 6 }}>
+                Added to FYLL Print queue
+              </Text>
+            </View>
+          ) : null}
           <View className="flex-row gap-3">
             <Pressable
-              onPress={handleSavePdf}
-              className="flex-1 rounded-xl items-center justify-center active:opacity-70 flex-row"
+              onPress={handleAddToQueue}
+              disabled={isQueueing}
+              className="flex-1 rounded-full items-center justify-center flex-row active:opacity-80"
               style={{ height: 56, backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}
             >
-              <Share2 size={20} color={colors.text.primary} strokeWidth={2} />
-              <Text style={{ color: colors.text.primary }} className="font-semibold ml-2">
-                {Platform.OS === 'web' ? 'Save / Print' : 'Save PDF'}
-              </Text>
+              {isQueueing ? (
+                <ActivityIndicator color={colors.text.primary} size="small" />
+              ) : (
+                <>
+                  <ListPlus size={18} color={colors.text.primary} strokeWidth={2} />
+                  <Text style={{ color: colors.text.primary }} className="text-sm font-semibold ml-2">
+                    Send to Queue
+                  </Text>
+                </>
+              )}
             </Pressable>
             <Pressable
               onPress={handlePrint}
-              className="flex-[2] rounded-xl items-center justify-center active:opacity-80 flex-row"
-              style={{ height: 56, backgroundColor: '#111111' }}
+              disabled={isPrinting}
+              className="flex-1 rounded-full items-center justify-center flex-row active:opacity-80"
+              style={{ height: 56, backgroundColor: '#111111', opacity: isPrinting ? 0.7 : 1 }}
             >
-              <Printer size={20} color="#FFFFFF" strokeWidth={2} />
-              <Text className="text-white font-bold ml-2">{isBulk ? 'Print All Labels' : 'Print Label'}</Text>
+              {isPrinting ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <>
+                  <Printer size={18} color="#FFFFFF" strokeWidth={2} />
+                  <Text className="text-white font-semibold text-sm ml-2">
+                    {isBulk ? 'Print All' : 'Print Now'}
+                  </Text>
+                </>
+              )}
             </Pressable>
           </View>
         </View>

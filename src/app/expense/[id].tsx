@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, Platform, Modal } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Receipt, Pencil, Trash2, FileText, Download, Tag, Calendar, Clock, User, MoreVertical } from 'lucide-react-native';
+import { ArrowLeft, Receipt, Pencil, Trash2, FileText, Download, MoreVertical, User, Tag, Calendar, Clock } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import useFyllStore, { type Expense, type ExpenseRequestReceipt, formatCurrency } from '@/lib/state/fyll-store';
 import useAuthStore from '@/lib/state/auth-store';
@@ -13,6 +13,9 @@ import { openAttachmentPath } from '@/lib/storage-attachments';
 // ── helpers (duplicated from finance.tsx to keep this file self-contained) ──
 
 type ExpenseType = 'one-time' | 'recurring';
+const STAMP_DUTY_THRESHOLD = 10000;
+const EXPENSE_BANK_CHARGE_LABEL = 'Bank Charges';
+const EXPENSE_STAMP_DUTY_LABEL = 'Stamp Duty';
 
 const extractMetadataValue = (source: string | undefined, key: string): string | null => {
   if (!source) return null;
@@ -41,11 +44,55 @@ const decodeMetadataJson = <T, >(value: string | null): T | null => {
   try { return JSON.parse(decodeURIComponent(value)) as T; } catch { return null; }
 };
 
-type LineItem = { id: string; label: string; amount: number; category: string; kind: 'base' | 'charge' };
+type LineItem = {
+  id: string;
+  label: string;
+  amount: number;
+  category: string;
+  kind: 'base' | 'charge';
+  source?: 'manual' | 'system';
+};
+
+const getTransferChargeBreakdown = ({
+  baseAmount,
+  applyCharges,
+  tiers,
+  vatRate,
+  stampDutyAmount,
+}: {
+  baseAmount: number;
+  applyCharges: boolean;
+  tiers: { maxAmount: number | null; fixedFee: number }[];
+  vatRate: number;
+  stampDutyAmount: number;
+}) => {
+  if (!applyCharges || baseAmount <= 0) {
+    return { fee: 0, vat: 0, stampDuty: 0, total: 0 };
+  }
+  const matchedTier = tiers.find((tier) => tier.maxAmount === null || baseAmount <= tier.maxAmount) ?? null;
+  const fee = matchedTier?.fixedFee ?? 0;
+  const vat = fee * vatRate;
+  const stampDuty = baseAmount >= STAMP_DUTY_THRESHOLD ? stampDutyAmount : 0;
+  return { fee, vat, stampDuty, total: fee + vat + stampDuty };
+};
+
+const parseExpenseApplyBankCharges = (description: string | undefined): boolean | null => {
+  const raw = extractMetadataValue(description, 'apply_bank_charges')?.trim().toLowerCase();
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  return null;
+};
+
+const isExpenseChargeLine = (line: LineItem): boolean => {
+  if (line.source === 'system') return true;
+  const normalizedLabel = line.label.trim().toLowerCase();
+  return normalizedLabel === EXPENSE_BANK_CHARGE_LABEL.toLowerCase()
+    || normalizedLabel === EXPENSE_STAMP_DUTY_LABEL.toLowerCase();
+};
 
 const parseLineItems = (description: string | undefined, fallbackCategory: string, fallbackAmount: number): LineItem[] => {
   const encoded = extractMetadataValue(description, 'line_items');
-  const parsed = decodeMetadataJson<{ label?: string; amount?: number; category?: string; kind?: 'base' | 'charge' }[]>(encoded);
+  const parsed = decodeMetadataJson<{ label?: string; amount?: number; category?: string; kind?: 'base' | 'charge'; source?: 'manual' | 'system' }[]>(encoded);
   if (parsed && parsed.length > 0) {
     const normalized = parsed.map((line, i) => ({
       id: `line-${i + 1}`,
@@ -53,10 +100,18 @@ const parseLineItems = (description: string | undefined, fallbackCategory: strin
       amount: Number.isFinite(Number(line.amount)) ? Number(line.amount) : 0,
       category: normalizeBreakdownCategory(line.category ?? fallbackCategory),
       kind: (line.kind === 'charge' ? 'charge' : (i === 0 ? 'base' : 'charge')) as 'base' | 'charge',
+      source: line.source === 'system' ? 'system' as const : 'manual' as const,
     })).filter((l) => l.amount >= 0);
     if (normalized.length > 0) return normalized;
   }
-  return [{ id: 'line-base', label: 'Base Amount', amount: Number.isFinite(fallbackAmount) ? fallbackAmount : 0, category: normalizeBreakdownCategory(fallbackCategory), kind: 'base' }];
+  return [{
+    id: 'line-base',
+    label: 'Base Amount',
+    amount: Number.isFinite(fallbackAmount) ? fallbackAmount : 0,
+    category: normalizeBreakdownCategory(fallbackCategory),
+    kind: 'base',
+    source: 'manual',
+  }];
 };
 
 const parseReceipts = (description: string | undefined): ExpenseRequestReceipt[] => {
@@ -84,6 +139,11 @@ const inferExpenseType = (expense: Expense): ExpenseType => {
 
 const formatExpenseTypeLabel = (value: ExpenseType) => value === 'one-time' ? 'One-Time' : 'Recurring';
 
+const capitalizeDisplayValue = (value: string): string => {
+  if (!value) return value;
+  return value.charAt(0).toUpperCase() + value.slice(1);
+};
+
 // ── component ──
 
 export default function ExpenseDetailScreen() {
@@ -96,6 +156,7 @@ export default function ExpenseDetailScreen() {
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const expenses = useFyllStore((s) => s.expenses);
+  const financeRules = useFyllStore((s) => s.financeRules);
   const deleteExpense = useFyllStore((s) => s.deleteExpense);
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
 
@@ -109,7 +170,59 @@ export default function ExpenseDetailScreen() {
     const ts = new Date(expense.date).getTime();
     return Number.isFinite(ts) ? new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : expense.date;
   }, [expense]);
-  const lineItems = useMemo(() => expense ? parseLineItems(expense.description, expense.category || 'General', expense.amount) : [], [expense]);
+  const createdAt = useMemo(() => {
+    if (!expense?.createdAt) return '';
+    const ts = new Date(expense.createdAt).getTime();
+    return Number.isFinite(ts) ? new Date(ts).toLocaleDateString('en-NG', { year: 'numeric', month: 'short', day: 'numeric' }) : '';
+  }, [expense]);
+  const lineItems = useMemo(() => {
+    if (!expense) return [];
+    const parsedLineItems = parseLineItems(expense.description, expense.category || 'General', expense.amount);
+    const hasDerivedChargeRows = parsedLineItems.some((line) => isExpenseChargeLine(line));
+    if (hasDerivedChargeRows) return parsedLineItems;
+
+    const applyBankCharges = parseExpenseApplyBankCharges(expense.description);
+    if (applyBankCharges === false) return parsedLineItems;
+
+    const baseLine = parsedLineItems.find((line) => line.kind === 'base') ?? parsedLineItems[0];
+    const baseAmount = baseLine?.amount ?? 0;
+    const transferCharges = getTransferChargeBreakdown({
+      baseAmount,
+      applyCharges: true,
+      tiers: financeRules.bankChargeTiers,
+      vatRate: financeRules.vatRate,
+      stampDutyAmount: financeRules.incomingStampDuty ?? 50,
+    });
+    const parsedSubtotal = parsedLineItems.reduce((sum, line) => sum + line.amount, 0);
+    const inferredTotal = parsedSubtotal + transferCharges.total;
+    const shouldAppendDerivedCharges = applyBankCharges === true
+      || Math.abs(inferredTotal - expense.amount) < 0.01;
+
+    if (!shouldAppendDerivedCharges || transferCharges.total <= 0) return parsedLineItems;
+
+    const derivedLines: LineItem[] = [];
+    if (transferCharges.fee + transferCharges.vat > 0) {
+      derivedLines.push({
+        id: 'line-bank-charges',
+        label: EXPENSE_BANK_CHARGE_LABEL,
+        amount: transferCharges.fee + transferCharges.vat,
+        category: baseLine?.category || expense.category || 'General',
+        kind: 'charge',
+        source: 'system',
+      });
+    }
+    if (transferCharges.stampDuty > 0) {
+      derivedLines.push({
+        id: 'line-stamp-duty',
+        label: EXPENSE_STAMP_DUTY_LABEL,
+        amount: transferCharges.stampDuty,
+        category: baseLine?.category || expense.category || 'General',
+        kind: 'charge',
+        source: 'system',
+      });
+    }
+    return [...parsedLineItems, ...derivedLines];
+  }, [expense, financeRules.bankChargeTiers, financeRules.incomingStampDuty, financeRules.vatRate]);
   const receipts = useMemo(() => parseReceipts(expense?.description), [expense]);
   const note = useMemo(() => extractMetadataValue(expense?.description, 'note') ?? '', [expense]);
 
@@ -147,29 +260,88 @@ export default function ExpenseDetailScreen() {
     );
   }
 
-  // ── badge component ──
-  const TypeBadge = () => {
-    const badgeColors = expenseType === 'recurring'
-      ? { bg: 'rgba(139, 92, 246, 0.16)', text: '#8B5CF6' }
-      : { bg: 'rgba(59, 130, 246, 0.16)', text: '#3B82F6' };
-    return (
-      <View className="px-2.5 py-1 rounded-full" style={{ backgroundColor: badgeColors.bg }}>
-        <Text className="text-xs font-semibold" style={{ color: badgeColors.text }}>{formatExpenseTypeLabel(expenseType)}</Text>
+  const typeBadgeColors = expenseType === 'recurring'
+    ? { bg: 'rgba(139, 92, 246, 0.16)', text: '#8B5CF6' }
+    : { bg: 'rgba(59, 130, 246, 0.16)', text: '#3B82F6' };
+  const statusBadge = expense.status === 'draft'
+    ? { label: 'Draft', bg: 'rgba(107,114,128,0.12)', text: '#6B7280' }
+    : expense.status === 'partial'
+      ? { label: 'Partial', bg: 'rgba(245,158,11,0.12)', text: '#F59E0B' }
+      : expense.status === 'paid'
+        ? { label: 'Paid', bg: 'rgba(16,185,129,0.12)', text: '#10B981' }
+        : null;
+  const expenseHeroCard = (
+    <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, overflow: 'hidden' }}>
+      <View style={{ padding: isWebDesktop ? 24 : 20, borderBottomWidth: 1, borderBottomColor: colors.divider }}>
+        <View className="flex-row items-start justify-between" style={{ gap: 12 }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase tracking-wider mb-1">Expense</Text>
+            <Text style={{ color: colors.text.primary, fontSize: isWebDesktop ? 22 : 20, lineHeight: isWebDesktop ? 28 : 26 }} className="font-semibold" numberOfLines={2}>
+              {capitalizeDisplayValue(name || expense.category || 'Expense')}
+            </Text>
+            <Text style={{ color: colors.text.secondary, fontSize: isWebDesktop ? 14 : 13, marginTop: 4 }} numberOfLines={1}>
+              {capitalizeDisplayValue(merchant || expense.category || 'General')}
+            </Text>
+          </View>
+          <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: typeBadgeColors.bg }}>
+            <Text style={{ color: typeBadgeColors.text, fontSize: 11, fontWeight: '600' }}>{formatExpenseTypeLabel(expenseType)}</Text>
+          </View>
+        </View>
+        <Text style={{ color: colors.text.primary, fontSize: isWebDesktop ? 42 : 44, lineHeight: isWebDesktop ? 48 : 48, marginTop: 14 }} className="font-medium">
+          {formatCurrency(expense.amount)}
+        </Text>
+        <View className="flex-row items-center flex-wrap" style={{ gap: 8, marginTop: 8 }}>
+          <Text style={{ color: colors.text.secondary, fontSize: isWebDesktop ? 13 : 12 }}>Paid on {date}</Text>
+          {statusBadge ? (
+            <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: statusBadge.bg }}>
+              <Text style={{ color: statusBadge.text, fontSize: 11, fontWeight: '600' }}>{statusBadge.label}</Text>
+            </View>
+          ) : null}
+        </View>
       </View>
-    );
-  };
-
-  // ── metadata row ──
-  const MetaRow = ({ icon, label, value, extra }: { icon: React.ReactNode; label: string; value: string; extra?: React.ReactNode }) => (
-    <View className="flex-row items-center py-4" style={{ borderTopWidth: 1, borderTopColor: colors.divider, paddingLeft: 20, paddingRight: 16 }}>
-      <View className="rounded-xl items-center justify-center" style={{ width: 42, height: 42, backgroundColor: colors.bg.input, borderWidth: 1, borderColor: colors.divider }}>
-        {icon}
+      <View style={{ flexDirection: 'row' }}>
+        <View style={{ flex: 1, paddingHorizontal: isWebDesktop ? 24 : 16, paddingVertical: isWebDesktop ? 16 : 14 }}>
+          <Text style={{ color: colors.text.tertiary }} className="text-xs uppercase font-semibold">Merchant</Text>
+          <Text style={{ color: colors.text.primary, fontSize: isWebDesktop ? 16 : 14, fontWeight: '600', marginTop: 4 }} numberOfLines={1}>
+            {capitalizeDisplayValue(merchant || 'Not set')}
+          </Text>
+        </View>
+        <View style={{ width: 1, backgroundColor: colors.divider }} />
+        <View style={{ flex: 1, paddingHorizontal: isWebDesktop ? 24 : 16, paddingVertical: isWebDesktop ? 16 : 14 }}>
+          <Text style={{ color: colors.text.tertiary }} className="text-xs uppercase font-semibold">Category</Text>
+          <Text style={{ color: colors.text.primary, fontSize: isWebDesktop ? 16 : 14, fontWeight: '600', marginTop: 4 }} numberOfLines={1}>
+            {capitalizeDisplayValue(expense.category || 'General')}
+          </Text>
+        </View>
       </View>
-      <View style={{ marginLeft: 14, flex: 1, minWidth: 0 }}>
-        <Text style={{ color: colors.text.muted }} className="text-xs">{label}</Text>
-        <View className="flex-row items-center mt-0.5" style={{ gap: 8 }}>
-          <Text style={{ color: colors.text.primary }} className="text-sm font-semibold" numberOfLines={1}>{value}</Text>
-          {extra}
+    </View>
+  );
+  const paymentBreakdownCard = (
+    <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, overflow: 'hidden' }}>
+      <View style={{ paddingHorizontal: isWebDesktop ? 24 : 16, paddingTop: isWebDesktop ? 16 : 16, paddingBottom: isWebDesktop ? 16 : 14 }}>
+        <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase tracking-wider">Payment Breakdown</Text>
+      </View>
+      <View style={{ paddingHorizontal: isWebDesktop ? 24 : 16, paddingBottom: isWebDesktop ? 16 : 16 }}>
+        {lineItems.map((line, i) => (
+          <View
+            key={line.id}
+            className="flex-row items-center justify-between"
+            style={{
+              paddingVertical: isWebDesktop ? 10 : 8,
+              borderBottomWidth: i === lineItems.length - 1 ? 0 : 1,
+              borderBottomColor: colors.divider,
+            }}
+          >
+            <View style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
+              <Text numberOfLines={1} style={{ color: i === 0 ? colors.text.primary : colors.text.secondary }} className="text-sm font-medium">{line.label}</Text>
+              <Text numberOfLines={1} style={{ color: colors.text.muted, fontSize: 12, marginTop: 2 }}>{capitalizeDisplayValue(line.category)}</Text>
+            </View>
+            <Text style={{ color: colors.text.primary, fontSize: isWebDesktop ? 15 : 14 }} className="font-semibold">{formatCurrency(line.amount)}</Text>
+          </View>
+        ))}
+        <View className="flex-row items-center justify-between mt-3 pt-3" style={{ borderTopWidth: isWebDesktop ? 2 : 1, borderTopColor: colors.divider }}>
+          <Text style={{ color: colors.text.primary }} className="text-base font-bold">Total Logged</Text>
+          <Text style={{ color: colors.text.primary, fontSize: isWebDesktop ? 18 : 16 }} className="font-medium">{formatCurrency(expense.amount)}</Text>
         </View>
       </View>
     </View>
@@ -246,29 +418,9 @@ export default function ExpenseDetailScreen() {
             <View className="flex-row" style={{ gap: 16 }}>
               {/* Left Column (financials + evidence) */}
               <View style={{ flex: 2 }}>
-                {/* Total + Breakdown Card */}
-                <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, overflow: 'hidden' }}>
-                  <View className="px-6 pt-6 pb-5" style={{ borderBottomWidth: 1, borderBottomColor: colors.divider }}>
-                    <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase tracking-wider mb-1">{name}</Text>
-                    <Text style={{ color: colors.text.primary, fontSize: 42, lineHeight: 48 }} className="font-medium">{formatCurrency(expense.amount)}</Text>
-                    <Text style={{ color: colors.text.secondary, marginTop: 4 }} className="text-sm">Paid on {date}</Text>
-                  </View>
-                  <View className="px-6 py-4">
-                    <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase tracking-wider mb-4">Payment Breakdown</Text>
-                    {lineItems.map((line, i) => (
-                      <View key={line.id} className="flex-row items-center justify-between" style={{ paddingVertical: 10, borderBottomWidth: i === lineItems.length - 1 ? 0 : 1, borderBottomColor: colors.divider }}>
-                        <View style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
-                          <Text style={{ color: i === 0 ? colors.text.primary : colors.text.secondary }} className="text-sm font-medium">{line.label}</Text>
-                          <Text style={{ color: colors.text.muted, fontSize: 12, marginTop: 2 }}>{line.category}</Text>
-                        </View>
-                        <Text style={{ color: colors.text.primary, fontSize: 15 }} className="font-semibold">{formatCurrency(line.amount)}</Text>
-                      </View>
-                    ))}
-                    <View className="flex-row items-center justify-between mt-3 pt-3" style={{ borderTopWidth: 2, borderTopColor: colors.divider }}>
-                      <Text style={{ color: colors.text.primary }} className="text-base font-bold">Total Logged</Text>
-                      <Text style={{ color: colors.text.primary, fontSize: 18 }} className="font-medium">{formatCurrency(expense.amount)}</Text>
-                    </View>
-                  </View>
+                {expenseHeroCard}
+                <View style={{ marginTop: 16 }}>
+                  {paymentBreakdownCard}
                 </View>
 
                 {/* Receipts */}
@@ -295,18 +447,37 @@ export default function ExpenseDetailScreen() {
 
               {/* Right Column (metadata) */}
               <View style={{ flex: 1 }}>
-                <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, overflow: 'hidden' }}>
-                  <View className="px-5 pt-4 pb-3">
+                <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, padding: 20 }}>
+                  <View className="mb-1">
                     <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase tracking-wider">Details</Text>
                   </View>
-                  <MetaRow icon={<User size={18} color={colors.text.tertiary} strokeWidth={2} />} label="Supplier / Merchant" value={merchant || '-'} />
-                  <MetaRow icon={<Tag size={18} color={colors.text.tertiary} strokeWidth={2} />} label="Category" value={expense.category || 'General'} extra={<TypeBadge />} />
-                  <MetaRow icon={<Calendar size={18} color={colors.text.tertiary} strokeWidth={2} />} label="Date" value={date} />
-                  <MetaRow
-                    icon={<Clock size={18} color={colors.text.tertiary} strokeWidth={2} />}
-                    label="Created"
-                    value={expense.createdAt ? new Date(expense.createdAt).toLocaleDateString('en-NG', { year: 'numeric', month: 'short', day: 'numeric' }) : '-'}
-                  />
+                  {[
+                    { label: 'Supplier / Merchant', value: merchant || '-' },
+                    { label: 'Primary Category', value: expense.category || 'General' },
+                    { label: 'Expense Type', value: formatExpenseTypeLabel(expenseType) },
+                    { label: 'Date', value: date || '-' },
+                    { label: 'Created', value: createdAt || '-' },
+                  ].map((row, index) => (
+                    <View
+                      key={row.label}
+                      className="flex-row justify-between"
+                      style={{
+                        alignItems: 'flex-start',
+                        gap: 12,
+                        paddingTop: index === 0 ? 0 : 14,
+                        marginTop: index === 0 ? 0 : 14,
+                        borderTopWidth: index === 0 ? 0 : 1,
+                        borderTopColor: colors.divider,
+                      }}
+                    >
+                      <Text style={{ color: colors.text.secondary, fontSize: 14 }}>{row.label}</Text>
+                      <Text
+                        style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600', flex: 1, textAlign: 'right', marginLeft: 20 }}
+                      >
+                        {row.value}
+                      </Text>
+                    </View>
+                  ))}
                 </View>
 
                 {/* Notes */}
@@ -323,49 +494,40 @@ export default function ExpenseDetailScreen() {
           ) : (
             /* ── Mobile: Single-column layout ── */
             <View style={{ gap: 12 }}>
-              {/* Hero card */}
-              <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, padding: 20 }}>
-                <View className="items-center">
-                  <View className="rounded-2xl items-center justify-center mb-3" style={{ width: 54, height: 54, backgroundColor: colors.bg.input, borderWidth: 1, borderColor: colors.divider }}>
-                    <Receipt size={22} color={colors.text.tertiary} strokeWidth={2.2} />
-                  </View>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase tracking-wider mb-1">{name}</Text>
-                  <Text style={{ color: colors.text.primary, fontSize: 44, lineHeight: 48 }} className="font-medium">{formatCurrency(expense.amount)}</Text>
-                  <Text style={{ color: colors.text.secondary }} className="text-sm mt-1">Paid on {date}</Text>
-                </View>
-              </View>
-
-              {/* Payment Breakdown */}
-              <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, padding: 16 }}>
-                <Text style={{ color: colors.text.tertiary }} className="text-xs uppercase font-semibold mb-3">Payment Breakdown</Text>
-                {lineItems.map((line, i) => (
-                  <View key={line.id} className="flex-row items-center justify-between" style={{ marginBottom: i === lineItems.length - 1 ? 0 : 10 }}>
-                    <View style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
-                      <Text numberOfLines={1} style={{ color: i === 0 ? colors.text.primary : colors.text.secondary }} className="text-sm font-medium">{line.label}</Text>
-                      <Text numberOfLines={1} style={{ color: colors.text.muted, fontSize: 12 }} className="mt-0.5">{line.category}</Text>
-                    </View>
-                    <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">{formatCurrency(line.amount)}</Text>
-                  </View>
-                ))}
-                <View className="flex-row items-center justify-between mt-3 pt-3" style={{ borderTopWidth: 1, borderTopColor: colors.divider }}>
-                  <Text style={{ color: colors.text.secondary }} className="text-base font-semibold">Total Logged</Text>
-                  <Text style={{ color: colors.text.primary }} className="text-base font-medium">{formatCurrency(expense.amount)}</Text>
-                </View>
-              </View>
+              {expenseHeroCard}
+              {paymentBreakdownCard}
 
               {/* Metadata */}
               <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, padding: 16 }}>
-                <View className="flex-row items-center justify-between">
-                  <View style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
-                    <Text style={{ color: colors.text.tertiary }} className="text-xs uppercase font-semibold mb-1">Supplier / Merchant</Text>
-                    <Text style={{ color: colors.text.primary }} className="text-lg font-semibold">{merchant || '-'}</Text>
+                <Text style={{ color: colors.text.tertiary }} className="text-xs uppercase font-semibold mb-3">Details</Text>
+                {[
+                  { label: 'Supplier / Merchant', value: merchant || '-', icon: <User size={13} color={colors.text.tertiary} strokeWidth={2} /> },
+                  { label: 'Primary Category', value: expense.category || 'General', icon: <Tag size={13} color={colors.text.tertiary} strokeWidth={2} /> },
+                  { label: 'Expense Type', value: formatExpenseTypeLabel(expenseType), icon: <Receipt size={13} color={colors.text.tertiary} strokeWidth={2} /> },
+                  { label: 'Date', value: date || '-', icon: <Calendar size={13} color={colors.text.tertiary} strokeWidth={2} /> },
+                  { label: 'Created', value: createdAt || '-', icon: <Clock size={13} color={colors.text.tertiary} strokeWidth={2} /> },
+                ].map((row, index) => (
+                  <View
+                    key={row.label}
+                    className="flex-row justify-between"
+                    style={{
+                      alignItems: 'flex-start',
+                      gap: 10,
+                      paddingTop: index === 0 ? 0 : 6,
+                      marginTop: index === 0 ? 0 : 6,
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      {row.icon}
+                      <Text style={{ color: colors.text.secondary, fontSize: 12 }}>{row.label}</Text>
+                    </View>
+                    <Text
+                      style={{ color: colors.text.primary, fontSize: 12, fontWeight: '600', flex: 1, textAlign: 'right', marginLeft: 16 }}
+                    >
+                      {capitalizeDisplayValue(row.value)}
+                    </Text>
                   </View>
-                  <TypeBadge />
-                </View>
-                <View className="mt-3 pt-3" style={{ borderTopWidth: 1, borderTopColor: colors.divider }}>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs uppercase font-semibold mb-1">Primary Category</Text>
-                  <Text style={{ color: colors.text.primary }} className="text-lg font-semibold">{expense.category || 'General'}</Text>
-                </View>
+                ))}
               </View>
 
               {/* Notes */}
