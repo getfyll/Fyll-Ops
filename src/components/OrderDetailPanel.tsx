@@ -15,7 +15,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Package, Edit2, Phone, Mail, MapPin, House, Calendar, Tag, CreditCard, Truck, RefreshCcw, Printer, Trash2, FileText, Camera, ChevronRight, ChevronDown, X, User as UserIcon, Check, MessageSquare, MoreVertical, Plus, Send, Copy, Share2, ExternalLink } from 'lucide-react-native';
+import { Package, Edit2, Phone, Mail, MapPin, House, Calendar, Tag, CreditCard, Truck, RefreshCcw, Printer, Trash2, FileText, Camera, ChevronRight, ChevronDown, X, User as UserIcon, Check, MessageSquare, MoreVertical, Plus, Send, Copy, Flag, ExternalLink } from 'lucide-react-native';
 import useFyllStore, { Case, formatCurrency, Refund, type Order, type RefundRequestStatus, type SocialCheckoutDraft } from '@/lib/state/fyll-store';
 import useAuthStore from '@/lib/state/auth-store';
 import { useThemeColors } from '@/lib/theme';
@@ -192,6 +192,8 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
   const [showFulfillmentModal, setShowFulfillmentModal] = useState(false);
   const [showHeaderActionMenu, setShowHeaderActionMenu] = useState(false);
   const [isSharingOrderToThread, setIsSharingOrderToThread] = useState(false);
+  const [showFlagModal, setShowFlagModal] = useState(false);
+  const [flagNoteDraft, setFlagNoteDraft] = useState('');
   const [showCaseForm, setShowCaseForm] = useState(false);
   const [editingCase, setEditingCase] = useState<Case | null>(null);
   const [showRefundModal, setShowRefundModal] = useState(false);
@@ -1126,6 +1128,30 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
     }
   };
 
+  const openFlagModal = () => {
+    setFlagNoteDraft(order.flagNote ?? '');
+    setShowFlagModal(true);
+  };
+
+  const handleSaveFlagNote = async () => {
+    const trimmed = flagNoteDraft.trim();
+    await updateOrder(order.id, {
+      flagNote: trimmed || undefined,
+      updatedAt: new Date().toISOString(),
+      updatedBy: currentUserName,
+    }, businessId);
+    setShowFlagModal(false);
+  };
+
+  const handleClearFlagNote = async () => {
+    await updateOrder(order.id, {
+      flagNote: undefined,
+      updatedAt: new Date().toISOString(),
+      updatedBy: currentUserName,
+    }, businessId);
+    setShowFlagModal(false);
+  };
+
   const handleUpdateStatus = (newStatus: string) => {
     const isDispatchStatus = newStatus.toLowerCase().includes('dispatch');
     const qcPhotos = order.qcPhotos ?? [];
@@ -1241,22 +1267,23 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
               />
             </Pressable>
             <Pressable
-              onPress={() => {
-                void handleShareOrderToGeneralThread();
-              }}
-              disabled={isSharingOrderToThread}
+              onPress={openFlagModal}
               className="active:opacity-70"
               style={{
                 width: 40,
                 height: 40,
                 borderRadius: 20,
-                backgroundColor: colors.bg.secondary,
+                backgroundColor: order.flagNote ? 'rgba(245, 158, 11, 0.16)' : colors.bg.secondary,
                 alignItems: 'center',
                 justifyContent: 'center',
-                opacity: isSharingOrderToThread ? 0.6 : 1,
               }}
             >
-              <Share2 size={17} color={colors.text.primary} strokeWidth={2.15} />
+              <Flag
+                size={17}
+                color={order.flagNote ? colors.accent.warning : colors.text.primary}
+                fill={order.flagNote ? colors.accent.warning : 'transparent'}
+                strokeWidth={2.15}
+              />
             </Pressable>
             <Pressable
               onPress={() => setShowHeaderActionMenu(true)}
@@ -2752,6 +2779,82 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
         onClose={() => setShowFulfillmentModal(false)}
         onSave={handleSaveFulfillment}
       />
+
+      <Modal
+        visible={showFlagModal}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShowFlagModal(false)}
+      >
+        <Pressable
+          className="flex-1 items-center justify-center px-6"
+          style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
+          onPress={() => setShowFlagModal(false)}
+        >
+          <Pressable
+            onPress={(e) => e.stopPropagation()}
+            className="w-full rounded-2xl overflow-hidden"
+            style={{ backgroundColor: colors.bg.card, maxWidth: 420 }}
+          >
+            <View className="flex-row items-center justify-between px-5 py-4 border-b" style={{ borderBottomColor: colors.border.light }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Flag size={18} color={colors.accent.warning} strokeWidth={2} />
+                <Text style={{ color: colors.text.primary }} className="font-bold text-lg">Flag this order</Text>
+              </View>
+              <Pressable
+                onPress={() => setShowFlagModal(false)}
+                className="w-8 h-8 rounded-full items-center justify-center active:opacity-50"
+                style={{ backgroundColor: colors.bg.secondary }}
+              >
+                <X size={18} color={colors.text.tertiary} strokeWidth={2} />
+              </Pressable>
+            </View>
+            <View className="px-5 py-4">
+              <Text style={{ color: colors.text.secondary }} className="text-sm font-medium mb-2">
+                Leave yourself a note about what to come back to on this order.
+              </Text>
+              <TextInput
+                placeholder="e.g. Waiting on replacement lens from supplier"
+                placeholderTextColor={colors.input.placeholder}
+                value={flagNoteDraft}
+                onChangeText={setFlagNoteDraft}
+                multiline
+                numberOfLines={4}
+                textAlignVertical="top"
+                className="rounded-xl px-4 py-3 text-base"
+                style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light, color: colors.input.text, minHeight: 100 }}
+              />
+              <View className="flex-row gap-3 mt-4">
+                {order.flagNote ? (
+                  <Pressable
+                    onPress={() => { void handleClearFlagNote(); }}
+                    className="flex-1 rounded-xl items-center justify-center"
+                    style={{ height: 48, borderWidth: 1.5, borderColor: colors.accent.danger }}
+                  >
+                    <Text style={{ color: colors.accent.danger }} className="font-semibold">Remove Flag</Text>
+                  </Pressable>
+                ) : (
+                  <Pressable
+                    onPress={() => setShowFlagModal(false)}
+                    className="flex-1 rounded-xl items-center justify-center"
+                    style={{ height: 48, backgroundColor: colors.bg.secondary }}
+                  >
+                    <Text style={{ color: colors.text.secondary }} className="font-semibold">Cancel</Text>
+                  </Pressable>
+                )}
+                <Pressable
+                  onPress={() => { void handleSaveFlagNote(); }}
+                  disabled={!flagNoteDraft.trim()}
+                  className="flex-1 rounded-xl items-center justify-center"
+                  style={{ height: 48, backgroundColor: colors.text.primary, opacity: !flagNoteDraft.trim() ? 0.5 : 1 }}
+                >
+                  <Text style={{ color: colors.bg.primary }} className="font-semibold">Save</Text>
+                </Pressable>
+              </View>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <Modal
         visible={pendingDeleteOrder}

@@ -54,7 +54,8 @@ export default function WarehouseScreen() {
   const router = useRouter();
   const colors = useThemeColors();
   const { isDesktop, isMobile } = useBreakpoint();
-  const isWebDesktop = isDesktop && Platform.OS === 'web';
+  const isWeb = Platform.OS === 'web';
+  const isWebDesktop = isDesktop && isWeb;
   const tabBarHeight = useTabBarHeight();
   const isDark = colors.bg.primary === '#111111';
   const mobileWarehouseHeadingStyle = isMobile
@@ -894,25 +895,44 @@ export default function WarehouseScreen() {
 
       <Modal
         visible={showFilterMenu}
-        animationType="fade"
+        animationType="none"
         transparent
         onRequestClose={() => setShowFilterMenu(false)}
       >
         <Pressable
-          className="flex-1 justify-end"
-          style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            flexDirection: isWeb ? 'row' : 'column',
+            justifyContent: 'flex-end',
+          }}
           onPress={() => setShowFilterMenu(false)}
         >
           <Pressable
             onPress={(event) => event.stopPropagation()}
-            className="rounded-t-3xl"
-            style={{ backgroundColor: colors.bg.primary, maxHeight: '72%' }}
+            className={isWeb ? undefined : 'rounded-t-3xl'}
+            style={
+              isWeb
+                ? {
+                    backgroundColor: colors.bg.primary,
+                    width: 400,
+                    maxWidth: '100%',
+                    borderTopLeftRadius: 24,
+                    borderBottomLeftRadius: 24,
+                    overflow: 'hidden',
+                    borderWidth: isDark ? 1 : 0,
+                    borderColor: isDark ? 'rgba(255, 255, 255, 0.14)' : 'transparent',
+                  }
+                : { backgroundColor: colors.bg.primary, maxHeight: '72%' }
+            }
           >
-            <View className="items-center py-3">
-              <View className="w-10 h-1 rounded-full" style={{ backgroundColor: colors.border.light }} />
-            </View>
+            {!isWeb && (
+              <View className="items-center py-3">
+                <View className="w-10 h-1 rounded-full" style={{ backgroundColor: colors.border.light }} />
+              </View>
+            )}
 
-            <View className="flex-row items-center justify-between px-5 pb-4" style={{ borderBottomWidth: 0.5, borderBottomColor: separatorColor }}>
+            <View className="flex-row items-center justify-between px-5 pb-4" style={{ borderBottomWidth: 0.5, borderBottomColor: separatorColor, paddingTop: isWeb ? 20 : 0 }}>
               <Text style={{ color: colors.text.primary }} className="font-bold text-lg">Filter & Sort</Text>
               <Pressable
                 onPress={() => setShowFilterMenu(false)}
@@ -923,7 +943,7 @@ export default function WarehouseScreen() {
               </Pressable>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView showsVerticalScrollIndicator={false} style={isWeb ? { flex: 1 } : undefined}>
               <View className="px-5 pt-4">
                 <Text style={{ color: colors.text.muted }} className="text-xs font-semibold uppercase tracking-wider mb-3">Stock Status</Text>
 

@@ -199,8 +199,13 @@ export const resolveOrderTimeline = (
   );
   const isGlobalTimeline = (shippingZoneId?: string | null) => !shippingZoneId;
   const orderType =
-    settings.orderTypes.find((entry) => entry.id === payload.orderTypeId && matchesShippingZone(entry.shippingZoneId))
-    ?? settings.orderTypes.find((entry) => entry.id === payload.orderTypeId && isGlobalTimeline(entry.shippingZoneId))
+    // An explicit orderTypeId (e.g. a manual pick from the order type dropdown
+    // in FulfillmentEditModal/OrderEditForm) must win outright — previously this
+    // only matched when the type's configured shipping zone also matched the
+    // order's current delivery state, so picking a type from a different zone
+    // silently fell through to zone/name-based inference and the selection
+    // appeared to do nothing.
+    settings.orderTypes.find((entry) => entry.id === payload.orderTypeId)
     ?? settings.orderTypes.find((entry) => normalizeName(entry.name) === normalizeName(payload.orderTypeName) && matchesShippingZone(entry.shippingZoneId))
     ?? settings.orderTypes.find((entry) => normalizeName(entry.name) === normalizeName(payload.orderTypeName) && isGlobalTimeline(entry.shippingZoneId))
     ?? settings.orderTypes.find((entry) => matchesShippingZone(entry.shippingZoneId))

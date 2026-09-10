@@ -978,25 +978,38 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
                   </View>
 
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                    <Button
+                    <Pressable
                       onPress={handleClose}
-                      fullWidth={false}
-                      size="sm"
-                      variant="ghost"
+                      className="rounded-full items-center justify-center active:opacity-70"
+                      style={{
+                        height: 40,
+                        paddingHorizontal: 16,
+                        borderWidth: 1.5,
+                        borderColor: colors.accent.danger,
+                      }}
                     >
-                      Cancel
-                    </Button>
-                    <Button
+                      <Text style={{ color: colors.accent.danger, fontSize: 14 }} className="font-semibold">
+                        Cancel
+                      </Text>
+                    </Pressable>
+                    <Pressable
                       onPress={handleSubmit}
                       disabled={!customerName.trim() || items.length === 0 || isSubmitting}
-                      fullWidth={false}
-                      size="sm"
-                      variant="primary"
-                      loading={isSubmitting}
-                      loadingText="Saving..."
+                      className="rounded-full items-center justify-center flex-row active:opacity-70"
+                      style={{
+                        height: 40,
+                        paddingHorizontal: 16,
+                        backgroundColor: colors.text.primary,
+                        opacity: (!customerName.trim() || items.length === 0 || isSubmitting) ? 0.6 : 1,
+                      }}
                     >
-                      Save Changes
-                    </Button>
+                      {isSubmitting && (
+                        <ActivityIndicator color={colors.bg.primary} size="small" style={{ marginRight: 8 }} />
+                      )}
+                      <Text style={{ color: colors.bg.primary, fontSize: 14 }} className="font-semibold">
+                        {isSubmitting ? 'Saving...' : 'Save Changes'}
+                      </Text>
+                    </Pressable>
                   </View>
                 </View>
               </View>

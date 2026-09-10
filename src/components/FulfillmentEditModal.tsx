@@ -12,7 +12,6 @@ import { Check, ChevronDown, X } from 'lucide-react-native';
 import useFyllStore, { type Order } from '@/lib/state/fyll-store';
 import { useThemeColors } from '@/lib/theme';
 import { addBusinessDays, resolveOrderTimeline } from '@/lib/fulfillment';
-import { sortOrderStatusesForFulfillment } from '@/lib/order-status';
 
 interface FulfillmentEditModalProps {
   order: Order;
@@ -32,27 +31,21 @@ export function FulfillmentEditModal({
   onSave,
 }: FulfillmentEditModalProps) {
   const colors = useThemeColors();
-  const orderStatuses = useFyllStore((s) => s.orderStatuses);
   const orderTimelineSettings = useFyllStore((s) => s.orderTimelineSettings);
 
-  const [status, setStatus] = useState(order.status);
   const [orderTypeId, setOrderTypeId] = useState(order.orderTypeId ?? orderTimelineSettings.defaultOrderType.id);
   const [showOrderTypeMenu, setShowOrderTypeMenu] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
-    setStatus(order.status);
     setOrderTypeId(order.orderTypeId ?? orderTimelineSettings.orderTypes[0]?.id ?? orderTimelineSettings.defaultOrderType.id);
     setShowOrderTypeMenu(false);
-  }, [order.orderTypeId, order.status, orderTimelineSettings.defaultOrderType.id, orderTimelineSettings.orderTypes, visible]);
+  }, [order.orderTypeId, orderTimelineSettings.defaultOrderType.id, orderTimelineSettings.orderTypes, visible]);
 
   const availableOrderTypes = useMemo(() => {
     return orderTimelineSettings.orderTypes;
   }, [orderTimelineSettings.orderTypes]);
-  const orderedOrderStatuses = useMemo(() => (
-    sortOrderStatusesForFulfillment(orderStatuses)
-  ), [orderStatuses]);
 
   const resolvedTimeline = useMemo(() => resolveOrderTimeline(
     {
@@ -83,7 +76,6 @@ export function FulfillmentEditModal({
       const preserveRevisedEffectiveEta = existingEffective && existingOriginal && existingEffective !== existingOriginal;
 
       await onSave({
-        status,
         orderTypeId: selectedOrderType.id,
         orderTypeName: selectedOrderType.name,
         fulfillmentStartedAt: startedAt.toISOString(),
@@ -168,37 +160,6 @@ export function FulfillmentEditModal({
               contentContainerStyle={{ padding: 20, gap: 18 }}
               keyboardShouldPersistTaps="handled"
             >
-              <View>
-                <Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '500', marginBottom: 10 }}>
-                  Order status
-                </Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                  {orderedOrderStatuses.map((item) => {
-                    const selected = item.name === status;
-                    return (
-                      <Pressable
-                        key={item.id}
-                        onPress={() => setStatus(item.name)}
-                        style={{
-                          minHeight: 38,
-                          paddingHorizontal: 14,
-                          borderRadius: 999,
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          backgroundColor: selected ? item.color : colors.bg.secondary,
-                          borderWidth: 1,
-                          borderColor: selected ? item.color : colors.border.light,
-                        }}
-                      >
-                        <Text style={{ color: selected ? '#FFFFFF' : colors.text.primary, fontSize: 13, fontWeight: '600' }}>
-                          {item.name}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </View>
-
               <View>
                 <Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '500', marginBottom: 10 }}>
                   Order type

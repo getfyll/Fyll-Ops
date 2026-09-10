@@ -388,6 +388,7 @@ export interface Order {
   customerId?: string; // Link to Customer
   customerName: string;
   customerNote?: string;
+  flagNote?: string; // Internal staff reminder note (not customer-facing); presence means the order is flagged to revisit
   customerEmail: string;
   customerPhone: string;
   deliveryState: string;
@@ -3170,13 +3171,39 @@ const useFyllStore = create<FyllStore>()(
                 action = 'Updated prescription';
               } else if (updates.refund) {
                 action = 'Processed refund';
-              } else if (updates.customerName || updates.customerPhone || updates.deliveryAddress || updates.deliveryState) {
-                action = 'Updated customer details';
-              } else if (updates.items) {
-                action = 'Updated order items';
+              } else if (updates.flagNote !== undefined && updates.flagNote !== o.flagNote) {
+                action = updates.flagNote ? 'Added a follow-up note' : 'Cleared follow-up note';
               } else {
-                // Fallback for other updates (notes, payment, etc.)
-                action = 'Updated order';
+                // Forms like OrderEditForm submit customer fields and items
+                // together on every save, even when only one actually changed —
+                // compare against the previous order so the log reflects what
+                // was really edited instead of always saying "customer details".
+                const customerFieldsChanged = (
+                  (updates.customerName !== undefined && updates.customerName !== o.customerName)
+                  || (updates.customerPhone !== undefined && updates.customerPhone !== o.customerPhone)
+                  || (updates.deliveryAddress !== undefined && updates.deliveryAddress !== o.deliveryAddress)
+                  || (updates.deliveryState !== undefined && updates.deliveryState !== o.deliveryState)
+                );
+                const itemsChanged = (
+                  updates.items !== undefined
+                  && JSON.stringify(updates.items) !== JSON.stringify(o.items ?? [])
+                );
+                const servicesChanged = (
+                  updates.services !== undefined
+                  && JSON.stringify(updates.services) !== JSON.stringify(o.services ?? [])
+                );
+                const orderDetailsChanged = itemsChanged || servicesChanged;
+
+                if (customerFieldsChanged && orderDetailsChanged) {
+                  action = 'Updated customer details and order items';
+                } else if (customerFieldsChanged) {
+                  action = 'Updated customer details';
+                } else if (orderDetailsChanged) {
+                  action = 'Updated order items';
+                } else {
+                  // Fallback for other updates (notes, payment, etc.)
+                  action = 'Updated order';
+                }
               }
 
               const entry: OrderActivityEntry = {

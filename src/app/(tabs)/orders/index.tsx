@@ -3,7 +3,7 @@ import { View, Text, ScrollView, FlatList, Pressable, TextInput, Modal, Platform
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { Plus, Search, ShoppingCart, ChevronRight, MapPin, Calendar, User as UserIcon, Filter, Check, X, ArrowDownAZ, ArrowUpAZ, DollarSign, Clock, AlertCircle } from 'lucide-react-native';
+import { Plus, Search, ShoppingCart, ChevronRight, MapPin, Calendar, User as UserIcon, Filter, Check, X, ArrowDownAZ, ArrowUpAZ, DollarSign, Clock, AlertCircle, Flag } from 'lucide-react-native';
 import useFyllStore, { Order, formatCurrency } from '@/lib/state/fyll-store';
 import useAuthStore from '@/lib/state/auth-store';
 import { collaborationData } from '@/lib/supabase/collaboration';
@@ -222,6 +222,9 @@ function OrderCard({ order, statusColor, onPress, isSelected, showSplitView, sep
           <View className="flex-1">
             <View className="flex-row items-center">
               <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '700' }}>{order.orderNumber}</Text>
+              {order.flagNote && (
+                <Flag size={11} color={colors.accent.warning} fill={colors.accent.warning} strokeWidth={2} style={{ marginLeft: 6 }} />
+              )}
               {Date.now() - new Date(order.createdAt).getTime() < 24 * 60 * 60 * 1000 && (
                 <View style={{
                   backgroundColor: '#3B82F6',
@@ -343,6 +346,9 @@ function OrderRowWeb({
           <Text style={{ color: colors.text.primary }} className="text-sm font-semibold" numberOfLines={1}>
             {order.orderNumber}
           </Text>
+          {order.flagNote && (
+            <Flag size={12} color={colors.accent.warning} fill={colors.accent.warning} strokeWidth={2} />
+          )}
           {(unreadCount ?? 0) > 0 && (
             <View style={{
               backgroundColor: '#DC2626',
@@ -424,7 +430,8 @@ export default function OrdersScreen() {
   const { isMobile, isDesktop } = useBreakpoint();
   const isDark = colors.bg.primary === '#111111';
   const separatorColor = isDark ? SEPARATOR_DARK : SEPARATOR_LIGHT;
-  const isWebDesktop = Platform.OS === 'web' && isDesktop;
+  const isWeb = Platform.OS === 'web';
+  const isWebDesktop = isWeb && isDesktop;
   const showSplitView = !isMobile && !isWebDesktop;
   const showMobileFab = isMobile;
   const pageHeadingStyle = getStandardPageHeadingStyle(isMobile);
@@ -447,6 +454,7 @@ export default function OrdersScreen() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
+  const [selectedSource, setSelectedSource] = useState<string | null>(null);
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   const [showFyllAiModal, setShowFyllAiModal] = useState(false);
   const [aiMessageText, setAiMessageText] = useState('');
@@ -469,6 +477,10 @@ export default function OrdersScreen() {
   const sortedOrderStatuses = useMemo(() => (
     sortOrderStatusesForFulfillment(orderStatuses)
   ), [orderStatuses]);
+
+  const availableSources = useMemo(() => (
+    Array.from(new Set(orders.map((o) => o.source?.trim()).filter((value): value is string => Boolean(value)))).sort((a, b) => a.localeCompare(b))
+  ), [orders]);
 
   // Get selected order
   const selectedOrder = useMemo(() => {
@@ -493,6 +505,10 @@ export default function OrdersScreen() {
       result = result.filter((o) => o.status === selectedStatus);
     }
 
+    if (selectedSource) {
+      result = result.filter((o) => o.source === selectedSource);
+    }
+
     // Apply sorting
     result = result.sort((a, b) => {
       switch (sortBy) {
@@ -514,7 +530,7 @@ export default function OrdersScreen() {
     });
 
     return result;
-  }, [orders, searchQuery, selectedStatus, sortBy]);
+  }, [orders, searchQuery, selectedStatus, selectedSource, sortBy]);
 
   const visibleOrders = useMemo(
     () => filteredOrders.slice(0, visibleOrdersCount),
@@ -830,15 +846,15 @@ export default function OrdersScreen() {
               className="rounded-full items-center justify-center active:opacity-70 flex-row px-4"
               style={{
                 height: 44,
-                backgroundColor: (selectedStatus || sortBy !== 'newest') ? colors.accent.primary : colors.bg.card,
-                borderWidth: (selectedStatus || sortBy !== 'newest') ? 0 : 1,
+                backgroundColor: (selectedStatus || selectedSource || sortBy !== 'newest') ? colors.accent.primary : colors.bg.card,
+                borderWidth: (selectedStatus || selectedSource || sortBy !== 'newest') ? 0 : 1,
                 borderColor: separatorColor,
               }}
             >
-              <Filter size={18} color={(selectedStatus || sortBy !== 'newest') ? (isDark ? '#000000' : '#FFFFFF') : colors.text.tertiary} strokeWidth={2} />
-              {(selectedStatus || sortBy !== 'newest') && (
+              <Filter size={18} color={(selectedStatus || selectedSource || sortBy !== 'newest') ? (isDark ? '#000000' : '#FFFFFF') : colors.text.tertiary} strokeWidth={2} />
+              {(selectedStatus || selectedSource || sortBy !== 'newest') && (
                 <Text style={{ color: isDark ? '#000000' : '#FFFFFF' }} className="font-semibold text-sm ml-1.5">
-                  {(selectedStatus ? 1 : 0) + (sortBy !== 'newest' ? 1 : 0)}
+                  {(selectedStatus ? 1 : 0) + (selectedSource ? 1 : 0) + (sortBy !== 'newest' ? 1 : 0)}
                 </Text>
               )}
             </Pressable>
@@ -872,15 +888,15 @@ export default function OrdersScreen() {
                 width: 46,
                 height: 46,
                 paddingHorizontal: 0,
-                backgroundColor: (selectedStatus || sortBy !== 'newest') ? colors.accent.primary : colors.bg.secondary,
-                borderWidth: (selectedStatus || sortBy !== 'newest') ? 0 : 0.5,
+                backgroundColor: (selectedStatus || selectedSource || sortBy !== 'newest') ? colors.accent.primary : colors.bg.secondary,
+                borderWidth: (selectedStatus || selectedSource || sortBy !== 'newest') ? 0 : 0.5,
                 borderColor: separatorColor,
               }}
             >
-              <Filter size={18} color={(selectedStatus || sortBy !== 'newest') ? (isDark ? '#000000' : '#FFFFFF') : colors.text.tertiary} strokeWidth={2} />
-              {(selectedStatus || sortBy !== 'newest') && (
+              <Filter size={18} color={(selectedStatus || selectedSource || sortBy !== 'newest') ? (isDark ? '#000000' : '#FFFFFF') : colors.text.tertiary} strokeWidth={2} />
+              {(selectedStatus || selectedSource || sortBy !== 'newest') && (
                 <Text style={{ color: isDark ? '#000000' : '#FFFFFF' }} className="font-semibold text-sm ml-1.5">
-                  {(selectedStatus ? 1 : 0) + (sortBy !== 'newest' ? 1 : 0)}
+                  {(selectedStatus ? 1 : 0) + (selectedSource ? 1 : 0) + (sortBy !== 'newest' ? 1 : 0)}
                 </Text>
               )}
             </Pressable>
@@ -1063,27 +1079,46 @@ export default function OrdersScreen() {
         {/* Filter Menu Modal */}
         <Modal
           visible={showFilterMenu}
-          animationType="fade"
+          animationType="none"
           transparent
           onRequestClose={() => setShowFilterMenu(false)}
         >
           <Pressable
-            className="flex-1 justify-end"
-            style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
+            style={{
+              flex: 1,
+              backgroundColor: 'rgba(0, 0, 0, 0.5)',
+              flexDirection: isWeb ? 'row' : 'column',
+              justifyContent: 'flex-end',
+            }}
             onPress={() => setShowFilterMenu(false)}
           >
             <Pressable
               onPress={(e) => e.stopPropagation()}
-              className="rounded-t-3xl"
-              style={{ backgroundColor: colors.bg.primary, maxHeight: '75%' }}
+              className={isWeb ? undefined : 'rounded-t-3xl'}
+              style={
+                isWeb
+                  ? {
+                      backgroundColor: colors.bg.primary,
+                      width: 400,
+                      maxWidth: '100%',
+                      borderTopLeftRadius: 24,
+                      borderBottomLeftRadius: 24,
+                      overflow: 'hidden',
+                      borderWidth: isDark ? 1 : 0,
+                      borderColor: isDark ? 'rgba(255, 255, 255, 0.14)' : 'transparent',
+                    }
+                  : { backgroundColor: colors.bg.primary, maxHeight: '75%' }
+              }
             >
               {/* Handle */}
-              <View className="items-center py-3">
-                <View className="w-10 h-1 rounded-full" style={{ backgroundColor: colors.border.light }} />
-              </View>
+              {!isWeb && (
+                <View className="items-center py-3">
+                  <View className="w-10 h-1 rounded-full" style={{ backgroundColor: colors.border.light }} />
+                </View>
+              )}
 
               {/* Header */}
-              <View className="flex-row items-center justify-between px-5 pb-4" style={{ borderBottomWidth: 0.5, borderBottomColor: separatorColor }}>
+              <View className="flex-row items-center justify-between px-5 pb-4" style={{ borderBottomWidth: 0.5, borderBottomColor: separatorColor, paddingTop: isWeb ? 20 : 0 }}>
                 <Text style={{ color: colors.text.primary }} className="font-bold text-lg">Filter & Sort</Text>
                 <Pressable
                   onPress={() => setShowFilterMenu(false)}
@@ -1094,7 +1129,7 @@ export default function OrdersScreen() {
                 </Pressable>
               </View>
 
-              <ScrollView showsVerticalScrollIndicator={false}>
+              <ScrollView showsVerticalScrollIndicator={false} style={isWeb ? { flex: 1 } : undefined}>
                 {/* Filter by Status Section */}
                 <View className="px-5 pt-4">
                   <Text style={{ color: colors.text.muted }} className="text-xs font-semibold uppercase tracking-wider mb-3">Filter by Status</Text>
@@ -1142,6 +1177,52 @@ export default function OrdersScreen() {
                     </Pressable>
                   ))}
                 </View>
+
+                {/* Filter by Source Section */}
+                {availableSources.length > 0 && (
+                  <View className="px-5 pt-4" style={{ borderTopWidth: 0.5, borderTopColor: separatorColor, marginTop: 8 }}>
+                    <Text style={{ color: colors.text.muted }} className="text-xs font-semibold uppercase tracking-wider mb-3">Filter by Source</Text>
+
+                    {/* All option */}
+                    <Pressable
+                      onPress={() => {
+                        Haptics.selectionAsync();
+                        setSelectedSource(null);
+                      }}
+                      className="flex-row items-center py-3 active:opacity-70"
+                    >
+                      <View className="flex-1">
+                        <Text style={{ color: colors.text.primary }} className="font-medium text-sm">All Sources</Text>
+                      </View>
+                      {selectedSource === null && (
+                        <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: colors.accent.primary }}>
+                          <Check size={12} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={3} />
+                        </View>
+                      )}
+                    </Pressable>
+
+                    {/* Source options */}
+                    {availableSources.map((sourceOption) => (
+                      <Pressable
+                        key={sourceOption}
+                        onPress={() => {
+                          Haptics.selectionAsync();
+                          setSelectedSource(sourceOption);
+                        }}
+                        className="flex-row items-center py-3 active:opacity-70"
+                      >
+                        <View className="flex-1">
+                          <Text style={{ color: colors.text.primary }} className="font-medium text-sm">{sourceOption}</Text>
+                        </View>
+                        {selectedSource === sourceOption && (
+                          <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: colors.accent.primary }}>
+                            <Check size={12} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={3} />
+                          </View>
+                        )}
+                      </Pressable>
+                    ))}
+                  </View>
+                )}
 
                 {/* Sort Section */}
                 <View className="px-5 pt-4 pb-2" style={{ borderTopWidth: 0.5, borderTopColor: separatorColor, marginTop: 8 }}>
