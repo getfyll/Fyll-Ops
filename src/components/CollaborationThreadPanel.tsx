@@ -28,6 +28,7 @@ import { ThreadInfoTopBar } from '@/components/thread-info/ThreadInfoTopBar';
 import { ThreadInfoIdentityHeader } from '@/components/thread-info/ThreadInfoIdentityHeader';
 import { ThreadInfoMediaSection } from '@/components/thread-info/ThreadInfoMediaSection';
 import { ThreadInfoSettingsSection } from '@/components/thread-info/ThreadInfoSettingsSection';
+import { SearchClearButton } from '@/components/SearchClearButton';
 import {
   type CollaborationAttachment,
   collaborationData,
@@ -2743,6 +2744,7 @@ export function CollaborationThreadPanel({
               autoFocus
               returnKeyType="search"
             />
+            <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
             {searchQuery.length > 0 && (
               <Pressable onPress={() => setSearchQuery('')} style={{ padding: 4 }}>
                 <X size={14} color={colors.text.muted} strokeWidth={2.5} />
@@ -3517,6 +3519,7 @@ export function CollaborationThreadPanel({
                   placeholderTextColor={colors.text.muted}
                   style={{ flex: 1, color: colors.text.primary, fontSize: 14 }}
                 />
+                <SearchClearButton visible={Boolean(orderSearch.trim())} onPress={() => setOrderSearch('')} />
               </View>
             </View>
             <ScrollView keyboardShouldPersistTaps="handled" style={{ paddingHorizontal: 14 }}>

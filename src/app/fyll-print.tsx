@@ -10,6 +10,7 @@ import { useBreakpoint } from '@/lib/useBreakpoint';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
 import { DesktopSidebar } from '@/components/DesktopSidebar';
 import useFyllStore, { type Order } from '@/lib/state/fyll-store';
+import useAuthStore from '@/lib/state/auth-store';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
 import { prepareOrderLabelData } from '@/utils/printOrderLabel';
 import { generateQrMatrix } from '@/lib/qrcode';
@@ -124,6 +125,7 @@ export default function FyllPrintScreen() {
   const tabBarHeight = useTabBarHeight();
   const isDark = colors.bg.primary === '#111111';
   const orders = useFyllStore((s) => s.orders);
+  const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
   const {
     businessName,
     businessSlug,
@@ -152,10 +154,15 @@ export default function FyllPrintScreen() {
 
   const loadQueue = useCallback(async () => {
     setIsLoading(true);
-    const nextQueue = await getFyllPrintQueue();
+    if (!businessId) {
+      setQueue({ inventory: [], shipping: [], history: { inventory: [], shipping: [] } });
+      setIsLoading(false);
+      return;
+    }
+    const nextQueue = await getFyllPrintQueue(businessId);
     setQueue(nextQueue);
     setIsLoading(false);
-  }, []);
+  }, [businessId]);
 
   useEffect(() => {
     void loadQueue();
@@ -261,7 +268,7 @@ export default function FyllPrintScreen() {
           });
         }
       }
-      const nextQueue = await recordFyllPrintHistory(activeCategory, historyAction, selectedPrintCount);
+      const nextQueue = await recordFyllPrintHistory(activeCategory, historyAction, selectedPrintCount, businessId);
       setQueue(nextQueue);
     } catch (error) {
       console.log('FYLL Print batch error:', error);
@@ -345,7 +352,7 @@ export default function FyllPrintScreen() {
   };
 
   const handleRemoveItem = async (item: FyllPrintQueueItem) => {
-    const nextQueue = await removeFyllPrintQueueItem(item.category, item.id);
+    const nextQueue = await removeFyllPrintQueueItem(item.category, item.id, businessId);
     setQueue(nextQueue);
     setSelectedQueueItemIds((current) => ({
       ...current,
@@ -354,7 +361,7 @@ export default function FyllPrintScreen() {
   };
 
   const handleClearCategory = async () => {
-    const nextQueue = await clearFyllPrintQueueCategory(activeCategory);
+    const nextQueue = await clearFyllPrintQueueCategory(activeCategory, businessId);
     setQueue(nextQueue);
     setSelectedQueueItemIds((current) => ({
       ...current,
@@ -423,10 +430,10 @@ export default function FyllPrintScreen() {
           destination: order.deliveryState || order.deliveryAddress || '',
           carrierName: order.logistics?.carrierName || 'Shipping',
           labelData,
-        }));
+        }), businessId);
       }
 
-      const nextQueue = await getFyllPrintQueue();
+      const nextQueue = await getFyllPrintQueue(businessId);
       setQueue(nextQueue);
       setSelectedDispatchOrderIds([]);
       setActiveCategory('shipping');

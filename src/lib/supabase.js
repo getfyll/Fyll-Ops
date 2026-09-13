@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { storage } from '@/lib/storage';
+import { workspaceFetch } from '@/lib/workspace-transition';
 
 const supabaseUrl = Constants.expoConfig?.extra?.supabaseUrl ?? process.env.EXPO_PUBLIC_SUPABASE_URL;
 const supabaseKey = Constants.expoConfig?.extra?.supabaseAnonKey ?? process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
@@ -14,6 +15,7 @@ if (!hasSupabaseConfig) {
 }
 
 export const supabase = createClient(supabaseUrl ?? '', supabaseKey ?? '', {
+  global: { fetch: workspaceFetch },
   auth: {
     storage,
     persistSession: true,
@@ -27,4 +29,12 @@ export const assertSupabaseConfig = () => {
   if (!hasSupabaseConfig) {
     throw new Error('Supabase is not configured for this deployment. Add EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY, then redeploy.');
   }
+};
+
+// Verification client never replaces the active business session or persists credentials.
+export const createBusinessVerificationClient = () => {
+  assertSupabaseConfig();
+  return createClient(supabaseUrl, supabaseKey, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: 'fyll-business-verification' },
+  });
 };

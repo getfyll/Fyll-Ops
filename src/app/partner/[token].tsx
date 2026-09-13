@@ -19,6 +19,7 @@ import { sendPartnerTestPush, useWebPushNotifications } from '@/hooks/useWebPush
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import useFyllStore, { formatCurrency, type ThemeMode } from '@/lib/state/fyll-store';
 import { supabase } from '@/lib/supabase';
+import { SearchClearButton } from '@/components/SearchClearButton';
 import {
   lookupPartnerPortal,
   lookupPartnerPortalByAuth,
@@ -44,7 +45,7 @@ const STATUS_LABELS: Record<string, string> = {
   ready: 'Ready for pickup',
   pickup_requested: 'Pickup requested',
   received: 'Received',
-  sent_to_business: 'Sent back to business',
+  sent_to_business: 'Sent to business',
   collected: 'Returned to business',
   billed: 'Invoiced',
   cancelled: 'Cancelled',
@@ -175,6 +176,17 @@ export default function PartnerPortalScreen() {
   const [testPushStatus, setTestPushStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [lightboxImageUrl, setLightboxImageUrl] = useState<string | null>(null);
 
+  const handleNavigateSection = (section: PortalSection) => {
+    setViewingJobId(null);
+    setViewingBillId(null);
+    setShowNewBillModal(false);
+    setEditingBillId(null);
+    setStatusMenuJobId(null);
+    setShowNotifDropdown(false);
+    setLightboxImageUrl(null);
+    setActiveSection(section);
+  };
+
   const { data, isLoading, isError, refetch, isRefetching } = useQuery({
     queryKey: ['partner-portal', mode, token],
     queryFn: () => (mode === 'session' ? lookupPartnerPortalByAuth() : lookupPartnerPortal(token)),
@@ -250,6 +262,10 @@ export default function PartnerPortalScreen() {
       } else {
         Alert.alert('Bill removed', 'All jobs were removed, so the bill was cleared.');
       }
+    },
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : 'Could not update this bill.';
+      Alert.alert('Update failed', message);
     },
   });
 
@@ -380,7 +396,7 @@ export default function PartnerPortalScreen() {
 
   const issuesEntryCard = (
     <Pressable
-      onPress={() => setActiveSection('issues')}
+      onPress={() => handleNavigateSection('issues')}
       style={{
         flexDirection: 'row',
         alignItems: 'center',
@@ -942,6 +958,7 @@ export default function PartnerPortalScreen() {
             style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 12 }}
             selectionColor={colors.text.primary}
           />
+          <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={{ gap: 8, paddingRight: 4 }}>
           {statusFilterChips.map((chip) => {
@@ -990,7 +1007,7 @@ export default function PartnerPortalScreen() {
             <Text style={{ color: colors.text.muted, flex: 0.9, minWidth: 110, paddingRight: 10, fontSize: 10, fontWeight: '600' }}>SERVICE</Text>
             <Text style={{ color: colors.text.muted, flex: 1.3, minWidth: 170, paddingRight: 10, fontSize: 10, fontWeight: '600' }}>JOB DESCRIPTION</Text>
             <Text style={{ color: colors.text.muted, flex: 0.85, minWidth: 105, paddingRight: 10, fontSize: 10, fontWeight: '600' }}>DATE</Text>
-            <Text style={{ color: colors.text.muted, flex: 1, minWidth: 140, paddingRight: 10, fontSize: 10, fontWeight: '600' }}>STATUS</Text>
+            <Text style={{ color: colors.text.muted, flex: 1.4, minWidth: 190, paddingRight: 10, fontSize: 10, fontWeight: '600' }}>STATUS</Text>
             <Text style={{ color: colors.text.muted, flex: 0.9, minWidth: 120, paddingRight: 10, textAlign: 'right', fontSize: 10, fontWeight: '600' }}>FEE</Text>
             <Text style={{ color: colors.text.muted, width: 150, paddingLeft: 10, textAlign: 'right', fontSize: 10, fontWeight: '600' }}>ACTION</Text>
           </View>
@@ -1077,14 +1094,14 @@ export default function PartnerPortalScreen() {
                   </Text>
                 </View>
 
-                <View style={{ flex: 1, minWidth: 140, paddingRight: 10, position: 'relative', zIndex: isMenuOpen ? 140 : 1 }}>
+                <View style={{ flex: 1.4, minWidth: 190, paddingRight: 10, position: 'relative', zIndex: isMenuOpen ? 140 : 1 }}>
                   <Pressable
                     disabled={!canChangeStatus}
                     onPress={(e) => { e.stopPropagation(); setStatusMenuJobId(isMenuOpen ? null : job.id); }}
-                    style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, height: 24, borderRadius: 999, backgroundColor: badgeBg }}
+                    style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, height: 24, borderRadius: 999, backgroundColor: badgeBg, maxWidth: '100%' }}
                   >
                     <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: badgeText }} />
-                    <Text style={{ color: badgeText, fontSize: 12, fontWeight: '600' }}>{statusLabel(job.status)}</Text>
+                    <Text style={{ color: badgeText, fontSize: 12, fontWeight: '600' }} numberOfLines={1} ellipsizeMode="tail">{statusLabel(job.status)}</Text>
                     {canChangeStatus ? <ChevronDown size={13} color={badgeText} strokeWidth={2.2} /> : null}
                   </Pressable>
                   {isMenuOpen ? (
@@ -1356,7 +1373,7 @@ export default function PartnerPortalScreen() {
           <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '600' }}>Recent Jobs</Text>
           <Text style={{ color: colors.text.muted, fontSize: 10, marginTop: 1 }}>Last {recentJobs.length} {recentJobs.length === 1 ? 'job' : 'jobs'}</Text>
         </View>
-        <Pressable onPress={() => setActiveSection('jobs')} style={{ flexDirection: 'row', alignItems: 'center', gap: 1, paddingVertical: 4, paddingLeft: 8 }}>
+        <Pressable onPress={() => handleNavigateSection('jobs')} style={{ flexDirection: 'row', alignItems: 'center', gap: 1, paddingVertical: 4, paddingLeft: 8 }}>
           <Text style={{ color: colors.text.primary, fontSize: 10, fontWeight: '600' }}>View All</Text>
           <ChevronRight size={12} color={colors.text.primary} strokeWidth={2.2} />
         </Pressable>
@@ -1397,7 +1414,7 @@ export default function PartnerPortalScreen() {
 
       {jobStats.pastDueCount > 0 ? (
         <Pressable
-          onPress={() => setActiveSection('jobs')}
+          onPress={() => handleNavigateSection('jobs')}
           style={{
             flexDirection: 'row',
             alignItems: 'center',
@@ -1532,7 +1549,7 @@ export default function PartnerPortalScreen() {
             <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '600' }}>Pending Bills</Text>
             <Text style={{ color: colors.text.muted, fontSize: 10, marginTop: 1 }} numberOfLines={1}>Awaiting review from {data.businessName}</Text>
           </View>
-          <Pressable onPress={() => setActiveSection('bills')} style={{ flexDirection: 'row', alignItems: 'center', gap: 1, paddingVertical: 4, paddingLeft: 8 }}>
+          <Pressable onPress={() => handleNavigateSection('bills')} style={{ flexDirection: 'row', alignItems: 'center', gap: 1, paddingVertical: 4, paddingLeft: 8 }}>
             <Text style={{ color: colors.text.primary, fontSize: 10, fontWeight: '600' }}>View All</Text>
             <ChevronRight size={12} color={colors.text.primary} strokeWidth={2.2} />
           </Pressable>
@@ -2241,7 +2258,7 @@ export default function PartnerPortalScreen() {
           return (
             <Pressable
               key={item.key}
-              onPress={() => setActiveSection(item.key)}
+              onPress={() => handleNavigateSection(item.key)}
               style={{
                 width: 68,
                 height: 60,
@@ -2286,6 +2303,7 @@ export default function PartnerPortalScreen() {
 
   const renderBillJobRow = (job: PartnerPortalJob) => {
     const selected = selectedBillJobIds.has(job.id);
+    const statusColor = getStatusColorMeta(job.status, data.statusColors);
     return (
       <Pressable
         key={job.id}
@@ -2330,9 +2348,16 @@ export default function PartnerPortalScreen() {
             {job.jobType || job.itemLabel || 'No glasses name'}
           </Text>
         </View>
-        <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '700' }}>
-          {formatCurrency(job.amount ?? 0)}
-        </Text>
+        <View style={{ alignItems: 'flex-end', gap: 5 }}>
+          <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '700' }}>
+            {formatCurrency(job.amount ?? 0)}
+          </Text>
+          <View style={{ paddingHorizontal: 8, height: 18, borderRadius: 999, backgroundColor: hexToRgba(statusColor.text, 0.12), alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ color: statusColor.text, fontSize: 9, fontWeight: '600' }} numberOfLines={1}>
+              {statusLabel(job.status)}
+            </Text>
+          </View>
+        </View>
       </Pressable>
     );
   };
@@ -2491,6 +2516,19 @@ export default function PartnerPortalScreen() {
 
   const viewingBillStatusMeta = viewingBill ? (BILL_STATUS_META[viewingBill.status] ?? BILL_STATUS_META.pending) : null;
 
+  type BillActivityEntry = { label: string; at: string; actor: 'Business' | 'Partner' };
+  const billActivityEntries: BillActivityEntry[] = viewingBill ? ([
+    viewingBill.submittedAt ? { label: 'Bill submitted', at: viewingBill.submittedAt, actor: 'Partner' } : null,
+    viewingBill.respondedAt
+      ? {
+          label: viewingBill.status === 'approved' ? 'Bill approved' : viewingBill.status === 'rejected' ? 'Bill rejected' : viewingBill.status === 'queried' ? 'Bill queried' : 'Bill reviewed',
+          at: viewingBill.respondedAt,
+          actor: 'Business',
+        }
+      : null,
+    viewingBill.paidAt ? { label: 'Bill paid', at: viewingBill.paidAt, actor: 'Business' } : null,
+  ].filter(Boolean) as BillActivityEntry[]).sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()) : [];
+
   const billDetailsPanel = (
     <Modal visible={!!viewingBillId} transparent animationType="none" onRequestClose={() => setViewingBillId(null)}>
       <Pressable
@@ -2516,7 +2554,7 @@ export default function PartnerPortalScreen() {
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, marginBottom: 18 }}>
                 <Text style={{ color: colors.text.primary, fontSize: 24, fontWeight: '700' }}>Bill Details</Text>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  {viewingBill.status === 'pending' ? (
+                  {viewingBill.status !== 'paid' ? (
                     <Pressable
                       onPress={() => {
                         const billId = viewingBill.billId;
@@ -2584,32 +2622,71 @@ export default function PartnerPortalScreen() {
                 <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10 }}>
                   {viewingBill.jobCount} {viewingBill.jobCount === 1 ? 'JOB' : 'JOBS'}
                 </Text>
-                {viewingBill.jobs.map((job, jobIndex) => (
-                  <View
-                    key={job.id}
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: jobIndex === 0 ? 0 : 1, borderTopColor: colors.border.light }}
-                  >
-                    <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: colors.bg.secondary, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }}>
-                      {job.imageUrl ? (
-                        <ResolvedAttachmentImage imageUrl={job.imageUrl} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-                      ) : (
-                        <Glasses size={17} color={colors.text.tertiary} strokeWidth={1.8} />
-                      )}
+                {viewingBill.jobs.map((job, jobIndex) => {
+                  const jobStatusColor = getStatusColorMeta(job.status, data.statusColors);
+                  return (
+                    <View
+                      key={job.id}
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: jobIndex === 0 ? 0 : 1, borderTopColor: colors.border.light }}
+                    >
+                      <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: colors.bg.secondary, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }}>
+                        {job.imageUrl ? (
+                          <ResolvedAttachmentImage imageUrl={job.imageUrl} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                        ) : (
+                          <Glasses size={17} color={colors.text.tertiary} strokeWidth={1.8} />
+                        )}
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>
+                          {job.customerName}
+                        </Text>
+                        <Text style={{ color: colors.text.tertiary, fontSize: 11, marginTop: 2 }} numberOfLines={1}>
+                          {job.jobType || job.itemLabel || 'Job'} · {job.orderNumber ?? job.id.slice(-6).toUpperCase()}
+                        </Text>
+                      </View>
+                      <View style={{ alignItems: 'flex-end', gap: 5 }}>
+                        <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '700' }}>
+                          {formatCurrency(job.amount ?? 0)}
+                        </Text>
+                        <View style={{ paddingHorizontal: 8, height: 18, borderRadius: 999, backgroundColor: hexToRgba(jobStatusColor.text, 0.12), alignItems: 'center', justifyContent: 'center' }}>
+                          <Text style={{ color: jobStatusColor.text, fontSize: 9, fontWeight: '600' }} numberOfLines={1}>
+                            {statusLabel(job.status)}
+                          </Text>
+                        </View>
+                      </View>
                     </View>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>
-                        {job.customerName}
-                      </Text>
-                      <Text style={{ color: colors.text.tertiary, fontSize: 11, marginTop: 2 }} numberOfLines={1}>
-                        {job.jobType || job.itemLabel || 'Job'} · {job.orderNumber ?? job.id.slice(-6).toUpperCase()}
-                      </Text>
-                    </View>
-                    <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '700' }}>
-                      {formatCurrency(job.amount ?? 0)}
-                    </Text>
-                  </View>
-                ))}
+                  );
+                })}
               </View>
+
+              {billActivityEntries.length > 0 ? (
+                <View style={{ marginHorizontal: 20, marginTop: 16, borderRadius: 18, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card, padding: 16, marginBottom: isDesktop ? 0 : 48 }}>
+                  <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 }}>
+                    Activity
+                  </Text>
+                  {billActivityEntries.map((entry, entryIndex) => {
+                    const isMostRecent = entryIndex === 0;
+                    return (
+                      <View key={`${entry.label}-${entry.at}`} style={{ flexDirection: 'row', gap: 10 }}>
+                        <View style={{ alignItems: 'center', width: 10 }}>
+                          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: isMostRecent ? colors.text.primary : colors.text.tertiary, marginTop: 3 }} />
+                          {entryIndex < billActivityEntries.length - 1 ? (
+                            <View style={{ width: 1, flex: 1, backgroundColor: colors.border.light, marginTop: 3 }} />
+                          ) : null}
+                        </View>
+                        <View style={{ flex: 1, minWidth: 0, paddingBottom: entryIndex < billActivityEntries.length - 1 ? 14 : 0 }}>
+                          <Text style={{ color: isMostRecent ? colors.text.primary : colors.text.tertiary, fontSize: 12, fontWeight: '500' }} numberOfLines={1}>
+                            {entry.label}
+                          </Text>
+                          <Text style={{ color: colors.text.tertiary, fontSize: 10, marginTop: 2 }}>
+                            {entry.actor} · {formatDate(entry.at)}
+                          </Text>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              ) : null}
             </ScrollView>
             {!isDesktop ? mobileFloatingNav : null}
           </Pressable>
@@ -3040,7 +3117,7 @@ export default function PartnerPortalScreen() {
               return (
                 <Pressable
                   key={item.key}
-                  onPress={() => setActiveSection(item.key)}
+                  onPress={() => handleNavigateSection(item.key)}
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',

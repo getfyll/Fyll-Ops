@@ -21,6 +21,7 @@ import useFyllStore, {
   type ReturnStatus,
 } from '@/lib/state/fyll-store';
 import { DESKTOP_PAGE_HEADER_MIN_HEIGHT, getStandardPageHeadingStyle } from '@/lib/page-heading';
+import { SearchClearButton } from '@/components/SearchClearButton';
 
 type ReturnDateFilter = '7d' | 'month' | '30d' | 'year';
 type ReturnSort = 'newest' | 'oldest';
@@ -513,6 +514,7 @@ export default function ReturnsScreen() {
                   style={{ flex: 1, marginLeft: 8, color: colors.input.text, fontSize: 14, outlineStyle: 'none' as any }}
                   selectionColor={colors.text.primary}
                 />
+                <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
               </View>
 
               {isDesktop ? (

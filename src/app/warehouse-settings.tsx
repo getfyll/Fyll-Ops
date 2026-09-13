@@ -118,7 +118,7 @@ export default function WarehouseSettingsScreen() {
               }}
             >
               <Plus size={14} color={colors.bg.primary} strokeWidth={2.4} />
-              <Text style={{ color: colors.bg.primary, marginLeft: 6, fontWeight: '700' }}>Add</Text>
+              <Text style={{ color: colors.bg.primary, marginLeft: 6, fontSize: 12, fontWeight: '600' }}>Add</Text>
             </Pressable>
           </View>
 
@@ -233,7 +233,7 @@ export default function WarehouseSettingsScreen() {
               }}
             >
               <Plus size={14} color={colors.bg.primary} strokeWidth={2.4} />
-              <Text style={{ color: colors.bg.primary, marginLeft: 6, fontWeight: '700' }}>Add</Text>
+              <Text style={{ color: colors.bg.primary, marginLeft: 6, fontSize: 12, fontWeight: '600' }}>Add</Text>
             </Pressable>
           </View>
 

@@ -8,6 +8,7 @@ import useFyllStore, { ProcurementItem, ProcurementAttachment, formatCurrency } 
 import useAuthStore from '@/lib/state/auth-store';
 import { cn } from '@/lib/cn';
 import { uploadBusinessAttachment } from '@/lib/storage-attachments';
+import { SearchClearButton } from '@/components/SearchClearButton';
 
 interface ItemFormData extends ProcurementItem {
   tempId: string;
@@ -293,6 +294,7 @@ export default function NewProcurementScreen() {
                     autoCapitalize="none"
                     className="flex-1 ml-2 text-gray-900 text-sm"
                   />
+                  <SearchClearButton visible={Boolean(productSearch.trim())} onPress={() => setProductSearch('')} />
                   {productSearch.length > 0 && (
                     <Pressable onPress={() => setProductSearch('')} className="active:opacity-50">
                       <X size={14} color="#9CA3AF" strokeWidth={2} />

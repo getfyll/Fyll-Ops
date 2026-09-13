@@ -1,3 +1,6 @@
+import { BUSINESS_SWITCH_EVENT, isAnotherTabSwitching } from '@/lib/business-switch-tabs';
+import { beginWorkspaceTransition } from '@/lib/workspace-transition';
+import { useBusinessSwitcherStore } from '@/lib/state/business-switcher-store';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack, usePathname, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -25,6 +28,7 @@ import { isPartnerPortalHostname } from '@/lib/partner-host';
 import { FYLL_PUBLIC_APP_ORIGIN } from '@/lib/fyll-app-url';
 import {
   isCustomerPortalHostname,
+  isCustomerPortalRoute,
   isDeliveryConfirmationHostname,
   isReturnsHostname,
 } from '@/lib/tracking-host';
@@ -86,6 +90,8 @@ const ROUTE_FEATURES: Record<string, BusinessFeatureKey> = {
   'order-automation': 'orderAutomation',
   'email-settings': 'orderAutomation',
   'fyll-print': 'fyllPrint',
+  'label-print': 'fyllPrint',
+  'order-label-preview': 'fyllPrint',
   'import-ai': 'aiImport',
 };
 
@@ -276,7 +282,8 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
   const [hasHiddenNativeSplash, setHasHiddenNativeSplash] = useState(false);
   const [isBootstrappingApp, setIsBootstrappingApp] = useState(true);
   const bootstrapStartedRef = useRef(false);
-  const isNavigationReady = isHydrated && !isBootstrappingApp;
+  const isSwitchingBusiness = useBusinessSwitcherStore((s) => s.isSwitching);
+  const isNavigationReady = isHydrated && !isBootstrappingApp && !isSwitchingBusiness;
   const showGlobalFloatingActions = Platform.OS === 'web'
     && isDesktop
     && isAuthenticated
@@ -390,15 +397,8 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
     }
 
     if (isCustomerPortalHost) {
-      if (!firstSegment) {
-        router.replace(
-          isReturnsHost
-            ? '/start-return'
-            : isDeliveryConfirmationHost
-              ? '/confirm-delivery'
-              : '/order-tracking'
-        );
-      }
+      bootstrapStartedRef.current = true;
+      setIsBootstrappingApp(false);
       return;
     }
     bootstrapStartedRef.current = true;
@@ -430,7 +430,7 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
   }, [firstSegment, inPublicRoute, isCustomerPortalHost, isDeliveryConfirmationHost, isHydrated, isOfflineMode, isPartnerPortalHost, isReturnsHost, isStorefrontHost, router, syncWithSupabaseSession]);
 
   useEffect(() => {
-    if (!isHydrated || !isAuthenticated || !currentUserId) return;
+    if (!isHydrated || !isAuthenticated || !currentUserId || isSwitchingBusiness) return;
 
     const channel = supabase
       .channel(`auth-role-sync-${currentUserId}`)
@@ -460,11 +460,21 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [currentUserId, isAuthenticated, isHydrated, refreshTeamData, syncWithSupabaseSession]);
+  }, [currentUserId, isAuthenticated, isHydrated, isSwitchingBusiness, refreshTeamData, syncWithSupabaseSession]);
 
   useEffect(() => {
     // Wait for the navigation to be ready before attempting navigation
     if (!isNavigationReady) return;
+
+    if (isCustomerPortalHost) {
+      const routeName = firstSegment === '[businessSlug]' && routeSegments.length === 1
+        ? '[businessSlug]/index' : routeSegments.join('/');
+      if (!isCustomerPortalRoute(routeName)) {
+        router.replace(isReturnsHost ? '/start-return'
+          : isDeliveryConfirmationHost ? '/confirm-delivery' : '/order-tracking');
+      }
+      return;
+    }
 
     if (isStorefrontHost) {
       const storefrontRoutes = new Set([
@@ -567,6 +577,13 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <RootErrorBoundary>
         <Stack
+          screenLayout={({ route, children }) =>
+            isSwitchingBusiness || (isCustomerPortalHost && !isCustomerPortalRoute(route.name))
+              ? <View style={{ flex: 1, backgroundColor: colors.bg.primary, alignItems: 'center', justifyContent: 'center' }}>
+                  {isSwitchingBusiness && <Text style={{ color: colors.text.primary }}>Switching business…</Text>}
+                </View>
+              : children
+          }
           screenOptions={{
             animation: 'none',
             contentStyle: { backgroundColor: colors.bg.primary },
@@ -609,6 +626,7 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
           <Stack.Screen name="expense/[id]" options={{ headerShown: false }} />
           <Stack.Screen name="procurement/[id]" options={{ headerShown: false }} />
           <Stack.Screen name="product-variables" options={{ headerShown: false }} />
+          <Stack.Screen name="product-options" options={{ headerShown: false }} />
           <Stack.Screen name="category-manager" options={{ headerShown: false }} />
           <Stack.Screen name="label-print" options={{ headerShown: false }} />
           <Stack.Screen name="fyll-print" options={{ headerShown: false }} />
@@ -644,6 +662,7 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
           <Stack.Screen name="insights/partner-jobs" options={{ headerShown: false }} />
           <Stack.Screen name="insights/partner-services" options={{ headerShown: false }} />
           <Stack.Screen name="insights/partner-bills" options={{ headerShown: false }} />
+          <Stack.Screen name="switch-business" options={{ headerShown: false }} />
           <Stack.Screen name="business-settings" options={{ headerShown: false }} />
           <Stack.Screen name="storefront-settings" options={{ headerShown: false }} />
           <Stack.Screen name="order-automation" options={{ headerShown: false }} />
@@ -678,6 +697,32 @@ export default function RootLayout() {
     segments[0] === 'partner-login' ||
     segments[0] === 'partner-invite'
   );
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    let externalSwitch = false;
+    let recoveryTimer: ReturnType<typeof setTimeout> | undefined;
+    const pause = () => {
+      if (externalSwitch) return;
+      externalSwitch = true;
+      useBusinessSwitcherStore.setState({ isSwitching: true });
+      void queryClient.cancelQueries();
+      void beginWorkspaceTransition().catch(() => undefined);
+      // If the switching tab closes unexpectedly, reload into normal session validation.
+      recoveryTimer = setTimeout(() => window.location.replace('/'), 31000);
+    };
+    const listener = (event: StorageEvent) => {
+      if (event.key !== BUSINESS_SWITCH_EVENT) return;
+      if (isAnotherTabSwitching()) pause();
+      else if (externalSwitch) window.location.replace('/');
+    };
+    window.addEventListener('storage', listener);
+    if (isAnotherTabSwitching()) pause();
+    return () => {
+      window.removeEventListener('storage', listener);
+      if (recoveryTimer) clearTimeout(recoveryTimer);
+    };
+  }, []);
 
   useSupabaseSync();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);

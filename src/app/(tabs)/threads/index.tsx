@@ -18,6 +18,7 @@ import { createOrderStatusColorMap, getOrderStatusChipColors } from '@/lib/order
 import { CollaborationThreadPanel } from '@/components/CollaborationThreadPanel';
 import { getTabBarStyle } from '@/lib/tab-bar-style';
 import { OrderDetailPanel } from '@/components/OrderDetailPanel';
+import { SearchClearButton } from '@/components/SearchClearButton';
 import {
   buildCustomTeamThreadEntityId,
   getTeamThreadDisplayNameFromEntityId,
@@ -1387,6 +1388,7 @@ export default function ThreadsScreen() {
           style={{ flex: 1, marginLeft: 8, color: colors.input.text, fontSize: 14 }}
           selectionColor={colors.text.primary}
         />
+        <SearchClearButton visible={Boolean(createThreadQuery.trim())} onPress={() => setCreateThreadQuery('')} />
       </View>
 
       <View className="flex-row items-center" style={{ marginBottom: 12 }}>
@@ -1622,6 +1624,7 @@ export default function ThreadsScreen() {
               style={{ flex: 1, marginLeft: 8, color: colors.input.text, fontSize: 14 }}
               selectionColor={colors.text.primary}
             />
+            <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
           </View>
           <Pressable
             onPress={() => setShowFilterMenu(true)}

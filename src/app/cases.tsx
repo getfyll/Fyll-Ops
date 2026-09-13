@@ -28,6 +28,7 @@ import { getSettingsWebPanelStyles, isFromSettingsRoute } from '@/lib/settings-w
 import { useSettingsBack } from '@/lib/useSettingsBack';
 import { FyllAiButton } from '@/components/FyllAiButton';
 import { parseCaseDraft, type CaseDraftData } from '@/lib/ai-case-parser';
+import { SearchClearButton } from '@/components/SearchClearButton';
 
 export default function CasesScreen() {
   const CASE_AI_MAX_IMAGES = 4;
@@ -515,6 +516,7 @@ export default function CasesScreen() {
                   className="flex-1 ml-3"
                   style={{ color: colors.text.primary }}
                 />
+                <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
               </View>
             </View>
 
@@ -643,6 +645,7 @@ export default function CasesScreen() {
               className="flex-1 ml-3"
               style={{ color: colors.input.text }}
             />
+            <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
           </View>
 
           <Pressable

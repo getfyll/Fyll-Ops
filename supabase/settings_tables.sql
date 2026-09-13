@@ -74,6 +74,16 @@ create table if not exists public.product_variables (
   primary key (id, business_id)
 );
 
+create table if not exists public.product_options (
+  id text not null,
+  business_id text not null,
+  data jsonb not null default '{}'::jsonb,
+  created_by text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (id, business_id)
+);
+
 create table if not exists public.expense_categories (
   id text not null,
   business_id text not null,
@@ -110,6 +120,7 @@ create index if not exists custom_services_business_id_idx on public.custom_serv
 create index if not exists payment_methods_business_id_idx on public.payment_methods (business_id);
 create index if not exists logistics_carriers_business_id_idx on public.logistics_carriers (business_id);
 create index if not exists product_variables_business_id_idx on public.product_variables (business_id);
+create index if not exists product_options_business_id_idx on public.product_options (business_id);
 create index if not exists expense_categories_business_id_idx on public.expense_categories (business_id);
 create index if not exists product_categories_business_id_idx on public.product_categories (business_id);
 create index if not exists case_statuses_business_id_idx on public.case_statuses (business_id);
@@ -121,6 +132,7 @@ alter table public.custom_services enable row level security;
 alter table public.payment_methods enable row level security;
 alter table public.logistics_carriers enable row level security;
 alter table public.product_variables enable row level security;
+alter table public.product_options enable row level security;
 alter table public.expense_categories enable row level security;
 alter table public.product_categories enable row level security;
 alter table public.case_statuses enable row level security;
@@ -251,6 +263,24 @@ create policy product_variables_update_own_business
   using (business_id = (select business_id from public.profiles where id = auth.uid()));
 create policy product_variables_delete_own_business
   on public.product_variables for delete
+  using (business_id = (select business_id from public.profiles where id = auth.uid()));
+
+drop policy if exists product_options_select_own_business on public.product_options;
+drop policy if exists product_options_insert_own_business on public.product_options;
+drop policy if exists product_options_update_own_business on public.product_options;
+drop policy if exists product_options_delete_own_business on public.product_options;
+
+create policy product_options_select_own_business
+  on public.product_options for select
+  using (business_id = (select business_id from public.profiles where id = auth.uid()));
+create policy product_options_insert_own_business
+  on public.product_options for insert
+  with check (business_id = (select business_id from public.profiles where id = auth.uid()));
+create policy product_options_update_own_business
+  on public.product_options for update
+  using (business_id = (select business_id from public.profiles where id = auth.uid()));
+create policy product_options_delete_own_business
+  on public.product_options for delete
   using (business_id = (select business_id from public.profiles where id = auth.uid()));
 
 drop policy if exists expense_categories_select_own_business on public.expense_categories;

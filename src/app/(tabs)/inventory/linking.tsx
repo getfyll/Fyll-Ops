@@ -11,6 +11,7 @@ import useFyllStore, { formatCurrency, type Product, type ProductVariant } from 
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
 import { useThemeColors } from '@/lib/theme';
+import { SearchClearButton } from '@/components/SearchClearButton';
 
 type WebsiteVariantRow = {
   key: string;
@@ -417,6 +418,7 @@ export default function InventoryLinkingScreen() {
                   placeholderTextColor={colors.text.tertiary}
                   style={{ flex: 1, marginLeft: 10, color: colors.text.primary, fontSize: 12, fontWeight: '400', outlineStyle: 'none' as any }}
                 />
+                <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
               </View>
 
               <ScrollView
@@ -665,7 +667,8 @@ export default function InventoryLinkingScreen() {
                             }}
                           >
                             {active ? (
-                              <TextInput
+                              <>
+                                <TextInput
                                 autoFocus
                                 value={targetQueryByRow[row.key] ?? ''}
                                 onFocus={() => setActiveRowKey(row.key)}
@@ -682,6 +685,11 @@ export default function InventoryLinkingScreen() {
                                 placeholderTextColor={colors.text.tertiary}
                                 style={{ flex: 1, color: colors.text.primary, fontSize: 12, lineHeight: 16, fontWeight: '400', outlineStyle: 'none' as any }}
                               />
+                                <SearchClearButton
+                                  visible={Boolean((targetQueryByRow[row.key] ?? '').trim())}
+                                  onPress={() => setTargetQueryByRow((current) => ({ ...current, [row.key]: '' }))}
+                                />
+                              </>
                             ) : (
                               <Pressable onPress={() => setActiveRowKey(row.key)} style={{ flex: 1, justifyContent: 'center' }}>
                                 <Text

@@ -79,6 +79,15 @@ export interface ProductVariant {
   sourceVariantId?: string;
 }
 
+export interface ProductOrderOption {
+  id: string;
+  name: string;
+  values: string[];
+  required?: boolean;
+}
+
+export type ProductOption = ProductOrderOption;
+
 export type ProductType = 'product' | 'service';
 
 export type ServiceVariableType = 'Select' | 'Number' | 'Toggle' | 'Text';
@@ -125,6 +134,7 @@ export interface Product {
   serviceUsesGlobalPricing?: boolean; // true = single service price, false = option-based pricing
   serviceVariables?: ServiceVariable[];
   serviceFields?: ServiceField[];
+  orderOptions?: ProductOrderOption[]; // Product-level choices selected on each order line; does not create stock variants
   // New Design tracking
   isNewDesign?: boolean; // Default false
   designYear?: number; // Default current year when isNewDesign is true
@@ -210,6 +220,7 @@ export interface OrderService {
   serviceId: string;
   name: string;
   price: number;
+  linkedItemId?: string;
 }
 
 // Payment Method
@@ -263,12 +274,14 @@ export interface Refund {
 }
 
 export interface OrderItem {
+  id?: string;
   productId: string;
   variantId: string;
   quantity: number;
   unitPrice: number;
   productName?: string;
   variantName?: string;
+  selectedOptions?: Record<string, string>;
   serviceId?: string;
   serviceVariables?: ServiceOrderVariable[];
   serviceFields?: ServiceOrderField[];
@@ -1264,6 +1277,7 @@ interface FyllStore {
   // Products
   products: Product[];
   productVariables: ProductVariable[];
+  productOptions: ProductOption[];
   addProduct: (product: Product, businessId?: string | null) => Promise<void>;
   addProductsBulk: (products: Product[], businessId?: string | null) => Promise<void>;
   updateProduct: (id: string, product: Partial<Product>, businessId?: string | null) => Promise<void>;
@@ -1271,6 +1285,9 @@ interface FyllStore {
   addProductVariable: (variable: ProductVariable) => void;
   updateProductVariable: (id: string, variable: Partial<ProductVariable>) => void;
   deleteProductVariable: (id: string, businessId?: string | null) => void;
+  addProductOption: (option: ProductOption) => void;
+  updateProductOption: (id: string, option: Partial<ProductOption>) => void;
+  deleteProductOption: (id: string, businessId?: string | null) => void;
   updateVariantStock: (productId: string, variantId: string, delta: number, businessId?: string | null) => Promise<void>;
   addProductVariant: (productId: string, variant: ProductVariant) => void;
   updateProductVariant: (productId: string, variantId: string, variant: Partial<ProductVariant>) => void;
@@ -1558,6 +1575,7 @@ const initialPaymentMethods: PaymentMethod[] = [];
 const initialLogisticsCarriers: LogisticsCarrier[] = [];
 
 const initialProductVariables: ProductVariable[] = [];
+const initialProductOptions: ProductOption[] = [];
 
 const initialExpenseRequests: ExpenseRequest[] = [];
 const initialRefundRequests: RefundRequest[] = [];
@@ -1586,6 +1604,7 @@ const initialState = {
   customers: [] as Customer[],
   products: [] as Product[],
   productVariables: initialProductVariables,
+  productOptions: initialProductOptions,
   orders: [] as Order[],
   orderStatuses: initialOrderStatuses,
   qcChecklistRequirements: DEFAULT_ORDER_QC_REQUIREMENTS,
@@ -2517,6 +2536,7 @@ const useFyllStore = create<FyllStore>()(
           const paymentMethods = dedupeByName(state.paymentMethods ?? []).filter((method) => method.name.trim());
           const logisticsCarriers = dedupeByName(state.logisticsCarriers ?? []).filter((carrier) => carrier.name.trim());
           const productVariables = dedupeByName(state.productVariables ?? []).filter((variable) => variable.name.trim());
+          const productOptions = dedupeByName(state.productOptions ?? []).filter((option) => option.name.trim());
           const expenseCategories = dedupeByName(state.expenseCategories ?? []).filter((category) => category.name.trim());
           const financeSuppliers = dedupeByName(state.financeSuppliers ?? []).filter((supplier) => supplier.name.trim());
           const procurementStatusOptions = dedupeByName(state.procurementStatusOptions ?? [])
@@ -2632,6 +2652,7 @@ const useFyllStore = create<FyllStore>()(
             paymentMethods,
             logisticsCarriers,
             productVariables,
+            productOptions,
             expenseCategories,
             financeSuppliers,
             procurementStatusOptions: normalizedProcurementStatusOptions,
@@ -2685,6 +2706,7 @@ const useFyllStore = create<FyllStore>()(
             syncTable('payment_methods', paymentMethods),
             syncTable('logistics_carriers', logisticsCarriers),
             syncTable('product_variables', productVariables),
+            syncTable('product_options', productOptions),
             syncTable('expense_categories', expenseCategories),
             syncTable('case_statuses', caseStatuses),
             syncTable('product_categories', categoryItems),
@@ -2820,6 +2842,17 @@ const useFyllStore = create<FyllStore>()(
         supabaseSettings
           .deleteSettings('product_variables', businessId, [id])
           .catch((error) => console.warn('Supabase product variable delete failed:', error));
+      },
+      addProductOption: (option) => set({ productOptions: [...get().productOptions, option] }),
+      updateProductOption: (id, updates) => set({
+        productOptions: get().productOptions.map((option) => option.id === id ? { ...option, ...updates } : option),
+      }),
+      deleteProductOption: (id, businessId) => {
+        set({ productOptions: get().productOptions.filter((option) => option.id !== id) });
+        if (!businessId) return;
+        supabaseSettings
+          .deleteSettings('product_options', businessId, [id])
+          .catch((error) => console.warn('Supabase product option delete failed:', error));
       },
       updateVariantStock: async (productId, variantId, delta, businessId) => {
         const previousProducts = get().products;
@@ -4680,6 +4713,7 @@ const useFyllStore = create<FyllStore>()(
           cases: state.cases,
           returns: state.returns,
           productVariables: state.productVariables,
+          productOptions: state.productOptions,
           orderStatuses: state.orderStatuses,
           qcChecklistRequirements: state.qcChecklistRequirements,
           saleSources: state.saleSources,

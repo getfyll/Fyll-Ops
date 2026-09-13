@@ -16,6 +16,7 @@ import { useBreakpoint } from '@/lib/useBreakpoint';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
 import { useThemeColors } from '@/lib/theme';
 import { PaymentDetailSkeleton } from '@/components/SkeletonLoader';
+import { SearchClearButton } from '@/components/SearchClearButton';
 
 const SEPARATOR_LIGHT = '#EEEEEE';
 const SEPARATOR_DARK = '#333333';
@@ -1963,6 +1964,7 @@ export default function StorefrontPaymentDetailScreen() {
                 style={[{ color: colors.input.text, fontSize: 14 }, noWebOutline]}
                 selectionColor={colors.text.primary}
               />
+              <SearchClearButton visible={Boolean(orderSearchQuery.trim())} onPress={() => setOrderSearchQuery('')} />
             </View>
             <ScrollView
               showsVerticalScrollIndicator={false}

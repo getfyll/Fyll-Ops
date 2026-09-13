@@ -3,7 +3,7 @@ import { View, Text, ScrollView, Pressable, TextInput, Alert, KeyboardAvoidingVi
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Plus, Trash2, Edit3, Check, X, Palette, Tag, ChevronDown, ChevronUp } from 'lucide-react-native';
-import useFyllStore, { ProductVariable } from '@/lib/state/fyll-store';
+import useFyllStore, { ProductOption } from '@/lib/state/fyll-store';
 import useAuthStore from '@/lib/state/auth-store';
 import * as Haptics from 'expo-haptics';
 import { Button } from '@/components/Button';
@@ -13,64 +13,64 @@ import { getSettingsWebPanelStyles, isFromSettingsRoute } from '@/lib/settings-w
 import { useSettingsBack } from '@/lib/useSettingsBack';
 import { cn } from '@/lib/cn';
 
-export default function ProductVariablesScreen() {
+export default function ProductOptionsScreen() {
   const colors = useThemeColors();
   const { from } = useLocalSearchParams<{ from?: string | string[] }>();
   const goBack = useSettingsBack();
   const openedFromSettings = isFromSettingsRoute(from);
   const panelStyles = getSettingsWebPanelStyles(openedFromSettings, colors.bg.primary, colors.border.light);
-  const productVariables = useFyllStore((s) => s.productVariables);
-  const addProductVariable = useFyllStore((s) => s.addProductVariable);
-  const updateProductVariable = useFyllStore((s) => s.updateProductVariable);
-  const deleteProductVariable = useFyllStore((s) => s.deleteProductVariable);
+  const productOptions = useFyllStore((s) => s.productOptions);
+  const addProductOption = useFyllStore((s) => s.addProductOption);
+  const updateProductOption = useFyllStore((s) => s.updateProductOption);
+  const deleteProductOption = useFyllStore((s) => s.deleteProductOption);
   const saveGlobalSettings = useFyllStore((s) => s.saveGlobalSettings);
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
 
   const [showAddModal, setShowAddModal] = useState(false);
-  const [newVariableName, setNewVariableName] = useState('');
-  const [newVariableValues, setNewVariableValues] = useState<string[]>([]);
+  const [newOptionName, setNewOptionName] = useState('');
+  const [newOptionValues, setNewOptionValues] = useState<string[]>([]);
   const [editingValueId, setEditingValueId] = useState<string | null>(null);
   const [editingValueText, setEditingValueText] = useState('');
   const [addingValueToId, setAddingValueToId] = useState<string | null>(null);
   const [newValueText, setNewValueText] = useState('');
-  const [pendingDeleteVariable, setPendingDeleteVariable] = useState<ProductVariable | null>(null);
-  const [expandedVariableIds, setExpandedVariableIds] = useState<Set<string>>(new Set());
+  const [pendingDeleteOption, setPendingDeleteOption] = useState<ProductOption | null>(null);
+  const [expandedOptionIds, setExpandedOptionIds] = useState<Set<string>>(new Set());
 
-  const toggleVariableExpanded = (variableId: string) => {
+  const toggleOptionExpanded = (optionId: string) => {
     Haptics.selectionAsync();
-    setExpandedVariableIds((prev) => {
+    setExpandedOptionIds((prev) => {
       const next = new Set(prev);
-      if (next.has(variableId)) next.delete(variableId);
-      else next.add(variableId);
+      if (next.has(optionId)) next.delete(optionId);
+      else next.add(optionId);
       return next;
     });
   };
 
   const closeAddModal = () => {
     setShowAddModal(false);
-    setNewVariableName('');
-    setNewVariableValues([]);
+    setNewOptionName('');
+    setNewOptionValues([]);
   };
 
-  const handleAddVariable = async () => {
-    const name = newVariableName.trim();
+  const handleAddOption = async () => {
+    const name = newOptionName.trim();
     if (!name) return;
 
-    if (productVariables.some((variable) => variable.name.trim().toLowerCase() === name.toLowerCase())) {
-      Alert.alert('Already exists', 'This product variable already exists. Open it below to add or edit values.');
+    if (productOptions.some((option) => option.name.trim().toLowerCase() === name.toLowerCase())) {
+      Alert.alert('Already exists', 'This product option already exists. Open it below to add or edit values.');
       return;
     }
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-    const newVariable: ProductVariable = {
+    const newOption: ProductOption = {
       id: Math.random().toString(36).substring(2, 15),
       name,
-      values: newVariableValues,
+      values: newOptionValues,
     };
 
-    addProductVariable(newVariable);
-    setExpandedVariableIds((prev) => new Set(prev).add(newVariable.id));
+    addProductOption(newOption);
+    setExpandedOptionIds((prev) => new Set(prev).add(newOption.id));
     if (businessId) {
       const result = await saveGlobalSettings(businessId);
       if (!result.success) {
@@ -80,43 +80,43 @@ export default function ProductVariablesScreen() {
     closeAddModal();
   };
 
-  const openDeleteVariable = (variable: ProductVariable) => {
+  const openDeleteOption = (option: ProductOption) => {
     if (Platform.OS === 'web') {
       const active = document.activeElement as HTMLElement | null;
       active?.blur();
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setPendingDeleteVariable(variable);
+    setPendingDeleteOption(option);
   };
 
-  const confirmDeleteVariable = async () => {
-    if (!pendingDeleteVariable) return;
+  const confirmDeleteOption = async () => {
+    if (!pendingDeleteOption) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    deleteProductVariable(pendingDeleteVariable.id, businessId);
-    setPendingDeleteVariable(null);
+    deleteProductOption(pendingDeleteOption.id, businessId);
+    setPendingDeleteOption(null);
     if (businessId) {
       const result = await saveGlobalSettings(businessId);
       if (!result.success) {
-        Alert.alert('Delete failed', result.error ?? 'Could not delete this variable.');
+        Alert.alert('Delete failed', result.error ?? 'Could not delete this option.');
       }
     }
   };
 
-  const handleAddValue = async (variableId: string) => {
+  const handleAddValue = async (optionId: string) => {
     if (!newValueText.trim()) return;
 
-    const variable = productVariables.find((v) => v.id === variableId);
-    if (!variable) return;
+    const option = productOptions.find((v) => v.id === optionId);
+    if (!option) return;
 
     // Check for duplicates
-    if (variable.values.includes(newValueText.trim())) {
+    if (option.values.includes(newValueText.trim())) {
       Alert.alert('Duplicate Value', 'This value already exists.');
       return;
     }
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    updateProductVariable(variableId, {
-      values: [...variable.values, newValueText.trim()],
+    updateProductOption(optionId, {
+      values: [...option.values, newValueText.trim()],
     });
     if (businessId) {
       const result = await saveGlobalSettings(businessId);
@@ -129,21 +129,21 @@ export default function ProductVariablesScreen() {
     setAddingValueToId(null);
   };
 
-  const handleEditValue = async (variableId: string, oldValue: string) => {
+  const handleEditValue = async (optionId: string, oldValue: string) => {
     if (!editingValueText.trim()) return;
 
-    const variable = productVariables.find((v) => v.id === variableId);
-    if (!variable) return;
+    const option = productOptions.find((v) => v.id === optionId);
+    if (!option) return;
 
     // Check for duplicates (excluding the current value)
-    if (variable.values.filter(v => v !== oldValue).includes(editingValueText.trim())) {
+    if (option.values.filter(v => v !== oldValue).includes(editingValueText.trim())) {
       Alert.alert('Duplicate Value', 'This value already exists.');
       return;
     }
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    updateProductVariable(variableId, {
-      values: variable.values.map((v) => v === oldValue ? editingValueText.trim() : v),
+    updateProductOption(optionId, {
+      values: option.values.map((v) => v === oldValue ? editingValueText.trim() : v),
     });
     if (businessId) {
       const result = await saveGlobalSettings(businessId);
@@ -156,9 +156,9 @@ export default function ProductVariablesScreen() {
     setEditingValueText('');
   };
 
-  const handleDeleteValue = (variableId: string, value: string) => {
-    const variable = productVariables.find((v) => v.id === variableId);
-    if (!variable) return;
+  const handleDeleteValue = (optionId: string, value: string) => {
+    const option = productOptions.find((v) => v.id === optionId);
+    if (!option) return;
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     Alert.alert(
@@ -171,8 +171,8 @@ export default function ProductVariablesScreen() {
           style: 'destructive',
           onPress: () => {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            updateProductVariable(variableId, {
-              values: variable.values.filter((v) => v !== value),
+            updateProductOption(optionId, {
+              values: option.values.filter((v) => v !== value),
             });
             if (businessId) {
               void saveGlobalSettings(businessId);
@@ -183,12 +183,12 @@ export default function ProductVariablesScreen() {
     );
   };
 
-  const startEditingValue = (variableId: string, value: string) => {
-    setEditingValueId(`${variableId}-${value}`);
+  const startEditingValue = (optionId: string, value: string) => {
+    setEditingValueId(`${optionId}-${value}`);
     setEditingValueText(value);
   };
 
-  const getVariableIcon = (name: string) => {
+  const getOptionIcon = (name: string) => {
     const lowerName = name.toLowerCase();
     if (lowerName.includes('color') || lowerName.includes('colour')) {
       return <Palette size={20} color="#A855F7" strokeWidth={2} />;
@@ -221,7 +221,7 @@ export default function ProductVariablesScreen() {
                 fontWeight: '600',
               }}
             >
-              Product Variables
+              Product Options
             </Text>
             <View className="w-10" />
           </View>
@@ -231,12 +231,12 @@ export default function ProductVariablesScreen() {
             <View>
               <View className="rounded-xl p-4 mt-4 border" style={{ backgroundColor: colors.bg.card, borderColor: colors.border.light }}>
                 <Text style={{ color: colors.text.tertiary }} className="text-sm leading-5">
-                  Create reusable variable sets like Colour, Material, Finish, or Size when each value needs its own stock, SKU, barcode, image, or price.
+                  Create reusable options like Shoe Size, Width, Finish, Gift Message, or Packaging. Attach them to products when customers must choose something on each order item.
                 </Text>
               </View>
             </View>
 
-            {/* Add New Product Variable Button */}
+            {/* Add New Product Option Button */}
             <View>
               <Button
                 onPress={() => {
@@ -247,12 +247,12 @@ export default function ProductVariablesScreen() {
                 className="mt-4"
                 fontSize={12}
               >
-                Add Product Variable
+                Add Product Option
               </Button>
             </View>
 
-            {/* Variables List */}
-            {productVariables.length === 0 ? (
+            {/* Options List */}
+            {productOptions.length === 0 ? (
               <View>
                 <View className="rounded-xl p-6 mt-4 border items-center" style={{ backgroundColor: colors.bg.card, borderColor: colors.border.light }}>
                   <View
@@ -261,23 +261,23 @@ export default function ProductVariablesScreen() {
                   >
                     <Tag size={32} color="#A855F7" strokeWidth={1.5} />
                   </View>
-                  <Text style={{ color: colors.text.tertiary }} className="text-base mb-1">No product variables yet</Text>
+                  <Text style={{ color: colors.text.tertiary }} className="text-base mb-1">No product options yet</Text>
                   <Text style={{ color: colors.text.muted }} className="text-sm text-center px-4">
-                    Add reusable variable sets like Colour, Material, Finish, or Size. Use these when each value creates stock variants.
+                    Add reusable options like Shoe Size, Width, Finish, Gift Message, or Packaging. They are saved for this business and can be attached to any product.
                   </Text>
                 </View>
               </View>
             ) : (
-              productVariables.map((variable, index) => {
-                const isExpanded = expandedVariableIds.has(variable.id);
+              productOptions.map((option, index) => {
+                const isExpanded = expandedOptionIds.has(option.id);
                 return (
                 <View
-                  key={variable.id}                  className="mt-4"
+                  key={option.id}                  className="mt-4"
                 >
                   <View className="rounded-xl p-4 border" style={{ backgroundColor: colors.bg.card, borderColor: colors.border.light }}>
-                    {/* Variable Header */}
+                    {/* Option Header */}
                     <Pressable
-                      onPress={() => toggleVariableExpanded(variable.id)}
+                      onPress={() => toggleOptionExpanded(option.id)}
                       className={cn('flex-row items-center justify-between', isExpanded ? 'mb-4' : '')}
                     >
                       <View className="flex-row items-center flex-1" style={{ minWidth: 0 }}>
@@ -285,18 +285,18 @@ export default function ProductVariablesScreen() {
                           className="w-10 h-10 rounded-xl items-center justify-center mr-3"
                           style={{ backgroundColor: 'rgba(168, 85, 247, 0.15)' }}
                         >
-                          {getVariableIcon(variable.name)}
+                          {getOptionIcon(option.name)}
                         </View>
                         <View style={{ flex: 1, minWidth: 0 }}>
-                          <Text style={{ color: colors.text.primary }} className="font-bold text-base" numberOfLines={1}>{variable.name}</Text>
+                          <Text style={{ color: colors.text.primary }} className="font-bold text-base" numberOfLines={1}>{option.name}</Text>
                           <Text style={{ color: colors.text.muted }} className="text-xs">
-                            {variable.values.length} value{variable.values.length !== 1 ? 's' : ''} · reusable
+                            {option.values.length} value{option.values.length !== 1 ? 's' : ''} · reusable
                           </Text>
                         </View>
                       </View>
                       <View className="flex-row items-center gap-1">
                         <Pressable
-                          onPress={(e) => { e.stopPropagation(); openDeleteVariable(variable); }}
+                          onPress={(e) => { e.stopPropagation(); openDeleteOption(option); }}
                           className="w-9 h-9 rounded-lg items-center justify-center active:opacity-50"
                           style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)' }}
                         >
@@ -319,15 +319,15 @@ export default function ProductVariablesScreen() {
                     <>
                     {/* Values List */}
                     <View className="mb-3">
-                      {variable.values.length === 0 ? (
+                      {option.values.length === 0 ? (
                         <Text style={{ color: colors.text.muted }} className="text-sm italic">No values added yet</Text>
                       ) : (
-                        variable.values.map((value) => {
-                          const isEditing = editingValueId === `${variable.id}-${value}`;
+                        option.values.map((value) => {
+                          const isEditing = editingValueId === `${option.id}-${value}`;
 
                           return (
                             <View
-                              key={`${variable.id}-${value}`}                              className="mb-2"
+                              key={`${option.id}-${value}`}                              className="mb-2"
                             >
                               {isEditing ? (
                                 <View
@@ -352,7 +352,7 @@ export default function ProductVariablesScreen() {
                                     <X size={16} color={colors.text.muted} strokeWidth={2} />
                                   </Pressable>
                                   <Pressable
-                                    onPress={() => handleEditValue(variable.id, value)}
+                                    onPress={() => handleEditValue(option.id, value)}
                                     className="w-8 h-8 rounded-lg items-center justify-center ml-1"
                                     style={{ backgroundColor: 'rgba(34, 197, 94, 0.15)' }}
                                   >
@@ -367,14 +367,14 @@ export default function ProductVariablesScreen() {
                                   <Text style={{ color: colors.text.primary }} className="text-sm font-medium">{value}</Text>
                                   <View className="flex-row items-center gap-1">
                                     <Pressable
-                                      onPress={() => startEditingValue(variable.id, value)}
+                                      onPress={() => startEditingValue(option.id, value)}
                                       className="w-8 h-8 rounded-lg items-center justify-center active:opacity-50"
                                       style={{ backgroundColor: colors.border.light }}
                                     >
                                       <Edit3 size={14} color={colors.text.muted} strokeWidth={2} />
                                     </Pressable>
                                     <Pressable
-                                      onPress={() => handleDeleteValue(variable.id, value)}
+                                      onPress={() => handleDeleteValue(option.id, value)}
                                       className="w-8 h-8 rounded-lg items-center justify-center active:opacity-50"
                                       style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)' }}
                                     >
@@ -390,7 +390,7 @@ export default function ProductVariablesScreen() {
                     </View>
 
                     {/* Add Value */}
-                    {addingValueToId === variable.id ? (
+                    {addingValueToId === option.id ? (
                       <View
                         className="flex-row items-center rounded-xl px-3"
                         style={{ backgroundColor: colors.bg.secondary, height: 48 }}
@@ -403,7 +403,7 @@ export default function ProductVariablesScreen() {
                           autoFocus
                           style={{ flex: 1, color: colors.text.primary, fontSize: 14 }}
                           selectionColor={colors.text.primary}
-                          onSubmitEditing={() => handleAddValue(variable.id)}
+                          onSubmitEditing={() => handleAddValue(option.id)}
                         />
                         <Pressable
                           onPress={() => {
@@ -416,7 +416,7 @@ export default function ProductVariablesScreen() {
                           <X size={16} color={colors.text.muted} strokeWidth={2} />
                         </Pressable>
                         <Pressable
-                          onPress={() => handleAddValue(variable.id)}
+                          onPress={() => handleAddValue(option.id)}
                           disabled={!newValueText.trim()}
                           className="w-8 h-8 rounded-lg items-center justify-center ml-1"
                           style={{
@@ -431,7 +431,7 @@ export default function ProductVariablesScreen() {
                       <Pressable
                         onPress={() => {
                           Haptics.selectionAsync();
-                          setAddingValueToId(variable.id);
+                          setAddingValueToId(option.id);
                         }}
                         className="flex-row items-center justify-center py-2.5 rounded-xl active:opacity-70"
                         style={{ backgroundColor: 'rgba(59, 130, 246, 0.1)', borderWidth: 1, borderColor: 'rgba(59, 130, 246, 0.2)', borderStyle: 'dashed' }}
@@ -452,7 +452,7 @@ export default function ProductVariablesScreen() {
           </ScrollView>
         </KeyboardAvoidingView>
 
-        {/* Add Product Variable Modal - Centered */}
+        {/* Add Product Option Modal - Centered */}
         <Modal
           visible={showAddModal}
           animationType="fade"
@@ -475,7 +475,7 @@ export default function ProductVariablesScreen() {
               >
                 {/* Header */}
                 <View className="flex-row items-center justify-between px-5 py-4 border-b" style={{ borderBottomColor: colors.border.light }}>
-                  <Text style={{ color: colors.text.primary, fontSize: 14, lineHeight: 18, fontWeight: '600' }}>New Product Variable</Text>
+                  <Text style={{ color: colors.text.primary, fontSize: 14, lineHeight: 18, fontWeight: '600' }}>New Product Option</Text>
                   <Pressable
                     onPress={closeAddModal}
                     className="w-8 h-8 rounded-full items-center justify-center active:opacity-50"
@@ -486,18 +486,18 @@ export default function ProductVariablesScreen() {
                 </View>
 
                 <View className="px-5 py-4">
-                  {/* Product Variable Name Input */}
+                  {/* Product Option Name Input */}
                   <View className="mb-4">
-                    <Text style={{ color: colors.text.primary }} className="text-sm font-medium mb-2">Product Variable Name</Text>
+                    <Text style={{ color: colors.text.primary }} className="text-sm font-medium mb-2">Product Option Name</Text>
                     <View
                       className="rounded-xl px-4"
                       style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.input.border, height: 52, justifyContent: 'center' }}
                     >
                       <TextInput
-                        placeholder="e.g. Colour, Material, Finish"
+                        placeholder="e.g. Shoe Size, Width, Finish"
                         placeholderTextColor={colors.text.muted}
-                        value={newVariableName}
-                        onChangeText={setNewVariableName}
+                        value={newOptionName}
+                        onChangeText={setNewOptionName}
                         autoFocus
                         style={{ color: colors.text.primary, fontSize: 14 }}
                         selectionColor={colors.text.primary}
@@ -508,8 +508,8 @@ export default function ProductVariablesScreen() {
                   <View className="mb-4">
                     <Text style={{ color: colors.text.primary }} className="text-sm font-medium mb-2">Values</Text>
                     <TagPillInput
-                      values={newVariableValues}
-                      onChange={setNewVariableValues}
+                      values={newOptionValues}
+                      onChange={setNewOptionValues}
                       placeholder="e.g. 36, 37, 38, 39 or Small, Medium, Large"
                     />
                     <Text style={{ color: colors.text.muted }} className="text-xs mt-2">Type a value then press comma or enter to turn it into a pill. You can edit them later.</Text>
@@ -525,8 +525,8 @@ export default function ProductVariablesScreen() {
                       Cancel
                     </Button>
                     <Button
-                      onPress={handleAddVariable}
-                      disabled={!newVariableName.trim()}
+                      onPress={handleAddOption}
+                      disabled={!newOptionName.trim()}
                       className="flex-1"
                     >
                       Create
@@ -541,35 +541,35 @@ export default function ProductVariablesScreen() {
       </View>
 
       <Modal
-        visible={!!pendingDeleteVariable}
+        visible={!!pendingDeleteOption}
         transparent
         animationType="fade"
-        onRequestClose={() => setPendingDeleteVariable(null)}
+        onRequestClose={() => setPendingDeleteOption(null)}
       >
         <Pressable
           className="flex-1 items-center justify-center"
           style={{ backgroundColor: 'rgba(0, 0, 0, 0.45)' }}
-          onPress={() => setPendingDeleteVariable(null)}
+          onPress={() => setPendingDeleteOption(null)}
         >
           <Pressable
             onPress={(event) => event.stopPropagation()}
             className="w-[90%] rounded-2xl p-5"
             style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light, maxWidth: 420 }}
           >
-            <Text style={{ color: colors.text.primary, fontSize: 14, lineHeight: 18, fontWeight: '600', marginBottom: 8 }}>Delete variable?</Text>
+            <Text style={{ color: colors.text.primary, fontSize: 14, lineHeight: 18, fontWeight: '600', marginBottom: 8 }}>Delete option?</Text>
             <Text style={{ color: colors.text.tertiary }} className="text-sm mb-4">
-              This will remove "{pendingDeleteVariable?.name}" and all of its values.
+              This will remove "{pendingDeleteOption?.name}" and all of its values.
             </Text>
             <View className="flex-row gap-3">
               <Pressable
-                onPress={() => setPendingDeleteVariable(null)}
+                onPress={() => setPendingDeleteOption(null)}
                 className="flex-1 rounded-xl items-center justify-center"
                 style={{ height: 48, backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}
               >
                 <Text style={{ color: colors.text.secondary }} className="font-semibold">Cancel</Text>
               </Pressable>
               <Pressable
-                onPress={confirmDeleteVariable}
+                onPress={confirmDeleteOption}
                 className="flex-1 rounded-xl items-center justify-center"
                 style={{ height: 48, backgroundColor: '#EF4444' }}
               >

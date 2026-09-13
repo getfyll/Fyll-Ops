@@ -36,6 +36,7 @@ import { useResolvedThemeMode, useThemeColors } from '@/lib/theme';
 import { useSettingsBack } from '@/lib/useSettingsBack';
 import { buildFounderAccessLink, getFyllPublicAppOrigin } from '@/lib/fyll-app-url';
 import { FYLL_TRACKING_ORIGIN } from '@/lib/tracking-host';
+import { SearchClearButton } from '@/components/SearchClearButton';
 import {
   BUSINESS_FEATURES,
   normalizeBusinessFeatureAccess,
@@ -1056,6 +1057,7 @@ export default function PlatformAdminScreen() {
             style={{ flex: 1, marginLeft: 10, color: textPrimary, fontSize: 14 }}
             selectionColor={textPrimary}
           />
+          <SearchClearButton visible={Boolean(businessSearch.trim())} onPress={() => setBusinessSearch('')} />
         </View>
       </View>
 

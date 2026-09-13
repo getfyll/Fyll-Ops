@@ -29,6 +29,8 @@ interface ButtonProps {
   icon?: React.ReactNode;
   /** Haptic feedback on press */
   haptic?: boolean;
+  /** Override the label font size (defaults to the size preset's fontSize) */
+  fontSize?: number;
 }
 
 const variantStyles: Record<ButtonVariant, { bg: string; bgDisabled: string; text: string; textDisabled: string; border?: string }> = {
@@ -106,10 +108,12 @@ export function Button({
   className,
   icon,
   haptic = true,
+  fontSize,
 }: ButtonProps) {
   const isDisabled = disabled || loading;
   const styles = variantStyles[variant];
   const sizes = sizeStyles[size];
+  const labelFontSize = fontSize ?? sizes.fontSize;
 
   const handlePress = () => {
     if (isDisabled) return;
@@ -149,7 +153,7 @@ export function Button({
           />
           <Text
             className="font-semibold ml-2"
-            style={{ color: textColor, fontSize: sizes.fontSize }}
+            style={{ color: textColor, fontSize: labelFontSize }}
           >
             {loadingText || children}
           </Text>
@@ -159,7 +163,7 @@ export function Button({
           {icon && <View className="mr-2">{icon}</View>}
           <Text
             className="font-semibold"
-            style={{ color: textColor, fontSize: sizes.fontSize }}
+            style={{ color: textColor, fontSize: labelFontSize }}
           >
             {children}
           </Text>

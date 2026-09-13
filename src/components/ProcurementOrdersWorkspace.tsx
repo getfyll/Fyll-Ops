@@ -11,6 +11,7 @@ import { uploadBusinessAttachment } from '@/lib/storage-attachments';
 import { ProcurementCreateInventoryProductModal } from '@/components/ProcurementCreateInventoryProductModal';
 import { ResolvedAttachmentImage } from '@/components/ResolvedAttachmentImage';
 import type { StatsColors } from '@/lib/theme';
+import { SearchClearButton } from '@/components/SearchClearButton';
 
 export type ProcurementWorkspaceSection =
   | 'orders'
@@ -1856,6 +1857,7 @@ export function ProcurementOrdersWorkspace({
                     placeholderTextColor={textMutedColor}
                     style={{ flex: 1, marginLeft: 8, color: textPrimaryColor, fontSize: isMobile ? 14 : 12 }}
                   />
+                  <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => { closeFloatingMenus(); setSearchQuery(''); }} />
                 </View>
 
                 <View style={{ position: 'relative' }}>
@@ -2467,36 +2469,48 @@ export function ProcurementOrdersWorkspace({
                         </View>
                         <View style={tableCellStyle(1, { paddingHorizontal: 10, justifyContent: 'center', position: 'relative', zIndex: openProductMenuId === row.id ? 1001 : 1 })}>
                           {openProductMenuId === row.id ? (
-                            <TextInput
-                              value={productQueries[row.id] ?? row.productName}
-                              autoFocus
-                              onFocus={() => {
-                                setOpenActionMenuId(null);
-                                setOpenStatusMenuId(null);
-                                setOpenPoMenuId(null);
-                                setOpenProductMenuId(row.id);
-                                setProductQueries((previous) => ({ ...previous, [row.id]: previous[row.id] ?? row.productName }));
-                              }}
-                              onChangeText={(text) => {
-                                setOpenProductMenuId(row.id);
-                                setProductQueries((previous) => ({ ...previous, [row.id]: text }));
-                              }}
-                              onSubmitEditing={() => {
-                                const productName = (productQueries[row.id] ?? row.productName).trim();
-                                if (!productName) return;
-                                setOpenProductMenuId(null);
-                                onProductChange(row.procurementId, row.itemIndex, { productName });
-                              }}
-                              placeholder="Search product..."
-                              placeholderTextColor={textMutedColor}
-                              style={{
-                                height: 20,
-                                padding: 0,
-                                color: textPrimaryColor,
-                                fontSize: 10.5,
-                                fontWeight: '500',
-                              }}
-                            />
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                              <TextInput
+                                value={productQueries[row.id] ?? row.productName}
+                                autoFocus
+                                onFocus={() => {
+                                  setOpenActionMenuId(null);
+                                  setOpenStatusMenuId(null);
+                                  setOpenPoMenuId(null);
+                                  setOpenProductMenuId(row.id);
+                                  setProductQueries((previous) => ({ ...previous, [row.id]: previous[row.id] ?? row.productName }));
+                                }}
+                                onChangeText={(text) => {
+                                  setOpenProductMenuId(row.id);
+                                  setProductQueries((previous) => ({ ...previous, [row.id]: text }));
+                                }}
+                                onSubmitEditing={() => {
+                                  const productName = (productQueries[row.id] ?? row.productName).trim();
+                                  if (!productName) return;
+                                  setOpenProductMenuId(null);
+                                  onProductChange(row.procurementId, row.itemIndex, { productName });
+                                }}
+                                placeholder="Search product..."
+                                placeholderTextColor={textMutedColor}
+                                style={{
+                                  height: 20,
+                                  padding: 0,
+                                  color: textPrimaryColor,
+                                  fontSize: 10.5,
+                                  fontWeight: '500',
+                                  flex: 1,
+                                }}
+                              />
+                              <SearchClearButton
+                                visible={Boolean((productQueries[row.id] ?? '').trim())}
+                                onPress={() => {
+                                  setOpenProductMenuId(row.id);
+                                  setProductQueries((previous) => ({ ...previous, [row.id]: '' }));
+                                }}
+                                size={12}
+                                style={{ width: 20, height: 20, borderRadius: 10, marginLeft: 4 }}
+                              />
+                            </View>
                           ) : (
                             <Pressable
                               onPress={() => {
@@ -2548,36 +2562,48 @@ export function ProcurementOrdersWorkspace({
                         </View>
                         <View style={tableCellStyle(2, { paddingHorizontal: 14, justifyContent: 'center', position: 'relative', zIndex: openPoMenuId === row.id ? 1001 : 1 })}>
                           {openPoMenuId === row.id ? (
-                            <TextInput
-                              value={poQueries[row.id] ?? row.poNumber}
-                              autoFocus
-                              onFocus={() => {
-                                setOpenActionMenuId(null);
-                                setOpenStatusMenuId(null);
-                                setOpenProductMenuId(null);
-                                setOpenPoMenuId(row.id);
-                                setPoQueries((previous) => ({ ...previous, [row.id]: previous[row.id] ?? '' }));
-                              }}
-                              onChangeText={(text) => {
-                                setOpenPoMenuId(row.id);
-                                setPoQueries((previous) => ({ ...previous, [row.id]: text.toUpperCase() }));
-                              }}
-                              onSubmitEditing={() => {
-                                const poNumber = (poQueries[row.id] ?? row.poNumber).trim().toUpperCase();
-                                if (!poNumber) return;
-                                setOpenPoMenuId(null);
-                                onPoNumberChange(row.procurementId, poNumber, row.itemIndex);
-                              }}
-                              placeholder={row.poNumber || 'Search PO...'}
-                              placeholderTextColor={textMutedColor}
-                              style={{
-                                height: 22,
-                                padding: 0,
-                                color: textPrimaryColor,
-                                fontSize: 10.5,
-                                fontWeight: '600',
-                              }}
-                            />
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                              <TextInput
+                                value={poQueries[row.id] ?? row.poNumber}
+                                autoFocus
+                                onFocus={() => {
+                                  setOpenActionMenuId(null);
+                                  setOpenStatusMenuId(null);
+                                  setOpenProductMenuId(null);
+                                  setOpenPoMenuId(row.id);
+                                  setPoQueries((previous) => ({ ...previous, [row.id]: previous[row.id] ?? '' }));
+                                }}
+                                onChangeText={(text) => {
+                                  setOpenPoMenuId(row.id);
+                                  setPoQueries((previous) => ({ ...previous, [row.id]: text.toUpperCase() }));
+                                }}
+                                onSubmitEditing={() => {
+                                  const poNumber = (poQueries[row.id] ?? row.poNumber).trim().toUpperCase();
+                                  if (!poNumber) return;
+                                  setOpenPoMenuId(null);
+                                  onPoNumberChange(row.procurementId, poNumber, row.itemIndex);
+                                }}
+                                placeholder={row.poNumber || 'Search PO...'}
+                                placeholderTextColor={textMutedColor}
+                                style={{
+                                  height: 22,
+                                  padding: 0,
+                                  color: textPrimaryColor,
+                                  fontSize: 10.5,
+                                  fontWeight: '600',
+                                  flex: 1,
+                                }}
+                              />
+                              <SearchClearButton
+                                visible={Boolean((poQueries[row.id] ?? '').trim())}
+                                onPress={() => {
+                                  setOpenPoMenuId(row.id);
+                                  setPoQueries((previous) => ({ ...previous, [row.id]: '' }));
+                                }}
+                                size={12}
+                                style={{ width: 20, height: 20, borderRadius: 10, marginLeft: 4 }}
+                              />
+                            </View>
                           ) : (
                             <Pressable
                               onPress={() => {
@@ -3326,6 +3352,7 @@ export function ProcurementOrdersWorkspace({
                     placeholderTextColor={textMutedColor}
                     style={{ flex: 1, marginLeft: 8, color: textPrimaryColor, fontSize: isMobile ? 14 : 12 }}
                   />
+                  <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => { closeFloatingMenus(); setSearchQuery(''); }} />
                 </View>
 
                 <View style={{ position: 'relative' }}>
@@ -3880,6 +3907,7 @@ export function ProcurementOrdersWorkspace({
                   onChangeText={setAddItemOrderSearch}
                   style={{ flex: 1, marginLeft: 8, color: textPrimaryColor, fontSize: 13 }}
                 />
+                <SearchClearButton visible={Boolean(addItemOrderSearch.trim())} onPress={() => setAddItemOrderSearch('')} />
               </View>
             </View>
             <ScrollView style={{ maxHeight: 360 }} showsVerticalScrollIndicator={false}>
@@ -3961,6 +3989,7 @@ export function ProcurementOrdersWorkspace({
                   onChangeText={setMoveItemSearch}
                   style={{ flex: 1, marginLeft: 8, color: textPrimaryColor, fontSize: 13 }}
                 />
+                <SearchClearButton visible={Boolean(moveItemSearch.trim())} onPress={() => setMoveItemSearch('')} />
               </View>
             </View>
             <ScrollView style={{ maxHeight: 360 }} showsVerticalScrollIndicator={false}>

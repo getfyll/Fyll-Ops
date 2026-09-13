@@ -18,6 +18,7 @@ import type { ThemeColors } from '@/lib/theme';
 import type { AuditStatusFilter, CategoryAuditSection, ProductAuditGroup } from './types';
 import { parseCount } from './utils';
 import { ProgressRing } from './ProgressRing';
+import { SearchClearButton } from '@/components/SearchClearButton';
 
 interface AuditCountViewProps {
   isDark: boolean;
@@ -346,6 +347,7 @@ export function AuditCountView({
                     style={{ flex: 1, marginLeft: 8, color: colors.input.text, fontSize: 13 }}
                     selectionColor={colors.text.primary}
                   />
+                  <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => onSearchQueryChange('')} />
                 </View>
 
                 <View className="flex-row items-center rounded-full p-1" style={{ backgroundColor: insetBg, borderWidth: 1, borderColor: cardBorder }}>
@@ -692,6 +694,7 @@ export function AuditCountView({
                       style={{ flex: 1, marginLeft: 8, color: colors.input.text, fontSize: 14 }}
                       selectionColor={colors.text.primary}
                     />
+                    <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => onSearchQueryChange('')} />
                   </View>
                   <Pressable
                     onPress={() => setShowFilterMenu(true)}

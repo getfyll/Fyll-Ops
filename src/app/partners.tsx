@@ -52,6 +52,7 @@ import { getPartnerJobTaxonomy, savePartnerJobCategories, savePartnerJobServices
 import { notifyPartnerJobDispatched, notifyPartnerOfIssue, notifyPartnerOfIssueResolved } from '@/lib/notify-partner';
 import { pickImageSimple } from '@/hooks/useImagePicker';
 import { uploadBusinessAttachment } from '@/lib/storage-attachments';
+import { SearchClearButton } from '@/components/SearchClearButton';
 
 const generateId = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -1255,6 +1256,7 @@ export default function PartnersScreen() {
                 style={{ flex: 1, marginLeft: 8, color: colors.input.text, fontSize: 14 }}
                 selectionColor={colors.text.primary}
               />
+              <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={{ gap: 8, paddingRight: 4 }}>
               {statusFilterChips.map((chip) => {

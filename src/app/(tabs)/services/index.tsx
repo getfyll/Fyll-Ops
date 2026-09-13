@@ -16,6 +16,7 @@ import { getSettingsWebPanelStyles } from '@/lib/settings-web-panel';
 import { InventoryMobileFab } from '@/components/InventoryMobileFab';
 import { ResolvedAttachmentImage } from '@/components/ResolvedAttachmentImage';
 import { capitalizeDisplayLabel } from '@/lib/display-format';
+import { SearchClearButton } from '@/components/SearchClearButton';
 
 export default function ServicesScreen() {
   const colors = useThemeColors();
@@ -214,6 +215,7 @@ export default function ServicesScreen() {
             className="flex-1 ml-3"
             style={{ color: colors.input.text }}
           />
+          <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
         </View>
       </View>
 
@@ -395,6 +397,7 @@ export default function ServicesScreen() {
                     placeholderTextColor={colors.input.placeholder}
                     style={{ flex: 1, marginLeft: 8, color: colors.input.text, fontSize: 14 }}
                   />
+                  <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
                 </View>
               </View>
 

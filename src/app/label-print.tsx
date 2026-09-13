@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, ListPlus, Printer, Check } from 'lucide-react-native';
 import useFyllStore, { ProductVariant } from '@/lib/state/fyll-store';
+import useAuthStore from '@/lib/state/auth-store';
 import { useThemeColors } from '@/lib/theme';
 import { addFyllPrintQueueItem, createInventoryPrintQueueItems } from '@/lib/fyll-print-queue';
 import * as Haptics from 'expo-haptics';
@@ -41,6 +42,7 @@ export default function LabelPrintScreen() {
   const [queueNotice, setQueueNotice] = useState(false);
 
   const products = useFyllStore((s) => s.products);
+  const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
   const selectedLabelSize = useMemo(
     () => PRODUCT_LABEL_SIZE_PRESETS.find((preset) => preset.id === selectedLabelSizeId) ?? PRODUCT_LABEL_SIZE_PRESETS[0],
     [selectedLabelSizeId]
@@ -231,7 +233,7 @@ export default function LabelPrintScreen() {
     setIsQueueing(true);
     const queueItems = createInventoryPrintQueueItems(product, variantsToPrint);
     for (const item of queueItems) {
-      await addFyllPrintQueueItem(item);
+      await addFyllPrintQueueItem(item, businessId);
     }
     setIsQueueing(false);
     setQueueNotice(true);

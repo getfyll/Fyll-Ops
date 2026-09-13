@@ -13,6 +13,7 @@ import { SplitViewLayout } from '@/components/SplitViewLayout';
 import { CustomerDetailPanel } from '@/components/CustomerDetailPanel';
 import * as Haptics from 'expo-haptics';
 import { getSettingsWebPanelStyles } from '@/lib/settings-web-panel';
+import { SearchClearButton } from '@/components/SearchClearButton';
 
 type CustomerFilterTab = 'all' | 'new' | 'repeat';
 const CUSTOMERS_PAGE_SIZE = 24;
@@ -504,6 +505,7 @@ export default function CustomersScreen() {
                   style={{ flex: 1, marginLeft: 8, color: colors.input.text, fontSize: 14 }}
                   selectionColor={colors.text.primary}
                 />
+                <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
               </View>
 
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
@@ -578,6 +580,7 @@ export default function CustomersScreen() {
                   style={{ flex: 1, marginLeft: 8, color: colors.input.text, fontSize: 14 }}
                   selectionColor={colors.text.primary}
                 />
+                <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
               </View>
               <Pressable
                 onPress={() => {

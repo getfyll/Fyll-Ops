@@ -19,6 +19,7 @@ import useAuthStore from '@/lib/state/auth-store';
 import { ResolvedAttachmentImage } from '@/components/ResolvedAttachmentImage';
 import { InventoryMobileFab } from '@/components/InventoryMobileFab';
 import { capitalizeDisplayLabel } from '@/lib/display-format';
+import { SearchClearButton } from '@/components/SearchClearButton';
 
 // Hairline separator colors
 const SEPARATOR_LIGHT = '#EEEEEE';
@@ -1036,6 +1037,7 @@ export default function InventoryScreen() {
 	                style={{ flex: 1, marginLeft: 8, color: colors.input.text, fontSize: 14 }}
 	                selectionColor={colors.text.primary}
 	              />
+	              <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
 	            </View>
 
 	            <ScrollView
@@ -1290,6 +1292,7 @@ export default function InventoryScreen() {
                 style={{ flex: 1, marginLeft: 8, color: colors.input.text, fontSize: 14 }}
                 selectionColor={colors.text.primary}
               />
+              <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
             </View>
           </View>
         ) : null}
@@ -1383,6 +1386,7 @@ export default function InventoryScreen() {
                   style={{ flex: 1, marginLeft: 8, color: colors.input.text, fontSize: 14 }}
                   selectionColor={colors.text.primary}
                 />
+                <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
               </View>
               <Pressable
                 onPress={() => {

@@ -32,6 +32,7 @@ import { PartnerJobFormModal, type PartnerJobFormPrefill } from '@/components/Pa
 import { getTeamThreadChannelById, getTeamThreadDisplayNameFromEntityId, isTeamThreadEntityId } from '@/lib/team-threads';
 import { supabaseData } from '@/lib/supabase/data';
 import { formatAddressValue, normalizeDeliveryStateValue } from '@/lib/format-address';
+import { SearchClearButton } from '@/components/SearchClearButton';
 
 const STAMP_DUTY_THRESHOLD = 10000;
 const DESKTOP_HEADER_ACTION_MENU_WIDTH = 238;
@@ -631,6 +632,28 @@ export default function OrderDetailScreen() {
     return { productName, variantName, sku: variant?.sku || '', imageUrl, isLoading: !productName && products.length === 0 };
   };
 
+  const formatSelectedOptions = (item: typeof order.items[0]) => (
+    Object.entries(item.selectedOptions ?? {})
+      .filter(([name, value]) => name.trim() && String(value).trim())
+      .map(([name, value]) => `${name}: ${value}`)
+      .join(' / ')
+  );
+
+  const getOrderItemLineId = (item: typeof order.items[0], index: number) => item.id ?? `${item.productId}:${item.variantId}:${index}`;
+
+  const getOrderItemLabel = (item: typeof order.items[0]) => {
+    const { productName, variantName } = getItemDetails(item);
+    const selectedOptions = formatSelectedOptions(item);
+    return [productName || 'Product unavailable', variantName, selectedOptions].filter(Boolean).join(' - ');
+  };
+
+  const getLinkedServiceLabel = (service: typeof order.services[number]) => {
+    if (!service.linkedItemId) return service.name;
+    const linkedIndex = order.items.findIndex((item, index) => getOrderItemLineId(item, index) === service.linkedItemId);
+    if (linkedIndex < 0) return service.name;
+    return `${service.name} for ${getOrderItemLabel(order.items[linkedIndex])}`;
+  };
+
   const mergeDraftUpdates = (updates: Partial<Order>) => {
     if (!baseOrder) return;
     setDraft((prev) => {
@@ -849,6 +872,7 @@ export default function OrderDetailScreen() {
   };
 
   const openFlagModal = () => {
+    setShowHeaderActionMenu(false);
     setFlagNoteDraft(order.flagNote ?? '');
     setShowFlagModal(true);
   };
@@ -893,11 +917,9 @@ export default function OrderDetailScreen() {
     await addCase(caseData, businessId);
   };
 
-  const handleSendToPartner = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  const openSendToPartnerForItem = (item: typeof order.items[0] | null) => {
     if (!order) return;
-    const firstItem = order.items?.[0];
-    const itemDetails = firstItem ? getItemDetails(firstItem) : null;
+    const itemDetails = item ? getItemDetails(item) : null;
     setPartnerJobPrefill({
       orderId: order.id,
       customerName: order.customerName || '',
@@ -905,6 +927,12 @@ export default function OrderDetailScreen() {
       imageUri: itemDetails?.imageUrl || null,
     });
     setShowSendToPartnerModal(true);
+  };
+
+  const handleSendToPartner = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (!order) return;
+    openSendToPartnerForItem(order.items?.[0] ?? null);
   };
 
   const handlePartnerJobSaved = (job: PartnerJob) => {
@@ -923,11 +951,23 @@ export default function OrderDetailScreen() {
     }, businessId);
   };
 
+  const buildDefaultSelectedOptions = (productId: string) => {
+    const product = products.find((p) => p.id === productId);
+    const entries = (product?.orderOptions ?? [])
+      .filter((option) => option.name.trim() && option.values.length > 0)
+      .map((option) => [option.name, option.values[0]] as const);
+    return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+  };
+
   const handleAddEditItem = (result: { productId: string; variantId: string; price: number }) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const existingIndex = editItems.findIndex(
-      (item) => item.productId === result.productId && item.variantId === result.variantId
-    );
+    const product = products.find((p) => p.id === result.productId);
+    const hasOrderOptions = Boolean(product?.orderOptions?.some((option) =>
+      option.name.trim() && option.values.length > 0
+    ));
+    const existingIndex = hasOrderOptions
+      ? -1
+      : editItems.findIndex((item) => item.productId === result.productId && item.variantId === result.variantId);
     if (existingIndex >= 0) {
       const newItems = [...editItems];
       newItems[existingIndex].quantity += 1;
@@ -937,7 +977,8 @@ export default function OrderDetailScreen() {
         productId: result.productId,
         variantId: result.variantId,
         quantity: 1,
-        unitPrice: result.price
+        unitPrice: result.price,
+        selectedOptions: hasOrderOptions ? buildDefaultSelectedOptions(result.productId) : undefined,
       }]);
     }
     setProductSearchQuery('');
@@ -960,12 +1001,25 @@ export default function OrderDetailScreen() {
     setEditItems(editItems.filter((_, i) => i !== index));
   };
 
+  const handleEditItemOptionUpdate = (itemIndex: number, optionName: string, value: string) => {
+    setEditItems((prev) => prev.map((item, index) => {
+      if (index !== itemIndex) return item;
+      return {
+        ...item,
+        selectedOptions: {
+          ...(item.selectedOptions ?? {}),
+          [optionName]: value,
+        },
+      };
+    }));
+  };
+
   const getEditItemDetails = (item: OrderItem) => {
     const product = products.find((p) => p.id === item.productId);
     const variant = product?.variants.find((v) => v.id === item.variantId);
     const variantName = variant ? Object.values(variant.variableValues).join(' / ') : (item.variantName ?? '');
     const productName = product?.name || item.productName || '';
-    return { productName: productName || 'Product unavailable', variantName };
+    return { productName: productName || 'Product unavailable', variantName, orderOptions: product?.orderOptions ?? [] };
   };
 
   const handleSaveEdit = () => {
@@ -1436,10 +1490,13 @@ export default function OrderDetailScreen() {
 
   const buildOrderThreadMessage = () => {
     const itemLines = order.items.length > 0
-      ? order.items.flatMap((item) => {
+      ? order.items.flatMap((item, index) => {
         const { productName, variantName } = getItemDetails(item);
+        const selectedOptions = formatSelectedOptions(item);
         const lineTotal = item.unitPrice * item.quantity;
-        const nameParts = [productName, variantName ? `- ${variantName}` : ''].filter(Boolean);
+        const itemLineId = getOrderItemLineId(item, index);
+        const linkedServices = (order.services ?? []).filter((service) => service.linkedItemId === itemLineId);
+        const nameParts = [productName, variantName ? `- ${variantName}` : '', selectedOptions ? `- ${selectedOptions}` : ''].filter(Boolean);
         const lines = [
           `${nameParts.join(' ')} x${item.quantity} - ${formatCurrency(lineTotal)}`,
         ];
@@ -1452,6 +1509,9 @@ export default function OrderDetailScreen() {
         if (detailLines.length > 0) {
           lines.push(`   Details: ${detailLines.join('; ')}`);
         }
+        linkedServices.forEach((service) => {
+          lines.push(`   Add-on: ${service.name} - ${formatCurrency(service.price)}`);
+        });
         return lines;
       })
       : ['No order items added.'];
@@ -1546,12 +1606,15 @@ export default function OrderDetailScreen() {
 
       {order.items.map((item, index) => {
         const { productName, variantName, sku, imageUrl, isLoading } = getItemDetails(item);
+        const itemLineId = getOrderItemLineId(item, index);
+        const linkedServices = (order.services ?? []).filter((service) => service.linkedItemId === itemLineId);
+        const selectedOptions = formatSelectedOptions(item);
         const serviceVariables = (item.serviceVariables ?? []).filter((variable) => (variable.value ?? '').toString().trim().length > 0);
         const serviceFields = (item.serviceFields ?? []).filter((field) => (field.value ?? '').toString().trim().length > 0);
         const hasServiceDetails = serviceVariables.length > 0 || serviceFields.length > 0;
         return (
           <View
-            key={`${item.productId}-${item.variantId}`}
+            key={`${item.productId}-${item.variantId}-${index}`}
             className="py-3"
           >
             <View className="flex-row items-center">
@@ -1576,6 +1639,7 @@ export default function OrderDetailScreen() {
                   <>
                     <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '700' }}>{productName || 'Product unavailable'}</Text>
                     {variantName ? <Text style={{ color: colors.text.muted }} className="text-xs">{variantName}</Text> : null}
+                    {selectedOptions ? <Text style={{ color: colors.text.secondary }} className="text-xs">{selectedOptions}</Text> : null}
                     {sku ? <Text style={{ color: colors.text.muted }} className="text-xs">SKU: {sku.toUpperCase()}</Text> : null}
                   </>
                 )}
@@ -1620,6 +1684,29 @@ export default function OrderDetailScreen() {
                 ))}
               </View>
             )}
+            {linkedServices.length > 0 ? (
+              <View
+                style={{
+                  marginTop: 10,
+                  marginLeft: 60,
+                  paddingTop: 8,
+                  borderTopWidth: 1,
+                  borderTopColor: colors.border.light,
+                }}
+              >
+                <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '600', textTransform: 'uppercase', marginBottom: 6 }}>
+                  Linked add-ons
+                </Text>
+                {linkedServices.map((service, serviceIndex) => (
+                  <View key={`${service.serviceId}-${serviceIndex}`} style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <Text style={{ color: colors.text.secondary, fontSize: 12, flex: 1 }}>{service.name}</Text>
+                    <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '600', marginLeft: 12 }}>
+                      {formatCurrency(service.price)}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
           </View>
         );
       })}
@@ -1637,9 +1724,9 @@ export default function OrderDetailScreen() {
           <Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '600', marginTop: 6, marginBottom: 2 }}>
             Add-ons
           </Text>
-          {order.services.map((service) => (
-            <View key={service.serviceId} className="flex-row items-center justify-between py-2">
-              <Text style={{ color: colors.text.tertiary, fontSize: 12 }}>{service.name}</Text>
+          {order.services.map((service, index) => (
+            <View key={`${service.serviceId}-${index}`} className="flex-row items-center justify-between py-2">
+              <Text style={{ color: colors.text.tertiary, fontSize: 12, flex: 1, marginRight: 12 }}>{getLinkedServiceLabel(service)}</Text>
               <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '400' }}>{formatCurrency(service.price)}</Text>
             </View>
           ))}
@@ -2984,6 +3071,17 @@ export default function OrderDetailScreen() {
               </Pressable>
               <View style={{ height: 1, backgroundColor: colors.border.light, marginHorizontal: 14 }} />
               <Pressable
+                onPress={openFlagModal}
+                className="active:opacity-80"
+                style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, height: 44 }}
+              >
+                <Flag size={18} color={order.flagNote ? colors.accent.warning : colors.text.secondary} fill={order.flagNote ? colors.accent.warning : 'transparent'} strokeWidth={2} />
+                <Text style={{ color: colors.text.primary, ...headerActionMenuTextStyle }}>
+                  {order.flagNote ? 'Edit Flag' : 'Flag Order'}
+                </Text>
+              </Pressable>
+              <View style={{ height: 1, backgroundColor: colors.border.light, marginHorizontal: 14 }} />
+              <Pressable
                 onPress={() => {
                   void handleShareOrderToGeneralThread();
                 }}
@@ -3508,6 +3606,7 @@ export default function OrderDetailScreen() {
                             autoFocus
                             style={{ flex: 1, paddingVertical: 12, paddingHorizontal: 8, color: colors.input.text, fontSize: 14 }}
                           />
+                          <SearchClearButton visible={Boolean(productSearchQuery.trim())} onPress={() => setProductSearchQuery('')} />
                         </View>
                         {productSearchResults.length > 0 && (
                           <View className="mt-2 rounded-xl overflow-hidden" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light, maxHeight: 150 }}>
@@ -3540,30 +3639,81 @@ export default function OrderDetailScreen() {
                     {editItems.length > 0 ? (
                       <View className="rounded-xl overflow-hidden" style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}>
                         {editItems.map((item, index) => {
-                          const { productName, variantName } = getEditItemDetails(item);
+                          const { productName, variantName, orderOptions } = getEditItemDetails(item);
+                          const selectedOptions = item.selectedOptions ?? {};
+                          const legacySelectedOptionEntries = Object.entries(selectedOptions)
+                            .filter(([name, value]) => name.trim() && value.trim())
+                            .filter(([name]) => !orderOptions.some((option) => option.name === name));
                           return (
                             <View
-                              key={`${item.productId}-${item.variantId}`}
-                              className="flex-row items-center p-3 border-b"
+                              key={`${item.productId}-${item.variantId}-${index}`}
+                              className="p-3 border-b"
                               style={{ borderBottomColor: colors.border.light }}
                             >
-                              <View className="flex-1">
-                                <Text style={{ color: colors.text.primary }} className="text-sm font-medium">{productName}</Text>
-                                <Text style={{ color: colors.text.muted }} className="text-xs">{variantName}</Text>
-                              </View>
-                              <View className="flex-row items-center rounded-lg mr-2" style={{ backgroundColor: colors.bg.card }}>
-                                <Pressable onPress={() => handleUpdateEditItemQty(index, -1)} className="p-2 active:opacity-50">
-                                  <Minus size={12} color={colors.text.primary} strokeWidth={2} />
+                              <View className="flex-row items-center">
+                                <View className="flex-1">
+                                  <Text style={{ color: colors.text.primary }} className="text-sm font-medium">{productName}</Text>
+                                  <Text style={{ color: colors.text.muted }} className="text-xs">{variantName}</Text>
+                                </View>
+                                <View className="flex-row items-center rounded-lg mr-2" style={{ backgroundColor: colors.bg.card }}>
+                                  <Pressable onPress={() => handleUpdateEditItemQty(index, -1)} className="p-2 active:opacity-50">
+                                    <Minus size={12} color={colors.text.primary} strokeWidth={2} />
+                                  </Pressable>
+                                  <Text style={{ color: colors.text.primary }} className="text-sm font-bold w-6 text-center">{item.quantity}</Text>
+                                  <Pressable onPress={() => handleUpdateEditItemQty(index, 1)} className="p-2 active:opacity-50">
+                                    <Plus size={12} color={colors.text.primary} strokeWidth={2} />
+                                  </Pressable>
+                                </View>
+                                <Text style={{ color: colors.text.primary }} className="text-sm font-bold w-20 text-right">{formatCurrency(item.unitPrice * item.quantity)}</Text>
+                                <Pressable onPress={() => handleRemoveEditItem(index)} className="ml-2 p-1 active:opacity-50">
+                                  <Trash2 size={14} color="#EF4444" strokeWidth={2} />
                                 </Pressable>
-                                <Text style={{ color: colors.text.primary }} className="text-sm font-bold w-6 text-center">{item.quantity}</Text>
-                                <Pressable onPress={() => handleUpdateEditItemQty(index, 1)} className="p-2 active:opacity-50">
-                                  <Plus size={12} color={colors.text.primary} strokeWidth={2} />
-                                </Pressable>
                               </View>
-                              <Text style={{ color: colors.text.primary }} className="text-sm font-bold w-20 text-right">{formatCurrency(item.unitPrice * item.quantity)}</Text>
-                              <Pressable onPress={() => handleRemoveEditItem(index)} className="ml-2 p-1 active:opacity-50">
-                                <Trash2 size={14} color="#EF4444" strokeWidth={2} />
-                              </Pressable>
+                              {(orderOptions.length > 0 || legacySelectedOptionEntries.length > 0) ? (
+                                <View className="mt-3 pt-3" style={{ borderTopWidth: 1, borderTopColor: colors.border.light }}>
+                                  <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase tracking-wider mb-2">
+                                    Item Choices
+                                  </Text>
+                                  <View style={{ gap: 10 }}>
+                                    {orderOptions.map((option) => {
+                                      const selectedValue = selectedOptions[option.name] ?? option.values[0] ?? '';
+                                      return (
+                                        <View key={option.id || option.name}>
+                                          <Text style={{ color: colors.text.secondary }} className="text-sm font-medium mb-2">{option.name}</Text>
+                                          <View className="flex-row flex-wrap gap-2">
+                                            {option.values.map((value) => {
+                                              const selected = selectedValue === value;
+                                              return (
+                                                <Pressable
+                                                  key={`${option.name}-${value}`}
+                                                  onPress={() => handleEditItemOptionUpdate(index, option.name, value)}
+                                                  className="px-3 py-1.5 rounded-full"
+                                                  style={{
+                                                    backgroundColor: selected ? colors.text.primary : colors.bg.card,
+                                                    borderWidth: 1,
+                                                    borderColor: selected ? colors.text.primary : colors.border.light,
+                                                  }}
+                                                >
+                                                  <Text style={{ color: selected ? colors.bg.primary : colors.text.secondary }} className="text-xs font-semibold">
+                                                    {value}
+                                                  </Text>
+                                                </Pressable>
+                                              );
+                                            })}
+                                          </View>
+                                        </View>
+                                      );
+                                    })}
+                                    {legacySelectedOptionEntries.map(([name, value]) => (
+                                      <View key={name} className="self-start rounded-full px-3 py-1.5" style={{ backgroundColor: colors.bg.card }}>
+                                        <Text style={{ color: colors.text.secondary }} className="text-xs font-semibold">
+                                          {name}: {value}
+                                        </Text>
+                                      </View>
+                                    ))}
+                                  </View>
+                                </View>
+                              ) : null}
                             </View>
                           );
                         })}

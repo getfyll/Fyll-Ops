@@ -25,6 +25,7 @@ import { formatDeliveryLocation } from '@/lib/format-address';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
 import { buildSocialCheckoutUrl } from '@/lib/tracking-url';
 import { PaymentDetailSkeleton } from '@/components/SkeletonLoader';
+import { SearchClearButton } from '@/components/SearchClearButton';
 
 // Styled to match the reference dashboard: two-column summary cards, plain
 // icon+text customer rows instead of boxed sections, outlined pill actions.
@@ -1376,6 +1377,7 @@ export default function SocialCheckoutDetailScreen() {
                   style={[{ color: colors.input.text, fontSize: 14 }, noWebOutline]}
                   selectionColor={colors.text.primary}
                 />
+                <SearchClearButton visible={Boolean(orderSearchQuery.trim())} onPress={() => setOrderSearchQuery('')} />
               </View>
               <ScrollView showsVerticalScrollIndicator={false}>
                 {candidateOrders.length > 0 ? (

@@ -52,5 +52,40 @@
         }
       ]
     }
+  ],
+  "redirects": [
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "track.fyll.app"
+        }
+      ],
+      "destination": "/order-tracking",
+      "permanent": false
+    },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "returns.fyll.app"
+        }
+      ],
+      "destination": "/start-return",
+      "permanent": false
+    },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "confirm.fyll.app"
+        }
+      ],
+      "destination": "/confirm-delivery",
+      "permanent": false
+    }
   ]
 }

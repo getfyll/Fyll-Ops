@@ -142,7 +142,7 @@ export function DesktopSidebar() {
   const isDark = colors.bg.primary === '#111111';
 
   const currentUser = useAuthStore((s) => s.currentUser);
-  const { featureAccess, hasWooCommerceConnection } = useBusinessSettings();
+  const { businessName, featureAccess, hasWooCommerceConnection } = useBusinessSettings();
   const expenseRequests = useFyllStore((s) => s.expenseRequests);
   const partnerJobIssues = useFyllStore((s) => s.partnerJobIssues);
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -429,6 +429,68 @@ export function DesktopSidebar() {
           )}
         </Pressable>
       </View>
+
+      <Pressable
+        accessibilityLabel="Switch business"
+        onPress={() => router.push('/switch-business')}
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: isCollapsed ? 'center' : 'flex-start',
+          marginHorizontal: 12,
+          marginTop: Platform.OS === 'web' ? 8 : 0,
+          marginBottom: 8,
+          paddingHorizontal: isCollapsed ? 0 : 14,
+          paddingVertical: 12,
+          borderRadius: 16,
+          backgroundColor: colors.bg.secondary,
+          borderWidth: 1,
+          borderColor: colors.border.light,
+        }}
+      >
+        <View
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: 17,
+            backgroundColor: colors.bg.tertiary,
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginRight: isCollapsed ? 0 : 12,
+          }}
+        >
+          <Building2 size={18} color={colors.text.primary} strokeWidth={2.3} />
+        </View>
+        {!isCollapsed ? (
+          <>
+            <View style={{ flex: 1 }}>
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: '700',
+                  color: colors.text.muted,
+                  textTransform: 'uppercase',
+                }}
+                numberOfLines={1}
+              >
+                Business
+              </Text>
+              <Text
+                style={{
+                  fontSize: 14,
+                  fontWeight: '700',
+                  color: colors.text.primary,
+                  marginTop: 2,
+                }}
+                numberOfLines={1}
+              >
+                {businessName?.trim() || 'Current business'}
+              </Text>
+            </View>
+            <ChevronDown size={18} color={colors.text.tertiary} strokeWidth={2.4} />
+          </>
+        ) : null}
+      </Pressable>
 
       {/* Navigation Items */}
       <ScrollView

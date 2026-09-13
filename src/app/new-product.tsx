@@ -4,6 +4,8 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router';
 import { ArrowLeft, X, Plus, Trash2, Hash, Check, ChevronDown, Search, Camera, ImageIcon } from 'lucide-react-native';
 import useFyllStore, {
+  ProductVariable,
+  ProductOption,
   ProductVariant,
   generateProductId,
   generateVariantBarcode,
@@ -17,6 +19,7 @@ import { useImagePicker } from '@/hooks/useImagePicker';
 import { Button, StickyButtonContainer } from '@/components/Button';
 import { useThemeColors } from '@/lib/theme';
 import { prepareProductMediaForPersistence } from '@/lib/product-media';
+import { SearchClearButton } from '@/components/SearchClearButton';
 
 // Theme-aware colors
 
@@ -46,9 +49,14 @@ export default function NewProductScreen() {
   const sectionTitleClass = 'font-semibold text-[15px]';
   const fieldLabelClass = 'text-xs font-semibold uppercase tracking-wider';
   const productVariables = useFyllStore((s) => s.productVariables);
+  const productOptions = useFyllStore((s) => s.productOptions);
   const globalCategories = useFyllStore((s) => s.categories);
   const addCategory = useFyllStore((s) => s.addCategory);
+  const addProductVariable = useFyllStore((s) => s.addProductVariable);
   const updateProductVariable = useFyllStore((s) => s.updateProductVariable);
+  const addProductOption = useFyllStore((s) => s.addProductOption);
+  const updateProductOption = useFyllStore((s) => s.updateProductOption);
+  const saveGlobalSettings = useFyllStore((s) => s.saveGlobalSettings);
   const addProduct = useFyllStore((s) => s.addProduct);
   const currentUser = useAuthStore((s) => s.currentUser);
   const businessId = useAuthStore((s) => s.businessId);
@@ -64,6 +72,11 @@ export default function NewProductScreen() {
   const [productImageUrl, setProductImageUrl] = useState<string | null>(null);
   const [showImagePicker, setShowImagePicker] = useState(false);
   const [activeVariableIds, setActiveVariableIds] = useState<string[]>([]);
+  const [orderOptionVariableIds, setOrderOptionVariableIds] = useState<string[]>([]);
+  const [showOrderOptionSelector, setShowOrderOptionSelector] = useState(false);
+  const [newOptionSetName, setNewOptionSetName] = useState('');
+  const [newOptionSetValues, setNewOptionSetValues] = useState('');
+  const [newOptionSetError, setNewOptionSetError] = useState<string | null>(null);
 
   // New Design tracking state
   const [isNewDesign, setIsNewDesign] = useState(false);
@@ -120,6 +133,10 @@ export default function NewProductScreen() {
     () => productVariables.filter((variable) => activeVariableIds.includes(variable.id)),
     [activeVariableIds, productVariables],
   );
+  const orderOptionSets = useMemo(
+    () => productOptions.filter((option) => orderOptionVariableIds.includes(option.id)),
+    [orderOptionVariableIds, productOptions],
+  );
 
   const handleToggleVariants = (value: boolean) => {
     setHasVariants(value);
@@ -167,6 +184,10 @@ export default function NewProductScreen() {
   }, [productVariables]);
 
   useEffect(() => {
+    setOrderOptionVariableIds((prev) => prev.filter((id) => productOptions.some((option) => option.id === id)));
+  }, [productOptions]);
+
+  useEffect(() => {
     if (!hasVariants) return;
     setVariants((prev) => {
       if (prev.length === 0) {
@@ -190,6 +211,46 @@ export default function NewProductScreen() {
     const newVariant: VariantFormData = createVariant(true);
     setVariants(prev => [newVariant, ...prev]);
   }, [activeVariables.length, createVariant]);
+
+  const handleToggleOrderOptionSet = useCallback((optionId: string) => {
+    setOrderOptionVariableIds((prev) => (
+      prev.includes(optionId)
+        ? prev.filter((id) => id !== optionId)
+        : [...prev, optionId]
+    ));
+  }, []);
+
+  const parseOptionSetValues = useCallback((value: string) => (
+    Array.from(new Set(value.split(/[\n,]+/).map((entry) => entry.trim()).filter(Boolean)))
+  ), []);
+
+  const handleCreateOrderOptionSet = useCallback(async () => {
+    const optionName = newOptionSetName.trim();
+    const optionValues = parseOptionSetValues(newOptionSetValues);
+    if (!optionName || optionValues.length === 0) {
+      setNewOptionSetError('Add a name and at least one value.');
+      return;
+    }
+    const existing = productOptions.find((option) => option.name.trim().toLowerCase() === optionName.toLowerCase());
+    const option: ProductOption = existing
+      ? { ...existing, values: Array.from(new Set([...existing.values, ...optionValues])) }
+      : { id: `option-${Date.now()}`, name: optionName, values: optionValues };
+    if (existing) {
+      updateProductOption(existing.id, { values: option.values });
+    } else {
+      addProductOption(option);
+    }
+    setOrderOptionVariableIds((prev) => prev.includes(option.id) ? prev : [...prev, option.id]);
+    setNewOptionSetName('');
+    setNewOptionSetValues('');
+    setNewOptionSetError(null);
+    if (businessId) {
+      const result = await saveGlobalSettings(businessId);
+      if (!result.success) {
+        setNewOptionSetError('Product option created locally, but cloud save failed. Try again from Settings.');
+      }
+    }
+  }, [addProductOption, businessId, newOptionSetName, newOptionSetValues, parseOptionSetValues, productOptions, saveGlobalSettings, updateProductOption]);
 
   const handleUpdateVariant = useCallback((index: number, updates: Partial<VariantFormData>) => {
     setVariants(prev => {
@@ -359,6 +420,12 @@ export default function NewProductScreen() {
           createdBy: currentUser?.name,
           useGlobalStock: hasVariants ? useGlobalStock : false,
           globalStock: hasVariants && useGlobalStock ? (parseInt(globalStock, 10) || 0) : undefined,
+          orderOptions: orderOptionSets.map((variable) => ({
+            id: variable.id,
+            name: variable.name,
+            values: variable.values,
+            required: true,
+          })),
           // New Design fields
           isNewDesign: isNewDesign,
           designYear: isNewDesign ? parseInt(designYear, 10) || new Date().getFullYear() : undefined,
@@ -502,6 +569,141 @@ export default function NewProductScreen() {
                     }}
                   >
                     Variable Product
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+
+          <View className="mt-4" style={{ position: 'relative', zIndex: 12 }}>
+            <View className={cn('rounded-2xl p-4 border', cardClass)} style={{ zIndex: 18 }}>
+              <View className="mb-3">
+                <Text className={cn(sectionTitleClass, textPrimaryClass)}>Item Choices</Text>
+                <Text className={cn('text-xs mt-1', textMutedClass)}>
+                  Reusable choices selected on each item line. These are saved in Settings {'>'} Inventory {'>'} Product Options and do not create stock variations.
+                </Text>
+              </View>
+
+              <Text className={cn(fieldLabelClass, 'mb-1.5')} style={{ color: colors.text.secondary }}>Attached product options</Text>
+              <Pressable
+                onPress={() => setShowOrderOptionSelector((prev) => !prev)}
+                className="rounded-xl px-4 flex-row items-center justify-between active:opacity-80"
+                style={{ height: 52, backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light }}
+              >
+                <Text
+                  style={{ color: orderOptionSets.length > 0 ? colors.text.primary : colors.text.muted }}
+                  className="text-sm font-medium flex-1 pr-3"
+                  numberOfLines={1}
+                >
+                  {orderOptionSets.length > 0
+                    ? orderOptionSets.map((variable) => variable.name).join(', ')
+                    : 'Choose options customers pick'}
+                </Text>
+                <ChevronDown size={18} color={colors.text.muted} strokeWidth={2} />
+              </Pressable>
+
+              {showOrderOptionSelector && (
+                <View
+                  className="rounded-xl mt-2 overflow-hidden absolute left-4 right-4 top-[112px]"
+                  style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light, maxHeight: 260, zIndex: 30 }}
+                >
+                  <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                    {productOptions.map((option) => {
+                      const isSelected = orderOptionVariableIds.includes(option.id);
+                      return (
+                        <Pressable
+                          key={option.id}
+                          onPress={() => handleToggleOrderOptionSet(option.id)}
+                          className="px-4 py-3 flex-row items-center justify-between active:opacity-70"
+                          style={{
+                            borderBottomWidth: 1,
+                            borderBottomColor: colors.border.light,
+                          }}
+                        >
+                          <View className="flex-1 pr-3">
+                            <Text style={{ color: colors.text.primary }} className="text-sm font-medium">
+                              {option.name}
+                            </Text>
+                            <Text style={{ color: colors.text.muted }} className="text-xs mt-0.5">
+                              {`${option.values.length} value${option.values.length === 1 ? '' : 's'}`}
+                            </Text>
+                          </View>
+                          {isSelected ? (
+                            <View className="w-6 h-6 rounded-full items-center justify-center" style={{ backgroundColor: '#111111' }}>
+                              <Check size={14} color="#FFFFFF" strokeWidth={2.5} />
+                            </View>
+                          ) : (
+                            <View className="w-6 h-6 rounded-full" style={{ borderWidth: 1, borderColor: colors.border.light }} />
+                          )}
+                        </Pressable>
+                      );
+                    })}
+                    {productOptions.length === 0 ? (
+                      <View className="px-4 py-3">
+                        <Text style={{ color: colors.text.muted }} className="text-sm">
+                          No product options yet. Create one below.
+                        </Text>
+                      </View>
+                    ) : null}
+                    <Pressable
+                      onPress={() => setShowOrderOptionSelector(false)}
+                      className="px-4 py-3 items-center active:opacity-70"
+                      style={{ backgroundColor: colors.bg.secondary }}
+                    >
+                      <Text style={{ color: colors.text.primary }} className="text-sm font-medium">Done</Text>
+                    </Pressable>
+                  </ScrollView>
+                </View>
+              )}
+
+              {orderOptionSets.length > 0 ? (
+                <View className="flex-row flex-wrap mt-3" style={{ gap: 8 }}>
+                  {orderOptionSets.map((variable) => (
+                    <View
+                      key={variable.id}
+                      className="px-3 py-1.5 rounded-full"
+                      style={{ backgroundColor: 'rgba(34, 197, 94, 0.12)', borderWidth: 1, borderColor: 'rgba(34, 197, 94, 0.24)' }}
+                    >
+                      <Text className="text-xs font-semibold" style={{ color: '#16A34A' }}>
+                        {variable.name}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+
+              <View className={cn('mt-4 rounded-xl p-3 border', softSurfaceClass)}>
+                <Text className={cn('text-sm font-semibold mb-3', textPrimaryClass)}>Create reusable product option</Text>
+                <TextInput
+                  placeholder="Option name, e.g. Size, Width, Finish"
+                  placeholderTextColor={colors.text.muted}
+                  value={newOptionSetName}
+                  onChangeText={setNewOptionSetName}
+                  className={cn('rounded-xl px-4 text-sm border', softSurfaceClass, textPrimaryClass)}
+                  style={{ height: 48 }}
+                  selectionColor={colors.text.primary}
+                />
+                <TextInput
+                  placeholder="Values separated by commas or lines"
+                  placeholderTextColor={colors.text.muted}
+                  value={newOptionSetValues}
+                  onChangeText={setNewOptionSetValues}
+                  multiline
+                  className={cn('mt-2 rounded-xl px-4 py-3 text-sm border', softSurfaceClass, textPrimaryClass)}
+                  style={{ minHeight: 78, textAlignVertical: 'top' }}
+                  selectionColor={colors.text.primary}
+                />
+                {newOptionSetError ? (
+                  <Text className="text-red-500 text-xs mt-2">{newOptionSetError}</Text>
+                ) : null}
+                <Pressable
+                  onPress={handleCreateOrderOptionSet}
+                  className="mt-3 rounded-full flex-row items-center justify-center active:opacity-80"
+                  style={{ height: 42, backgroundColor: colors.text.primary }}
+                >
+                  <Plus size={15} color={colors.bg.primary} strokeWidth={2.4} />
+                  <Text style={{ color: colors.bg.primary }} className="text-sm font-semibold ml-2">
+                    Create and attach
                   </Text>
                 </Pressable>
               </View>
@@ -668,6 +870,13 @@ export default function NewProductScreen() {
                       onSubmitEditing={handleAddNewCategory}
                       style={{ color: colors.text.primary, fontSize: 14, flex: 1 }}
                       selectionColor={colors.text.primary}
+                    />
+                    <SearchClearButton
+                      visible={Boolean(categoryInput.trim())}
+                      onPress={() => {
+                        setCategoryInput('');
+                        setShowCategoryDropdown(true);
+                      }}
                     />
                     <ChevronDown size={18} color={colors.text.muted} strokeWidth={2} />
                   </Pressable>
@@ -915,7 +1124,7 @@ export default function NewProductScreen() {
                                       {variable.name}
                                     </Text>
                                     <Text style={{ color: colors.text.muted }} className="text-xs mt-0.5">
-                                      {variable.values.length} option{variable.values.length === 1 ? '' : 's'}
+                                      {variable.values.length} value{variable.values.length === 1 ? '' : 's'}
                                     </Text>
                                   </View>
                                   {isSelected ? (
@@ -1135,6 +1344,7 @@ export default function NewProductScreen() {
                                       style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 14 }}
                                       selectionColor={colors.text.primary}
                                     />
+                                    <SearchClearButton visible={Boolean(variantSearchQuery.trim())} onPress={() => setVariantSearchQuery('')} />
                                   </View>
                                 </View>
 

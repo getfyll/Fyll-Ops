@@ -4,7 +4,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { Plus, Search, ShoppingCart, ChevronRight, MapPin, Calendar, User as UserIcon, Filter, Check, X, ArrowDownAZ, ArrowUpAZ, DollarSign, Clock, AlertCircle, Flag } from 'lucide-react-native';
-import useFyllStore, { Order, formatCurrency } from '@/lib/state/fyll-store';
+import useFyllStore, { Order, Product, formatCurrency } from '@/lib/state/fyll-store';
 import useAuthStore from '@/lib/state/auth-store';
 import { collaborationData } from '@/lib/supabase/collaboration';
 import { useThemeColors } from '@/lib/theme';
@@ -21,6 +21,7 @@ import { sortOrderStatusesForFulfillment } from '@/lib/order-status';
 import { getFulfillmentSnapshot } from '@/lib/fulfillment';
 import { formatAddressValue } from '@/lib/format-address';
 import * as Haptics from 'expo-haptics';
+import { SearchClearButton } from '@/components/SearchClearButton';
 
 // Hairline separator colors
 const SEPARATOR_LIGHT = '#EEEEEE';
@@ -171,6 +172,7 @@ const getTimelineCellMeta = (order: Order, orderStatuses: ReturnType<typeof useF
 
 interface OrderCardProps {
   order: Order;
+  products: Product[];
   statusColor: string;
   onPress: () => void;
   isSelected?: boolean;
@@ -179,7 +181,23 @@ interface OrderCardProps {
   unreadCount?: number;
 }
 
-function OrderCard({ order, statusColor, onPress, isSelected, showSplitView, separatorColor, unreadCount }: OrderCardProps) {
+const formatOrderItemSummary = (order: Order, products: Product[]) => {
+  const firstItem = order.items?.[0];
+  if (!firstItem) return 'No products';
+  const product = products.find((candidate) => candidate.id === firstItem.productId);
+  const variant = product?.variants.find((candidate) => candidate.id === firstItem.variantId);
+  const productName = product?.name || firstItem.productName || 'Product unavailable';
+  const variantName = variant ? Object.values(variant.variableValues).join(' / ') : (firstItem.variantName ?? '');
+  const selectedOptions = Object.entries(firstItem.selectedOptions ?? {})
+    .filter(([name, value]) => name.trim() && String(value).trim())
+    .map(([name, value]) => `${name}: ${value}`)
+    .join(' / ');
+  const details = [variantName, selectedOptions].filter(Boolean).join(' / ');
+  const suffix = (order.items?.length ?? 0) > 1 ? ` +${(order.items?.length ?? 1) - 1}` : '';
+  return `${productName}${details ? ` - ${details}` : ''}${suffix}`;
+};
+
+function OrderCard({ order, products, statusColor, onPress, isSelected, showSplitView, separatorColor, unreadCount }: OrderCardProps) {
   const colors = useThemeColors();
   const isDark = colors.bg.primary === '#111111';
 
@@ -195,6 +213,7 @@ function OrderCard({ order, statusColor, onPress, isSelected, showSplitView, sep
   const chipTextColor = statusDisplay.color || (isRefunded ? '#EF4444' : statusColor);
   const chipBgColor = statusDisplay.bg || (isRefunded ? 'rgba(239, 68, 68, 0.15)' : `${statusColor}15`);
   const deliveryStateText = formatAddressValue(order.deliveryState);
+  const itemSummary = formatOrderItemSummary(order, products);
 
   return (
     <Pressable
@@ -263,6 +282,9 @@ function OrderCard({ order, statusColor, onPress, isSelected, showSplitView, sep
               <UserIcon size={12} color={colors.text.tertiary} strokeWidth={2} />
               <Text style={{ color: colors.text.tertiary }} className="text-sm ml-1">{order.customerName}</Text>
             </View>
+            <Text style={{ color: colors.text.secondary }} className="text-xs mt-1" numberOfLines={1}>
+              {itemSummary}
+            </Text>
           </View>
           <View className="items-end">
             <Text style={{ color: colors.text.primary, fontSize: 14 }} className="font-bold">{formatCurrency(order.totalAmount)}</Text>
@@ -294,6 +316,7 @@ function OrderCard({ order, statusColor, onPress, isSelected, showSplitView, sep
 
 function OrderRowWeb({
   order,
+  products,
   statusColor,
   onPress,
   isSelected,
@@ -303,6 +326,7 @@ function OrderRowWeb({
   unreadCount,
 }: {
   order: Order;
+  products: Product[];
   statusColor: string;
   onPress: () => void;
   isSelected?: boolean;
@@ -328,6 +352,7 @@ function OrderRowWeb({
   const chipBgColor = statusDisplay.bg || (isRefunded ? 'rgba(239, 68, 68, 0.15)' : `${statusColor}15`);
   const timelineMeta = getTimelineCellMeta(order, orderStatuses);
   const TimelineIcon = timelineMeta?.icon;
+  const itemSummary = formatOrderItemSummary(order, products);
 
   return (
     <Pressable
@@ -365,6 +390,9 @@ function OrderRowWeb({
         </View>
         <Text style={{ color: colors.text.secondary, flex: 1.6 }} className="text-sm" numberOfLines={1}>
           {order.customerName}
+        </Text>
+        <Text style={{ color: colors.text.secondary, flex: 1.8 }} className="text-sm" numberOfLines={1}>
+          {itemSummary}
         </Text>
         <Text style={{ color: colors.text.tertiary, width: 56, textAlign: 'center' }} className="text-sm" numberOfLines={1}>
           {order.items?.length ?? 0}
@@ -438,6 +466,7 @@ export default function OrdersScreen() {
   const desktopHeaderMinHeight = DESKTOP_PAGE_HEADER_MIN_HEIGHT;
 
   const orders = useFyllStore((s) => s.orders);
+  const products = useFyllStore((s) => s.products);
   const orderStatuses = useFyllStore((s) => s.orderStatuses);
   const lastDataSyncAt = useFyllStore((s) => s.lastDataSyncAt);
   const businessId = useAuthStore((s) => s.businessId);
@@ -779,6 +808,7 @@ export default function OrdersScreen() {
                 style={{ flex: 1, marginLeft: 8, color: colors.input.text, fontSize: 14 }}
                 selectionColor={colors.text.primary}
               />
+              <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
             </View>
 
             <ScrollView
@@ -875,6 +905,7 @@ export default function OrdersScreen() {
                 style={{ flex: 1, marginLeft: 8, color: colors.input.text, fontSize: 14 }}
                 selectionColor={colors.text.primary}
               />
+              <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
             </View>
             <Pressable
               onPress={() => {
@@ -961,6 +992,7 @@ export default function OrdersScreen() {
                 <View style={{ flexDirection: 'row', paddingHorizontal: 8, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
                   <Text style={{ color: colors.text.muted, flex: 1.1 }} className="text-xs font-semibold">ORDER ID</Text>
                   <Text style={{ color: colors.text.muted, flex: 1.6 }} className="text-xs font-semibold">CUSTOMER</Text>
+                  <Text style={{ color: colors.text.muted, flex: 1.8 }} className="text-xs font-semibold">PRODUCT</Text>
                   <Text style={{ color: colors.text.muted, width: 56, textAlign: 'center' }} className="text-xs font-semibold">ITEMS</Text>
                   <Text style={{ color: colors.text.muted, flex: 1 }} className="text-xs font-semibold">TOTAL</Text>
                   <Text style={{ color: colors.text.muted, flex: 1.5 }} className="text-xs font-semibold">TIMELINE</Text>
@@ -1015,6 +1047,7 @@ export default function OrdersScreen() {
               }}>
                 <OrderRowWeb
                   order={order}
+                  products={products}
                   statusColor={getOrderStatusColor(order.status, statusColorMap, '#888888')}
                   isSelected={selectedOrderId === order.id}
                   onPress={() => handleOrderSelect(order.id)}
@@ -1026,6 +1059,7 @@ export default function OrdersScreen() {
             ) : (
               <OrderCard
                 order={order}
+                products={products}
                 statusColor={getOrderStatusColor(order.status, statusColorMap, '#888888')}
                 isSelected={selectedOrderId === order.id}
                 showSplitView={showSplitView}

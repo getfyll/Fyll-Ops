@@ -37,11 +37,13 @@ import EmailSettingsScreen from '@/app/email-settings';
 import WarehouseSettingsScreen from '@/app/warehouse-settings';
 import CategoryManagerScreen from '@/app/category-manager';
 import ProductVariablesScreen from '@/app/product-variables';
+import ProductOptionsScreen from '@/app/product-options';
 import ImportProductsScreen from '@/app/import-products';
 import ImportCustomersScreen from '@/app/import-customers';
 import ImportOrdersScreen from '@/app/import-orders';
 import ImportAiScreen from '@/app/import-ai';
 import TasksScreen from '@/app/(tabs)/tasks';
+import { SearchClearButton } from '@/components/SearchClearButton';
 
 type SettingsSection =
   | 'order-statuses'
@@ -95,6 +97,7 @@ type WebInlineSettingsPanel =
   | 'warehouse-settings'
   | 'category-manager'
   | 'product-variables'
+  | 'product-options'
   | 'import-products'
   | 'import-customers'
   | 'import-orders'
@@ -114,6 +117,7 @@ const WEB_INLINE_SETTINGS_PANELS: WebInlineSettingsPanel[] = [
   'warehouse-settings',
   'category-manager',
   'product-variables',
+  'product-options',
   'import-products',
   'import-customers',
   'import-orders',
@@ -474,6 +478,7 @@ interface SettingsRowProps {
   onPress?: () => void;
   showChevron?: boolean;
   rightElement?: React.ReactNode;
+  showDivider?: boolean;
 }
 
 function SettingsRow({
@@ -484,6 +489,7 @@ function SettingsRow({
   onPress,
   showChevron = true,
   rightElement,
+  showDivider = true,
 }: SettingsRowProps) {
   const colors = useThemeColors();
   return (
@@ -502,7 +508,7 @@ function SettingsRow({
         style={{
           minHeight: 76,
           backgroundColor: 'transparent',
-          borderBottomWidth: 1,
+          borderBottomWidth: showDivider ? 1 : 0,
           borderBottomColor: colors.border.light,
         }}
       >
@@ -555,6 +561,7 @@ export default function SettingsScreen() {
   const orderStatuses = useFyllStore((s) => s.orderStatuses);
   const saleSources = useFyllStore((s) => s.saleSources);
   const productVariables = useFyllStore((s) => s.productVariables);
+  const productOptions = useFyllStore((s) => s.productOptions);
   const categories = useFyllStore((s) => s.categories);
   const customServices = useFyllStore((s) => s.customServices);
   const orderTimelineSettings = useFyllStore((s) => s.orderTimelineSettings);
@@ -1369,6 +1376,7 @@ export default function SettingsScreen() {
                   style={{ color: colors.input.text, fontSize: 15, fontWeight: '500' }}
                   selectionColor={colors.text.primary}
                 />
+                <SearchClearButton visible={Boolean(newShippingZoneStateSearch.trim())} onPress={() => setNewShippingZoneStateSearch('')} />
               </View>
               {newShippingZoneStateSearch.trim().length > 0 ? (
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
@@ -2792,6 +2800,7 @@ export default function SettingsScreen() {
                     style={{ color: colors.input.text, fontSize: 14, flex: 1, marginLeft: 8 }}
                     selectionColor={colors.text.primary}
                   />
+                  <SearchClearButton visible={Boolean(recycleBinSearchQuery.trim())} onPress={() => setRecycleBinSearchQuery('')} />
                   {recycleBinSearchQuery ? (
                     <Pressable onPress={() => setRecycleBinSearchQuery('')} className="w-7 h-7 rounded-full items-center justify-center active:opacity-70" style={{ backgroundColor: colors.bg.secondary }}>
                       <X size={13} color={colors.text.tertiary} strokeWidth={2.3} />
@@ -3352,7 +3361,7 @@ export default function SettingsScreen() {
                 className="rounded-full items-center active:opacity-80"
                 style={[primaryPillButtonStyle, { height: 50, justifyContent: 'center' }]}
               >
-                <Text style={primaryPillTextStyle} className="font-semibold">Add Add-on</Text>
+                <Text style={[primaryPillTextStyle, { fontSize: 12, fontWeight: '600' }]}>Add Add-on</Text>
               </Pressable>
             </View>
 
@@ -3960,6 +3969,7 @@ export default function SettingsScreen() {
 
   // All settings items for search
   const searchItems: { id: string; title: string; description?: string; icon: React.ReactNode; onPress?: () => void; rightText?: string }[] = [
+    { id: 'switch-business', title: 'Switch Business', description: 'Add and open existing businesses', icon: <Building2 size={18} color="#10B981" />, onPress: () => router.push('/switch-business?from=settings') },
     ...(currentUser ? [
       { id: 'my-account', title: 'My Account', description: 'Profile and password', icon: <UserCircle size={18} color="#3B82F6" strokeWidth={2} />, onPress: () => openSettingsPanel('account-settings', '/account-settings?from=settings') },
     ] : []),
@@ -4033,7 +4043,8 @@ export default function SettingsScreen() {
     { id: 'low-stock-alert', title: 'Low Stock Alert', description: useGlobalLowStockThreshold ? `On · ${globalLowStockThreshold} units` : 'Off · Tap to configure', icon: <AlertTriangle size={18} color="#F59E0B" strokeWidth={2} />, onPress: () => { setTempThreshold(globalLowStockThreshold.toString()); setShowLowStockModal(true); } },
     { id: 'warehouse-settings', title: 'Warehouse Settings', description: 'Manage warehouse categories and units', icon: <Boxes size={18} color="#6366F1" strokeWidth={2} />, onPress: () => openSettingsPanel('warehouse-settings', '/warehouse-settings?from=settings&menu=inventory') },
     { id: 'categories', title: 'Categories', description: 'Product groups', icon: <Tag size={18} color="#3B82F6" strokeWidth={2} />, rightText: `${categories.length}`, onPress: () => openSettingsPanel('category-manager', '/category-manager?from=settings&menu=inventory') },
-    { id: 'product-variables', title: 'Product Variables', description: 'Color, size, material', icon: <Package size={18} color="#A855F7" strokeWidth={2} />, rightText: `${productVariables.length}`, onPress: () => openSettingsPanel('product-variables', '/product-variables?from=settings') },
+    { id: 'product-variables', title: 'Product Variables', description: 'Stock variants, SKUs, barcodes and prices', icon: <Package size={18} color="#A855F7" strokeWidth={2} />, rightText: `${productVariables.length}`, onPress: () => openSettingsPanel('product-variables', '/product-variables?from=settings') },
+    { id: 'product-options', title: 'Product Options', description: 'Choices customers pick on item lines', icon: <Tag size={18} color="#16A34A" strokeWidth={2} />, rightText: `${productOptions.length}`, onPress: () => openSettingsPanel('product-options', '/product-options?from=settings') },
     { id: 'import-products', title: 'Import Products', description: 'Upload CSV', icon: <Upload size={18} color="#10B981" strokeWidth={2} />, onPress: () => openSettingsPanel('import-products', '/import-products?from=settings') },
     ...(currentUser ? [
       { id: 'log-out', title: 'Log Out', description: 'Sign out of your account', icon: <LogOut size={18} color={colors.text.tertiary} strokeWidth={2} />, onPress: handleLogout },
@@ -4563,6 +4574,7 @@ export default function SettingsScreen() {
     'warehouse-settings': 'Warehouse Settings',
     'category-manager': 'Categories',
     'product-variables': 'Product Variables',
+    'product-options': 'Product Options',
     'import-products': 'Import Products',
     'import-customers': 'Import Customers',
     'import-orders': 'Import Orders',
@@ -4596,6 +4608,8 @@ export default function SettingsScreen() {
         return <CategoryManagerScreen />;
       case 'product-variables':
         return <ProductVariablesScreen />;
+      case 'product-options':
+        return <ProductOptionsScreen />;
       case 'import-products':
         return <ImportProductsScreen />;
       case 'import-customers':
@@ -4643,7 +4657,7 @@ export default function SettingsScreen() {
       case 'profile':
         return renderWebSettingsCard(
           'Profile',
-          renderWebSettingsRows(getSettingsItems(['my-account', 'business-settings', 'payment-accounts', 'team-members', 'invitations'])),
+          renderWebSettingsRows(getSettingsItems(['my-account', 'switch-business', 'business-settings', 'payment-accounts', 'team-members', 'invitations'])),
           'Workspace, account, roles, and team access.'
         );
       case 'links':
@@ -4663,7 +4677,7 @@ export default function SettingsScreen() {
       case 'inventory':
         return renderWebSettingsCard(
           'Inventory',
-          renderWebSettingsRows(getSettingsItems(['low-stock-alert', 'warehouse-settings', 'categories', 'product-variables', 'import-products', 'service-catalog', 'addons'])),
+          renderWebSettingsRows(getSettingsItems(['low-stock-alert', 'warehouse-settings', 'categories', 'product-variables', 'product-options', 'import-products', 'service-catalog', 'addons'])),
           'Stock alerts, product structure, warehouse settings, and services.'
         );
       case 'cases':
@@ -5245,11 +5259,7 @@ export default function SettingsScreen() {
                       returnKeyType="search"
                       clearButtonMode="while-editing"
                     />
-                    {searchQuery ? (
-                      <Pressable onPress={() => setSearchQuery('')} className="p-1 active:opacity-70">
-                        <X size={14} color={colors.text.muted} strokeWidth={2} />
-                      </Pressable>
-                    ) : null}
+                    <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
                   </View>
                 </View>
               </View>
@@ -5281,11 +5291,7 @@ export default function SettingsScreen() {
                   returnKeyType="search"
                   clearButtonMode="while-editing"
                 />
-                {searchQuery ? (
-                  <Pressable onPress={() => setSearchQuery('')} className="p-1 active:opacity-70">
-                    <X size={14} color={colors.text.muted} strokeWidth={2} />
-                  </Pressable>
-                ) : null}
+                <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
               </View>
             </View>
           )}
@@ -5311,7 +5317,7 @@ export default function SettingsScreen() {
           {searchQuery.trim() ? (
             <View style={mobileSettingsCardStyle}>
               {filteredSearchItems.length > 0 ? (
-                filteredSearchItems.map((item) => (
+                filteredSearchItems.map((item, index) => (
                   <SettingsRow
                     key={item.id}
                     title={item.title}
@@ -5320,6 +5326,7 @@ export default function SettingsScreen() {
                     rightText={item.rightText}
                     onPress={item.onPress}
                     showChevron={!!item.onPress}
+                    showDivider={index < filteredSearchItems.length - 1}
                   />
                 ))
               ) : (
@@ -5333,9 +5340,23 @@ export default function SettingsScreen() {
             </View>
           ) : null}
 
+          {!searchQuery.trim() && (
+            <>
+              <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase mb-3 tracking-wider">Business</Text>
+              <View style={mobileSettingsCardStyle}>
+                <SettingsRow
+                  title="Switch Business"
+                  description="Add and open existing businesses"
+                  icon={<Building2 size={18} color="#10B981" strokeWidth={2} />}
+                  onPress={() => router.push('/switch-business?from=settings')}
+                />
+              </View>
+            </>
+          )}
+
           {!searchQuery.trim() && currentUser && (
             <>
-              <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase mb-3 tracking-wider">Account</Text>
+              <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase mt-4 mb-3 tracking-wider">Account</Text>
               <View style={mobileSettingsCardStyle}>
                 <SettingsRow
                   title="My Account"
@@ -5682,10 +5703,17 @@ export default function SettingsScreen() {
             />
             <SettingsRow
               title="Product Variables"
-              description="Color, size, material"
+              description="Stock variants, SKUs, barcodes and prices"
               icon={<Package size={18} color="#A855F7" strokeWidth={2} />}
               rightText={`${productVariables.length}`}
               onPress={() => openSettingsPanel('product-variables', '/product-variables?from=settings')}
+            />
+            <SettingsRow
+              title="Product Options"
+              description="Choices customers pick on item lines"
+              icon={<Tag size={18} color="#16A34A" strokeWidth={2} />}
+              rightText={`${productOptions.length}`}
+              onPress={() => openSettingsPanel('product-options', '/product-options?from=settings')}
             />
             <SettingsRow
               title="Import Products"

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Calendar, Camera, Check, ChevronDown, FileText, Image as ImageIcon, Paperclip, X } from 'lucide-react-native';
+import { Calendar, Camera, Check, ChevronDown, FileText, Image as ImageIcon, Package, Paperclip, X } from 'lucide-react-native';
 import { ResolvedAttachmentImage } from '@/components/ResolvedAttachmentImage';
 import { pickImageSimple } from '@/hooks/useImagePicker';
 import { uploadBusinessAttachment } from '@/lib/storage-attachments';
@@ -13,6 +13,7 @@ import useAuthStore from '@/lib/state/auth-store';
 import useFyllStore, { type PartnerJob } from '@/lib/state/fyll-store';
 import { getPartnerJobTaxonomy } from '@/lib/supabase/partner-job-types';
 import { notifyPartnerJobDispatched } from '@/lib/notify-partner';
+import { SearchClearButton } from '@/components/SearchClearButton';
 
 const generateId = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -54,6 +55,7 @@ export function PartnerJobFormModal({
   const currentUserName = useAuthStore((s) => s.currentUser?.name ?? '');
   const partners = useFyllStore((s) => s.partners);
   const orders = useFyllStore((s) => s.orders);
+  const products = useFyllStore((s) => s.products);
   const addPartnerJob = useFyllStore((s) => s.addPartnerJob);
   const updatePartnerJob = useFyllStore((s) => s.updatePartnerJob);
 
@@ -126,6 +128,24 @@ export function PartnerJobFormModal({
     if (!jobOrderId) return null;
     return orders.find((order) => order.id === jobOrderId) ?? null;
   }, [jobOrderId, orders]);
+
+  const selectedJobOrderItems = useMemo(() => {
+    if (!selectedJobOrder) return [];
+    return selectedJobOrder.items.map((item) => {
+      const product = products.find((p) => p.id === item.productId);
+      const variant = product?.variants.find((v) => v.id === item.variantId);
+      const variantName = variant ? Object.values(variant.variableValues).join(' / ') : (item.variantName ?? '');
+      const productName = product?.name || item.productName || 'Product';
+      const imageUrl = variant?.imageUrl?.trim() || product?.imageUrl?.trim() || '';
+      const label = variantName ? `${productName} (${variantName})` : productName;
+      return { item, label, imageUrl };
+    });
+  }, [selectedJobOrder, products]);
+
+  const handleSelectOrderItemForJob = (label: string, imageUrl: string) => {
+    setJobItemLabel(label);
+    if (imageUrl) setJobImageUri(imageUrl);
+  };
 
   const orderSearchResults = useMemo(() => {
     const query = jobCustomerName.trim().toLowerCase();
@@ -339,13 +359,20 @@ export function PartnerJobFormModal({
 
             <View>
               <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '600', letterSpacing: 0.6, marginBottom: 6, textTransform: 'uppercase' }}>Customer name or order ID</Text>
-              <TextInput
-                value={jobCustomerName}
-                onChangeText={handleJobCustomerSearchChange}
-                placeholder="Type customer name or order ID"
-                placeholderTextColor={jobPlaceholderColor}
-                style={{ height: 46, borderRadius: 10, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.secondary, paddingHorizontal: 12, color: colors.text.primary, fontSize: 14 }}
-              />
+              <View style={{ position: 'relative' }}>
+                <TextInput
+                  value={jobCustomerName}
+                  onChangeText={handleJobCustomerSearchChange}
+                  placeholder="Type customer name or order ID"
+                  placeholderTextColor={jobPlaceholderColor}
+                  style={{ height: 46, borderRadius: 10, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.secondary, paddingLeft: 12, paddingRight: 44, color: colors.text.primary, fontSize: 14 }}
+                />
+                <SearchClearButton
+                  visible={Boolean(jobCustomerName.trim())}
+                  onPress={() => handleJobCustomerSearchChange('')}
+                  style={{ position: 'absolute', right: 8, top: 9, marginLeft: 0 }}
+                />
+              </View>
               {selectedJobOrder ? (
                 <Text style={{ color: colors.text.tertiary, fontSize: 11.5, marginTop: 6 }}>
                   Linked to {selectedJobOrder.orderNumber}
@@ -438,6 +465,47 @@ export function PartnerJobFormModal({
             <View style={{ gap: 10 }}>
               <View>
                 <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '600', letterSpacing: 0.6, marginBottom: 6, textTransform: 'uppercase' }}>Item / product (optional)</Text>
+                {selectedJobOrderItems.length > 0 ? (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{ gap: 8, paddingBottom: 8 }}
+                    style={{ flexGrow: 0 }}
+                  >
+                    {selectedJobOrderItems.map(({ item, label, imageUrl }, index) => {
+                      const selected = jobItemLabel.trim() === label.trim();
+                      return (
+                        <Pressable
+                          key={`${item.productId}-${item.variantId}-${index}`}
+                          onPress={() => handleSelectOrderItemForJob(label, imageUrl)}
+                          style={{
+                            width: 88,
+                            borderRadius: 10,
+                            borderWidth: selected ? 2 : 1,
+                            borderColor: selected ? colors.text.primary : colors.border.light,
+                            overflow: 'hidden',
+                            backgroundColor: colors.bg.secondary,
+                          }}
+                        >
+                          <View style={{ width: '100%', height: 64, alignItems: 'center', justifyContent: 'center' }}>
+                            <ResolvedAttachmentImage
+                              imageUrl={imageUrl}
+                              style={{ width: '100%', height: '100%' }}
+                              resizeMode="cover"
+                              fallback={<Package size={20} color={colors.text.tertiary} strokeWidth={1.5} />}
+                            />
+                          </View>
+                          <Text
+                            numberOfLines={1}
+                            style={{ fontSize: 10, fontWeight: '600', color: colors.text.primary, paddingHorizontal: 5, paddingVertical: 4 }}
+                          >
+                            {label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
+                ) : null}
                 <TextInput
                   value={jobItemLabel}
                   onChangeText={setJobItemLabel}

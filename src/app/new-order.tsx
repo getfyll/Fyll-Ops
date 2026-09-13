@@ -33,6 +33,7 @@ import { normalizeWooLookupValue } from '@/lib/woocommerce-link';
 import { DesktopSidebar } from '@/components/DesktopSidebar';
 import { supabaseData } from '@/lib/supabase/data';
 import { queueSocialCheckoutEmail } from '@/lib/supabase/social-checkout-emails';
+import { SearchClearButton } from '@/components/SearchClearButton';
 
 interface SearchResult {
   productId: string;
@@ -90,6 +91,10 @@ const normalizeServiceFieldType = (type?: string): ServiceFieldType => (
 const normalizeOption = (option: string | { value: string; amount?: number }) => (
   typeof option === 'string' ? { value: option } : option
 );
+
+const createOrderLineId = () => `item-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+const getOrderItemLineId = (item: OrderItem, index: number) => item.id ?? `${item.productId}:${item.variantId}:${index}`;
 
 const toIsoDateString = (date: Date): string => {
   const year = date.getFullYear();
@@ -353,6 +358,8 @@ export default function NewOrderScreen() {
   const [editingServiceIndex, setEditingServiceIndex] = useState<number | null>(null);
   const [servicePriceInput, setServicePriceInput] = useState('');
   const [showServicePriceModal, setShowServicePriceModal] = useState(false);
+  const [pendingServiceItemId, setPendingServiceItemId] = useState<string | null>(null);
+  const [addonSearchQuery, setAddonSearchQuery] = useState('');
   const [deliveryFee, setDeliveryFee] = useState(params.deliveryFee || '');
   const [additionalCharges, setAdditionalCharges] = useState('');
   const [additionalChargesNote, setAdditionalChargesNote] = useState('');
@@ -381,6 +388,7 @@ export default function NewOrderScreen() {
 
     setItems([
       {
+        id: createOrderLineId(),
         productId: product.id,
         variantId: variant.id,
         quantity: 1,
@@ -473,6 +481,7 @@ export default function NewOrderScreen() {
                 : (variant.sellingPrice || 0);
 
               matchedItems.push({
+                id: createOrderLineId(),
                 productId: matchingProduct.id,
                 variantId: variant.id,
                 quantity: Number.isFinite(aiItem.quantity) && aiItem.quantity > 0 ? aiItem.quantity : 1,
@@ -632,6 +641,14 @@ export default function NewOrderScreen() {
   const discountAmountNum = parseFloat(discountAmount) || 0;
 
   const totalAmount = subtotal + servicesTotal + deliveryFeeNum + additionalChargesNum - discountAmountNum;
+  const buildDefaultSelectedOptions = (productId: string) => {
+    const product = products.find((p) => p.id === productId);
+    const entries = (product?.orderOptions ?? [])
+      .filter((option) => option.name.trim() && option.values.length > 0)
+      .map((option) => [option.name, option.values[0]] as const);
+    return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+  };
+
   const fulfillmentTimelinePreview = useMemo(() => (
     resolveOrderTimeline({ orderTypeId, deliveryState: isServiceOrder ? '' : deliveryState }, orderTimelineSettings)
   ), [deliveryState, isServiceOrder, orderTimelineSettings, orderTypeId]);
@@ -644,15 +661,18 @@ export default function NewOrderScreen() {
 
   const handleAddProduct = (result: SearchResult) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const existingIndex = items.findIndex(
-      (item) => item.productId === result.productId && item.variantId === result.variantId
-    );
+    const product = products.find((p) => p.id === result.productId);
+    const hasOrderOptions = !result.isService && Boolean(product?.orderOptions?.some((option) =>
+      option.name.trim() && option.values.length > 0
+    ));
+    const existingIndex = hasOrderOptions
+      ? -1
+      : items.findIndex((item) => item.productId === result.productId && item.variantId === result.variantId);
 
     if (existingIndex >= 0) {
       // Increment quantity if already exists
       handleUpdateQuantity(existingIndex, 1);
     } else {
-      const product = products.find((p) => p.id === result.productId);
       const serviceVariables = result.isService
         ? (product?.serviceVariables ?? []).map((variable) => ({
           id: variable.id,
@@ -677,11 +697,13 @@ export default function NewOrderScreen() {
         ? calculateServiceUnitPrice(product, result.variantId, serviceVariables, serviceFields)
         : result.price;
       setItems([...items, {
+        id: createOrderLineId(),
         productId: result.productId,
         variantId: result.variantId,
         quantity: 1,
         unitPrice,
         serviceId: result.isService ? result.productId : undefined,
+        selectedOptions: hasOrderOptions ? buildDefaultSelectedOptions(result.productId) : undefined,
         serviceVariables,
         serviceFields,
       }]);
@@ -695,14 +717,16 @@ export default function NewOrderScreen() {
     const newQty = newItems[index].quantity + delta;
 
     if (newQty <= 0) {
+      const removedLineId = getOrderItemLineId(newItems[index], index);
       newItems.splice(index, 1);
+      setServices((current) => current.filter((service) => service.linkedItemId !== removedLineId));
     } else {
       const product = products.find((p) => p.id === newItems[index].productId);
       const isService = product ? normalizeProductType(product.productType) === 'service' : false;
       const variant = product?.variants.find((v) => v.id === newItems[index].variantId);
       if (isService) {
         newItems[index].quantity = newQty;
-      } else if (variant && newQty <= variant.stock) {
+      } else if ((product?.orderOptions?.length ?? 0) > 0 || (variant && newQty <= variant.stock)) {
         newItems[index].quantity = newQty;
       }
     }
@@ -712,7 +736,43 @@ export default function NewOrderScreen() {
 
   const handleRemoveItem = (index: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const removedLineId = getOrderItemLineId(items[index], index);
     setItems(items.filter((_, i) => i !== index));
+    setServices((current) => current.filter((service) => service.linkedItemId !== removedLineId));
+  };
+
+  const openAddServiceForItem = (index: number) => {
+    const item = items[index];
+    if (!item) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setPendingServiceItemId(getOrderItemLineId(item, index));
+    setShowServiceModal(true);
+  };
+
+  const closeServiceModal = () => {
+    setShowServiceModal(false);
+    setPendingServiceItemId(null);
+    setAddonSearchQuery('');
+  };
+
+  const filteredCustomServices = useMemo(() => {
+    const query = addonSearchQuery.trim().toLowerCase();
+    return [...customServices]
+      .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }))
+      .filter((service) => !query || service.name.toLowerCase().includes(query));
+  }, [addonSearchQuery, customServices]);
+
+  const handleOrderOptionUpdate = (itemIndex: number, optionName: string, value: string) => {
+    setItems((prev) => prev.map((item, index) => {
+      if (index !== itemIndex) return item;
+      return {
+        ...item,
+        selectedOptions: {
+          ...(item.selectedOptions ?? {}),
+          [optionName]: value,
+        },
+      };
+    }));
   };
 
   const handleAddService = (serviceId: string) => {
@@ -724,9 +784,11 @@ export default function NewOrderScreen() {
       serviceId: service.id,
       name: service.name,
       price: service.defaultPrice,
+      linkedItemId: pendingServiceItemId ?? undefined,
     }];
     setServices(nextServices);
     setShowServiceModal(false);
+    setPendingServiceItemId(null);
 
     if (service.defaultPrice === 0) {
       setEditingServiceIndex(nextServices.length - 1);
@@ -1081,7 +1143,14 @@ export default function NewOrderScreen() {
     const variantName = isService
       ? (product?.categories?.[0] ?? 'Service')
       : (variant ? Object.values(variant.variableValues).join(' / ') : (item.variantName ?? ''));
-    return { productName: product?.name || item.productName || 'Product unavailable', variantName, stock: variant?.stock || 0, isService, usesGlobalPricing };
+    return {
+      productName: product?.name || item.productName || 'Product unavailable',
+      variantName,
+      stock: variant?.stock || 0,
+      isService,
+      usesGlobalPricing,
+      orderOptions: product?.orderOptions ?? [],
+    };
   };
 
   const handleServiceVariableUpdate = (itemIndex: number, variableId: string, value: string) => {
@@ -1393,6 +1462,7 @@ export default function NewOrderScreen() {
                     className="flex-1 py-3 px-2"
                     style={{ color: colors.input.text }}
                   />
+                  <SearchClearButton visible={Boolean(customerSearchQuery.trim())} onPress={() => setCustomerSearchQuery('')} />
                 </View>
                 {customerSearchResults.length > 0 && (
                   <View className={cn('mt-2 rounded-xl overflow-hidden border', softCardClass)}>
@@ -1521,6 +1591,7 @@ export default function NewOrderScreen() {
                           className="flex-1 px-2 py-3 text-sm"
                           style={{ color: colors.input.text }}
                         />
+                        <SearchClearButton visible={Boolean(stateSearchQuery.trim())} onPress={() => setStateSearchQuery('')} />
                       </View>
                       {Platform.OS === 'web' ? (
                         <View style={{ maxHeight: 260, overflowY: 'auto' } as any}>
@@ -1884,6 +1955,7 @@ export default function NewOrderScreen() {
                     autoFocus
                     className={cn('flex-1 py-3 px-2 text-base', textPrimaryClass)}
                   />
+                  <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
                 </View>
 
                 {searchResults.length > 0 && (
@@ -1935,13 +2007,21 @@ export default function NewOrderScreen() {
             {items.length > 0 ? (
               <View>
                 {items.map((item, index) => {
-                  const { productName, variantName, stock, isService, usesGlobalPricing } = getItemDetails(item);
+                  const { productName, variantName, stock, isService, usesGlobalPricing, orderOptions } = getItemDetails(item);
                   const fullName = isService ? productName : `${productName} - ${variantName}`;
+                  const itemLineId = getOrderItemLineId(item, index);
+                  const linkedServiceEntries = services
+                    .map((service, serviceIndex) => ({ service, serviceIndex }))
+                    .filter(({ service }) => service.linkedItemId === itemLineId);
                   const serviceVariables = item.serviceVariables ?? [];
                   const serviceFields = item.serviceFields ?? [];
+                  const selectedOptions = item.selectedOptions ?? {};
+                  const legacySelectedOptionEntries = Object.entries(selectedOptions)
+                    .filter(([name, value]) => name.trim() && value.trim())
+                    .filter(([name]) => !orderOptions.some((option) => option.name === name));
                   return (
                     <View
-                      key={`${item.productId}-${item.variantId}`}
+                      key={`${item.productId}-${item.variantId}-${index}`}
                       className={cn('mb-3 rounded-2xl border p-3', cardClass)}
                     >
                       <View className="flex-row items-center">
@@ -1983,6 +2063,54 @@ export default function NewOrderScreen() {
                           </Text>
                         )}
                       </Text>
+
+                      {!isService && (orderOptions.length > 0 || legacySelectedOptionEntries.length > 0) && (
+                        <View className="mt-3 pt-3 border-t border-gray-100">
+                          <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                            Item Choices
+                          </Text>
+                          <View style={{ gap: 12 }}>
+                            {orderOptions.map((option) => {
+                              const selectedValue = selectedOptions[option.name] ?? option.values[0] ?? '';
+                              return (
+                                <View key={option.id || option.name}>
+                                  <Text className="text-gray-600 text-sm font-medium mb-2">
+                                    {option.name}
+                                  </Text>
+                                  <View className="flex-row flex-wrap gap-2">
+                                    {option.values.map((value) => {
+                                      const selected = selectedValue === value;
+                                      return (
+                                        <Pressable
+                                          key={`${option.name}-${value}`}
+                                          onPress={() => handleOrderOptionUpdate(index, option.name, value)}
+                                          className="px-4 py-2 rounded-full"
+                                          style={{
+                                            backgroundColor: selected ? '#111111' : '#F3F4F6',
+                                            borderWidth: 1,
+                                            borderColor: selected ? '#111111' : '#E5E7EB',
+                                          }}
+                                        >
+                                          <Text className={cn('text-xs font-semibold', selected ? 'text-white' : 'text-gray-700')}>
+                                            {value}
+                                          </Text>
+                                        </Pressable>
+                                      );
+                                    })}
+                                  </View>
+                                </View>
+                              );
+                            })}
+                            {legacySelectedOptionEntries.map(([name, value]) => (
+                              <View key={name} className="self-start rounded-full px-3 py-1.5" style={{ backgroundColor: colors.bg.secondary }}>
+                                <Text style={{ color: colors.text.secondary }} className="text-xs font-semibold">
+                                  {name}: {value}
+                                </Text>
+                              </View>
+                            ))}
+                          </View>
+                        </View>
+                      )}
 
                       {isService && (serviceVariables.length > 0 || serviceFields.length > 0) && (
                         <View className="mt-3 pt-3 border-t border-gray-100">
@@ -2153,6 +2281,56 @@ export default function NewOrderScreen() {
                           </View>
                         </View>
                       )}
+
+                      {customServices.length > 0 && (
+                        <View className="mt-3 pt-3 border-t" style={{ borderTopColor: colors.border.light }}>
+                          <View className="flex-row items-center justify-between mb-2">
+                            <View className="flex-1 pr-3">
+                              <Text className={cn('text-xs font-semibold uppercase tracking-wider', textMutedClass)}>
+                                Add-ons for this item
+                              </Text>
+                            </View>
+                            <Pressable
+                              onPress={() => openAddServiceForItem(index)}
+                              className="px-3 py-1.5 rounded-full flex-row items-center active:opacity-70"
+                              style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}
+                            >
+                              <Plus size={13} color={colors.text.primary} strokeWidth={2} />
+                              <Text className="text-xs font-semibold ml-1" style={{ color: colors.text.primary }}>Add add-on</Text>
+                            </Pressable>
+                          </View>
+
+                          {linkedServiceEntries.length > 0 ? (
+                            <View style={{ gap: 8 }}>
+                              {linkedServiceEntries.map(({ service, serviceIndex }) => (
+                                <View
+                                  key={`${service.serviceId}-${serviceIndex}`}
+                                  className="flex-row items-center rounded-xl px-3 py-2"
+                                  style={{ backgroundColor: colors.bg.secondary }}
+                                >
+                                  <View className="flex-1">
+                                    <Text className={cn('font-medium text-sm', textPrimaryClass)}>{service.name}</Text>
+                                    <Text className={cn('text-xs mt-0.5', textMutedClass)}>Linked to {fullName}</Text>
+                                  </View>
+                                  <Text className={cn('font-bold text-sm mr-2', textPrimaryClass)}>{formatCurrency(service.price)}</Text>
+                                  <Pressable
+                                    onPress={() => openEditServicePrice(serviceIndex)}
+                                    className="px-2 py-1 rounded-lg mr-1 active:opacity-70"
+                                    style={{ backgroundColor: service.price > 0 ? 'rgba(59, 130, 246, 0.08)' : 'rgba(234, 179, 8, 0.12)' }}
+                                  >
+                                    <Pencil size={13} color={service.price > 0 ? '#3B82F6' : '#CA8A04'} strokeWidth={2} />
+                                  </Pressable>
+                                  <Pressable onPress={() => handleRemoveService(serviceIndex)} className="p-1 active:opacity-50">
+                                    <Trash2 size={15} color="#EF4444" strokeWidth={2} />
+                                  </Pressable>
+                                </View>
+                              ))}
+                            </View>
+                          ) : (
+                            <Text className={cn('text-xs', textMutedClass)}>No add-ons linked to this item.</Text>
+                          )}
+                        </View>
+                      )}
                     </View>
                   );
                 })}
@@ -2166,27 +2344,22 @@ export default function NewOrderScreen() {
           </View>
           );
 
-          const addonsSection = items.length > 0 ? (
+          const itemLineIds = new Set(items.map((item, index) => getOrderItemLineId(item, index)));
+          const unassignedServiceEntries = services
+            .map((service, index) => ({ service, index }))
+            .filter(({ service }) => !service.linkedItemId || !itemLineIds.has(service.linkedItemId));
+
+          const addonsSection = items.length > 0 && unassignedServiceEntries.length > 0 ? (
             <View className={cn('mx-4 mt-4 rounded-2xl p-4 border', cardClass)}>
               <View className="flex-row items-center justify-between mb-4">
                 <View className="flex-1 pr-3">
-                  <Text className={cn(sectionTitleClass, textPrimaryClass)}>Add-ons</Text>
-                  <Text className={cn('text-xs mt-1', textMutedClass)}>Optional extra services for this order.</Text>
+                  <Text className={cn(sectionTitleClass, textPrimaryClass)}>Unassigned add-ons</Text>
+                  <Text className={cn('text-xs mt-1', textMutedClass)}>Older or imported add-ons that are not linked to a product line.</Text>
                 </View>
-                <Pressable
-                  onPress={() => setShowServiceModal(true)}
-                  className="px-3 rounded-full flex-row items-center active:opacity-70"
-                  style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light, height: 34 }}
-                >
-                  <Plus size={14} color={colors.text.primary} strokeWidth={2} />
-                  <Text className="font-semibold text-xs ml-1.5" style={{ color: colors.text.primary }}>
-                    Add Add-on
-                  </Text>
-                </Pressable>
               </View>
 
-              {services.length > 0 ? (
-                services.map((service, index) => (
+              {unassignedServiceEntries.length > 0 ? (
+                unassignedServiceEntries.map(({ service, index }) => (
                   <View
                     key={`${service.serviceId}-${index}`}
                     className="flex-row items-center py-3 border-b"
@@ -2571,28 +2744,45 @@ export default function NewOrderScreen() {
       </View>
 
       {/* Service Selection Modal - Centered */}
-      <Modal visible={showServiceModal} animationType="fade" transparent onRequestClose={() => setShowServiceModal(false)}>
+      <Modal visible={showServiceModal} animationType="fade" transparent onRequestClose={closeServiceModal}>
         <View
           className="flex-1 items-center justify-center"
           style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)' }}
         >
           <Pressable
             className="absolute inset-0"
-            onPress={() => setShowServiceModal(false)}
+            onPress={closeServiceModal}
           />
           <View
             className="w-[90%] rounded-2xl overflow-hidden"
             style={{ backgroundColor: selectionModalSurface, maxWidth: 400, maxHeight: '70%', borderWidth: 1, borderColor: selectionModalBorder }}
           >
             <View className="flex-row items-center justify-between px-5 py-4 border-b" style={{ borderBottomColor: selectionModalBorder }}>
-              <Text className={cn('font-bold text-lg', textPrimaryClass)}>Add Service</Text>
+              <Text className={cn('font-bold text-lg', textPrimaryClass)}>Add Add-on</Text>
               <Pressable
-                onPress={() => setShowServiceModal(false)}
+                onPress={closeServiceModal}
                 className="w-8 h-8 rounded-full items-center justify-center active:opacity-50"
                 style={{ backgroundColor: selectionModalSoftBg }}
               >
                 <X size={18} color={colors.text.muted} strokeWidth={2} />
               </Pressable>
+            </View>
+            <View className="px-5 pt-4">
+              <View
+                className="flex-row items-center rounded-xl px-3 border"
+                style={{ backgroundColor: selectionModalSoftBg, borderColor: selectionModalBorder }}
+              >
+                <Search size={17} color={colors.text.muted} strokeWidth={2} />
+                <TextInput
+                  value={addonSearchQuery}
+                  onChangeText={setAddonSearchQuery}
+                  placeholder="Search add-ons"
+                  placeholderTextColor={colors.text.muted}
+                  autoFocus
+                  className={cn('flex-1 py-3 px-2 text-sm', textPrimaryClass)}
+                />
+                <SearchClearButton visible={Boolean(addonSearchQuery.trim())} onPress={() => setAddonSearchQuery('')} />
+              </View>
             </View>
             <ScrollView
               className="px-5 py-4"
@@ -2600,7 +2790,7 @@ export default function NewOrderScreen() {
               keyboardShouldPersistTaps="handled"
               bounces={true}
             >
-              {customServices.map((service) => (
+              {filteredCustomServices.map((service) => (
                 <Pressable
                   key={service.id}
                   onPress={() => handleAddService(service.id)}
@@ -2614,6 +2804,11 @@ export default function NewOrderScreen() {
               {customServices.length === 0 && (
                 <Text className={cn('text-sm text-center py-4', textMutedClass)}>
                   No add-ons available. Create one in settings first.
+                </Text>
+              )}
+              {customServices.length > 0 && filteredCustomServices.length === 0 && (
+                <Text className={cn('text-sm text-center py-4', textMutedClass)}>
+                  No add-ons match your search.
                 </Text>
               )}
               <View className="h-4" />

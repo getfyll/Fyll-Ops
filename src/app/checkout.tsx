@@ -13,6 +13,7 @@ import { getSocialCheckoutPublic, submitSocialCheckoutPayment } from '@/lib/supa
 import { queueSocialCheckoutEmail } from '@/lib/supabase/social-checkout-emails';
 import { uploadSocialCheckoutProof } from '@/lib/storage-attachments';
 import { formatCurrency, NIGERIA_STATES } from '@/lib/state/fyll-store';
+import { SearchClearButton } from '@/components/SearchClearButton';
 
 const fyllCombinationPng = require('../../assets/Group 20fyll combination.png');
 const fyllWordmarkPng = require('../../assets/fyllfyll wordmark.png');
@@ -739,14 +740,15 @@ export default function PublicSocialCheckoutScreen() {
             />
             {showStatePicker ? (
               <View className="rounded-xl mt-2 p-2" style={{ backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: fyllColors.border, maxHeight: 220 }}>
-                <View className="rounded-[14px] px-4 mb-2" style={{ backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: fyllColors.border, height: 46, justifyContent: 'center' }}>
+                <View className="rounded-[14px] px-4 mb-2" style={{ backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: fyllColors.border, height: 46, justifyContent: 'center', flexDirection: 'row', alignItems: 'center' }}>
                   <TextInput
                     value={stateSearchQuery}
                     onChangeText={setStateSearchQuery}
                     placeholder="Search state"
                     placeholderTextColor="#A3A3A3"
-                    style={{ color: '#111111', fontSize: 16 }}
+                    style={{ flex: 1, color: '#111111', fontSize: 16 }}
                   />
+                  <SearchClearButton visible={Boolean(stateSearchQuery.trim())} onPress={() => setStateSearchQuery('')} />
                 </View>
                 <ScrollView showsVerticalScrollIndicator={false}>
                   {filteredStates.map((state) => (

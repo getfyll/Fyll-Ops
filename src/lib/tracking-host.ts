@@ -28,3 +28,16 @@ export const isCustomerPortalHostname = (hostname?: string | null) => {
 export const FYLL_TRACKING_ORIGIN = `https://${TRACKING_PRIMARY_DOMAIN}`;
 export const FYLL_RETURNS_ORIGIN = `https://${RETURNS_PRIMARY_DOMAIN}`;
 export const FYLL_DELIVERY_CONFIRMATION_ORIGIN = `https://${DELIVERY_CONFIRMATION_PRIMARY_DOMAIN}`;
+
+// Exact Expo route names: never treat an entire customer hostname as permission
+// to mount arbitrary ERP screens (including automatically discovered routes).
+const CUSTOMER_PORTAL_ROUTES = new Set([
+  'track', 'order-tracking', 'start-return', 'confirm-delivery',
+  '[businessSlug]/index', '[businessSlug]/[code]',
+  '[businessSlug]/order-tracking', '[businessSlug]/order-tracking/[code]',
+  '[businessSlug]/start-return',
+  '[businessSlug]/confirm-delivery', '[businessSlug]/confirm-delivery/[code]',
+]);
+
+export const isCustomerPortalRoute = (routeName: string) =>
+  CUSTOMER_PORTAL_ROUTES.has(routeName);

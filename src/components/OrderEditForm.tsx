@@ -15,6 +15,7 @@ import { addBusinessDays, resolveOrderTimeline } from '@/lib/fulfillment';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
 import { fetchWooCommerceOrder, fetchWooCommerceOrders, type WooNormalizedOrder } from '@/lib/woocommerce';
 import { normalizeWooLookupValue } from '@/lib/woocommerce-link';
+import { SearchClearButton } from '@/components/SearchClearButton';
 
 interface SearchResult {
   productId: string;
@@ -63,6 +64,14 @@ const normalizeServiceFieldType = (type?: string): ServiceFieldType => (
 
 const normalizeOption = (option: string | { value: string; amount?: number }) => (
   typeof option === 'string' ? { value: option } : option
+);
+
+const createOrderLineId = () => `item-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+const getOrderItemLineId = (item: OrderItem, index: number) => item.id ?? `${item.productId}:${item.variantId}:${index}`;
+
+const ensureOrderItemLineIds = (items: OrderItem[]) => (
+  items.map((item) => (item.id ? item : { ...item, id: createOrderLineId() }))
 );
 
 const toIsoDateString = (date: Date): string => {
@@ -233,6 +242,8 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
   const [editingServiceIndex, setEditingServiceIndex] = useState<number | null>(null);
   const [servicePriceInput, setServicePriceInput] = useState('');
   const [showServicePriceModal, setShowServicePriceModal] = useState(false);
+  const [pendingServiceItemId, setPendingServiceItemId] = useState<string | null>(null);
+  const [addonSearchQuery, setAddonSearchQuery] = useState('');
   const [deliveryFee, setDeliveryFee] = useState('');
   const [additionalCharges, setAdditionalCharges] = useState('');
   const [additionalChargesNote, setAdditionalChargesNote] = useState('');
@@ -288,7 +299,8 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
     setSource(order.source || saleSources[0]?.name || '');
     setPaymentMethod(order.paymentMethod || paymentMethods[0]?.name || '');
     setOrderClassification(order.orderClassification ?? 'Sale');
-    setItems(order.items ?? []);
+    const initializedItems = ensureOrderItemLineIds(order.items ?? []);
+    setItems(initializedItems);
     setServices(order.services ?? []);
     setDeliveryFee(String(order.deliveryFee ?? 0));
     setAdditionalCharges(String(order.additionalCharges ?? 0));
@@ -308,7 +320,7 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
     setCalendarViewDate(resolvedDate);
     setPickerDate(resolvedDate);
 
-    originalItemsRef.current = order.items ?? [];
+    originalItemsRef.current = initializedItems;
     setIsInitialized(true);
   }, [order, isInitialized, orderTimelineSettings.defaultOrderType.id, orderTimelineSettings.orderTypes, paymentMethods, saleSources]);
 
@@ -434,17 +446,28 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
 
   const totalAmount = subtotal + servicesTotal + deliveryFeeNum + additionalChargesNum - discountAmountNum;
 
+  const buildDefaultSelectedOptions = (productId: string) => {
+    const product = products.find((p) => p.id === productId);
+    const entries = (product?.orderOptions ?? [])
+      .filter((option) => option.name.trim() && option.values.length > 0)
+      .map((option) => [option.name, option.values[0]] as const);
+    return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+  };
+
   const handleAddProduct = (result: SearchResult) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const existingIndex = items.findIndex(
-      (item) => item.productId === result.productId && item.variantId === result.variantId
-    );
+    const product = products.find((p) => p.id === result.productId);
+    const hasOrderOptions = !result.isService && Boolean(product?.orderOptions?.some((option) =>
+      option.name.trim() && option.values.length > 0
+    ));
+    const existingIndex = hasOrderOptions
+      ? -1
+      : items.findIndex((item) => item.productId === result.productId && item.variantId === result.variantId);
 
     if (existingIndex >= 0) {
       // Increment quantity if already exists
       handleUpdateQuantity(existingIndex, 1);
     } else {
-      const product = products.find((p) => p.id === result.productId);
       const serviceVariables = result.isService
         ? (product?.serviceVariables ?? []).map((variable) => ({
           id: variable.id,
@@ -469,11 +492,13 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
         ? calculateServiceUnitPrice(product, result.variantId, serviceVariables, serviceFields)
         : result.price;
       setItems([...items, {
+        id: createOrderLineId(),
         productId: result.productId,
         variantId: result.variantId,
         quantity: 1,
         unitPrice,
         serviceId: result.isService ? result.productId : undefined,
+        selectedOptions: hasOrderOptions ? buildDefaultSelectedOptions(result.productId) : undefined,
         serviceVariables,
         serviceFields,
       }]);
@@ -487,14 +512,16 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
     const newQty = newItems[index].quantity + delta;
 
     if (newQty <= 0) {
+      const removedLineId = getOrderItemLineId(newItems[index], index);
       newItems.splice(index, 1);
+      setServices((current) => current.filter((service) => service.linkedItemId !== removedLineId));
     } else {
       const isService = isServiceOrderItem(newItems[index]);
       const product = products.find((p) => p.id === newItems[index].productId);
       const variant = product?.variants.find((v) => v.id === newItems[index].variantId);
       if (isService) {
         newItems[index].quantity = newQty;
-      } else if (variant && newQty <= variant.stock) {
+      } else if ((product?.orderOptions?.length ?? 0) > 0 || (variant && newQty <= variant.stock)) {
         newItems[index].quantity = newQty;
       }
     }
@@ -504,7 +531,43 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
 
   const handleRemoveItem = (index: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const removedLineId = getOrderItemLineId(items[index], index);
     setItems(items.filter((_, i) => i !== index));
+    setServices((current) => current.filter((service) => service.linkedItemId !== removedLineId));
+  };
+
+  const openAddServiceForItem = (index: number) => {
+    const item = items[index];
+    if (!item) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setPendingServiceItemId(getOrderItemLineId(item, index));
+    setShowServiceModal(true);
+  };
+
+  const closeServiceModal = () => {
+    setShowServiceModal(false);
+    setPendingServiceItemId(null);
+    setAddonSearchQuery('');
+  };
+
+  const filteredCustomServices = useMemo(() => {
+    const query = addonSearchQuery.trim().toLowerCase();
+    return [...customServices]
+      .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }))
+      .filter((service) => !query || service.name.toLowerCase().includes(query));
+  }, [addonSearchQuery, customServices]);
+
+  const handleOrderOptionUpdate = (itemIndex: number, optionName: string, value: string) => {
+    setItems((prev) => prev.map((item, index) => {
+      if (index !== itemIndex) return item;
+      return {
+        ...item,
+        selectedOptions: {
+          ...(item.selectedOptions ?? {}),
+          [optionName]: value,
+        },
+      };
+    }));
   };
 
   const handleAddService = (serviceId: string) => {
@@ -515,10 +578,12 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
     const nextServices = [...services, {
       serviceId: service.id,
       name: service.name,
-      price: service.defaultPrice
+      price: service.defaultPrice,
+      linkedItemId: pendingServiceItemId ?? undefined,
     }];
     setServices(nextServices);
     setShowServiceModal(false);
+    setPendingServiceItemId(null);
 
     if (service.defaultPrice === 0) {
       setEditingServiceIndex(nextServices.length - 1);
@@ -832,7 +897,14 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
     const variantName = isService
       ? (product?.categories?.[0] ?? 'Service')
       : (variant ? Object.values(variant.variableValues).join(' / ') : (item.variantName ?? ''));
-    return { productName: product?.name || item.productName || 'Product unavailable', variantName, stock: variant?.stock || 0, isService, usesGlobalPricing };
+    return {
+      productName: product?.name || item.productName || 'Product unavailable',
+      variantName,
+      stock: variant?.stock || 0,
+      isService,
+      usesGlobalPricing,
+      orderOptions: product?.orderOptions ?? [],
+    };
   };
 
   const handleServiceVariableUpdate = (itemIndex: number, variableId: string, value: string) => {
@@ -1064,6 +1136,7 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
                     className="flex-1 py-3 px-2 text-base"
                     style={inputTextStyle}
                   />
+                  <SearchClearButton visible={Boolean(customerSearchQuery.trim())} onPress={() => setCustomerSearchQuery('')} />
                 </View>
                 {customerSearchResults.length > 0 && (
                   <View className="mt-2 rounded-xl overflow-hidden border" style={{ borderColor: softFieldBorderColor, backgroundColor: colors.input.bg }}>
@@ -1180,6 +1253,7 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
                       className="flex-1 px-2 py-3 text-sm"
                       style={inputTextStyle}
                     />
+                    <SearchClearButton visible={Boolean(stateSearchQuery.trim())} onPress={() => setStateSearchQuery('')} />
                   </View>
                   {Platform.OS === 'web' ? (
                     <View style={{ maxHeight: 260, overflowY: 'auto' } as any}>
@@ -1498,6 +1572,7 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
                     className="flex-1 py-3 px-2 text-base"
                     style={inputTextStyle}
                   />
+                  <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
                 </View>
 
                 {searchResults.length > 0 && (
@@ -1551,13 +1626,21 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
             {items.length > 0 ? (
               <View>
                 {items.map((item, index) => {
-                  const { productName, variantName, stock, isService, usesGlobalPricing } = getItemDetails(item);
+                  const { productName, variantName, stock, isService, usesGlobalPricing, orderOptions } = getItemDetails(item);
                   const fullName = isService ? productName : `${productName} - ${variantName}`;
+                  const itemLineId = getOrderItemLineId(item, index);
+                  const linkedServiceEntries = services
+                    .map((service, serviceIndex) => ({ service, serviceIndex }))
+                    .filter(({ service }) => service.linkedItemId === itemLineId);
                   const serviceVariables = item.serviceVariables ?? [];
                   const serviceFields = item.serviceFields ?? [];
+                  const selectedOptions = item.selectedOptions ?? {};
+                  const legacySelectedOptionEntries = Object.entries(selectedOptions)
+                    .filter(([name, value]) => name.trim() && value.trim())
+                    .filter(([name]) => !orderOptions.some((option) => option.name === name));
                   return (
                     <View
-                      key={`${item.productId}-${item.variantId}`}
+                      key={`${item.productId}-${item.variantId}-${index}`}
                       className="py-3 border-b border-gray-100"
                     >
                       <View className="flex-row items-center">
@@ -1604,6 +1687,57 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
                           </Text>
                         )}
                       </Text>
+
+                      {!isService && (orderOptions.length > 0 || legacySelectedOptionEntries.length > 0) && (
+                        <View className="mt-3 pt-3 border-t border-gray-100">
+                          <Text style={helperTextStyle} className="text-xs font-semibold uppercase tracking-wider mb-2">
+                            Item Choices
+                          </Text>
+                          <View style={{ gap: 12 }}>
+                            {orderOptions.map((option) => {
+                              const selectedValue = selectedOptions[option.name] ?? option.values[0] ?? '';
+                              return (
+                                <View key={option.id || option.name}>
+                                  <Text style={labelTextStyle} className="text-sm font-medium mb-2">
+                                    {option.name}
+                                  </Text>
+                                  <View className="flex-row flex-wrap gap-2">
+                                    {option.values.map((value) => {
+                                      const selected = selectedValue === value;
+                                      return (
+                                        <Pressable
+                                          key={`${option.name}-${value}`}
+                                          onPress={() => handleOrderOptionUpdate(index, option.name, value)}
+                                          className="px-4 py-2 rounded-full"
+                                          style={{
+                                            backgroundColor: selected ? colors.text.primary : colors.bg.secondary,
+                                            borderWidth: 1,
+                                            borderColor: selected ? colors.text.primary : colors.border.light,
+                                          }}
+                                        >
+                                          <Text
+                                            className="text-xs font-semibold"
+                                            style={{ color: selected ? colors.bg.primary : colors.text.secondary }}
+                                          >
+                                            {value}
+                                          </Text>
+                                        </Pressable>
+                                      );
+                                    })}
+                                  </View>
+                                </View>
+                              );
+                            })}
+                            {legacySelectedOptionEntries.map(([name, value]) => (
+                              <View key={name} className="self-start rounded-full px-3 py-1.5" style={{ backgroundColor: colors.bg.secondary }}>
+                                <Text style={{ color: colors.text.secondary }} className="text-xs font-semibold">
+                                  {name}: {value}
+                                </Text>
+                              </View>
+                            ))}
+                          </View>
+                        </View>
+                      )}
 
                       {isService && (serviceVariables.length > 0 || serviceFields.length > 0) && (
                         <View className="mt-3 pt-3 border-t border-gray-100">
@@ -1783,6 +1917,54 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
                           </View>
                         </View>
                       )}
+
+                      {customServices.length > 0 && (
+                        <View className="mt-3 pt-3" style={{ borderTopWidth: 1, borderTopColor: colors.border.light }}>
+                          <View className="flex-row items-center justify-between mb-2">
+                            <Text style={helperTextStyle} className="text-xs font-semibold uppercase tracking-wider">
+                              Add-ons for this item
+                            </Text>
+                            <Pressable
+                              onPress={() => openAddServiceForItem(index)}
+                              className="px-3 py-1.5 rounded-full flex-row items-center active:opacity-70"
+                              style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}
+                            >
+                              <Plus size={13} color={colors.text.primary} strokeWidth={2} />
+                              <Text className="text-xs font-semibold ml-1" style={{ color: colors.text.primary }}>Add add-on</Text>
+                            </Pressable>
+                          </View>
+
+                          {linkedServiceEntries.length > 0 ? (
+                            <View style={{ gap: 8 }}>
+                              {linkedServiceEntries.map(({ service, serviceIndex }) => (
+                                <View
+                                  key={`${service.serviceId}-${serviceIndex}`}
+                                  className="flex-row items-center rounded-xl px-3 py-2"
+                                  style={{ backgroundColor: colors.bg.secondary }}
+                                >
+                                  <View className="flex-1">
+                                    <Text style={{ color: colors.text.primary }} className="font-medium text-sm">{service.name}</Text>
+                                    <Text style={helperTextStyle} className="text-xs mt-0.5">Linked to {fullName}</Text>
+                                  </View>
+                                  <Text style={{ color: colors.text.primary }} className="font-bold text-sm mr-2">{formatCurrency(service.price)}</Text>
+                                  <Pressable
+                                    onPress={() => openEditServicePrice(serviceIndex)}
+                                    className="px-2 py-1 rounded-lg mr-1 active:opacity-70"
+                                    style={{ backgroundColor: service.price > 0 ? 'rgba(59, 130, 246, 0.08)' : 'rgba(234, 179, 8, 0.12)' }}
+                                  >
+                                    <Pencil size={13} color={service.price > 0 ? '#3B82F6' : '#CA8A04'} strokeWidth={2} />
+                                  </Pressable>
+                                  <Pressable onPress={() => handleRemoveService(serviceIndex)} className="p-1 active:opacity-50">
+                                    <Trash2 size={15} color="#EF4444" strokeWidth={2} />
+                                  </Pressable>
+                                </View>
+                              ))}
+                            </View>
+                          ) : (
+                            <Text style={helperTextStyle} className="text-xs">No add-ons linked to this item.</Text>
+                          )}
+                        </View>
+                      )}
                     </View>
                   );
                 })}
@@ -1796,26 +1978,22 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
           </View>
           );
 
-          const addonsSection = items.length > 0 ? (
+          const itemLineIds = new Set(items.map((item, index) => getOrderItemLineId(item, index)));
+          const unassignedServiceEntries = services
+            .map((service, index) => ({ service, index }))
+            .filter(({ service }) => !service.linkedItemId || !itemLineIds.has(service.linkedItemId));
+
+          const addonsSection = items.length > 0 && unassignedServiceEntries.length > 0 ? (
           <View className="mx-4 mt-4 rounded-2xl p-4" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
             <View className="flex-row items-center justify-between mb-4">
-              <Text style={{ color: colors.text.primary }} className="font-bold text-base">Add-ons</Text>
-              <Pressable
-                onPress={() => setShowServiceModal(true)}
-                className="px-3 py-2 rounded-full flex-row items-center active:opacity-70"
-                style={{
-                  backgroundColor: 'transparent',
-                  borderWidth: 1.5,
-                  borderColor: softFieldBorderColor,
-                }}
-              >
-                <Plus size={16} color={colors.text.secondary} strokeWidth={2} />
-                <Text className="font-semibold text-sm ml-1" style={{ color: colors.text.secondary }}>Add Add-on</Text>
-              </Pressable>
+              <View className="flex-1 pr-3">
+                <Text style={{ color: colors.text.primary }} className="font-bold text-base">Unassigned add-ons</Text>
+                <Text style={helperTextStyle} className="text-xs mt-1">Older or imported add-ons that are not linked to a product line.</Text>
+              </View>
             </View>
 
-            {services.length > 0 ? (
-              services.map((service, index) => (
+            {unassignedServiceEntries.length > 0 ? (
+              unassignedServiceEntries.map(({ service, index }) => (
                 <View key={`${service.serviceId}-${index}`} className="flex-row items-center py-3 border-b border-gray-100">
                   <View className="flex-1">
                     <Text style={{ color: colors.text.primary }} className="font-medium text-sm">{service.name}</Text>
@@ -2174,28 +2352,45 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
       </KeyboardAvoidingView>
 
       {/* Service Selection Modal - Centered */}
-      <Modal visible={showServiceModal} animationType="fade" transparent onRequestClose={() => setShowServiceModal(false)}>
+      <Modal visible={showServiceModal} animationType="fade" transparent onRequestClose={closeServiceModal}>
         <View
           className="flex-1 items-center justify-center"
           style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)' }}
         >
           <Pressable
             className="absolute inset-0"
-            onPress={() => setShowServiceModal(false)}
+            onPress={closeServiceModal}
           />
           <View
             className="w-[90%] rounded-2xl overflow-hidden"
             style={{ backgroundColor: '#111111', maxWidth: 400, maxHeight: '70%' }}
           >
             <View className="flex-row items-center justify-between px-5 py-4 border-b" style={{ borderBottomColor: '#333333' }}>
-              <Text className="text-white font-bold text-lg">Add Service</Text>
+              <Text className="text-white font-bold text-lg">Add Add-on</Text>
               <Pressable
-                onPress={() => setShowServiceModal(false)}
+                onPress={closeServiceModal}
                 className="w-8 h-8 rounded-full items-center justify-center active:opacity-50"
                 style={{ backgroundColor: '#222222' }}
               >
                 <X size={18} color="#888888" strokeWidth={2} />
               </Pressable>
+            </View>
+            <View className="px-5 pt-4">
+              <View
+                className="flex-row items-center rounded-xl px-3"
+                style={{ backgroundColor: '#1A1A1A', borderWidth: 1, borderColor: '#333333' }}
+              >
+                <Search size={17} color="#888888" strokeWidth={2} />
+                <TextInput
+                  value={addonSearchQuery}
+                  onChangeText={setAddonSearchQuery}
+                  placeholder="Search add-ons"
+                  placeholderTextColor="#888888"
+                  autoFocus
+                  className="flex-1 py-3 px-2 text-sm text-white"
+                />
+                <SearchClearButton visible={Boolean(addonSearchQuery.trim())} onPress={() => setAddonSearchQuery('')} />
+              </View>
             </View>
             <ScrollView
               className="px-5 py-4"
@@ -2203,7 +2398,7 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
               keyboardShouldPersistTaps="handled"
               bounces={true}
             >
-              {customServices.map((service) => (
+              {filteredCustomServices.map((service) => (
                 <Pressable
                   key={service.id}
                   onPress={() => handleAddService(service.id)}
@@ -2214,6 +2409,16 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
                   <Text className="text-green-400 font-bold">{formatCurrency(service.defaultPrice)}</Text>
                 </Pressable>
               ))}
+              {customServices.length === 0 && (
+                <Text className="text-gray-400 text-sm text-center py-4">
+                  No add-ons available. Create one in settings first.
+                </Text>
+              )}
+              {customServices.length > 0 && filteredCustomServices.length === 0 && (
+                <Text className="text-gray-400 text-sm text-center py-4">
+                  No add-ons match your search.
+                </Text>
+              )}
               <View className="h-4" />
             </ScrollView>
           </View>

@@ -14,6 +14,7 @@ import { useBreakpoint } from '@/lib/useBreakpoint';
 import { ResolvedAttachmentImage } from '@/components/ResolvedAttachmentImage';
 import { openAttachmentPath } from '@/lib/storage-attachments';
 import { prepareProductMediaForPersistence, uploadProductMediaIfNeeded } from '@/lib/product-media';
+import { SearchClearButton } from '@/components/SearchClearButton';
 
 const buildProcurementVariantImageMap = (procurements: Procurement[]) => {
   const imageByProductVariant = new Map<string, string>();
@@ -2422,6 +2423,13 @@ export default function ProductDetailScreen() {
                               onSubmitEditing={handleAddCategory}
                               style={{ color: colors.input.text, fontSize: 14, flex: 1 }}
                               selectionColor={colors.text.primary}
+                            />
+                            <SearchClearButton
+                              visible={Boolean(newCategory.trim())}
+                              onPress={() => {
+                                setNewCategory('');
+                                setShowCategoryDropdown(true);
+                              }}
                             />
                             <ChevronDown size={18} color={colors.text.muted} strokeWidth={2} />
                           </Pressable>

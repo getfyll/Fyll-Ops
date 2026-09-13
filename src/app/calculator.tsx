@@ -9,6 +9,7 @@ import { useThemeColors } from '@/lib/theme';
 import useAuthStore from '@/lib/state/auth-store';
 import useFyllStore, { formatCurrency, type FixedCostFrequency, type FixedCostSetting, type Product } from '@/lib/state/fyll-store';
 import { normalizeProductType } from '@/lib/product-utils';
+import { SearchClearButton } from '@/components/SearchClearButton';
 
 type ProductChoice = {
   id: string;
@@ -456,6 +457,7 @@ export default function PricingCalculatorScreen() {
                 placeholderTextColor={colors.text.muted}
                 style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 14 }}
               />
+              <SearchClearButton visible={Boolean(productSearch.trim())} onPress={() => setProductSearch('')} />
             </View>
             <ScrollView showsVerticalScrollIndicator={false}>
               {filteredChoices.length === 0 ? (

@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, ListPlus, Printer, Check } from 'lucide-react-native';
 import useFyllStore from '@/lib/state/fyll-store';
+import useAuthStore from '@/lib/state/auth-store';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
 import { OrderLabel80x90Preview } from '@/components/labels/OrderLabel80x90';
 import { addFyllPrintQueueItem, createShippingPrintQueueItem } from '@/lib/fyll-print-queue';
@@ -21,6 +22,7 @@ export default function OrderLabelPreviewScreen() {
   const { isDesktop } = useBreakpoint();
   const { orderId, carrierName } = useLocalSearchParams<{ orderId: string; carrierName?: string }>();
   const orders = useFyllStore((s) => s.orders);
+  const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
   const order = useMemo(() => orders.find((o) => o.id === orderId), [orders, orderId]);
   const {
     businessName,
@@ -90,7 +92,7 @@ export default function OrderLabelPreviewScreen() {
       carrierName: carrierNameOverride || order.logistics?.carrierName || 'Shipping',
       labelData,
     });
-    await addFyllPrintQueueItem(item);
+    await addFyllPrintQueueItem(item, businessId);
     setIsQueueing(false);
     setQueueNotice(true);
     setTimeout(() => setQueueNotice(false), 2500);

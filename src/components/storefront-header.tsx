@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Menu, Search, ShoppingBag } from 'lucide-react-native';
+import { SearchClearButton } from '@/components/SearchClearButton';
 import { useStorefrontStore } from '@/lib/storefront-store';
 
 const NAV_ITEMS = ['New Arrivals', 'Best Sellers', 'On Sale', 'Categories', 'About'];
@@ -15,6 +16,7 @@ export function StorefrontHeader({ isMobile, centerTitle }: StorefrontHeaderProp
   const router = useRouter();
   const centerInitial = centerTitle ? centerTitle.charAt(0).toUpperCase() : '';
   const cartCount = useStorefrontStore((state) => state.cartCount);
+  const [searchQuery, setSearchQuery] = useState('');
 
   return (
     <View
@@ -162,6 +164,8 @@ export function StorefrontHeader({ isMobile, centerTitle }: StorefrontHeaderProp
           >
             <Search size={17} color="#A3A3A3" strokeWidth={2} />
             <TextInput
+              value={searchQuery}
+              onChangeText={setSearchQuery}
               placeholder="Search products..."
               placeholderTextColor="#A3A3A3"
               style={{
@@ -171,6 +175,7 @@ export function StorefrontHeader({ isMobile, centerTitle }: StorefrontHeaderProp
                 fontSize: 14,
               }}
             />
+            <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
           </View>
 
           <Pressable

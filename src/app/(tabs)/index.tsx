@@ -60,6 +60,7 @@ import { taskData, type Task } from '@/lib/supabase/tasks';
 import { triggerTaskEventReminders } from '@/hooks/useWebPushNotifications';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
 import { isBusinessFeatureEnabled } from '@/lib/feature-access';
+import { SearchClearButton } from '@/components/SearchClearButton';
 
 const ORDER_NOTIFICATIONS_SEEN_KEY_PREFIX = 'dashboard-order-notifications-seen';
 const ONBOARDING_DISMISSED_KEY_PREFIX = 'dashboard-onboarding-dismissed';
@@ -591,11 +592,7 @@ function WebFeatureSearchMenu() {
                 outlineStyle: 'none' as any,
               }}
             />
-            {query ? (
-              <Pressable onPress={() => setQuery('')} style={{ padding: 4 }}>
-                <X size={16} color={colors.text.tertiary} strokeWidth={2.4} />
-              </Pressable>
-            ) : null}
+            <SearchClearButton visible={Boolean(query.trim())} onPress={() => setQuery('')} />
           </View>
 
           <ScrollView style={{ maxHeight: 442 }} showsVerticalScrollIndicator={false}>
@@ -1265,7 +1262,12 @@ function RecentOrderItem({ order, productById, statusColorMap, onPress, isLast =
   const product = firstItem?.productId ? productById.get(firstItem.productId) : undefined;
   const variant = product?.variants.find((v) => v.id === firstItem?.variantId);
   const itemName = product?.name ?? 'Unknown Product';
-  const itemSku = variant?.sku ?? 'N/A';
+  const selectedOptions = Object.entries(firstItem?.selectedOptions ?? {})
+    .filter(([name, value]) => name.trim() && String(value).trim())
+    .map(([name, value]) => `${name}: ${value}`)
+    .join(' / ');
+  const variantName = variant ? Object.values(variant.variableValues).join(' / ') : '';
+  const itemDetail = [variantName, selectedOptions].filter(Boolean).join(' / ') || (variant?.sku ?? 'N/A');
 
   const statusColor = getOrderStatusColor(order.status, statusColorMap, '#F59E0B');
 
@@ -1281,7 +1283,7 @@ function RecentOrderItem({ order, productById, statusColorMap, onPress, isLast =
             {order.customerName}
           </Text>
           <Text style={{ color: colors.text.tertiary }} className="text-xs mt-0.5">
-            {itemName} • {itemSku}
+            {itemName} • {itemDetail}
           </Text>
         </View>
         <View className="items-end">
@@ -1372,6 +1374,7 @@ export default function DashboardScreen() {
   const canUseTasks = isBusinessFeatureEnabled(featureAccess, 'tasks');
   const canUseFinance = isBusinessFeatureEnabled(featureAccess, 'finance');
   const canUseInsights = isBusinessFeatureEnabled(featureAccess, 'insights');
+  const canUseFyllPrint = isBusinessFeatureEnabled(featureAccess, 'fyllPrint');
 
   const userName = useAuthStore((s) => s.currentUser?.name ?? '');
   const currentUserId = useAuthStore((s) => s.currentUser?.id ?? '');
@@ -1392,7 +1395,14 @@ export default function DashboardScreen() {
 
   const refreshPrintQueueCount = useCallback(() => {
     let isCancelled = false;
-    void getFyllPrintQueue()
+    if (!businessId || isLoadingBusinessSettings || !canUseFyllPrint) {
+      setPendingPrintQueueCount(0);
+      return () => {
+        isCancelled = true;
+      };
+    }
+
+    void getFyllPrintQueue(businessId)
       .then((queue) => {
         if (isCancelled) return;
         setPendingPrintQueueCount(queue.inventory.length + queue.shipping.length);
@@ -1405,7 +1415,7 @@ export default function DashboardScreen() {
     return () => {
       isCancelled = true;
     };
-  }, []);
+  }, [businessId, canUseFyllPrint, isLoadingBusinessSettings]);
 
   useFocusEffect(refreshPrintQueueCount);
 
@@ -2699,7 +2709,7 @@ export default function DashboardScreen() {
             />
           ) : null}
 
-          {pendingPrintQueueCount > 0 ? (
+          {!isLoadingBusinessSettings && canUseFyllPrint && pendingPrintQueueCount > 0 ? (
             <PrintQueueBanner
               count={pendingPrintQueueCount}
               onPress={() => router.push('/fyll-print' as any)}

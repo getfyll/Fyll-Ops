@@ -12,6 +12,7 @@ import AccountSettingsScreen from '@/app/account-settings';
 import DebugBusinessScreen from '@/app/debug-business';
 import CategoryManagerScreen from '@/app/category-manager';
 import ProductVariablesScreen from '@/app/product-variables';
+import ProductOptionsScreen from '@/app/product-options';
 import ImportProductsScreen from '@/app/import-products';
 import ImportCustomersScreen from '@/app/import-customers';
 import ImportOrdersScreen from '@/app/import-orders';
@@ -52,6 +53,8 @@ export default function SettingsPanelScreen() {
       return <CategoryManagerScreen />;
     case 'product-variables':
       return <ProductVariablesScreen />;
+    case 'product-options':
+      return <ProductOptionsScreen />;
     case 'import-products':
       return <ImportProductsScreen />;
     case 'import-customers':

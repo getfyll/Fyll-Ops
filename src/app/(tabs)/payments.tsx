@@ -14,6 +14,7 @@ import { useTabBarHeight } from '@/lib/useTabBarHeight';
 import { DESKTOP_PAGE_HEADER_MIN_HEIGHT, getStandardPageHeadingStyle } from '@/lib/page-heading';
 import { PaymentListSkeleton } from '@/components/SkeletonLoader';
 import * as Haptics from 'expo-haptics';
+import { SearchClearButton } from '@/components/SearchClearButton';
 
 // Styled to match the reference dashboard (clean table on desktop, minimal
 // pill chips, text+dot status instead of filled badges) rather than this
@@ -1441,6 +1442,7 @@ export default function PaymentsScreen() {
                   style={{ flex: 1, height: 44, marginLeft: 8, paddingVertical: 0, color: colors.input.text, fontSize: 14 }}
                   selectionColor={colors.text.primary}
                 />
+                <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
               </View>
               <ScrollView
                 horizontal

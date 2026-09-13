@@ -73,6 +73,7 @@ import {
 } from '@/lib/finance-access';
 import { openRefundRequestAttachment, type RefundRequestAttachmentDraft, uploadRefundRequestAttachments } from '@/lib/refund-request-attachments';
 import { openAttachmentPath, uploadBusinessAttachment } from '@/lib/storage-attachments';
+import { SearchClearButton } from '@/components/SearchClearButton';
 
 type TabType = FinanceSection;
 type ExpenseWorkspaceView = 'list' | 'approvals';
@@ -9557,6 +9558,7 @@ const buildExpenseDescription = (
                 placeholderTextColor={colors.text.muted}
                 style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 14 }}
               />
+              <SearchClearButton visible={Boolean(revenueSearchQuery.trim())} onPress={() => setRevenueSearchQuery('')} />
             </View>
             {isWebDesktop ? <View style={{ flex: 1 }} /> : null}
             <Pressable
@@ -9884,6 +9886,7 @@ const buildExpenseDescription = (
               placeholderTextColor={colors.text.muted}
               style={{ flex: 1, color: colors.text.primary, fontSize: 13 }}
             />
+            <SearchClearButton visible={Boolean(approvalQueueSearchQuery.trim())} onPress={() => setApprovalQueueSearchQuery('')} />
           </View>
         </View>
         <ScrollView showsVerticalScrollIndicator={false}>
@@ -10375,6 +10378,7 @@ const buildExpenseDescription = (
               placeholderTextColor={colors.text.muted}
               style={{ flex: 1, color: colors.text.primary, fontSize: 13 }}
             />
+            <SearchClearButton visible={Boolean(procurementQueueSearchQuery.trim())} onPress={() => setProcurementQueueSearchQuery('')} />
           </View>
         </View>
         <ScrollView showsVerticalScrollIndicator={false}>
@@ -11510,6 +11514,7 @@ const buildExpenseDescription = (
                 placeholderTextColor={colors.text.muted}
                 style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 14 }}
               />
+              <SearchClearButton visible={Boolean(refundSearchQuery.trim())} onPress={() => setRefundSearchQuery('')} />
             </View>
             <View style={{ flex: 1 }} />
             <Text style={{ color: colors.text.primary }} className="text-lg font-semibold">
@@ -11575,6 +11580,7 @@ const buildExpenseDescription = (
                   placeholderTextColor={colors.text.muted}
                   style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 14 }}
                 />
+                <SearchClearButton visible={Boolean(refundSearchQuery.trim())} onPress={() => setRefundSearchQuery('')} />
               </View>
               <View style={{ position: 'relative' }}>
                 {refundRequestFilterSortCount > 0 ? (
@@ -11638,6 +11644,7 @@ const buildExpenseDescription = (
                   placeholderTextColor={colors.text.muted}
                   style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 14 }}
                 />
+                <SearchClearButton visible={Boolean(refundSearchQuery.trim())} onPress={() => setRefundSearchQuery('')} />
               </View>
               <Text style={{ color: colors.text.primary }} className="text-lg font-semibold">
                 {formatCurrency(filteredRefundRequestsTotal)}
@@ -11892,6 +11899,7 @@ const buildExpenseDescription = (
                 placeholderTextColor={colors.text.muted}
                 style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 14 }}
               />
+              <SearchClearButton visible={Boolean(expenseSearchQuery.trim())} onPress={() => setExpenseSearchQuery('')} />
             </View>
             <View style={{ flex: 1 }} />
             <Text style={{ color: colors.text.primary }} className="text-lg font-semibold">
@@ -11957,6 +11965,7 @@ const buildExpenseDescription = (
                   placeholderTextColor={colors.text.muted}
                   style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 14 }}
                 />
+                <SearchClearButton visible={Boolean(expenseSearchQuery.trim())} onPress={() => setExpenseSearchQuery('')} />
               </View>
               <View style={{ position: 'relative' }}>
                 {expenseRequestFilterSortCount > 0 ? (
@@ -12020,6 +12029,7 @@ const buildExpenseDescription = (
                   placeholderTextColor={colors.text.muted}
                   style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 14 }}
                 />
+                <SearchClearButton visible={Boolean(expenseSearchQuery.trim())} onPress={() => setExpenseSearchQuery('')} />
               </View>
               <Text style={{ color: colors.text.primary }} className="text-lg font-semibold">
                 {formatCurrency(filteredMyExpenseRequestTotal)}
@@ -12551,6 +12561,7 @@ const buildExpenseDescription = (
                 placeholderTextColor={colors.text.muted}
                 style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 14 }}
               />
+              <SearchClearButton visible={Boolean(otherIncomeSearchQuery.trim())} onPress={() => setOtherIncomeSearchQuery('')} />
             </View>
             {!isMobile ? (
               <Text style={{ color: colors.text.primary }} className="text-xl font-semibold">
@@ -12743,6 +12754,7 @@ const buildExpenseDescription = (
                     placeholderTextColor={colors.text.muted}
                     style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 14 }}
                   />
+                  <SearchClearButton visible={Boolean(expenseSearchValue.trim())} onPress={() => setExpenseSearchValue('')} />
                 </View>
                 <View style={{ flex: 1 }} />
                 <Text style={{ color: colors.text.primary }} className="text-xl font-semibold">
@@ -12808,6 +12820,7 @@ const buildExpenseDescription = (
                       placeholderTextColor={colors.text.muted}
                       style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 14 }}
                     />
+                    <SearchClearButton visible={Boolean(expenseSearchValue.trim())} onPress={() => setExpenseSearchValue('')} />
                   </View>
                   <View style={{ position: 'relative' }}>
                     {expenseFilterSortCount > 0 ? (
@@ -12871,6 +12884,7 @@ const buildExpenseDescription = (
                     placeholderTextColor={colors.text.muted}
                     style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 14 }}
                   />
+                  <SearchClearButton visible={Boolean(expenseSearchValue.trim())} onPress={() => setExpenseSearchValue('')} />
                 </View>
                 <Text style={{ color: colors.text.primary }} className="text-xl font-semibold">
                   {formatCurrency(expenseTotalForToolbar)}
@@ -13358,6 +13372,7 @@ const buildExpenseDescription = (
                 placeholderTextColor={colors.text.muted}
                 style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 14 }}
               />
+              <SearchClearButton visible={Boolean(procurementSearchValue.trim())} onPress={() => setProcurementSearchValue('')} />
             </View>
             <View style={{ flex: 1 }} />
             {shouldShowFinanceSkeleton ? (
@@ -13427,6 +13442,7 @@ const buildExpenseDescription = (
                   placeholderTextColor={colors.text.muted}
                   style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 14 }}
                 />
+                <SearchClearButton visible={Boolean(procurementSearchValue.trim())} onPress={() => setProcurementSearchValue('')} />
               </View>
               <View style={{ position: 'relative' }}>
                 {procurementFilterSortCount > 0 ? (
@@ -13490,6 +13506,7 @@ const buildExpenseDescription = (
                   placeholderTextColor={colors.text.muted}
                   style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 14 }}
                 />
+                <SearchClearButton visible={Boolean(procurementSearchValue.trim())} onPress={() => setProcurementSearchValue('')} />
               </View>
               {shouldShowFinanceSkeleton ? (
                 <View style={{ width: 92, height: 20, borderRadius: 10, backgroundColor: colors.bg.input, opacity: 0.78 }} />
@@ -13873,6 +13890,7 @@ const buildExpenseDescription = (
                 placeholderTextColor={colors.text.muted}
                 style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 14 }}
               />
+              <SearchClearButton visible={Boolean(salarySearchQuery.trim())} onPress={() => setSalarySearchQuery('')} />
             </View>
             <View style={{ alignItems: 'flex-end' }}>
               <Text style={{ color: colors.text.primary, fontSize: 20, fontWeight: '700' }}>{formatCurrency(filteredSalaryTotal)}</Text>
@@ -14083,6 +14101,7 @@ const buildExpenseDescription = (
                 placeholderTextColor={colors.text.muted}
                 style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 14 }}
               />
+              <SearchClearButton visible={Boolean(supplierSearchQuery.trim())} onPress={() => setSupplierSearchQuery('')} />
             </View>
 
             <Pressable
@@ -14267,6 +14286,7 @@ const buildExpenseDescription = (
                 placeholderTextColor={colors.text.muted}
                 style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 14 }}
               />
+              <SearchClearButton visible={Boolean(fixedCostSearchQuery.trim())} onPress={() => setFixedCostSearchQuery('')} />
             </View>
 
             <Pressable
@@ -14452,6 +14472,7 @@ const buildExpenseDescription = (
                 placeholderTextColor={colors.text.muted}
                 style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 14 }}
               />
+              <SearchClearButton visible={Boolean(statusSearchQuery.trim())} onPress={() => setStatusSearchQuery('')} />
             </View>
 
             <Pressable
@@ -17319,7 +17340,13 @@ const buildExpenseDescription = (
                       paddingHorizontal: 14,
                       fontSize: 15,
                       opacity: isEditingPaidRefundRequest ? 0.7 : 1,
+                      paddingRight: 42,
                     }}
+                  />
+                  <SearchClearButton
+                    visible={!isEditingPaidRefundRequest && Boolean(refundOrderSearchQuery.trim())}
+                    onPress={() => { setRefundOrderSearchQuery(''); setSelectedRefundOrderId(null); }}
+                    style={{ position: 'absolute', right: 10, top: 35 }}
                   />
                   <View
                     style={{
@@ -18350,6 +18377,7 @@ const buildExpenseDescription = (
                         autoFocus
                         style={{ height: 40, borderRadius: 10, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, color: colors.text.primary, paddingHorizontal: 12, fontSize: 14 }}
                       />
+                      <SearchClearButton visible={Boolean(expenseMerchantSearch.trim())} onPress={() => setExpenseMerchantSearch('')} />
                     </View>
                     <ScrollView showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
                       <Pressable
@@ -18599,6 +18627,7 @@ const buildExpenseDescription = (
                           autoFocus
                           style={{ height: 40, borderRadius: 10, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, color: colors.text.primary, paddingHorizontal: 12, fontSize: 14 }}
                         />
+                        <SearchClearButton visible={Boolean(expenseCategorySearch.trim())} onPress={() => setExpenseCategorySearch('')} />
                       </View>
                       <ScrollView showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
                         {filteredExpenseCategories.map((category) => (
@@ -19301,9 +19330,18 @@ const buildExpenseDescription = (
                       borderColor: formFieldBorder,
                       backgroundColor: formFieldBg,
                       color: colors.text.primary,
-                      paddingHorizontal: 12,
+                      paddingLeft: 12,
+                      paddingRight: 44,
                       fontSize: 15,
                     }}
+                  />
+                  <SearchClearButton
+                    visible={Boolean(poNumberDraft.trim())}
+                    onPress={() => {
+                      setPoNumberDraft('');
+                      setShowPoNumberDropdown(true);
+                    }}
+                    style={{ position: 'absolute', right: 8, top: 27, marginLeft: 0 }}
                   />
                   <Text style={{ color: colors.text.muted, fontSize: 12, marginTop: 6 }}>
                     This PO number groups linked items in Goods Received.
@@ -19401,6 +19439,7 @@ const buildExpenseDescription = (
                         autoFocus
                         style={{ height: 40, borderRadius: 10, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, color: colors.text.primary, paddingHorizontal: 12, fontSize: 14 }}
                       />
+                      <SearchClearButton visible={Boolean(poSupplierSearch.trim())} onPress={() => setPoSupplierSearch('')} />
                     </View>
                     <ScrollView showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
                       <Pressable
@@ -19684,9 +19723,20 @@ const buildExpenseDescription = (
                               borderColor: activeProcurementVariantLineId === line.id ? formFieldActiveBorder : formFieldBorder,
                               backgroundColor: selectedProduct && !isWarehouseSelection ? formFieldBg : colors.bg.input,
                               color: selectedProduct && !isWarehouseSelection ? colors.text.primary : colors.text.muted,
-                              paddingHorizontal: 12,
+                              paddingLeft: 12,
+                              paddingRight: 42,
                               fontSize: 14,
                             }}
+                          />
+                          <SearchClearButton
+                            visible={Boolean(selectedProduct) && !isWarehouseSelection && Boolean((line.variantName ?? '').trim())}
+                            onPress={() => {
+                              if (!selectedProduct || isWarehouseSelection) return;
+                              setActiveProcurementVariantLineId(line.id);
+                              setActiveProcurementProductLineId(null);
+                              updateProcurementLineDraft(line.id, { variantId: undefined, variantName: '' });
+                            }}
+                            style={{ position: 'absolute', right: 8, top: 26, marginLeft: 0 }}
                           />
                           {selectedProduct && !isWarehouseSelection && activeProcurementVariantLineId === line.id ? (
                             <View style={{ position: 'absolute', top: 66, left: 0, right: 0, maxHeight: 220, borderWidth: 1, borderColor: formFieldActiveBorder, borderRadius: 10, backgroundColor: colors.bg.card, overflow: 'hidden', zIndex: 3900 }}>
@@ -21165,6 +21215,7 @@ const buildExpenseDescription = (
                           placeholderTextColor={colors.text.muted}
                           style={{ height: 40, borderRadius: 10, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, color: colors.text.primary, paddingHorizontal: 12, fontSize: 14 }}
                         />
+                        <SearchClearButton visible={Boolean(fixedCostCategorySearch.trim())} onPress={() => setFixedCostCategorySearch('')} />
                       </View>
                       <ScrollView showsVerticalScrollIndicator={false}>
                         {filteredFixedCostCategories.map((category) => (
@@ -21330,6 +21381,7 @@ const buildExpenseDescription = (
                         placeholderTextColor={colors.text.muted}
                         style={{ height: 40, borderRadius: 10, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, color: colors.text.primary, paddingHorizontal: 12, fontSize: 14 }}
                       />
+                      <SearchClearButton visible={Boolean(fixedCostSupplierSearch.trim())} onPress={() => setFixedCostSupplierSearch('')} />
                     </View>
                     <ScrollView showsVerticalScrollIndicator={false}>
                       <Pressable
@@ -21814,6 +21866,7 @@ const buildExpenseDescription = (
                           outlineStyle: 'none' as any,
                         }}
                       />
+                      <SearchClearButton visible={Boolean(procurementExportPoSearch.trim())} onPress={() => setProcurementExportPoSearch('')} />
                     </View>
                   </View>
                   <ScrollView keyboardShouldPersistTaps="handled">
@@ -21980,6 +22033,7 @@ const buildExpenseDescription = (
                   onChangeText={setNewPoItemSearch}
                   style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 13 }}
                 />
+                <SearchClearButton visible={Boolean(newPoItemSearch.trim())} onPress={() => setNewPoItemSearch('')} />
               </View>
             </View>
             <Pressable
@@ -22080,6 +22134,7 @@ const buildExpenseDescription = (
                   onChangeText={setMergeProcurementSearch}
                   style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 13 }}
                 />
+                <SearchClearButton visible={Boolean(mergeProcurementSearch.trim())} onPress={() => setMergeProcurementSearch('')} />
               </View>
             </View>
             <ScrollView style={{ maxHeight: 360 }} showsVerticalScrollIndicator={false}>

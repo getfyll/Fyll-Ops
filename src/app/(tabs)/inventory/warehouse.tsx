@@ -15,6 +15,7 @@ import { uploadWarehouseMediaIfNeeded } from '@/lib/warehouse-media';
 import { ResolvedAttachmentImage } from '@/components/ResolvedAttachmentImage';
 import { InventoryMobileFab } from '@/components/InventoryMobileFab';
 import { capitalizeDisplayLabel } from '@/lib/display-format';
+import { SearchClearButton } from '@/components/SearchClearButton';
 
 type WarehouseFormState = {
   name: string;
@@ -478,6 +479,7 @@ export default function WarehouseScreen() {
                 style={{ flex: 1, marginLeft: 8, color: colors.input.text, fontSize: 14 }}
                 selectionColor={colors.text.primary}
               />
+              <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
             </View>
 
             <ScrollView
@@ -560,6 +562,7 @@ export default function WarehouseScreen() {
                 style={{ flex: 1, marginLeft: 8, color: colors.input.text, fontSize: 14 }}
                 selectionColor={colors.text.primary}
               />
+              <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
             </View>
             <Pressable
               onPress={() => {
@@ -1210,6 +1213,14 @@ export default function WarehouseScreen() {
                     style={{ color: colors.input.text, fontSize: 14, flex: 1 }}
                     selectionColor={colors.text.primary}
                   />
+                  <SearchClearButton
+                    visible={Boolean(form.category.trim())}
+                    onPress={() => {
+                      setForm((previous) => ({ ...previous, category: '' }));
+                      setShowCategoryDropdown(true);
+                      setShowUnitDropdown(false);
+                    }}
+                  />
                   <ChevronDown size={16} color={colors.text.muted} strokeWidth={2} />
                 </Pressable>
                 {showCategoryDropdown ? (
@@ -1291,6 +1302,14 @@ export default function WarehouseScreen() {
                     onSubmitEditing={handleAddWarehouseUnitOption}
                     style={{ color: colors.input.text, fontSize: 14, flex: 1 }}
                     selectionColor={colors.text.primary}
+                  />
+                  <SearchClearButton
+                    visible={Boolean(form.unit.trim())}
+                    onPress={() => {
+                      setForm((previous) => ({ ...previous, unit: '' }));
+                      setShowUnitDropdown(true);
+                      setShowCategoryDropdown(false);
+                    }}
                   />
                   <ChevronDown size={16} color={colors.text.muted} strokeWidth={2} />
                 </Pressable>

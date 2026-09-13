@@ -1,3 +1,5 @@
+import { workspaceGeneration, isWorkspaceTransitioning } from '@/lib/workspace-transition';
+import { useBusinessSwitcherStore } from '@/lib/state/business-switcher-store';
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { AppState, AppStateStatus, Platform } from 'react-native';
 import useAuthStore from '@/lib/state/auth-store';
@@ -29,6 +31,7 @@ import type {
   PaymentMethod,
   LogisticsCarrier,
   ProductVariable,
+  ProductOption,
   ExpenseCategory,
   CaseStatusOption,
   OrderAutomationRule,
@@ -116,6 +119,7 @@ type DataStoreKey = (typeof DATA_TABLE_TO_STORE_KEY)[keyof typeof DATA_TABLE_TO_
 type GlobalSettingsPayload = {
   categories: string[];
   productVariables: ProductVariable[];
+  productOptions: ProductOption[];
   orderStatuses: OrderStatus[];
   qcChecklistRequirements: OrderQcRequirement[];
   saleSources: SaleSource[];
@@ -228,6 +232,7 @@ const SETTINGS_TABLES = {
   logisticsCarriers: 'logistics_carriers',
   productCategories: 'product_categories',
   productVariables: 'product_variables',
+  productOptions: 'product_options',
   expenseCategories: 'expense_categories',
   caseStatuses: 'case_statuses',
   businessSettings: 'business_settings',
@@ -358,6 +363,36 @@ const inferProductVariables = (products: Product[]): ProductVariable[] => {
     name,
     values: Array.from(values),
   }));
+};
+
+const inferProductOptions = (products: Product[]): ProductOption[] => {
+  const optionMap = new Map<string, { values: Set<string>; required?: boolean }>();
+
+  products.forEach((product) => {
+    (product.orderOptions ?? []).forEach((option) => {
+      const normalizedName = option.name?.trim();
+      if (!normalizedName) return;
+      const key = normalizedName.toLowerCase();
+      if (!optionMap.has(key)) {
+        optionMap.set(key, { values: new Set<string>(), required: option.required });
+      }
+      const current = optionMap.get(key);
+      (option.values ?? []).forEach((value) => {
+        const normalizedValue = value?.trim();
+        if (normalizedValue) current?.values.add(normalizedValue);
+      });
+      if (option.required) {
+        current!.required = true;
+      }
+    });
+  });
+
+  return Array.from(optionMap.entries()).map(([name, option], index) => ({
+    id: `product-option-${slugify(name) || index + 1}`,
+    name: name.split(' ').map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' '),
+    values: Array.from(option.values),
+    required: option.required,
+  })).filter((option) => option.values.length > 0);
 };
 
 const withTimeout = async <T>(task: Promise<T>, timeoutMs: number, label: string): Promise<T> => {
@@ -550,7 +585,9 @@ export function useSupabaseSync() {
   const pendingFullSyncRef = useRef(false);
   const drainRunningRef = useRef(false);
 
-  const businessId = useAuthStore((s) => s.businessId);
+  const isSwitchingBusiness = useBusinessSwitcherStore((s) => s.isSwitching);
+  const activeBusinessId = useAuthStore((s) => s.businessId);
+  const businessId = isSwitchingBusiness ? null : activeBusinessId;
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const isOfflineMode = useAuthStore((s) => s.isOfflineMode);
 
@@ -572,6 +609,7 @@ export function useSupabaseSync() {
   const recycleBin = useFyllStore((s) => s.recycleBin);
   const categories = useFyllStore((s) => s.categories);
   const productVariables = useFyllStore((s) => s.productVariables);
+  const productOptions = useFyllStore((s) => s.productOptions);
   const orderStatuses = useFyllStore((s) => s.orderStatuses);
   const qcChecklistRequirements = useFyllStore((s) => s.qcChecklistRequirements);
   const saleSources = useFyllStore((s) => s.saleSources);
@@ -625,6 +663,7 @@ export function useSupabaseSync() {
   const prevPaymentMethodIds = useRef<Set<string>>(new Set());
   const prevLogisticsCarrierIds = useRef<Set<string>>(new Set());
   const prevProductVariableIds = useRef<Set<string>>(new Set());
+  const prevProductOptionIds = useRef<Set<string>>(new Set());
   const prevExpenseCategoryIds = useRef<Set<string>>(new Set());
   const prevCategoryIds = useRef<Set<string>>(new Set());
   const prevCaseStatusIds = useRef<Set<string>>(new Set());
@@ -642,6 +681,11 @@ export function useSupabaseSync() {
     }
 
     let cancelled = false;
+    const syncGeneration = workspaceGeneration();
+    const isCurrentWorkspace = () => !cancelled && !isWorkspaceTransitioning()
+      && workspaceGeneration() === syncGeneration
+      && useAuthStore.getState().businessId === businessId;
+
     setIsInitialized(false);
     hasHydratedBusinessSettingsRef.current = false;
     hasLoadedRemoteBusinessSettingsRef.current = false;
@@ -670,6 +714,7 @@ export function useSupabaseSync() {
       prevPaymentMethodIds.current = toIdSet(seeded.paymentMethods);
       prevLogisticsCarrierIds.current = toIdSet(seeded.logisticsCarriers);
       prevProductVariableIds.current = toIdSet(seeded.productVariables);
+      prevProductOptionIds.current = toIdSet(seeded.productOptions);
       prevExpenseCategoryIds.current = toIdSet(seeded.expenseCategories);
       prevCategoryIds.current = toIdSet(buildCategoryItems(seeded.categories));
       prevCaseStatusIds.current = toIdSet(seeded.caseStatuses);
@@ -696,6 +741,7 @@ export function useSupabaseSync() {
       recycleBin: DeletedItem[];
       settings?: GlobalSettingsPayload | null;
     }) => {
+      if (!isCurrentWorkspace()) return;
       const normalizedProducts: Product[] = next.products.map((product): Product => {
         if (normalizeProductType(product.productType) === 'service') {
           return product;
@@ -728,6 +774,7 @@ export function useSupabaseSync() {
           recycleBin: next.recycleBin,
           categories: next.settings.categories,
           productVariables: next.settings.productVariables,
+          productOptions: next.settings.productOptions,
           orderStatuses: next.settings.orderStatuses,
           saleSources: next.settings.saleSources,
           customServices: next.settings.customServices,
@@ -801,6 +848,7 @@ export function useSupabaseSync() {
         prevPaymentMethodIds.current = toIdSet(next.settings.paymentMethods);
         prevLogisticsCarrierIds.current = toIdSet(next.settings.logisticsCarriers);
         prevProductVariableIds.current = toIdSet(next.settings.productVariables);
+        prevProductOptionIds.current = toIdSet(next.settings.productOptions);
         prevExpenseCategoryIds.current = toIdSet(next.settings.expenseCategories);
         prevCategoryIds.current = toIdSet(buildCategoryItems(next.settings.categories));
         prevCaseStatusIds.current = toIdSet(next.settings.caseStatuses);
@@ -812,6 +860,7 @@ export function useSupabaseSync() {
       key: 'products' | 'orders' | 'customers' | 'restockLogs' | 'procurements' | 'expenses' | 'otherIncomes' | 'expenseRequests' | 'refundRequests' | 'cases' | 'returns' | 'auditLogs' | 'partners' | 'partnerJobs' | 'partnerJobIssues' | 'recycleBin',
       rows: { data: T }[],
     ) => {
+      if (!isCurrentWorkspace()) return;
       const items = rows.map((row) => row.data);
       const storeState = useFyllStore.getState();
       const nextItems = (
@@ -849,6 +898,7 @@ export function useSupabaseSync() {
       config: OrderAutomationConfig,
       reason: string,
     ): Promise<Order[]> => {
+      if (!isCurrentWorkspace()) return ordersToCheck;
       const { orders: automatedOrders, changedOrders } = autoCompleteEligibleOrders(ordersToCheck, config);
       if (changedOrders.length === 0) return automatedOrders;
 
@@ -902,6 +952,7 @@ export function useSupabaseSync() {
         return false;
       }
 
+      if (!isCurrentWorkspace()) return false;
       applyingRemote.current = true;
       useFyllStore.setState((state: any) => {
         const current = Array.isArray(state[storeKey]) ? state[storeKey] : [];
@@ -934,6 +985,7 @@ export function useSupabaseSync() {
     };
 
     const applySettingsSlice = (table: string, rows: { data: any }[]) => {
+      if (!isCurrentWorkspace()) return;
       const items = mapData(rows);
       const storeState = useFyllStore.getState();
       switch (table) {
@@ -984,6 +1036,14 @@ export function useSupabaseSync() {
           }
           useFyllStore.setState({ productVariables: items });
           prevProductVariableIds.current = toIdSet(items);
+          break;
+        case SETTINGS_TABLES.productOptions:
+          if (items.length === 0 && storeState.productOptions.length > 0) {
+            console.warn('🛡️ Ignored empty realtime product options payload to preserve local settings');
+            break;
+          }
+          useFyllStore.setState({ productOptions: items });
+          prevProductOptionIds.current = toIdSet(items);
           break;
         case SETTINGS_TABLES.expenseCategories:
           if (items.length === 0 && storeState.expenseCategories.length > 0) {
@@ -1106,6 +1166,7 @@ export function useSupabaseSync() {
     };
 
     const syncTable = async (table: string) => {
+      if (!isCurrentWorkspace()) return;
       syncingRef.current = true;
       try {
         if (ACTIVE_DATA_TABLES.includes(table as (typeof TABLES)[keyof typeof TABLES])) {
@@ -1210,12 +1271,12 @@ export function useSupabaseSync() {
       let fullSyncSucceeded = false;
       let unblockTimeout: ReturnType<typeof setTimeout> | null = null;
       syncingRef.current = true;
-      if (!cancelled) {
+      if (isCurrentWorkspace()) {
         setIsSyncing(true);
         // Safety valve: never keep the app blocked behind startup sync for too long.
         if (!isInitialized) {
           unblockTimeout = setTimeout(() => {
-            if (cancelled) return;
+            if (!isCurrentWorkspace()) return;
             setIsInitialized(true);
             setIsSyncing(false);
           }, STARTUP_UNBLOCK_TIMEOUT_MS);
@@ -1319,7 +1380,7 @@ export function useSupabaseSync() {
         const remoteReturnsPreview = returnPreviewRows.map((row) => row.data);
 
         // Apply Wave 1 data immediately so the app can show recent items without flicker.
-        if (!cancelled) {
+        if (isCurrentWorkspace()) {
           const wave1Products = remoteProducts.length > 0 ? mergeById(localProducts, remoteProducts) : localProducts;
           const wave1Orders = remoteOrdersPreview.length > 0 ? mergeById(localOrders, remoteOrdersPreview) : localOrders;
           const wave1Customers = remoteCustomersPreview.length > 0 ? mergeById(localCustomers, remoteCustomersPreview) : localCustomers;
@@ -1361,7 +1422,7 @@ export function useSupabaseSync() {
 
         // ── Wave 2: Background data (full orders, customers, cases, restock, etc.) ──
         // These load silently without blocking the UI.
-        if (!cancelled) {
+        if (isCurrentWorkspace()) {
           useFyllStore.getState().setIsBackgroundSyncing(true);
           try {
             const nowMs = Date.now();
@@ -1491,6 +1552,7 @@ export function useSupabaseSync() {
               supabaseSettings.fetchSettings<PaymentMethod>(SETTINGS_TABLES.paymentMethods, businessId),
               supabaseSettings.fetchSettings<LogisticsCarrier>(SETTINGS_TABLES.logisticsCarriers, businessId),
               supabaseSettings.fetchSettings<ProductVariable>(SETTINGS_TABLES.productVariables, businessId),
+              supabaseSettings.fetchSettings<ProductOption>(SETTINGS_TABLES.productOptions, businessId),
               supabaseSettings.fetchSettings<ExpenseCategory>(SETTINGS_TABLES.expenseCategories, businessId),
               supabaseSettings.fetchSettings<CaseStatusOption>(SETTINGS_TABLES.caseStatuses, businessId),
               supabaseSettings.fetchSettings<{ id: string; name: string }>(SETTINGS_TABLES.productCategories, businessId),
@@ -1523,6 +1585,7 @@ export function useSupabaseSync() {
               paymentMethodRowsResult,
               logisticsCarrierRowsResult,
               productVariableRowsResult,
+              productOptionRowsResult,
               expenseCategoryRowsResult,
               caseStatusRowsResult,
               categoryRowsResult,
@@ -1551,6 +1614,7 @@ export function useSupabaseSync() {
             const paymentMethodRows = resolveSettled(paymentMethodRowsResult, asRows(localState.paymentMethods), 'payment methods');
             const logisticsCarrierRows = resolveSettled(logisticsCarrierRowsResult, asRows(localState.logisticsCarriers), 'logistics carriers');
             const productVariableRows = resolveSettled(productVariableRowsResult, asRows(localState.productVariables), 'product variables');
+            const productOptionRows = resolveSettled(productOptionRowsResult, asRows(localState.productOptions), 'product options');
             const expenseCategoryRows = resolveSettled(expenseCategoryRowsResult, asRows(localState.expenseCategories), 'expense categories');
             const caseStatusRows = resolveSettled(caseStatusRowsResult, asRows(localState.caseStatuses), 'case statuses');
             const categoryRows = resolveSettled(categoryRowsResult, asCategoryRows(localState.categories), 'product categories');
@@ -1589,7 +1653,7 @@ export function useSupabaseSync() {
             );
             const didLoadRemoteBusinessSettings = businessSettingsRowsResult.status === 'fulfilled';
 
-            if (!cancelled) {
+            if (isCurrentWorkspace()) {
               applyingRemote.current = true;
               const incomingProducts = productDataRows.map((row) => row.data);
               const incomingOrders = orderDataRows.map((row) => row.data);
@@ -1702,6 +1766,7 @@ export function useSupabaseSync() {
                 .map((row) => row.data?.name)
                 .filter((name): name is string => typeof name === 'string');
               const remoteProductVariables = mapData(productVariableRows);
+              const remoteProductOptions = mapData(productOptionRows);
               const remoteOrderStatuses = mapData(orderStatusRows).sort((a, b) => {
                 const aOrder = typeof a.order === 'number' ? a.order : Number.MAX_SAFE_INTEGER;
                 const bOrder = typeof b.order === 'number' ? b.order : Number.MAX_SAFE_INTEGER;
@@ -1717,6 +1782,7 @@ export function useSupabaseSync() {
               const remoteSettings: GlobalSettingsPayload = {
                 categories: remoteCategoryNames.length > 0 ? remoteCategoryNames : (localSettingsState.categories ?? []),
                 productVariables: remoteProductVariables.length > 0 ? remoteProductVariables : (localSettingsState.productVariables ?? []),
+                productOptions: remoteProductOptions.length > 0 ? remoteProductOptions : (localSettingsState.productOptions ?? []),
                 orderStatuses: remoteOrderStatuses.length > 0 ? remoteOrderStatuses : (localSettingsState.orderStatuses ?? []),
                 saleSources: remoteSaleSources.length > 0 ? remoteSaleSources : (localSettingsState.saleSources ?? []),
                 customServices: remoteCustomServices.length > 0 ? remoteCustomServices : (localSettingsState.customServices ?? []),
@@ -1863,6 +1929,19 @@ export function useSupabaseSync() {
                 );
               }
 
+              if (remoteProductOptions.length === 0 && remoteSettings.productOptions.length > 0) {
+                restoreOps.push(
+                  supabaseSettings.upsertSettings(SETTINGS_TABLES.productOptions, businessId, remoteSettings.productOptions)
+                );
+              }
+              const inferredProductOptions = inferProductOptions(fullProducts);
+              if (remoteSettings.productOptions.length === 0 && inferredProductOptions.length > 0) {
+                remoteSettings.productOptions = inferredProductOptions;
+                restoreOps.push(
+                  supabaseSettings.upsertSettings(SETTINGS_TABLES.productOptions, businessId, inferredProductOptions)
+                );
+              }
+
               if (remoteCustomServices.length === 0 && remoteSettings.customServices.length > 0) {
                 restoreOps.push(
                   supabaseSettings.upsertSettings(SETTINGS_TABLES.customServices, businessId, remoteSettings.customServices)
@@ -1917,6 +1996,7 @@ export function useSupabaseSync() {
                 console.log(`✅ Restored ${restoreOps.length} missing settings tables from existing business data`);
               }
 
+              if (!isCurrentWorkspace()) return;
               const autoCompletedOrders = await runOrderAutomationAndPersist(fullOrders, {
                 autoCompleteOrders: remoteSettings.autoCompleteOrders,
                 autoCompleteAfterDays: remoteSettings.autoCompleteAfterDays,
@@ -1925,6 +2005,7 @@ export function useSupabaseSync() {
                 orderAutomations: remoteSettings.orderAutomations,
               }, 'full sync');
 
+              if (!isCurrentWorkspace()) return;
               const syncTimestamp = new Date().toISOString();
               useFyllStore.setState({
                 products: fullProducts,
@@ -1945,6 +2026,7 @@ export function useSupabaseSync() {
                 recycleBin: fullRecycleBin,
                 categories: remoteSettings.categories,
                 productVariables: remoteSettings.productVariables,
+                productOptions: remoteSettings.productOptions,
                 orderStatuses: remoteSettings.orderStatuses,
                 saleSources: remoteSettings.saleSources,
                 customServices: remoteSettings.customServices,
@@ -1999,6 +2081,7 @@ export function useSupabaseSync() {
               prevPaymentMethodIds.current = toIdSet(remoteSettings.paymentMethods);
               prevLogisticsCarrierIds.current = toIdSet(remoteSettings.logisticsCarriers);
               prevProductVariableIds.current = toIdSet(remoteSettings.productVariables);
+              prevProductOptionIds.current = toIdSet(remoteSettings.productOptions);
               prevExpenseCategoryIds.current = toIdSet(remoteSettings.expenseCategories);
               prevCategoryIds.current = toIdSet(buildCategoryItems(remoteSettings.categories));
               prevCaseStatusIds.current = toIdSet(remoteSettings.caseStatuses);
@@ -2007,7 +2090,7 @@ export function useSupabaseSync() {
           } catch (wave2Error) {
             console.warn('Wave 2 background sync failed (non-fatal):', wave2Error);
           } finally {
-            useFyllStore.getState().setIsBackgroundSyncing(false);
+            if (isCurrentWorkspace()) useFyllStore.getState().setIsBackgroundSyncing(false);
           }
         }
 
@@ -2020,7 +2103,7 @@ export function useSupabaseSync() {
         }
         syncingRef.current = false;
         lastRealtimeAt.current = Date.now();
-        if (!cancelled) {
+        if (isCurrentWorkspace()) {
           if (fullSyncSucceeded) {
             setIsInitialized(true);
           }
@@ -2034,7 +2117,7 @@ export function useSupabaseSync() {
       drainRunningRef.current = true;
       try {
         // Drain until no pending work; avoids missing realtime updates when events arrive mid-sync.
-        while (!cancelled) {
+        while (isCurrentWorkspace()) {
           if (syncingRef.current) break;
 
           if (pendingFullSyncRef.current) {
@@ -2337,6 +2420,10 @@ export function useSupabaseSync() {
     const removedProductVariables = [...prevProductVariableIds.current].filter((id) => !nextProductVariableIds.has(id));
     prevProductVariableIds.current = nextProductVariableIds;
 
+    const nextProductOptionIds = toIdSet(productOptions);
+    const removedProductOptions = [...prevProductOptionIds.current].filter((id) => !nextProductOptionIds.has(id));
+    prevProductOptionIds.current = nextProductOptionIds;
+
     const nextExpenseCategoryIds = toIdSet(expenseCategories);
     const removedExpenseCategories = [...prevExpenseCategoryIds.current].filter((id) => !nextExpenseCategoryIds.has(id));
     prevExpenseCategoryIds.current = nextExpenseCategoryIds;
@@ -2386,6 +2473,7 @@ export function useSupabaseSync() {
       businessId,
       categories: sortById(categoryItems),
       productVariables: sortById(productVariables),
+      productOptions: sortById(productOptions),
       orderStatuses: sortById(orderStatuses),
       saleSources: sortById(saleSources),
       customServices: sortById(customServices),
@@ -2433,6 +2521,7 @@ export function useSupabaseSync() {
       supabaseSettings.upsertSettings(SETTINGS_TABLES.paymentMethods, businessId, paymentMethods),
       supabaseSettings.upsertSettings(SETTINGS_TABLES.logisticsCarriers, businessId, logisticsCarriers),
       supabaseSettings.upsertSettings(SETTINGS_TABLES.productVariables, businessId, productVariables),
+      supabaseSettings.upsertSettings(SETTINGS_TABLES.productOptions, businessId, productOptions),
       supabaseSettings.upsertSettings(SETTINGS_TABLES.expenseCategories, businessId, expenseCategories),
       supabaseSettings.upsertSettings(SETTINGS_TABLES.caseStatuses, businessId, caseStatuses),
       supabaseSettings.upsertSettings(SETTINGS_TABLES.productCategories, businessId, categoryItems),
@@ -2456,12 +2545,14 @@ export function useSupabaseSync() {
     safeSyncSettingsDeletion(SETTINGS_TABLES.paymentMethods, removedPaymentMethods, 'payment methods', paymentMethods.length);
     safeSyncSettingsDeletion(SETTINGS_TABLES.logisticsCarriers, removedLogisticsCarriers, 'logistics carriers', logisticsCarriers.length);
     safeSyncSettingsDeletion(SETTINGS_TABLES.productVariables, removedProductVariables, 'product variables', productVariables.length);
+    safeSyncSettingsDeletion(SETTINGS_TABLES.productOptions, removedProductOptions, 'product options', productOptions.length);
     safeSyncSettingsDeletion(SETTINGS_TABLES.expenseCategories, removedExpenseCategories, 'expense categories', expenseCategories.length);
     safeSyncSettingsDeletion(SETTINGS_TABLES.caseStatuses, removedCaseStatuses, 'case statuses', caseStatuses.length);
     safeSyncSettingsDeletion(SETTINGS_TABLES.productCategories, removedCategories, 'categories', categoryItems.length);
   }, [
     categories,
     productVariables,
+    productOptions,
     orderStatuses,
     saleSources,
     customServices,

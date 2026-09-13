@@ -429,12 +429,37 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
     return { productName, variantName, sku: variant?.sku || '', imageUrl, isLoading: !productName && products.length === 0 };
   };
 
+  const formatSelectedOptions = (item: typeof order.items[0]) => (
+    Object.entries(item.selectedOptions ?? {})
+      .filter(([name, value]) => name.trim() && String(value).trim())
+      .map(([name, value]) => `${name}: ${value}`)
+      .join(' / ')
+  );
+
+  const getOrderItemLineId = (item: typeof order.items[0], index: number) => item.id ?? `${item.productId}:${item.variantId}:${index}`;
+
+  const getOrderItemLabel = (item: typeof order.items[0]) => {
+    const { productName, variantName } = getItemDetails(item);
+    const selectedOptions = formatSelectedOptions(item);
+    return [productName || 'Product unavailable', variantName, selectedOptions].filter(Boolean).join(' - ');
+  };
+
+  const getLinkedServiceLabel = (service: typeof order.services[number]) => {
+    if (!service.linkedItemId) return service.name;
+    const linkedIndex = order.items.findIndex((item, index) => getOrderItemLineId(item, index) === service.linkedItemId);
+    if (linkedIndex < 0) return service.name;
+    return `${service.name} for ${getOrderItemLabel(order.items[linkedIndex])}`;
+  };
+
   const buildOrderThreadMessage = () => {
     const itemLines = order.items.length > 0
-      ? order.items.flatMap((item) => {
+      ? order.items.flatMap((item, index) => {
         const { productName, variantName } = getItemDetails(item);
+        const selectedOptions = formatSelectedOptions(item);
         const lineTotal = item.unitPrice * item.quantity;
-        const nameParts = [productName, variantName ? `- ${variantName}` : ''].filter(Boolean);
+        const itemLineId = getOrderItemLineId(item, index);
+        const linkedServices = (order.services ?? []).filter((service) => service.linkedItemId === itemLineId);
+        const nameParts = [productName, variantName ? `- ${variantName}` : '', selectedOptions ? `- ${selectedOptions}` : ''].filter(Boolean);
         const lines = [
           `${nameParts.join(' ')} x${item.quantity} - ${formatCurrency(lineTotal)}`,
         ];
@@ -447,6 +472,9 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
         if (detailLines.length > 0) {
           lines.push(`   Details: ${detailLines.join('; ')}`);
         }
+        linkedServices.forEach((service) => {
+          lines.push(`   Add-on: ${service.name} - ${formatCurrency(service.price)}`);
+        });
         return lines;
       })
       : ['No order items added.'];
@@ -1129,6 +1157,7 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
   };
 
   const openFlagModal = () => {
+    setShowHeaderActionMenu(false);
     setFlagNoteDraft(order.flagNote ?? '');
     setShowFlagModal(true);
   };
@@ -1403,12 +1432,15 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
       <DetailSection title={`Items (${order.items.length})`}>
         {order.items.map((item, index) => {
           const { productName, variantName, sku, imageUrl, isLoading } = getItemDetails(item);
+          const itemLineId = getOrderItemLineId(item, index);
+          const linkedServices = (order.services ?? []).filter((service) => service.linkedItemId === itemLineId);
+          const selectedOptions = formatSelectedOptions(item);
           const serviceVariables = (item.serviceVariables ?? []).filter((variable) => (variable.value ?? '').toString().trim().length > 0);
           const serviceFields = (item.serviceFields ?? []).filter((field) => (field.value ?? '').toString().trim().length > 0);
           const hasServiceDetails = serviceVariables.length > 0 || serviceFields.length > 0;
           return (
             <View
-              key={`${item.productId}-${item.variantId}`}
+              key={`${item.productId}-${item.variantId}-${index}`}
               style={{
                 paddingVertical: 10,
               }}
@@ -1432,6 +1464,7 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
                     <>
                       <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600' }}>{productName || 'Product unavailable'}</Text>
                       {variantName ? <Text style={{ color: colors.text.muted, fontSize: 12 }}>{variantName}</Text> : null}
+                      {selectedOptions ? <Text style={{ color: colors.text.secondary, fontSize: 12 }}>{selectedOptions}</Text> : null}
                       {sku ? <Text style={{ color: colors.text.muted, fontSize: 12 }}>SKU: {sku.toUpperCase()}</Text> : null}
                     </>
                   )}
@@ -1476,6 +1509,29 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
                   ))}
                 </View>
               )}
+              {linkedServices.length > 0 ? (
+                <View
+                  style={{
+                    marginTop: 10,
+                    marginLeft: 52,
+                    paddingTop: 8,
+                    borderTopWidth: 1,
+                    borderTopColor: colors.border.light,
+                  }}
+                >
+                  <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '600', textTransform: 'uppercase', marginBottom: 6 }}>
+                    Linked add-ons
+                  </Text>
+                  {linkedServices.map((service, serviceIndex) => (
+                    <View key={`${service.serviceId}-${serviceIndex}`} style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <Text style={{ color: colors.text.secondary, fontSize: 12, flex: 1 }}>{service.name}</Text>
+                      <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '600', marginLeft: 12 }}>
+                        {formatCurrency(service.price)}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
             </View>
           );
         })}
@@ -1488,8 +1544,8 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
               Add-ons
             </Text>
           ) : null}
-          {order.services?.map((service) => (
-            <DetailKeyValue key={service.serviceId} label={service.name} value={formatCurrency(service.price)} />
+          {order.services?.map((service, index) => (
+            <DetailKeyValue key={`${service.serviceId}-${index}`} label={getLinkedServiceLabel(service)} value={formatCurrency(service.price)} />
           ))}
           {order.deliveryFee > 0 && (
             <DetailKeyValue label="Delivery Fee" value={formatCurrency(order.deliveryFee)} />
@@ -2718,6 +2774,17 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
               <Edit2 size={18} color={colors.text.secondary} strokeWidth={2} />
               <Text style={{ color: colors.text.primary, fontSize: 16, fontWeight: '600', marginLeft: 12 }}>
                 Edit Order
+              </Text>
+            </Pressable>
+            <View style={{ height: 1, backgroundColor: colors.border.light, marginHorizontal: 14 }} />
+            <Pressable
+              onPress={openFlagModal}
+              className="active:opacity-80"
+              style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, height: 48 }}
+            >
+              <Flag size={18} color={order.flagNote ? colors.accent.warning : colors.text.secondary} fill={order.flagNote ? colors.accent.warning : 'transparent'} strokeWidth={2} />
+              <Text style={{ color: colors.text.primary, fontSize: 16, fontWeight: '600', marginLeft: 12 }}>
+                {order.flagNote ? 'Edit Flag' : 'Flag Order'}
               </Text>
             </Pressable>
             <View style={{ height: 1, backgroundColor: colors.border.light, marginHorizontal: 14 }} />

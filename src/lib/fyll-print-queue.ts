@@ -55,6 +55,9 @@ export type FyllPrintQueueState = {
 };
 
 export const FYLL_PRINT_QUEUE_STORAGE_KEY = 'fyll_print_queue_v1';
+export const getFyllPrintQueueStorageKey = (businessId?: string | null) => (
+  businessId ? `${FYLL_PRINT_QUEUE_STORAGE_KEY}:${businessId}` : FYLL_PRINT_QUEUE_STORAGE_KEY
+);
 
 export const FYLL_PRINT_CATEGORY_META: Record<FyllPrintCategory, {
   label: string;
@@ -127,8 +130,8 @@ const normalizeQueue = (value: unknown): FyllPrintQueueState => {
   };
 };
 
-export const getFyllPrintQueue = async (): Promise<FyllPrintQueueState> => {
-  const raw = await storage.getItem(FYLL_PRINT_QUEUE_STORAGE_KEY);
+export const getFyllPrintQueue = async (businessId?: string | null): Promise<FyllPrintQueueState> => {
+  const raw = await storage.getItem(getFyllPrintQueueStorageKey(businessId));
   if (!raw) return EMPTY_PRINT_QUEUE;
 
   try {
@@ -138,44 +141,46 @@ export const getFyllPrintQueue = async (): Promise<FyllPrintQueueState> => {
   }
 };
 
-export const saveFyllPrintQueue = async (queue: FyllPrintQueueState) => {
-  await storage.setItem(FYLL_PRINT_QUEUE_STORAGE_KEY, JSON.stringify(queue));
+export const saveFyllPrintQueue = async (queue: FyllPrintQueueState, businessId?: string | null) => {
+  await storage.setItem(getFyllPrintQueueStorageKey(businessId), JSON.stringify(queue));
 };
 
-export const addFyllPrintQueueItem = async (item: FyllPrintQueueItem): Promise<FyllPrintQueueState> => {
-  const queue = await getFyllPrintQueue();
+export const addFyllPrintQueueItem = async (item: FyllPrintQueueItem, businessId?: string | null): Promise<FyllPrintQueueState> => {
+  const queue = await getFyllPrintQueue(businessId);
   const current = queue[item.category] as FyllPrintQueueItem[];
   const nextItems = [item, ...current.filter((queued) => queued.id !== item.id)];
   const nextQueue = {
     ...queue,
     [item.category]: nextItems,
   } as FyllPrintQueueState;
-  await saveFyllPrintQueue(nextQueue);
+  await saveFyllPrintQueue(nextQueue, businessId);
   return nextQueue;
 };
 
 export const removeFyllPrintQueueItem = async (
   category: FyllPrintCategory,
   itemId: string,
+  businessId?: string | null,
 ): Promise<FyllPrintQueueState> => {
-  const queue = await getFyllPrintQueue();
+  const queue = await getFyllPrintQueue(businessId);
   const nextQueue = {
     ...queue,
     [category]: queue[category].filter((item) => item.id !== itemId),
   };
-  await saveFyllPrintQueue(nextQueue);
+  await saveFyllPrintQueue(nextQueue, businessId);
   return nextQueue;
 };
 
 export const clearFyllPrintQueueCategory = async (
   category: FyllPrintCategory,
+  businessId?: string | null,
 ): Promise<FyllPrintQueueState> => {
-  const queue = await getFyllPrintQueue();
+  const queue = await getFyllPrintQueue(businessId);
   const nextQueue = {
     ...queue,
     [category]: [],
   };
-  await saveFyllPrintQueue(nextQueue);
+  await saveFyllPrintQueue(nextQueue, businessId);
   return nextQueue;
 };
 
@@ -183,8 +188,9 @@ export const recordFyllPrintHistory = async (
   category: FyllPrintCategory,
   action: FyllPrintHistoryItem['action'],
   itemCount: number,
+  businessId?: string | null,
 ): Promise<FyllPrintQueueState> => {
-  const queue = await getFyllPrintQueue();
+  const queue = await getFyllPrintQueue(businessId);
   const nextHistoryItem: FyllPrintHistoryItem = {
     id: `${category}:${action}:${Date.now()}`,
     category,
@@ -199,7 +205,7 @@ export const recordFyllPrintHistory = async (
       [category]: [nextHistoryItem, ...queue.history[category]].slice(0, 25),
     },
   };
-  await saveFyllPrintQueue(nextQueue);
+  await saveFyllPrintQueue(nextQueue, businessId);
   return nextQueue;
 };
 

@@ -13,6 +13,7 @@ import { bucketFulfillmentStatus, getCustomerTrackingCode, getOrderFulfillmentSt
 import { createOrderStatusColorMap, getOrderStatusChipColors } from '@/lib/order-status-colors';
 import useAuthStore from '@/lib/state/auth-store';
 import { normalizeDeliveryStateValue } from '@/lib/format-address';
+import { SearchClearButton } from '@/components/SearchClearButton';
 
 type DeliveryState = 'picked-up' | 'in-transit' | 'delivered';
 type DeliveryDateFilter = '7d' | 'month' | '30d' | 'year' | 'all';
@@ -597,6 +598,7 @@ export default function DeliveriesScreen() {
                     style={{ flex: 1, marginLeft: 8, color: colors.input.text, fontSize: 14 }}
                     selectionColor={colors.text.primary}
                   />
+                  <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
                 </View>
 
                 {isDesktop ? (

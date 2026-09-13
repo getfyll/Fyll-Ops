@@ -17,6 +17,7 @@ import { supabase } from '@/lib/supabase';
 import { taskData, type CreateTaskInput, type Task, type TaskItemType, type TaskPriority, type TaskRecurrenceFrequency, type UpdateTaskInput, type CompleteTaskResult } from '@/lib/supabase/tasks';
 import { sendTaskAssignmentNotification, sendTaskCompletionNotification, triggerTaskDueReminders, triggerTaskEventReminders } from '@/hooks/useWebPushNotifications';
 import { getTeamThreadDisplayNameFromEntityId, getTeamThreadSubtitleFromEntityId, isTeamThreadEntityId } from '@/lib/team-threads';
+import { SearchClearButton } from '@/components/SearchClearButton';
 
 type TaskFilter = 'all' | 'pending' | 'done';
 type TaskKpiScope = 'all' | 'due_today' | 'overdue' | 'completed_today';
@@ -1002,6 +1003,7 @@ function AssigneePicker({
                 style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 13, fontWeight: '400' }}
                 selectionColor={colors.text.primary}
               />
+              <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
             </View>
           </View>
 
@@ -5908,6 +5910,7 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
                         style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 14 }}
                         selectionColor={colors.text.primary}
                       />
+                      <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
                     </View>
                     <Pressable
                       onPress={() => setShowMobileFilterModal(true)}
@@ -5952,6 +5955,7 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
                                 selectionColor={colors.text.primary}
                                 autoFocus
                               />
+                              <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
                               <Pressable
                                 onPress={() => {
                                   setShowTabletSearch(false);
@@ -5990,6 +5994,7 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
                               style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 14 }}
                               selectionColor={colors.text.primary}
                             />
+                            <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
                           </View>
                         )
                       ) : null}
@@ -6297,6 +6302,7 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
                         selectionColor={colors.text.primary}
                         autoFocus
                       />
+                      <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
                     </View>
                     <Pressable
                       onPress={() => setShowMobileSearch(false)}

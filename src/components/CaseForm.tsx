@@ -60,6 +60,7 @@ import useFyllStore, {
 } from '@/lib/state/fyll-store';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
+import { SearchClearButton } from '@/components/SearchClearButton';
 
 // Get icon for case type
 const getCaseTypeIcon = (type: CaseType, color: string, size: number = 18) => {
@@ -822,6 +823,7 @@ export function CaseForm({
                         className="flex-1 ml-2"
                         style={{ color: colors.text.primary, outlineStyle: 'none' as any }}
                       />
+                      <SearchClearButton visible={Boolean(linkSearchQuery.trim())} onPress={() => setLinkSearchQuery('')} />
                     </View>
                     {linkSearchQuery.trim() ? (
                       <View

@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, TextInput, Pressable, Platform, Switch, useWindowDimensions } from 'react-native';
+import { View, Text, TextInput, Pressable, Platform, Switch, Image, useWindowDimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, ChevronDown, Plus, X, Check } from 'lucide-react-native';
+import { ArrowLeft, ChevronDown, Plus, X, Check, Camera, ImageIcon, Trash2 } from 'lucide-react-native';
 import useFyllStore, {
   generateProductId,
   generateVariantBarcode,
@@ -19,6 +19,8 @@ import { useResolvedThemeMode, useThemeColors } from '@/lib/theme';
 import { cn } from '@/lib/cn';
 import * as Haptics from 'expo-haptics';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
+import { useImagePicker } from '@/hooks/useImagePicker';
+import { prepareProductMediaForPersistence } from '@/lib/product-media';
 import { Button, StickyButtonContainer } from '@/components/Button';
 
 const SERVICE_VARIABLE_TYPES: ServiceVariableType[] = ['Select', 'Number', 'Toggle', 'Text'];
@@ -56,6 +58,8 @@ export default function NewServiceScreen() {
   const currentUser = useAuthStore((s) => s.currentUser);
   const businessId = useAuthStore((s) => s.businessId);
 
+  const imagePicker = useImagePicker();
+  const [serviceImageUrl, setServiceImageUrl] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
@@ -73,6 +77,15 @@ export default function NewServiceScreen() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccessToast, setShowSuccessToast] = useState(false);
+
+  const handlePickServiceImage = async () => {
+    const uri = await imagePicker.pickImage();
+    if (uri) setServiceImageUrl(uri);
+  };
+
+  const handleRemoveServiceImage = () => {
+    setServiceImageUrl(null);
+  };
 
   const handleAddServiceTag = () => {
     const value = serviceTagInput.trim();
@@ -232,15 +245,23 @@ export default function NewServiceScreen() {
         sellingPrice: baseServicePrice,
       }];
 
+      const preparedMedia = await prepareProductMediaForPersistence({
+        businessId,
+        productId: serviceId,
+        imageUrl: serviceImageUrl,
+        variants: productVariants,
+      });
+
       await addProduct({
         id: serviceId,
         name: name.trim(),
         description: description.trim(),
         categories: [],
-        variants: productVariants,
+        variants: preparedMedia.variants,
         lowStockThreshold: 0,
         createdAt: new Date().toISOString(),
         productType: 'service',
+        imageUrl: preparedMedia.imageUrl,
         createdBy: currentUser?.name,
         serviceTags,
         serviceUsesGlobalPricing,
@@ -325,6 +346,56 @@ export default function NewServiceScreen() {
               </View>
 
               <View className="gap-4">
+                <View>
+                  <Text style={{ color: colors.text.secondary }} className={cn(fieldLabelClass, 'mb-1.5')}>Service Image</Text>
+                  {imagePicker.error ? (
+                    <View className="mb-2 p-3 rounded-xl" style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)' }}>
+                      <Text className="text-red-500 text-sm text-center">{imagePicker.error}</Text>
+                    </View>
+                  ) : null}
+                  {serviceImageUrl ? (
+                    <View className="flex-row items-start">
+                      <View className="rounded-xl overflow-hidden" style={{ borderWidth: 1, borderColor: colors.border.light }}>
+                        <Image source={{ uri: serviceImageUrl }} style={{ width: 80, height: 80 }} resizeMode="cover" />
+                      </View>
+                      <View className="ml-3 flex-1">
+                        <Pressable
+                          onPress={handlePickServiceImage}
+                          disabled={imagePicker.isLoading}
+                          className="flex-row items-center px-3 py-2 rounded-lg mb-2 active:opacity-70"
+                          style={{ backgroundColor: colors.bg.secondary, opacity: imagePicker.isLoading ? 0.5 : 1 }}
+                        >
+                          <Camera size={16} color={colors.text.primary} strokeWidth={2} />
+                          <Text style={{ color: colors.text.primary }} className="text-xs font-medium ml-2">Change</Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={handleRemoveServiceImage}
+                          className="flex-row items-center px-3 py-2 rounded-lg active:opacity-70"
+                          style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)' }}
+                        >
+                          <Trash2 size={16} color="#EF4444" strokeWidth={2} />
+                          <Text className="text-red-500 text-xs font-medium ml-2">Remove</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  ) : (
+                    <Pressable
+                      onPress={handlePickServiceImage}
+                      disabled={imagePicker.isLoading}
+                      className="rounded-xl p-4 items-center active:opacity-70"
+                      style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light, borderStyle: 'dashed', opacity: imagePicker.isLoading ? 0.5 : 1 }}
+                    >
+                      <View className="w-12 h-12 rounded-full items-center justify-center mb-2" style={{ backgroundColor: colors.bg.card }}>
+                        <ImageIcon size={24} color={colors.text.muted} strokeWidth={1.5} />
+                      </View>
+                      <Text style={{ color: colors.text.secondary }} className="text-sm font-medium">
+                        {imagePicker.isLoading ? 'Opening...' : 'Add Service Image'}
+                      </Text>
+                      <Text style={{ color: colors.text.muted }} className="text-xs mt-0.5">Optional thumbnail shown in your services list</Text>
+                    </Pressable>
+                  )}
+                </View>
+
                 <View>
                   <Text style={{ color: colors.text.secondary }} className={cn(fieldLabelClass, 'mb-1.5')}>Service Name</Text>
                   <TextInput

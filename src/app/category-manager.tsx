@@ -149,10 +149,10 @@ export default function CategoryManagerScreen() {
             <Pressable
               onPress={handleAddCategory}
               disabled={!newCategoryName.trim()}
-              className="mt-3 rounded-xl items-center justify-center active:opacity-80"
+              className="mt-3 rounded-full items-center justify-center active:opacity-80"
               style={{ backgroundColor: newCategoryName.trim() ? colors.text.primary : colors.border.light, height: 48 }}
             >
-              <Text style={{ color: newCategoryName.trim() ? colors.bg.primary : colors.text.muted }} className="font-semibold text-sm">
+              <Text style={{ color: newCategoryName.trim() ? colors.bg.primary : colors.text.muted, fontSize: 12 }} className="font-semibold">
                 Add Category
               </Text>
             </Pressable>

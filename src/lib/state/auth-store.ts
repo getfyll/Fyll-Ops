@@ -1,3 +1,4 @@
+import { workspaceGeneration, isWorkspaceTransitioning } from '@/lib/workspace-transition';
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { storage } from "@/lib/storage";
@@ -286,6 +287,9 @@ const useAuthStore = create<AuthStore>()(
       setOfflineMode: (isOffline) => set({ isOfflineMode: isOffline }),
 
       syncWithSupabaseSession: async () => {
+        const authGeneration = workspaceGeneration();
+        const stillCurrent = () => authGeneration === workspaceGeneration() && !isWorkspaceTransitioning();
+        if (!stillCurrent()) return { success: false, error: 'Business switch in progress.' };
         try {
           set({ isAuthLoading: true });
 
@@ -294,6 +298,7 @@ const useAuthStore = create<AuthStore>()(
             throw sessionError;
           }
 
+          if (!stillCurrent()) return { success: false, error: 'Session changed.' };
           const authUser = sessionData.session?.user;
           if (!authUser?.id) {
             set({
@@ -342,6 +347,7 @@ const useAuthStore = create<AuthStore>()(
             email: teamMemberData?.email ?? profile?.email ?? authUser.email,
             userId: authUser.id,
           });
+          if (!stillCurrent()) return { success: false, error: 'Session changed.' };
           if (!businessId) {
             await supabase.auth.signOut({ scope: 'local' });
             set({ isAuthLoading: false });
@@ -361,6 +367,7 @@ const useAuthStore = create<AuthStore>()(
             businessId,
           };
 
+          if (!stillCurrent()) return { success: false, error: 'Session changed.' };
           set({
             isAuthenticated: true,
             currentUser: userData,
@@ -951,6 +958,7 @@ const useAuthStore = create<AuthStore>()(
           console.warn('Invites query failed (non-fatal):', inviteErr);
         }
 
+        if (get().businessId !== businessId) return;
         set({ teamMembers: members, pendingInvites: invites });
       },
 
