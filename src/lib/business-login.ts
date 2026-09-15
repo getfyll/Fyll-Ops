@@ -69,8 +69,14 @@ export async function verifySavedBusinessSession(
     access_token: session.access_token,
     refresh_token: session.refresh_token,
   });
-  if (error || !data.session) throw new Error('Your saved sign-in expired. Please sign in again.');
+  if (error || !data.session) {
+    console.warn('Saved business session rejected by Supabase:', error?.message ?? 'no session returned', error?.status ?? '');
+    throw new Error('Your saved sign-in expired. Please sign in again.');
+  }
   const { data: userData, error: userError } = await client.auth.getUser();
-  if (userError || !userData.user) throw new Error('Your saved sign-in expired. Please sign in again.');
+  if (userError || !userData.user) {
+    console.warn('Saved business session getUser() failed:', userError?.message ?? 'no user returned', userError?.status ?? '');
+    throw new Error('Your saved sign-in expired. Please sign in again.');
+  }
   return buildVerifiedBusinessLogin(client, { ...data.session, user: userData.user }, expectedBusinessId, session.user?.email);
 }

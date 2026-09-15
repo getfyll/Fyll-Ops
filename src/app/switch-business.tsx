@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Keyboard, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -8,7 +8,7 @@ import { useThemeColors } from '@/lib/theme';
 import useAuthStore from '@/lib/state/auth-store';
 import { useBusinessSwitcherStore, type SavedBusiness, type SavedBusinessSession } from '@/lib/state/business-switcher-store';
 import { supabase } from '@/lib/supabase';
-import { switchBusiness, switchToSavedBusiness } from '@/lib/switch-business';
+import { switchBusiness, switchToSavedBusiness, validateSavedBusinessSession } from '@/lib/switch-business';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 
 export default function SwitchBusinessScreen() {
@@ -29,6 +29,8 @@ export default function SwitchBusinessScreen() {
   const [password, setPassword] = useState<string>('');
   const [formMessage, setFormMessage] = useState<string>('');
   const [removing, setRemoving] = useState<SavedBusiness | null>(null);
+  const [checkingKeys, setCheckingKeys] = useState<Set<string>>(new Set());
+  const validatedKeysRef = useRef<Set<string>>(new Set());
   const returnSource = Array.isArray(from) ? from[0] : from;
   const returnRoute = returnSource === 'settings' ? '/(tabs)/settings' : '/(tabs)';
 
@@ -60,6 +62,29 @@ export default function SwitchBusinessScreen() {
     saveCurrentBusiness().catch(() => undefined);
     return () => { mounted = false; };
   }, [businessId, currentBusiness.data, currentEmail, remember, userId]);
+
+  // Proactively check every OTHER saved business's session in the background so staleness
+  // shows up as a badge here instead of surprising the user mid-switch.
+  useEffect(() => {
+    businesses.forEach((business) => {
+      if (!business.session) return;
+      const isActive = business.businessId === businessId && business.userId === userId;
+      if (isActive) return;
+      const key = `${business.businessId}:${business.userId}`;
+      if (validatedKeysRef.current.has(key)) return;
+      validatedKeysRef.current.add(key);
+      setCheckingKeys((prev) => new Set(prev).add(key));
+      validateSavedBusinessSession(business)
+        .catch(() => undefined)
+        .finally(() => {
+          setCheckingKeys((prev) => {
+            const next = new Set(prev);
+            next.delete(key);
+            return next;
+          });
+        });
+    });
+  }, [businesses, businessId, userId]);
 
   const login = useMutation({
     mutationFn: async () => {
@@ -215,6 +240,7 @@ export default function SwitchBusinessScreen() {
               </Text>}
               {visibleBusinesses.map((business) => {
                 const active = business.businessId === businessId && business.userId === userId;
+                const checking = checkingKeys.has(`${business.businessId}:${business.userId}`);
                 return <View key={business.businessId + ':' + business.userId}
                   style={{ borderColor: active ? colors.text.primary : colors.border.light, backgroundColor: colors.bg.secondary }}
                   className="border rounded-2xl mb-3 flex-row items-center">
@@ -238,11 +264,12 @@ export default function SwitchBusinessScreen() {
                         )}
                         {!active && business.session && (
                           <View
-                            className="self-start rounded-full px-2.5 py-1 mb-1"
+                            className="self-start rounded-full px-2.5 py-1 mb-1 flex-row items-center"
                             style={{ backgroundColor: 'rgba(17, 24, 39, 0.08)' }}
                           >
+                            {checking ? <ActivityIndicator size="small" color={colors.text.secondary} style={{ marginRight: 6 }} /> : null}
                             <Text style={{ color: colors.text.secondary }} className="text-xs font-semibold">
-                              Saved sign-in
+                              {checking ? 'Checking sign-in…' : 'Saved sign-in'}
                             </Text>
                           </View>
                         )}

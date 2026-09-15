@@ -12,6 +12,13 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 let verifying = false;
 
+// Keyed by `${businessId}:${userId}`. Lets a live switch attempt wait for an in-flight
+// background validation of the SAME business instead of racing it for the same refresh
+// token (Supabase rejects whichever request loses the race as "already used").
+const pendingValidations = new Map<string, Promise<boolean>>();
+
+const savedBusinessKey = (businessId: string, userId: string) => `${businessId}:${userId}`;
+
 function createSavedBusiness(verified: VerifiedBusinessLogin): SavedBusiness {
   const session: SavedBusinessSession = {
     access_token: verified.session.access_token,
@@ -153,10 +160,60 @@ export async function switchToSavedBusiness(
   navigateHome: () => void,
 ) {
   if (!business.session) throw new Error('Sign in once to save this business on this device.');
+  // If a background validation for this exact business is mid-flight, wait for it instead of
+  // racing it for the same refresh token, then use whatever it left in the store (freshest).
+  const pending = pendingValidations.get(savedBusinessKey(business.businessId, business.userId));
+  if (pending) await pending.catch(() => undefined);
+  const latest = useBusinessSwitcherStore.getState().businesses.find((b) =>
+    b.businessId === business.businessId && b.userId === business.userId) ?? business;
+  if (!latest.session) throw new Error('Your saved sign-in expired. Please sign in again.');
   await runBusinessSwitch(
     queryClient,
     navigateHome,
-    (client) => verifySavedBusinessSession(client, business.session!, business.businessId),
-    () => useBusinessSwitcherStore.getState().clearSession(business.businessId, business.userId),
+    (client) => verifySavedBusinessSession(client, latest.session!, latest.businessId),
+    () => useBusinessSwitcherStore.getState().clearSession(latest.businessId, latest.userId),
   );
+}
+
+/**
+ * Checks a saved (non-active) business's session in the background, using a throwaway
+ * verification client -- never touches the primary session or app state. Surfaces staleness
+ * (and refreshes a still-good token) before the user taps to switch, instead of only finding
+ * out mid-switch. Concurrent calls for the same business share one in-flight promise so a live
+ * switch attempt never races this for the same refresh token.
+ */
+export function validateSavedBusinessSession(business: SavedBusiness): Promise<boolean> {
+  if (!business.session) return Promise.resolve(false);
+  const key = savedBusinessKey(business.businessId, business.userId);
+  const existing = pendingValidations.get(key);
+  if (existing) return existing;
+
+  const run = async (): Promise<boolean> => {
+    const client = createBusinessVerificationClient();
+    try {
+      const verified = await verifySavedBusinessSession(client, business.session!, business.businessId);
+      useBusinessSwitcherStore.getState().refreshSession(business.businessId, business.userId, {
+        access_token: verified.session.access_token,
+        refresh_token: verified.session.refresh_token,
+        expires_at: verified.session.expires_at,
+        expires_in: verified.session.expires_in,
+        token_type: verified.session.token_type,
+        user: verified.session.user,
+      });
+      return true;
+    } catch (error) {
+      console.warn(`Saved session for business ${business.businessId} failed background validation:`, error instanceof Error ? error.message : error);
+      useBusinessSwitcherStore.getState().clearSession(business.businessId, business.userId);
+      return false;
+    } finally {
+      await client.auth.signOut({ scope: 'local' }).catch(() => undefined);
+      client.auth.stopAutoRefresh();
+    }
+  };
+
+  const promise = run().finally(() => {
+    if (pendingValidations.get(key) === promise) pendingValidations.delete(key);
+  });
+  pendingValidations.set(key, promise);
+  return promise;
 }
