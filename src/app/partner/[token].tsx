@@ -88,6 +88,21 @@ const BILL_STATUS_META: Record<string, { label: string; bg: string; text: string
   paid: { label: 'Paid', bg: '#E6F7EC', text: '#16A34A' },
 };
 
+type BillFilterTab = 'all' | 'pending' | 'completed' | 'void';
+
+const getBillFilterBucket = (status: string): BillFilterTab => {
+  if (status === 'approved' || status === 'paid') return 'completed';
+  if (status === 'rejected') return 'void';
+  return 'pending';
+};
+
+const BILL_FILTER_TABS: { key: BillFilterTab; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'pending', label: 'Pending' },
+  { key: 'completed', label: 'Completed' },
+  { key: 'void', label: 'Void' },
+];
+
 const JOB_DUE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 const isJobInFlight = (job: PartnerPortalJob) => job.status === 'sent' || job.status === 'accepted' || job.status === 'in_progress';
@@ -167,6 +182,8 @@ export default function PartnerPortalScreen() {
   const [editingBillId, setEditingBillId] = useState<string | null>(null);
   const [newBillFilterPeriod, setNewBillFilterPeriod] = useState<SimplePeriod>('all');
   const [viewingBillId, setViewingBillId] = useState<string | null>(null);
+  const [pendingVoidBillId, setPendingVoidBillId] = useState<string | null>(null);
+  const [billStatusFilterTab, setBillStatusFilterTab] = useState<BillFilterTab>('all');
   const [viewingJobId, setViewingJobId] = useState<string | null>(null);
   const [insightsRange, setInsightsRange] = useState<TimeRange>('month');
   const [jobStatusExpanded, setJobStatusExpanded] = useState(false);
@@ -179,6 +196,7 @@ export default function PartnerPortalScreen() {
   const handleNavigateSection = (section: PortalSection) => {
     setViewingJobId(null);
     setViewingBillId(null);
+    setPendingVoidBillId(null);
     setShowNewBillModal(false);
     setEditingBillId(null);
     setStatusMenuJobId(null);
@@ -257,10 +275,12 @@ export default function PartnerPortalScreen() {
       queryClient.invalidateQueries({ queryKey: ['partner-portal', mode, token] });
       setShowNewBillModal(false);
       setEditingBillId(null);
+      setPendingVoidBillId(null);
+      setViewingBillId(null);
       if (result.jobCount > 0) {
         Alert.alert('Bill updated', `Now ${formatCurrency(result.total)} across ${result.jobCount} ${result.jobCount === 1 ? 'job' : 'jobs'}.`);
       } else {
-        Alert.alert('Bill removed', 'All jobs were removed, so the bill was cleared.');
+        Alert.alert('Bill voided', 'The bill was cleared and its jobs are available to bill again.');
       }
     },
     onError: (error: unknown) => {
@@ -499,6 +519,20 @@ export default function PartnerPortalScreen() {
     });
     return bills.sort((a, b) => new Date(b.submittedAt ?? 0).getTime() - new Date(a.submittedAt ?? 0).getTime());
   }, [jobs]);
+
+  const billFilterCounts = useMemo(() => {
+    const counts: Record<BillFilterTab, number> = { all: submittedBills.length, pending: 0, completed: 0, void: 0 };
+    submittedBills.forEach((bill) => {
+      counts[getBillFilterBucket(bill.status)] += 1;
+    });
+    return counts;
+  }, [submittedBills]);
+
+  const filteredSubmittedBills = useMemo(() => (
+    billStatusFilterTab === 'all'
+      ? submittedBills
+      : submittedBills.filter((bill) => getBillFilterBucket(bill.status) === billStatusFilterTab)
+  ), [submittedBills, billStatusFilterTab]);
 
   const recentJobs = useMemo(() => (
     [...jobs]
@@ -782,6 +816,11 @@ export default function PartnerPortalScreen() {
     setSelectedBillJobIds(new Set(jobsInBill.map((job) => job.id)));
     setNewBillFilterPeriod('all');
     setShowNewBillModal(true);
+  };
+
+  const handleConfirmVoidBill = () => {
+    if (!pendingVoidBillId || updateBillJobsMutation.isPending) return;
+    updateBillJobsMutation.mutate({ billId: pendingVoidBillId, jobIds: [] });
   };
 
   const toggleBillJobSelection = (jobId: string) => {
@@ -1284,6 +1323,39 @@ export default function PartnerPortalScreen() {
 
       <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '700', marginBottom: 16 }}>Your Bills</Text>
 
+      {submittedBills.length > 0 ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, marginBottom: 14 }} contentContainerStyle={{ gap: 8 }}>
+          {BILL_FILTER_TABS.map((tab) => {
+            const active = billStatusFilterTab === tab.key;
+            return (
+              <Pressable
+                key={tab.key}
+                onPress={() => setBillStatusFilterTab(tab.key)}
+                style={{
+                  height: 34,
+                  paddingHorizontal: 14,
+                  borderRadius: 999,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexDirection: 'row',
+                  gap: 6,
+                  backgroundColor: active ? colors.text.primary : colors.bg.card,
+                  borderWidth: 1,
+                  borderColor: active ? colors.text.primary : colors.border.light,
+                }}
+              >
+                <Text style={{ color: active ? colors.bg.primary : colors.text.primary, fontSize: 12, fontWeight: '600' }}>
+                  {tab.label}
+                </Text>
+                <Text style={{ color: active ? colors.bg.primary : colors.text.tertiary, fontSize: 11, fontWeight: '600', opacity: 0.8 }}>
+                  {billFilterCounts[tab.key]}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      ) : null}
+
       {submittedBills.length === 0 ? (
         <View style={{ borderRadius: 18, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card, padding: 28, alignItems: 'center' }}>
           <Banknote size={26} color={colors.text.tertiary} strokeWidth={1.7} />
@@ -1296,6 +1368,14 @@ export default function PartnerPortalScreen() {
                 : 'Use Send Bill above to submit a period.'}
           </Text>
         </View>
+      ) : filteredSubmittedBills.length === 0 ? (
+        <View style={{ borderRadius: 18, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card, padding: 28, alignItems: 'center' }}>
+          <Banknote size={26} color={colors.text.tertiary} strokeWidth={1.7} />
+          <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600', marginTop: 10 }}>No bills here</Text>
+          <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 4, textAlign: 'center' }}>
+            No bills match this filter yet.
+          </Text>
+        </View>
       ) : isDesktop ? (
         <View style={{ borderRadius: 18, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card, overflow: 'hidden' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 46, paddingHorizontal: 18, borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
@@ -1305,7 +1385,7 @@ export default function PartnerPortalScreen() {
             <Text style={{ color: colors.text.muted, flex: 2, minWidth: 200, paddingRight: 10, fontSize: 10, fontWeight: '600' }}>NOTE FROM BUSINESS</Text>
             <Text style={{ color: colors.text.muted, flex: 0.9, minWidth: 120, paddingRight: 24, textAlign: 'right', fontSize: 10, fontWeight: '600' }}>TOTAL</Text>
           </View>
-          {submittedBills.map((bill, index) => {
+          {filteredSubmittedBills.map((bill, index) => {
             const meta = BILL_STATUS_META[bill.status] ?? BILL_STATUS_META.pending;
             return (
               <Pressable
@@ -1336,7 +1416,7 @@ export default function PartnerPortalScreen() {
         </View>
       ) : (
         <View style={{ gap: 8 }}>
-          {submittedBills.map((bill) => {
+          {filteredSubmittedBills.map((bill) => {
             const meta = BILL_STATUS_META[bill.status] ?? BILL_STATUS_META.pending;
             return (
               <Pressable
@@ -2556,6 +2636,14 @@ export default function PartnerPortalScreen() {
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   {viewingBill.status !== 'paid' ? (
                     <Pressable
+                      onPress={() => setPendingVoidBillId(viewingBill.billId)}
+                      style={{ height: 34, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(220, 38, 38, 0.3)', alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      <Text style={{ color: '#DC2626', fontSize: 12, fontWeight: '600' }}>Void</Text>
+                    </Pressable>
+                  ) : null}
+                  {viewingBill.status !== 'paid' ? (
+                    <Pressable
                       onPress={() => {
                         const billId = viewingBill.billId;
                         setViewingBillId(null);
@@ -3093,6 +3181,42 @@ export default function PartnerPortalScreen() {
     </Modal>
   );
 
+  const voidBillConfirmModal = (
+    <Modal visible={!!pendingVoidBillId} transparent animationType="fade" onRequestClose={() => setPendingVoidBillId(null)}>
+      <Pressable
+        onPress={() => (updateBillJobsMutation.isPending ? null : setPendingVoidBillId(null))}
+        style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.46)', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+      >
+        <Pressable
+          onPress={(e) => e.stopPropagation()}
+          style={{ width: '100%', maxWidth: 380, borderRadius: 18, backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light, padding: 20 }}
+        >
+          <Text style={{ color: colors.text.primary, fontSize: 16, fontWeight: '700', marginBottom: 8 }}>Void this bill?</Text>
+          <Text style={{ color: colors.text.tertiary, fontSize: 13, lineHeight: 19 }}>
+            This clears the bill entirely. Its jobs go back to unbilled and can be added to a new bill later. This can't be undone.
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 20 }}>
+            <Pressable
+              onPress={() => setPendingVoidBillId(null)}
+              disabled={updateBillJobsMutation.isPending}
+              style={{ flex: 1, height: 44, borderRadius: 999, borderWidth: 1, borderColor: colors.border.light, alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }}>Cancel</Text>
+            </Pressable>
+            <Pressable
+              onPress={handleConfirmVoidBill}
+              disabled={updateBillJobsMutation.isPending}
+              style={{ flex: 1, height: 44, borderRadius: 999, backgroundColor: '#DC2626', alignItems: 'center', justifyContent: 'center', opacity: updateBillJobsMutation.isPending ? 0.6 : 1, flexDirection: 'row', gap: 6 }}
+            >
+              {updateBillJobsMutation.isPending ? <ActivityIndicator size="small" color="#FFFFFF" /> : null}
+              <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '600' }}>Void bill</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+
   if (isDesktop) {
     return (
       <Pressable onPress={() => setStatusMenuJobId(null)} style={{ flex: 1, flexDirection: 'row', backgroundColor: colors.bg.primary }}>
@@ -3204,6 +3328,7 @@ export default function PartnerPortalScreen() {
         {billDetailsPanel}
         {jobDetailsPanel}
         {imageLightbox}
+        {voidBillConfirmModal}
       </Pressable>
     );
   }
@@ -3216,6 +3341,7 @@ export default function PartnerPortalScreen() {
       {billDetailsPanel}
       {jobDetailsPanel}
       {imageLightbox}
+      {voidBillConfirmModal}
       {mobileFloatingNav}
       </Pressable>
     </SafeAreaView>
