@@ -2,8 +2,8 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Alert, Modal, Switch, KeyboardAvoidingView, Platform, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Package, Plus, Minus, Trash2, Edit2, X, ChevronDown, Search, Printer, PackagePlus, Clock, Camera, ImageIcon, Save, DollarSign, TrendingUp, MoreVertical, ClipboardCheck } from 'lucide-react-native';
-import useFyllStore, { type Procurement, ProductVariant, formatCurrency } from '@/lib/state/fyll-store';
+import { ArrowLeft, Package, Plus, Minus, Trash2, Edit2, X, ChevronDown, Search, Printer, PackagePlus, Clock, Camera, ImageIcon, Save, DollarSign, TrendingUp, MoreVertical, ClipboardCheck, Check } from 'lucide-react-native';
+import useFyllStore, { type Procurement, ProductVariant, type ProductOption, formatCurrency } from '@/lib/state/fyll-store';
 import { useResolvedThemeMode, useThemeColors } from '@/lib/theme';
 import { cn } from '@/lib/cn';
 import * as Haptics from 'expo-haptics';
@@ -53,6 +53,7 @@ export default function ProductDetailScreen() {
   const products = useFyllStore((s) => s.products);
   const procurements = useFyllStore((s) => s.procurements);
   const productVariables = useFyllStore((s) => s.productVariables);
+  const productOptions = useFyllStore((s) => s.productOptions);
   const globalCategories = useFyllStore((s) => s.categories);
   const addCategory = useFyllStore((s) => s.addCategory);
   const updateProduct = useFyllStore((s) => s.updateProduct);
@@ -175,6 +176,10 @@ export default function ProductDetailScreen() {
   const [overrideVariantPrice, setOverrideVariantPrice] = useState(true);
   const [showVariableTypeDropdown, setShowVariableTypeDropdown] = useState(false);
 
+  // Item Choices (product options) state
+  const [orderOptionIds, setOrderOptionIds] = useState<string[]>(product?.orderOptions?.map((option) => option.id) ?? []);
+  const [showOrderOptionSelector, setShowOrderOptionSelector] = useState(false);
+
   // Edit variant modal state
   const [editingVariant, setEditingVariant] = useState<ProductVariant | null>(null);
   const [editVariantSku, setEditVariantSku] = useState('');
@@ -187,6 +192,11 @@ export default function ProductDetailScreen() {
 
   // Use the web-safe image picker hook
   const imagePicker = useImagePicker();
+
+  useEffect(() => {
+    setOrderOptionIds(product?.orderOptions?.map((option) => option.id) ?? []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product?.id]);
 
   const soldStats = useMemo(() => {
     if (!product) {
@@ -559,6 +569,23 @@ export default function ProductDetailScreen() {
     await updateProduct(product.id, { variants: nextVariants }, businessId);
   };
 
+  const attachedOrderOptions = useMemo(
+    () => productOptions.filter((option) => orderOptionIds.includes(option.id)),
+    [orderOptionIds, productOptions],
+  );
+
+  const handleToggleOrderOption = async (optionId: string) => {
+    if (Platform.OS !== 'web') Haptics.selectionAsync();
+    const nextIds = orderOptionIds.includes(optionId)
+      ? orderOptionIds.filter((id) => id !== optionId)
+      : [...orderOptionIds, optionId];
+    setOrderOptionIds(nextIds);
+    const nextOrderOptions: ProductOption[] = productOptions
+      .filter((option) => nextIds.includes(option.id))
+      .map((option) => ({ id: option.id, name: option.name, values: option.values, required: true }));
+    await updateProduct(product.id, { orderOptions: nextOrderOptions }, businessId);
+  };
+
   const handleOpenAddVariant = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     // Initialize with first variable type if available
@@ -790,6 +817,113 @@ export default function ProductDetailScreen() {
       <Text style={{ color: colors.text.secondary }} className="text-sm">{product.description}</Text>
     </View>
   ) : null;
+
+  const itemChoicesSection = (
+    <View className={cn('mt-4 rounded-2xl p-4', !isWebDesktop && 'mx-5')} style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
+      <View className="mb-3">
+        <Text style={{ color: colors.text.primary }} className="font-bold text-base">Item Choices</Text>
+        <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1">
+          Reusable choices customers pick per order item (e.g. Gift Message). These don't create stock variants.
+        </Text>
+      </View>
+
+      {canManageVariants ? (
+        <>
+          <Pressable
+            onPress={() => setShowOrderOptionSelector((prev) => !prev)}
+            className="rounded-xl px-4 flex-row items-center justify-between active:opacity-80"
+            style={{ height: 48, backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}
+          >
+            <Text
+              style={{ color: attachedOrderOptions.length > 0 ? colors.text.primary : colors.text.muted }}
+              className="text-sm font-medium flex-1 pr-3"
+              numberOfLines={1}
+            >
+              {attachedOrderOptions.length > 0
+                ? attachedOrderOptions.map((option) => option.name).join(', ')
+                : 'Choose options customers pick'}
+            </Text>
+            <ChevronDown size={18} color={colors.text.muted} strokeWidth={2} />
+          </Pressable>
+
+          {showOrderOptionSelector ? (
+            <View
+              className="rounded-xl mt-2 overflow-hidden"
+              style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light, maxHeight: 260 }}
+            >
+              <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                {productOptions.map((option) => {
+                  const isSelected = orderOptionIds.includes(option.id);
+                  return (
+                    <Pressable
+                      key={option.id}
+                      onPress={() => handleToggleOrderOption(option.id)}
+                      className="px-4 py-3 flex-row items-center justify-between active:opacity-70"
+                      style={{ borderBottomWidth: 1, borderBottomColor: colors.border.light }}
+                    >
+                      <View className="flex-1 pr-3">
+                        <Text style={{ color: colors.text.primary }} className="text-sm font-medium">{option.name}</Text>
+                        <Text style={{ color: colors.text.muted }} className="text-xs mt-0.5">
+                          {option.values.length} value{option.values.length === 1 ? '' : 's'}
+                        </Text>
+                      </View>
+                      {isSelected ? (
+                        <View className="w-6 h-6 rounded-full items-center justify-center" style={{ backgroundColor: colors.text.primary }}>
+                          <Check size={14} color={colors.bg.primary} strokeWidth={2.5} />
+                        </View>
+                      ) : (
+                        <View className="w-6 h-6 rounded-full" style={{ borderWidth: 1, borderColor: colors.border.light }} />
+                      )}
+                    </Pressable>
+                  );
+                })}
+                {productOptions.length === 0 ? (
+                  <View className="px-4 py-3">
+                    <Text style={{ color: colors.text.muted }} className="text-sm">No product options yet. Create one from Settings {'>'} Inventory {'>'} Product Options.</Text>
+                  </View>
+                ) : null}
+                <Pressable
+                  onPress={() => setShowOrderOptionSelector(false)}
+                  className="px-4 py-3 items-center active:opacity-70"
+                  style={{ backgroundColor: colors.bg.secondary }}
+                >
+                  <Text style={{ color: colors.text.primary }} className="text-sm font-medium">Done</Text>
+                </Pressable>
+              </ScrollView>
+            </View>
+          ) : null}
+
+          {attachedOrderOptions.length > 0 ? (
+            <View className="flex-row flex-wrap mt-3" style={{ gap: 8 }}>
+              {attachedOrderOptions.map((option) => (
+                <View
+                  key={option.id}
+                  className="px-3 py-1.5 rounded-full"
+                  style={{ backgroundColor: 'rgba(34, 197, 94, 0.12)', borderWidth: 1, borderColor: 'rgba(34, 197, 94, 0.24)' }}
+                >
+                  <Text className="text-xs font-semibold" style={{ color: '#16A34A' }}>{option.name}</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+        </>
+      ) : attachedOrderOptions.length > 0 ? (
+        <View className="flex-row flex-wrap" style={{ gap: 8 }}>
+          {attachedOrderOptions.map((option) => (
+            <View
+              key={option.id}
+              className="px-3 py-1.5 rounded-full"
+              style={{ backgroundColor: 'rgba(34, 197, 94, 0.12)', borderWidth: 1, borderColor: 'rgba(34, 197, 94, 0.24)' }}
+            >
+              <Text className="text-xs font-semibold" style={{ color: '#16A34A' }}>{option.name}</Text>
+            </View>
+          ))}
+        </View>
+      ) : (
+        <Text style={{ color: colors.text.muted }} className="text-sm">No options attached.</Text>
+      )}
+    </View>
+  );
 
   const variantsHeaderSection = (
     <View className={cn('mt-4 flex-row items-center justify-between', !isWebDesktop && 'mx-5')}>
@@ -2197,6 +2331,7 @@ export default function ProductDetailScreen() {
               {webMediaCard}
               {descriptionSection}
               {webVariantsCard}
+              {itemChoicesSection}
               {inventoryActivitySection}
               </View>
               <View style={{ width: rightColumnWidth ?? 420 }}>
@@ -2213,6 +2348,7 @@ export default function ProductDetailScreen() {
               {descriptionSection}
               {variantsHeaderSection}
               {variantsListSection}
+              {itemChoicesSection}
               {recentRestocksSection}
               {inventoryActivitySection}
 

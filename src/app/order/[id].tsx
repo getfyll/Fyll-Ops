@@ -297,6 +297,9 @@ export default function OrderDetailScreen() {
   const [editDiscountCode, setEditDiscountCode] = useState('');
   const [editDiscountAmount, setEditDiscountAmount] = useState('');
   const [editItems, setEditItems] = useState<OrderItem[]>([]);
+  const [editOptionPickerItemIndex, setEditOptionPickerItemIndex] = useState<number | null>(null);
+  const [editOptionPickerOptionName, setEditOptionPickerOptionName] = useState<string | null>(null);
+  const [editOptionPickerSearch, setEditOptionPickerSearch] = useState('');
   const [showStateDropdown, setShowStateDropdown] = useState(false);
   const [showPaymentDropdown, setShowPaymentDropdown] = useState(false);
   const [showSourceDropdown, setShowSourceDropdown] = useState(false);
@@ -1011,6 +1014,15 @@ export default function OrderDetailScreen() {
           [optionName]: value,
         },
       };
+    }));
+  };
+
+  const handleRemoveEditItemOption = (itemIndex: number, optionName: string) => {
+    setEditItems((prev) => prev.map((item, index) => {
+      if (index !== itemIndex) return item;
+      const nextSelectedOptions = { ...(item.selectedOptions ?? {}) };
+      delete nextSelectedOptions[optionName];
+      return { ...item, selectedOptions: nextSelectedOptions };
     }));
   };
 
@@ -3671,47 +3683,76 @@ export default function OrderDetailScreen() {
                               </View>
                               {(orderOptions.length > 0 || legacySelectedOptionEntries.length > 0) ? (
                                 <View className="mt-3 pt-3" style={{ borderTopWidth: 1, borderTopColor: colors.border.light }}>
-                                  <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase tracking-wider mb-2">
-                                    Item Choices
-                                  </Text>
-                                  <View style={{ gap: 10 }}>
-                                    {orderOptions.map((option) => {
-                                      const selectedValue = selectedOptions[option.name] ?? option.values[0] ?? '';
-                                      return (
-                                        <View key={option.id || option.name}>
-                                          <Text style={{ color: colors.text.secondary }} className="text-sm font-medium mb-2">{option.name}</Text>
-                                          <View className="flex-row flex-wrap gap-2">
-                                            {option.values.map((value) => {
-                                              const selected = selectedValue === value;
-                                              return (
-                                                <Pressable
-                                                  key={`${option.name}-${value}`}
-                                                  onPress={() => handleEditItemOptionUpdate(index, option.name, value)}
-                                                  className="px-3 py-1.5 rounded-full"
-                                                  style={{
-                                                    backgroundColor: selected ? colors.text.primary : colors.bg.card,
-                                                    borderWidth: 1,
-                                                    borderColor: selected ? colors.text.primary : colors.border.light,
-                                                  }}
-                                                >
-                                                  <Text style={{ color: selected ? colors.bg.primary : colors.text.secondary }} className="text-xs font-semibold">
-                                                    {value}
-                                                  </Text>
-                                                </Pressable>
-                                              );
-                                            })}
-                                          </View>
-                                        </View>
-                                      );
-                                    })}
-                                    {legacySelectedOptionEntries.map(([name, value]) => (
-                                      <View key={name} className="self-start rounded-full px-3 py-1.5" style={{ backgroundColor: colors.bg.card }}>
-                                        <Text style={{ color: colors.text.secondary }} className="text-xs font-semibold">
-                                          {name}: {value}
-                                        </Text>
-                                      </View>
-                                    ))}
+                                  <View className="flex-row items-center justify-between mb-2">
+                                    <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase tracking-wider">
+                                      Product Options
+                                    </Text>
+                                    {orderOptions.length > 0 ? (
+                                      <Pressable
+                                        onPress={() => {
+                                          setEditOptionPickerSearch('');
+                                          setEditOptionPickerItemIndex(index);
+                                          setEditOptionPickerOptionName(orderOptions.length === 1 ? orderOptions[0].name : null);
+                                        }}
+                                        className="px-3 py-1.5 rounded-full flex-row items-center active:opacity-70"
+                                        style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+                                      >
+                                        <Plus size={13} color={colors.text.primary} strokeWidth={2} />
+                                        <Text className="text-xs font-semibold ml-1" style={{ color: colors.text.primary }}>Add Option</Text>
+                                      </Pressable>
+                                    ) : null}
                                   </View>
+
+                                  {(() => {
+                                    const chosenEntries = orderOptions
+                                      .map((option) => [option.name, selectedOptions[option.name]] as const)
+                                      .filter(([, value]) => Boolean(value));
+                                    if (chosenEntries.length === 0 && legacySelectedOptionEntries.length === 0) {
+                                      return <Text style={{ color: colors.text.muted }} className="text-xs">No options selected for this item.</Text>;
+                                    }
+                                    return (
+                                      <View style={{ gap: 8 }}>
+                                        {chosenEntries.map(([name, value]) => (
+                                          <View key={name} className="flex-row items-center justify-between">
+                                            <View className="flex-row items-center" style={{ gap: 8 }}>
+                                              <Text style={{ color: colors.text.secondary }} className="text-sm font-medium">{name}</Text>
+                                              <View
+                                                className="rounded-full px-3 items-center justify-center"
+                                                style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light, height: 28 }}
+                                              >
+                                                <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">{value}</Text>
+                                              </View>
+                                            </View>
+                                            <View className="flex-row items-center" style={{ gap: 4 }}>
+                                              <Pressable
+                                                onPress={() => {
+                                                  setEditOptionPickerSearch('');
+                                                  setEditOptionPickerItemIndex(index);
+                                                  setEditOptionPickerOptionName(name);
+                                                }}
+                                                className="w-7 h-7 rounded-full items-center justify-center active:opacity-70"
+                                              >
+                                                <Edit2 size={12} color={colors.text.primary} strokeWidth={2.4} />
+                                              </Pressable>
+                                              <Pressable
+                                                onPress={() => handleRemoveEditItemOption(index, name)}
+                                                className="w-7 h-7 rounded-full items-center justify-center active:opacity-70"
+                                              >
+                                                <X size={14} color={colors.text.muted} strokeWidth={2.4} />
+                                              </Pressable>
+                                            </View>
+                                          </View>
+                                        ))}
+                                        {legacySelectedOptionEntries.map(([name, value]) => (
+                                          <View key={name} className="self-start rounded-full px-3 py-1.5" style={{ backgroundColor: colors.bg.card }}>
+                                            <Text style={{ color: colors.text.secondary }} className="text-xs font-semibold">
+                                              {name}: {value}
+                                            </Text>
+                                          </View>
+                                        ))}
+                                      </View>
+                                    );
+                                  })()}
                                 </View>
                               ) : null}
                             </View>
@@ -3945,6 +3986,129 @@ export default function OrderDetailScreen() {
               </Pressable>
             </Pressable>
           </KeyboardAvoidingView>
+        </Modal>
+
+        <Modal visible={editOptionPickerItemIndex !== null} animationType="fade" transparent onRequestClose={() => setEditOptionPickerItemIndex(null)}>
+          <View className="flex-1 items-center justify-center" style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)' }}>
+            <Pressable className="absolute inset-0" onPress={() => setEditOptionPickerItemIndex(null)} />
+            <View className="w-[90%] rounded-2xl overflow-hidden" style={{ backgroundColor: colors.bg.card, maxWidth: 420, maxHeight: '70%' }}>
+              {(() => {
+                if (editOptionPickerItemIndex === null) return null;
+                const activeItem = editItems[editOptionPickerItemIndex];
+                const activeOrderOptions = activeItem ? getEditItemDetails(activeItem).orderOptions : [];
+                const activeOption = editOptionPickerOptionName
+                  ? activeOrderOptions.find((option) => option.name === editOptionPickerOptionName)
+                  : null;
+                const query = editOptionPickerSearch.trim().toLowerCase();
+
+                if (!activeOption) {
+                  const filteredOptions = activeOrderOptions.filter((option) => option.name.toLowerCase().includes(query));
+                  return (
+                    <>
+                      <View className="flex-row items-center justify-between px-5 py-4 border-b" style={{ borderBottomColor: colors.border.light }}>
+                        <Text style={{ color: colors.text.primary }} className="font-bold text-lg">Add Option</Text>
+                        <Pressable
+                          onPress={() => setEditOptionPickerItemIndex(null)}
+                          className="w-8 h-8 rounded-full items-center justify-center active:opacity-50"
+                          style={{ backgroundColor: colors.bg.secondary }}
+                        >
+                          <X size={18} color={colors.text.muted} strokeWidth={2} />
+                        </Pressable>
+                      </View>
+                      <View className="px-5 pt-4 pb-2">
+                        <View className="flex-row items-center rounded-xl px-3" style={{ backgroundColor: colors.bg.secondary, height: 44, borderWidth: 1, borderColor: colors.border.light }}>
+                          <Search size={16} color={colors.text.muted} strokeWidth={2} />
+                          <TextInput
+                            value={editOptionPickerSearch}
+                            onChangeText={setEditOptionPickerSearch}
+                            placeholder="Search options"
+                            placeholderTextColor={colors.text.muted}
+                            style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 14 }}
+                            autoFocus
+                          />
+                        </View>
+                      </View>
+                      <ScrollView style={{ maxHeight: 320 }} contentContainerStyle={{ paddingBottom: 12 }} keyboardShouldPersistTaps="handled">
+                        {filteredOptions.length === 0 ? (
+                          <View className="px-5 py-8 items-center">
+                            <Text style={{ color: colors.text.muted }} className="text-sm">No matches</Text>
+                          </View>
+                        ) : (
+                          filteredOptions.map((option, optionIndex) => (
+                            <Pressable
+                              key={option.id || option.name}
+                              onPress={() => { setEditOptionPickerSearch(''); setEditOptionPickerOptionName(option.name); }}
+                              className="flex-row items-center justify-between px-5 py-3 active:opacity-70"
+                              style={{ borderTopWidth: optionIndex === 0 ? 0 : 1, borderTopColor: colors.border.light }}
+                            >
+                              <Text style={{ color: colors.text.primary }} className="text-sm font-medium">{option.name}</Text>
+                              <ChevronRight size={16} color={colors.text.muted} strokeWidth={2} />
+                            </Pressable>
+                          ))
+                        )}
+                      </ScrollView>
+                    </>
+                  );
+                }
+
+                const filteredValues = activeOption.values.filter((value) => value.toLowerCase().includes(query));
+                const currentValue = activeItem?.selectedOptions?.[activeOption.name] ?? '';
+                return (
+                  <>
+                    <View className="flex-row items-center justify-between px-5 py-4 border-b" style={{ borderBottomColor: colors.border.light }}>
+                      <Text style={{ color: colors.text.primary }} className="font-bold text-lg">{activeOption.name}</Text>
+                      <Pressable
+                        onPress={() => setEditOptionPickerItemIndex(null)}
+                        className="w-8 h-8 rounded-full items-center justify-center active:opacity-50"
+                        style={{ backgroundColor: colors.bg.secondary }}
+                      >
+                        <X size={18} color={colors.text.muted} strokeWidth={2} />
+                      </Pressable>
+                    </View>
+                    <View className="px-5 pt-4 pb-2">
+                      <View className="flex-row items-center rounded-xl px-3" style={{ backgroundColor: colors.bg.secondary, height: 44, borderWidth: 1, borderColor: colors.border.light }}>
+                        <Search size={16} color={colors.text.muted} strokeWidth={2} />
+                        <TextInput
+                          value={editOptionPickerSearch}
+                          onChangeText={setEditOptionPickerSearch}
+                          placeholder={`Search ${activeOption.name}`}
+                          placeholderTextColor={colors.text.muted}
+                          style={{ flex: 1, marginLeft: 8, color: colors.text.primary, fontSize: 14 }}
+                          autoFocus
+                        />
+                      </View>
+                    </View>
+                    <ScrollView style={{ maxHeight: 320 }} contentContainerStyle={{ paddingBottom: 12 }} keyboardShouldPersistTaps="handled">
+                      {filteredValues.length === 0 ? (
+                        <View className="px-5 py-8 items-center">
+                          <Text style={{ color: colors.text.muted }} className="text-sm">No matches</Text>
+                        </View>
+                      ) : (
+                        filteredValues.map((value, valueIndex) => {
+                          const selected = currentValue === value;
+                          return (
+                            <Pressable
+                              key={value}
+                              onPress={() => {
+                                handleEditItemOptionUpdate(editOptionPickerItemIndex, activeOption.name, value);
+                                setEditOptionPickerItemIndex(null);
+                                setEditOptionPickerOptionName(null);
+                              }}
+                              className="flex-row items-center justify-between px-5 py-3 active:opacity-70"
+                              style={{ borderTopWidth: valueIndex === 0 ? 0 : 1, borderTopColor: colors.border.light }}
+                            >
+                              <Text style={{ color: colors.text.primary }} className="text-sm font-medium">{value}</Text>
+                              {selected ? <Check size={16} color={colors.text.primary} strokeWidth={2.4} /> : null}
+                            </Pressable>
+                          );
+                        })
+                      )}
+                    </ScrollView>
+                  </>
+                );
+              })()}
+            </View>
+          </View>
         </Modal>
 
         {/* Logistics Date Picker Modal - Custom Calendar Grid */}
