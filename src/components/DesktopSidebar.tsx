@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, ScrollView, Platform } from 'react-native';
-import { useGlobalSearchParams, usePathname, useRouter } from 'expo-router';
+import { useGlobalSearchParams, usePathname, useRouter, useSegments } from 'expo-router';
 import { LayoutDashboard, Package, ShoppingCart, MoreHorizontal, BarChart3, Users, LogOut, Database, FileText, Briefcase, MessageSquare, ChevronsLeft, ChevronsRight, TrendingUp, TrendingDown, ChevronDown, ChevronUp, Receipt, Truck, Calculator, Settings, ListTodo, User, Banknote, Boxes, Megaphone, Printer, RotateCcw, Wallet, Link2, ClipboardCheck, Building2, AlertTriangle } from 'lucide-react-native';
 import { useThemeColors } from '@/lib/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -132,6 +132,8 @@ export function DesktopSidebar() {
   const colors = useThemeColors();
   const router = useRouter();
   const pathname = usePathname();
+  const segments = useSegments();
+  const isInsideTabs = segments[0] === '(tabs)';
   const { section, procurementPage, announcementSection, partnerSection } = useGlobalSearchParams<{
     section?: string | string[];
     procurementPage?: string | string[];
@@ -243,40 +245,61 @@ export function DesktopSidebar() {
     }
   };
 
+  const navigateToRoute = (targetRoute: string) => {
+    const targetIsTab = targetRoute.startsWith('/(tabs)');
+
+    if (targetIsTab) {
+      if (isInsideTabs) {
+        router.navigate(targetRoute as any);
+      } else {
+        // Restore the existing tab navigator rather than mounting a new copy.
+        router.dismissTo(targetRoute as any);
+      }
+      return;
+    }
+
+    if (isInsideTabs) {
+      router.push(targetRoute as any);
+    } else {
+      // Sidebar destinations are peers, so don't keep stacking copies of them.
+      router.replace(targetRoute as any);
+    }
+  };
+
   const navigateToFinanceSection = (targetSection: FinanceSection) => {
     triggerTapHaptic();
-    router.push(`/(tabs)/finance?section=${targetSection}` as any);
+    navigateToRoute(`/(tabs)/finance?section=${targetSection}`);
   };
 
   const navigateToFinanceSubItem = (targetItem: FinanceSubKey) => {
     if (targetItem === 'calculator') {
       triggerTapHaptic();
-      router.push('/calculator' as any);
+      navigateToRoute('/calculator');
       return;
     }
     if (targetItem === 'procurement' && userRole !== 'admin') {
       triggerTapHaptic();
-      router.push('/(tabs)/finance?section=procurement&procurementPage=receive-goods' as any);
+      navigateToRoute('/(tabs)/finance?section=procurement&procurementPage=receive-goods');
       return;
     }
     if (targetItem === 'procurement-orders') {
       triggerTapHaptic();
-      router.push('/(tabs)/finance?section=procurement&procurementPage=orders' as any);
+      navigateToRoute('/(tabs)/finance?section=procurement&procurementPage=orders');
       return;
     }
     if (targetItem === 'procurement-receive-goods') {
       triggerTapHaptic();
-      router.push('/(tabs)/finance?section=procurement&procurementPage=receive-goods' as any);
+      navigateToRoute('/(tabs)/finance?section=procurement&procurementPage=receive-goods');
       return;
     }
     if (targetItem === 'procurement-cost-breakdown') {
       triggerTapHaptic();
-      router.push('/(tabs)/finance?section=procurement&procurementPage=cost-breakdown' as any);
+      navigateToRoute('/(tabs)/finance?section=procurement&procurementPage=cost-breakdown');
       return;
     }
     if (targetItem === 'procurement-margin-tracker') {
       triggerTapHaptic();
-      router.push('/(tabs)/finance?section=procurement&procurementPage=margin-tracker' as any);
+      navigateToRoute('/(tabs)/finance?section=procurement&procurementPage=margin-tracker');
       return;
     }
     navigateToFinanceSection(targetItem);
@@ -314,10 +337,11 @@ export function DesktopSidebar() {
       '/inventory': '/(tabs)/inventory',
       '/inventory/warehouse': '/(tabs)/inventory/warehouse',
       '/inventory/linking': '/(tabs)/inventory/linking',
-      '/inventory-audit': '/inventory-audit',
+      '/inventory-audit': '/(tabs)/inventory-audit',
       '/services': '/(tabs)/services',
       '/orders': '/(tabs)/orders',
       '/payments': '/(tabs)/payments',
+      '/deliveries': '/(tabs)/deliveries',
       '/fyll-print': '/fyll-print',
       '/partners': '/partners?partnerSection=jobs',
       '/partners/all': '/partners?partnerSection=all',
@@ -336,7 +360,7 @@ export function DesktopSidebar() {
     };
 
     const targetRoute = routeMap[href] || href;
-    router.push(targetRoute as any);
+    navigateToRoute(targetRoute);
   };
 
   const handleLogout = async () => {

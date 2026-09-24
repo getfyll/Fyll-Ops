@@ -28,6 +28,7 @@ import {
   FyllPrintQueueItem,
   FyllPrintQueueState,
   getFyllPrintQueue,
+  getCachedFyllPrintQueue,
   INVENTORY_QUEUE_LABEL_SIZE,
   mmToPrintPoints,
   recordFyllPrintHistory,
@@ -126,6 +127,7 @@ export default function FyllPrintScreen() {
   const isDark = colors.bg.primary === '#111111';
   const orders = useFyllStore((s) => s.orders);
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
+  const cachedQueue = getCachedFyllPrintQueue(businessId);
   const {
     businessName,
     businessSlug,
@@ -135,11 +137,11 @@ export default function FyllPrintScreen() {
     returnAddress,
   } = useBusinessSettings();
   const [activeCategory, setActiveCategory] = useState<FyllPrintCategory>('shipping');
-  const [queue, setQueue] = useState<FyllPrintQueueState>({
+  const [queue, setQueue] = useState<FyllPrintQueueState>(() => cachedQueue ?? ({
     inventory: [],
     shipping: [],
     history: { inventory: [], shipping: [] },
-  });
+  }));
   const [selectedQueueItemIds, setSelectedQueueItemIds] = useState<Record<FyllPrintCategory, string[]>>({
     inventory: [],
     shipping: [],
@@ -147,13 +149,19 @@ export default function FyllPrintScreen() {
   const [selectedDispatchOrderIds, setSelectedDispatchOrderIds] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<PrintViewMode>('queue');
   const [showDispatchPicker, setShowDispatchPicker] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => !cachedQueue);
   const [pendingAction, setPendingAction] = useState<PendingPrintAction | null>(null);
   const [isWorking, setIsWorking] = useState(false);
   const [isAddingDispatchOrders, setIsAddingDispatchOrders] = useState(false);
 
   const loadQueue = useCallback(async () => {
-    setIsLoading(true);
+    const cached = getCachedFyllPrintQueue(businessId);
+    if (cached) {
+      setQueue(cached);
+      setIsLoading(false);
+    } else {
+      setIsLoading(true);
+    }
     if (!businessId) {
       setQueue({ inventory: [], shipping: [], history: { inventory: [], shipping: [] } });
       setIsLoading(false);

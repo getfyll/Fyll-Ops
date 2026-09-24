@@ -34,14 +34,13 @@ import {
   Wallet,
   Check,
 } from 'lucide-react-native';
-import useFyllStore, { formatCurrency, getSocialCheckoutEffectiveStatus, Order, Product, type PartnerJob, type SocialCheckoutDraft } from '@/lib/state/fyll-store';
+import useFyllStore, { formatCurrency, getSocialCheckoutEffectiveStatus, Order, Product, type PartnerJob } from '@/lib/state/fyll-store';
 import { useThemeColors } from '@/lib/theme';
 import * as Haptics from 'expo-haptics';
 import { getPlatformBreakdown } from '@/lib/analytics-utils';
 import useAuthStore from '@/lib/state/auth-store';
 import { collaborationData, type CollaborationNotification } from '@/lib/supabase/collaboration';
 import { supabase } from '@/lib/supabase';
-import { supabaseData } from '@/lib/supabase/data';
 import { isTeamThreadEntityId, getTeamThreadDisplayNameFromEntityId } from '@/lib/team-threads';
 import { FulfillmentPipelineCard, type FulfillmentStageKey } from '@/components/FulfillmentPipelineCard';
 import { getFulfillmentPipelineBucket } from '@/lib/fulfillment';
@@ -61,6 +60,7 @@ import { triggerTaskEventReminders } from '@/hooks/useWebPushNotifications';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
 import { isBusinessFeatureEnabled } from '@/lib/feature-access';
 import { SearchClearButton } from '@/components/SearchClearButton';
+import { fetchSocialCheckoutDrafts, getSocialCheckoutQueryKey } from '@/lib/social-checkout-query';
 
 const ORDER_NOTIFICATIONS_SEEN_KEY_PREFIX = 'dashboard-order-notifications-seen';
 const ONBOARDING_DISMISSED_KEY_PREFIX = 'dashboard-onboarding-dismissed';
@@ -1365,7 +1365,6 @@ export default function DashboardScreen() {
   const paymentMethods = useFyllStore((s) => s.paymentMethods);
   const expenseRequests = useFyllStore((s) => s.expenseRequests);
   const customers = useFyllStore((s) => s.customers);
-  const isBackgroundSyncing = useFyllStore((s) => s.isBackgroundSyncing);
   const hasAuditForMonth = useFyllStore((s) => s.hasAuditForMonth);
   const { businessName, businessPhone, returnAddress, storefrontEnabled, featureAccess, isLoading: isLoadingBusinessSettings } = useBusinessSettings();
   const canUseStorefront = isBusinessFeatureEnabled(featureAccess, 'storefront');
@@ -1390,7 +1389,6 @@ export default function DashboardScreen() {
   const [pendingPrintQueueCount, setPendingPrintQueueCount] = useState(0);
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
   const [onboardingDismissedLoaded, setOnboardingDismissedLoaded] = useState(false);
-  const [showInitialDashboardSkeleton, setShowInitialDashboardSkeleton] = useState(true);
   const shouldShowHomeTaskCard = canUseTasks && (!isWebDesktop || userRole === 'staff');
 
   const refreshPrintQueueCount = useCallback(() => {
@@ -1418,12 +1416,6 @@ export default function DashboardScreen() {
   }, [businessId, canUseFyllPrint, isLoadingBusinessSettings]);
 
   useFocusEffect(refreshPrintQueueCount);
-
-  useEffect(() => {
-    if (!showInitialDashboardSkeleton) return;
-    const timer = setTimeout(() => setShowInitialDashboardSkeleton(false), 900);
-    return () => clearTimeout(timer);
-  }, [showInitialDashboardSkeleton]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -1507,7 +1499,7 @@ export default function DashboardScreen() {
   }, [businessId, currentUserId, queryClient]);
 
   const mobileHomeTasksQuery = useQuery({
-    queryKey: ['dashboard-mobile-tasks', businessId, userRole, currentUserId],
+    queryKey: ['tasks', businessId],
     enabled: Boolean(businessId),
     queryFn: () => taskData.listTasks(businessId!),
     staleTime: 30_000,
@@ -1515,12 +1507,9 @@ export default function DashboardScreen() {
   });
 
   const socialCheckoutDraftsQuery = useQuery({
-    queryKey: ['dashboard-social-checkouts', businessId],
+    queryKey: getSocialCheckoutQueryKey(businessId),
     enabled: Boolean(businessId),
-    queryFn: async () => {
-      const rows = await supabaseData.fetchCollection<SocialCheckoutDraft>('social_checkouts', businessId!);
-      return rows.map((row) => row.data);
-    },
+    queryFn: () => fetchSocialCheckoutDrafts(businessId!),
     staleTime: 30_000,
     refetchInterval: 15000,
     refetchOnWindowFocus: true,
@@ -1880,10 +1869,10 @@ export default function DashboardScreen() {
     || expenseRequests.length > 0
     || (socialCheckoutDraftsQuery.data?.length ?? 0) > 0
     || (mobileHomeTasksQuery.data?.length ?? 0) > 0;
-  const dashboardDataPending = isBackgroundSyncing
-    || mobileHomeTasksQuery.isPending
-    || socialCheckoutDraftsQuery.isPending;
-  const shouldShowDashboardSkeleton = showInitialDashboardSkeleton || dashboardDataPending;
+  // Keep cached figures visible while Supabase quietly refreshes them.
+  // Skeletons are only for the genuine first load when there is nothing to render.
+  const dashboardDataPending = mobileHomeTasksQuery.isPending || socialCheckoutDraftsQuery.isPending;
+  const shouldShowDashboardSkeleton = !hasDashboardBodyData && dashboardDataPending;
 
   const handleDismissOnboarding = () => {
     setOnboardingDismissed(true);

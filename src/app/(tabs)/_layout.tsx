@@ -17,6 +17,7 @@ import { canShowFinanceNavigation } from '@/lib/finance-access';
 import { isBusinessFeatureEnabled } from '@/lib/feature-access';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
 import { getTabBarStyle } from '@/lib/tab-bar-style';
+import { supabaseData } from '@/lib/supabase/data';
 
 const ORDERS_TAB_BADGE_SEEN_KEY_PREFIX = 'orders-tab-badge-seen';
 const getOrdersTabBadgeSeenKey = (businessId: string) =>
@@ -84,6 +85,35 @@ export default function TabLayout() {
     enabled: Boolean(businessId) && !isOfflineMode,
     queryFn: () => collaborationData.getUnreadNotificationCountsByEntity(businessId!, 'task'),
     refetchInterval: 15000,
+  });
+  useQuery({
+    queryKey: ['collaboration-order-threads', businessId],
+    enabled: Boolean(businessId) && canViewThreads && !isOfflineMode,
+    queryFn: () => collaborationData.listThreadsByEntityType(businessId!, 'order'),
+    staleTime: 30_000,
+    refetchInterval: 10_000,
+    refetchOnWindowFocus: false,
+  });
+  useQuery({
+    queryKey: ['collaboration-team-threads', businessId],
+    enabled: Boolean(businessId) && canViewThreads && !isOfflineMode,
+    queryFn: () => collaborationData.listThreadsByEntityType(businessId!, 'case'),
+    staleTime: 30_000,
+    refetchInterval: 10_000,
+    refetchOnWindowFocus: false,
+  });
+  useQuery({
+    queryKey: ['shared-payments', businessId],
+    enabled: Boolean(businessId) && canViewPayments && !isOfflineMode,
+    queryFn: async () => {
+      const rows = await supabaseData.fetchCollection<{ source?: string }>('payments', businessId!);
+      return rows
+        .map((row) => row.data)
+        .filter((payment) => ['storefront', 'fyll_checkout'].includes(payment.source?.trim().toLowerCase() ?? ''));
+    },
+    staleTime: 30_000,
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: false,
   });
   const totalUnreadThreads = useMemo(() => {
     const orderCounts = threadCountsQuery.data ?? {};

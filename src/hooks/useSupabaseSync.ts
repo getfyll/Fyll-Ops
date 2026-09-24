@@ -88,6 +88,8 @@ const WAVE1_ORDERS_LIMIT = 50;
 const WAVE1_PRODUCTS_LIMIT = 50;
 const WAVE1_CUSTOMERS_LIMIT = 50;
 const WAVE1_CASES_LIMIT = 15;
+const WAVE1_PARTNERS_LIMIT = 50;
+const WAVE1_PARTNER_JOBS_LIMIT = 50;
 const STARTUP_UNBLOCK_TIMEOUT_MS = 3000;
 const STARTUP_QUERY_TIMEOUT_MS = 2500;
 const STARTUP_PRODUCTS_QUERY_TIMEOUT_MS = 8000;
@@ -111,8 +113,6 @@ const DATA_TABLE_TO_STORE_KEY = {
   [TABLES.partnerJobIssues]: 'partnerJobIssues',
   [TABLES.deletedItems]: 'recycleBin',
 } as const;
-
-const IS_WEB = Platform.OS === 'web';
 
 type DataStoreKey = (typeof DATA_TABLE_TO_STORE_KEY)[keyof typeof DATA_TABLE_TO_STORE_KEY];
 
@@ -1300,7 +1300,7 @@ export function useSupabaseSync() {
         const localPartnerJobs = localState.partnerJobs;
         const localPartnerJobIssues = localState.partnerJobIssues;
         const localRecycleBin = localState.recycleBin;
-        // ── Wave 1: Minimal startup data (recent products/orders/customers/cases only) ──
+        // ── Wave 1: Minimal startup data used by the main dashboards ──
         // Keep first paint fast; load settings and full datasets in Wave 2.
         const [
           productRowsResult,
@@ -1308,11 +1308,13 @@ export function useSupabaseSync() {
           customerRowsResult,
           caseRowsResult,
           returnRowsResult,
+          partnerRowsResult,
+          partnerJobRowsResult,
         ] = await Promise.allSettled([
           withTimeout(
             supabaseData.fetchCollection<Product>(TABLES.products, businessId, {
               orderBy: 'updated_at',
-              limit: IS_WEB ? undefined : WAVE1_PRODUCTS_LIMIT,
+              limit: WAVE1_PRODUCTS_LIMIT,
             }),
             STARTUP_PRODUCTS_QUERY_TIMEOUT_MS,
             'Startup products query'
@@ -1320,7 +1322,7 @@ export function useSupabaseSync() {
           withTimeout(
             supabaseData.fetchCollection<Order>(TABLES.orders, businessId, {
               orderBy: 'updated_at',
-              limit: IS_WEB ? undefined : WAVE1_ORDERS_LIMIT,
+              limit: WAVE1_ORDERS_LIMIT,
             }),
             STARTUP_QUERY_TIMEOUT_MS,
             'Startup orders query'
@@ -1328,7 +1330,7 @@ export function useSupabaseSync() {
           withTimeout(
             supabaseData.fetchCollection<Customer>(TABLES.customers, businessId, {
               orderBy: 'updated_at',
-              limit: IS_WEB ? undefined : WAVE1_CUSTOMERS_LIMIT,
+              limit: WAVE1_CUSTOMERS_LIMIT,
             }),
             STARTUP_QUERY_TIMEOUT_MS,
             'Startup customers query'
@@ -1336,7 +1338,7 @@ export function useSupabaseSync() {
           withTimeout(
             supabaseData.fetchCollection<Case>(TABLES.cases, businessId, {
               orderBy: 'updated_at',
-              limit: IS_WEB ? undefined : WAVE1_CASES_LIMIT,
+              limit: WAVE1_CASES_LIMIT,
             }),
             STARTUP_QUERY_TIMEOUT_MS,
             'Startup cases query'
@@ -1344,10 +1346,26 @@ export function useSupabaseSync() {
           withTimeout(
             supabaseData.fetchCollection<ReturnRequest>(TABLES.returns, businessId, {
               orderBy: 'updated_at',
-              limit: IS_WEB ? undefined : WAVE1_CASES_LIMIT,
+              limit: WAVE1_CASES_LIMIT,
             }),
             STARTUP_QUERY_TIMEOUT_MS,
             'Startup returns query'
+          ),
+          withTimeout(
+            supabaseData.fetchCollection<Partner>(TABLES.partners, businessId, {
+              orderBy: 'updated_at',
+              limit: WAVE1_PARTNERS_LIMIT,
+            }),
+            STARTUP_QUERY_TIMEOUT_MS,
+            'Startup partners query'
+          ),
+          withTimeout(
+            supabaseData.fetchCollection<PartnerJob>(TABLES.partnerJobs, businessId, {
+              orderBy: 'updated_at',
+              limit: WAVE1_PARTNER_JOBS_LIMIT,
+            }),
+            STARTUP_QUERY_TIMEOUT_MS,
+            'Startup partner jobs query'
           ),
         ]);
 
@@ -1356,6 +1374,8 @@ export function useSupabaseSync() {
         const customerPreviewRows = customerRowsResult.status === 'fulfilled' ? customerRowsResult.value : [];
         const casePreviewRows = caseRowsResult.status === 'fulfilled' ? caseRowsResult.value : [];
         const returnPreviewRows = returnRowsResult.status === 'fulfilled' ? returnRowsResult.value : [];
+        const partnerPreviewRows = partnerRowsResult.status === 'fulfilled' ? partnerRowsResult.value : [];
+        const partnerJobPreviewRows = partnerJobRowsResult.status === 'fulfilled' ? partnerJobRowsResult.value : [];
 
         if (productRowsResult.status === 'rejected') {
           console.warn('Wave 1 products preview failed:', productRowsResult.reason);
@@ -1372,12 +1392,20 @@ export function useSupabaseSync() {
         if (returnRowsResult.status === 'rejected') {
           console.warn('Wave 1 returns preview failed:', returnRowsResult.reason);
         }
+        if (partnerRowsResult.status === 'rejected') {
+          console.warn('Wave 1 partners preview failed:', partnerRowsResult.reason);
+        }
+        if (partnerJobRowsResult.status === 'rejected') {
+          console.warn('Wave 1 partner jobs preview failed:', partnerJobRowsResult.reason);
+        }
 
         const remoteProducts = productRows.map((row) => row.data);
         const remoteOrdersPreview = orderRows.map((row) => row.data);
         const remoteCustomersPreview = customerPreviewRows.map((row) => row.data);
         const remoteCasesPreview = casePreviewRows.map((row) => row.data);
         const remoteReturnsPreview = returnPreviewRows.map((row) => row.data);
+        const remotePartnersPreview = partnerPreviewRows.map((row) => row.data);
+        const remotePartnerJobsPreview = partnerJobPreviewRows.map((row) => row.data);
 
         // Apply Wave 1 data immediately so the app can show recent items without flicker.
         if (isCurrentWorkspace()) {
@@ -1386,6 +1414,8 @@ export function useSupabaseSync() {
           const wave1Customers = remoteCustomersPreview.length > 0 ? mergeById(localCustomers, remoteCustomersPreview) : localCustomers;
           const wave1Cases = remoteCasesPreview.length > 0 ? mergeById(localCases, remoteCasesPreview) : localCases;
           const wave1Returns = remoteReturnsPreview.length > 0 ? mergeById(localReturns, remoteReturnsPreview) : localReturns;
+          const wave1Partners = remotePartnersPreview.length > 0 ? mergeById(localPartners, remotePartnersPreview) : localPartners;
+          const wave1PartnerJobs = remotePartnerJobsPreview.length > 0 ? mergeById(localPartnerJobs, remotePartnerJobsPreview) : localPartnerJobs;
           const shouldRestoreProductsFromLocal = (
             productRowsResult.status === 'fulfilled'
             && remoteProducts.length === 0
@@ -1409,8 +1439,8 @@ export function useSupabaseSync() {
             cases: wave1Cases,
             returns: wave1Returns,
             auditLogs: localAuditLogs,
-            partners: localPartners,
-            partnerJobs: localPartnerJobs,
+            partners: wave1Partners,
+            partnerJobs: wave1PartnerJobs,
             partnerJobIssues: localPartnerJobIssues,
             recycleBin: localRecycleBin,
           });

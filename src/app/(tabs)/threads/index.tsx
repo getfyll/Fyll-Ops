@@ -10,6 +10,7 @@ import useFyllStore from '@/lib/state/fyll-store';
 import type { Order } from '@/lib/state/fyll-store';
 import useAuthStore from '@/lib/state/auth-store';
 import { useBreakpoint } from '@/lib/useBreakpoint';
+import { useTabBarHeight } from '@/lib/useTabBarHeight';
 import { useThemeColors } from '@/lib/theme';
 import { DESKTOP_PAGE_HEADER_MIN_HEIGHT, getStandardPageHeadingStyle } from '@/lib/page-heading';
 import { collaborationData, type CollaborationThreadSummary } from '@/lib/supabase/collaboration';
@@ -207,6 +208,7 @@ export default function ThreadsScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const { isMobile, isDesktop } = useBreakpoint();
+  const tabBarHeight = useTabBarHeight();
   const pageHeadingStyle = getStandardPageHeadingStyle(isMobile);
   const desktopHeaderMinHeight = DESKTOP_PAGE_HEADER_MIN_HEIGHT;
   const isDark = colors.bg.primary === '#111111';
@@ -1922,7 +1924,11 @@ export default function ThreadsScreen() {
         renderItem={renderThreadRow}
         ListEmptyComponent={emptyState}
         style={{ flex: 1 }}
-        contentContainerStyle={{ flexGrow: 1, paddingBottom: 8 }}
+        contentContainerStyle={{
+          flexGrow: 1,
+          paddingBottom: isMobile ? tabBarHeight + 24 : 8,
+        }}
+        scrollIndicatorInsets={{ bottom: isMobile ? tabBarHeight : 0 }}
         keyboardShouldPersistTaps="handled"
         onScroll={(event) => {
           lastThreadListOffset = event.nativeEvent.contentOffset.y;

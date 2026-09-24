@@ -358,7 +358,7 @@ export default function InventoryScreen() {
   const isOwner = userRole === 'owner';
 
   // Show skeleton loader on first load when authenticated but no products yet
-  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(() => products.length > 0 || Boolean(lastDataSyncAt));
   const isInitialLoading = isAuthenticated && products.length === 0 && !hasLoadedOnce;
   const procurementVariantImageRepairSignatureRef = useRef('');
 
@@ -394,10 +394,10 @@ export default function InventoryScreen() {
   }, [businessId, procurements, products, updateProduct]);
 
   useEffect(() => {
-    if (products.length > 0) {
+    if (products.length > 0 || lastDataSyncAt) {
       setHasLoadedOnce(true);
     }
-  }, [products.length]);
+  }, [lastDataSyncAt, products.length]);
 
   // Fallback: stop showing skeletons after 4s even if no products loaded (new account)
   useEffect(() => {

@@ -15,6 +15,7 @@ import { DESKTOP_PAGE_HEADER_MIN_HEIGHT, getStandardPageHeadingStyle } from '@/l
 import { PaymentListSkeleton } from '@/components/SkeletonLoader';
 import * as Haptics from 'expo-haptics';
 import { SearchClearButton } from '@/components/SearchClearButton';
+import { fetchSocialCheckoutDrafts, getSocialCheckoutQueryKey } from '@/lib/social-checkout-query';
 
 // Styled to match the reference dashboard (clean table on desktop, minimal
 // pill chips, text+dot status instead of filled badges) rather than this
@@ -794,6 +795,7 @@ export default function PaymentsScreen() {
   const currentUserRole = useAuthStore((s) => s.currentUser?.role ?? 'staff');
   const currentUserName = useAuthStore((s) => s.currentUser?.name ?? 'Staff');
   const orderStatuses = useFyllStore((s) => s.orderStatuses);
+  const cachedOrders = useFyllStore((s) => s.orders);
   const queryClient = useQueryClient();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -901,23 +903,8 @@ export default function PaymentsScreen() {
   }, [businessId, hasSeededFyllCheckoutDemo, queryClient, router, seedFyllCheckout]);
 
   const draftsQuery = useQuery({
-    queryKey: ['social-checkouts', businessId],
-    queryFn: async () => {
-      const rows = await supabaseData.fetchCollection<SocialCheckoutDraft>('social_checkouts', businessId!);
-      const drafts = rows.map((row) => row.data);
-      const expiredDrafts = drafts
-        .filter((draft) => draft.status === 'awaiting_payment' && getSocialCheckoutEffectiveStatus(draft) === 'expired')
-        .map((draft) => ({ ...draft, status: 'expired' as SocialCheckoutStatus, updatedAt: new Date().toISOString() }));
-
-      if (expiredDrafts.length > 0) {
-        await supabaseData.upsertCollection('social_checkouts', businessId!, expiredDrafts);
-      }
-
-      return drafts.map((draft) => {
-        const expired = expiredDrafts.find((candidate) => candidate.id === draft.id);
-        return expired ?? draft;
-      });
-    },
+    queryKey: getSocialCheckoutQueryKey(businessId),
+    queryFn: () => fetchSocialCheckoutDrafts(businessId!),
     enabled: Boolean(businessId),
     refetchInterval: 15000,
     refetchOnWindowFocus: false,
@@ -930,6 +917,8 @@ export default function PaymentsScreen() {
       return rows.map((row) => row.data);
     },
     enabled: Boolean(businessId),
+    initialData: cachedOrders.length > 0 ? cachedOrders : undefined,
+    initialDataUpdatedAt: 0,
     refetchInterval: 30000,
     refetchOnWindowFocus: false,
   });

@@ -1607,7 +1607,6 @@ export default function FinanceScreen() {
   const updateRevenueRule = useFyllStore((s) => s.updateRevenueRule);
   const deleteRevenueRule = useFyllStore((s) => s.deleteRevenueRule);
   const paymentMethods = useFyllStore((s) => s.paymentMethods);
-  const isBackgroundSyncing = useFyllStore((s) => s.isBackgroundSyncing);
   const lastDataSyncAt = useFyllStore((s) => s.lastDataSyncAt);
   const authRole = useAuthStore((s) => s.currentUser?.role ?? 'staff');
   const currentUserId = useAuthStore((s) => s.currentUser?.id ?? '');
@@ -1847,7 +1846,8 @@ export default function FinanceScreen() {
   const canCreateExpenseRequest = canCreateExpenseRequestForRole(authRole);
   const canCreateRefundRequest = canCreateRefundRequestForRole(authRole);
   const canCreateProcurementRequest = canCreateProcurementRequestForRole(authRole);
-  const shouldShowFinanceSkeleton = !isOfflineMode && (isBackgroundSyncing || (!lastDataSyncAt && financeStartupSkeleton));
+  // Existing finance figures stay visible during background reconciliation.
+  const shouldShowFinanceSkeleton = !isOfflineMode && !lastDataSyncAt && financeStartupSkeleton;
   const canAccessFinance = canAccessFinanceScreen(authRole);
   const isWebDesktop = Platform.OS === 'web' && isDesktop;
   const isCompactLayout = !isWebDesktop;

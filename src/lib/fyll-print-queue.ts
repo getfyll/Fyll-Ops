@@ -103,6 +103,12 @@ const EMPTY_PRINT_QUEUE: FyllPrintQueueState = {
   },
 };
 
+const printQueueCache = new Map<string, FyllPrintQueueState>();
+
+export const getCachedFyllPrintQueue = (businessId?: string | null): FyllPrintQueueState | undefined => (
+  printQueueCache.get(getFyllPrintQueueStorageKey(businessId))
+);
+
 const escapeHtml = (value: string): string => value
   .replace(/&/g, '&amp;')
   .replace(/</g, '&lt;')
@@ -131,18 +137,30 @@ const normalizeQueue = (value: unknown): FyllPrintQueueState => {
 };
 
 export const getFyllPrintQueue = async (businessId?: string | null): Promise<FyllPrintQueueState> => {
-  const raw = await storage.getItem(getFyllPrintQueueStorageKey(businessId));
-  if (!raw) return EMPTY_PRINT_QUEUE;
+  const storageKey = getFyllPrintQueueStorageKey(businessId);
+  const cached = printQueueCache.get(storageKey);
+  if (cached) return cached;
+
+  const raw = await storage.getItem(storageKey);
+  if (!raw) {
+    printQueueCache.set(storageKey, EMPTY_PRINT_QUEUE);
+    return EMPTY_PRINT_QUEUE;
+  }
 
   try {
-    return normalizeQueue(JSON.parse(raw));
+    const queue = normalizeQueue(JSON.parse(raw));
+    printQueueCache.set(storageKey, queue);
+    return queue;
   } catch {
+    printQueueCache.set(storageKey, EMPTY_PRINT_QUEUE);
     return EMPTY_PRINT_QUEUE;
   }
 };
 
 export const saveFyllPrintQueue = async (queue: FyllPrintQueueState, businessId?: string | null) => {
-  await storage.setItem(getFyllPrintQueueStorageKey(businessId), JSON.stringify(queue));
+  const storageKey = getFyllPrintQueueStorageKey(businessId);
+  await storage.setItem(storageKey, JSON.stringify(queue));
+  printQueueCache.set(storageKey, queue);
 };
 
 export const addFyllPrintQueueItem = async (item: FyllPrintQueueItem, businessId?: string | null): Promise<FyllPrintQueueState> => {

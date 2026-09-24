@@ -192,7 +192,7 @@ function RootMobileBottomNav({ visible }: { visible: boolean }) {
             return (
               <Pressable
                 key={item.key}
-                onPress={() => router.push(item.route as never)}
+                onPress={() => router.dismissTo(item.route as never)}
                 style={{
                   flex: 1,
                   height: 62,

@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Modal, Platform, Pressable, ScrollView, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,6 +13,7 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  ChevronUp,
   Copy,
   FileText,
   Glasses,
@@ -240,6 +241,7 @@ const isJobInPeriod = (job: PartnerJob, period: JobPeriod) => {
 
 export default function PartnersScreen() {
   const colors = useThemeColors();
+  const { height: viewportHeight } = useWindowDimensions();
   const router = useRouter();
   const { businessName, companyName } = useBusinessSettings();
   const { partnerSection } = useLocalSearchParams<{ partnerSection?: string | string[] }>();
@@ -286,6 +288,8 @@ export default function PartnersScreen() {
   const [billNoteDraft, setBillNoteDraft] = useState('');
   const [actionMenuJobId, setActionMenuJobId] = useState<string | null>(null);
   const [statusDropdownJobId, setStatusDropdownJobId] = useState<string | null>(null);
+  const [statusDropdownPlacement, setStatusDropdownPlacement] = useState<'above' | 'below'>('below');
+  const statusTriggerRefs = useRef<Record<string, View | null>>({});
   const [showMobilePartnerMenu, setShowMobilePartnerMenu] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -1035,10 +1039,33 @@ export default function PartnersScreen() {
     setJobPendingDelete(null);
   };
 
-  const toggleJobStatusDropdown = (job: PartnerJob) => {
+  const toggleJobStatusDropdown = (job: PartnerJob, optionCount: number) => {
     if (job.status === 'awaiting_dispatch') return;
     setActionMenuJobId(null);
-    setStatusDropdownJobId((current) => (current === job.id ? null : job.id));
+    if (statusDropdownJobId === job.id) {
+      setStatusDropdownJobId(null);
+      return;
+    }
+
+    const openDropdown = (placement: 'above' | 'below') => {
+      setStatusDropdownPlacement(placement);
+      setStatusDropdownJobId(job.id);
+    };
+    const trigger = statusTriggerRefs.current[job.id];
+    const estimatedMenuHeight = Math.max(1, optionCount) * 45 + 2;
+
+    if (!trigger?.measureInWindow) {
+      openDropdown('below');
+      return;
+    }
+
+    trigger.measureInWindow((_x, y, _width, height) => {
+      const viewportMargin = 16;
+      const spaceAbove = y - viewportMargin;
+      const spaceBelow = viewportHeight - (y + height) - viewportMargin;
+      const shouldOpenAbove = spaceBelow < estimatedMenuHeight && spaceAbove > spaceBelow;
+      openDropdown(shouldOpenAbove ? 'above' : 'below');
+    });
   };
 
   const closeJobMenus = () => {
@@ -1399,13 +1426,39 @@ export default function PartnersScreen() {
                     </View>
 
                     <View style={{ flex: 1.25, minWidth: 165, paddingRight: 10, position: 'relative', zIndex: statusDropdownJobId === job.id ? 140 : 1 }}>
-                      <Pressable onPress={(e) => { e.stopPropagation(); toggleJobStatusDropdown(job); }} style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, height: 24, borderRadius: 999, backgroundColor: meta.bg }}>
+                      <Pressable
+                        ref={(node) => { statusTriggerRefs.current[job.id] = node; }}
+                        onPress={(e) => { e.stopPropagation(); toggleJobStatusDropdown(job, statusMenuOptions.length); }}
+                        style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, height: 24, borderRadius: 999, backgroundColor: meta.bg }}
+                      >
                         <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: meta.text }} />
                         <Text style={{ color: meta.text, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>{meta.label}</Text>
-                        {statusMenuOptions.length > 0 ? <ChevronDown size={13} color={meta.text} strokeWidth={2.2} /> : null}
+                        {statusMenuOptions.length > 0 ? (
+                          statusDropdownJobId === job.id && statusDropdownPlacement === 'above'
+                            ? <ChevronUp size={13} color={meta.text} strokeWidth={2.2} />
+                            : <ChevronDown size={13} color={meta.text} strokeWidth={2.2} />
+                        ) : null}
                       </Pressable>
                       {statusDropdownJobId === job.id ? (
-                        <View style={{ position: 'absolute', top: 30, left: 0, minWidth: 180, borderRadius: 10, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card, overflow: 'hidden', zIndex: 220, shadowColor: '#000000', shadowOpacity: 0.12, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 12 }}>
+                        <View
+                          style={{
+                            position: 'absolute',
+                            ...(statusDropdownPlacement === 'above' ? { bottom: 30 } : { top: 30 }),
+                            left: 0,
+                            minWidth: 180,
+                            borderRadius: 10,
+                            borderWidth: 1,
+                            borderColor: colors.border.light,
+                            backgroundColor: colors.bg.card,
+                            overflow: 'hidden',
+                            zIndex: 220,
+                            shadowColor: '#000000',
+                            shadowOpacity: 0.12,
+                            shadowRadius: 12,
+                            shadowOffset: { width: 0, height: statusDropdownPlacement === 'above' ? -6 : 6 },
+                            elevation: 12,
+                          }}
+                        >
                           {statusMenuOptions.map((status) => {
                             const optionMeta = getPartnerStatusMeta(status, statusBusinessName, partner);
                             return (

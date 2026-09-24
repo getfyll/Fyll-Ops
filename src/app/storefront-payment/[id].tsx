@@ -193,6 +193,47 @@ const isSharedIntegrationPayment = (payment: SharedPaymentRecord) => (
   ['storefront', 'fyll_checkout'].includes(payment.source.trim().toLowerCase())
 );
 
+type PaymentDetailData = {
+  payment: SharedPaymentRecord;
+  linkedOrder: Order | null;
+  bankAccounts: BankAccount[];
+  orders: Order[];
+};
+
+const findLinkedPaymentOrder = (payment: SharedPaymentRecord, orders: Order[]) => {
+  const explicitLinkedOrderId = payment.linkedOrderId?.trim();
+  if (explicitLinkedOrderId) {
+    return orders.find((order) => order.id === explicitLinkedOrderId) ?? null;
+  }
+
+  const unlinkedOrderId = payment.unlinkedOrderId?.trim();
+  return orders.find((order) => {
+    if (unlinkedOrderId && order.id === unlinkedOrderId) return false;
+    const record = order as Order & { websiteOrderReference?: string; fyllCheckout?: { reference?: string } };
+    return order.id === payment.sourceOrderId
+      || order.orderNumber === payment.sourceOrderId
+      || record.websiteOrderReference === payment.sourceOrderId
+      || record.fyllCheckout?.reference === payment.sourceOrderId;
+  }) ?? null;
+};
+
+const buildPaymentDetailData = (
+  paymentId: string | undefined,
+  payments: SharedPaymentRecord[],
+  orders: Order[],
+  bankAccounts: BankAccount[]
+): PaymentDetailData | undefined => {
+  const payment = payments.find((candidate) => candidate.id === paymentId);
+  if (!payment) return undefined;
+
+  return {
+    payment,
+    linkedOrder: findLinkedPaymentOrder(payment, orders),
+    bankAccounts,
+    orders,
+  };
+};
+
 const getStorefrontPaymentStatus = (payment: SharedPaymentRecord): StorefrontPaymentStatus => {
   const status = payment.status.trim().toLowerCase();
   if (status === 'proof_submitted' || status === 'submitted') return 'proof_submitted';
@@ -822,6 +863,7 @@ export default function StorefrontPaymentDetailScreen() {
   const currentUserName = useAuthStore((s) => s.currentUser?.name ?? 'Staff');
   const orderStatuses = useFyllStore((s) => s.orderStatuses);
   const products = useFyllStore((s) => s.products);
+  const cachedOrders = useFyllStore((s) => s.orders);
   const [showProofLightbox, setShowProofLightbox] = useState(false);
   const [showLinkOrderModal, setShowLinkOrderModal] = useState(false);
   const [orderSearchQuery, setOrderSearchQuery] = useState('');
@@ -840,26 +882,22 @@ export default function StorefrontPaymentDetailScreen() {
       const payments = paymentRows.map((row) => row.data).filter(isSharedIntegrationPayment);
       const orders = orderRows.map((row) => row.data);
       const bankAccounts = accountRows.map((row) => row.data);
-      const payment = payments.find((candidate) => candidate.id === paymentId) ?? null;
-      const linkedOrder = payment ? (() => {
-        const explicitLinkedOrderId = payment.linkedOrderId?.trim();
-        if (explicitLinkedOrderId) {
-          return orders.find((order) => order.id === explicitLinkedOrderId) ?? null;
-        }
-
-        const unlinkedOrderId = payment.unlinkedOrderId?.trim();
-        return orders.find((order) => {
-          if (unlinkedOrderId && order.id === unlinkedOrderId) return false;
-          const record = order as Order & { websiteOrderReference?: string; fyllCheckout?: { reference?: string } };
-        return order.id === payment.sourceOrderId
-          || order.orderNumber === payment.sourceOrderId
-          || record.websiteOrderReference === payment.sourceOrderId
-          || record.fyllCheckout?.reference === payment.sourceOrderId;
-        }) ?? null;
-      })() : null;
-      return { payment, linkedOrder, bankAccounts, orders };
+      queryClient.setQueryData(['shared-payments', businessId], payments);
+      queryClient.setQueryData(['orders-for-payments', businessId], orders);
+      queryClient.setQueryData(['payment-bank-accounts', businessId], bankAccounts);
+      return buildPaymentDetailData(paymentId, payments, orders, bankAccounts) ?? null;
     },
     enabled: Boolean(businessId && paymentId),
+    initialData: () => {
+      if (!businessId || !paymentId) return undefined;
+      const payments = queryClient.getQueryData<SharedPaymentRecord[]>(['shared-payments', businessId]) ?? [];
+      const orders = queryClient.getQueryData<Order[]>(['orders-for-payments', businessId]) ?? cachedOrders;
+      const bankAccounts = queryClient.getQueryData<BankAccount[]>(['payment-bank-accounts', businessId]) ?? [];
+      return buildPaymentDetailData(paymentId, payments, orders, bankAccounts);
+    },
+    initialDataUpdatedAt: 0,
+    staleTime: 30_000,
+    gcTime: 60 * 60 * 1000,
     refetchOnWindowFocus: true,
   });
 
@@ -1494,7 +1532,7 @@ export default function StorefrontPaymentDetailScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View className="flex-row items-center gap-2.5 mb-1.5">
-          <Pressable onPress={() => router.push('/(tabs)/payments' as never)} className="w-8 h-8 items-center justify-center active:opacity-60" style={noWebOutline}>
+          <Pressable onPress={() => router.dismissTo('/(tabs)/payments' as never)} className="w-8 h-8 items-center justify-center active:opacity-60" style={noWebOutline}>
             <ArrowLeft size={18} color={colors.text.primary} strokeWidth={2} />
           </Pressable>
           <Text style={{ color: colors.text.primary, fontSize: 18, fontWeight: '700', flex: 1, minWidth: 0 }} numberOfLines={1}>
@@ -1521,7 +1559,7 @@ export default function StorefrontPaymentDetailScreen() {
             <SourcePill source={payment.source} compact={!isDesktop} />
           </View>
         ) : null}
-        {detailQuery.isLoading ? (
+        {detailQuery.isPending && !detailQuery.data ? (
           <PaymentDetailSkeleton isDesktop={isDesktop} />
         ) : !payment ? (
           <DetailCard>

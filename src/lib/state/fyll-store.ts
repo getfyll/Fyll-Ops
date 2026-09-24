@@ -4683,6 +4683,10 @@ const useFyllStore = create<FyllStore>()(
       name: "fyll-storage",
       storage: createJSONStorage(() => storage),
       partialize: (state) => {
+          const recentPartnerJobs = [...state.partnerJobs].sort((left, right) => (
+            new Date(right.dispatchedAt ?? right.createdAt).getTime()
+            - new Date(left.dispatchedAt ?? left.createdAt).getTime()
+          ));
           const base = {
             themeMode: state.themeMode,
             userRole: state.userRole,
@@ -4732,6 +4736,9 @@ const useFyllStore = create<FyllStore>()(
           auditLogs: state.auditLogs,
           caseStatuses: state.caseStatuses,
           recycleBin: state.recycleBin,
+          partners: state.partners,
+          partnerJobs: recentPartnerJobs,
+          partnerJobIssues: state.partnerJobIssues,
         };
 
         if (Platform.OS !== 'web') return base;
@@ -4752,6 +4759,9 @@ const useFyllStore = create<FyllStore>()(
           warehouseItems: toWebPersistPreview(state.warehouseItems, 25),
           auditLogs: toWebPersistPreview(state.auditLogs, 25),
           recycleBin: toWebPersistPreview(state.recycleBin, 25),
+          partners: toWebPersistPreview(state.partners, 50),
+          partnerJobs: toWebPersistPreview(recentPartnerJobs, 50),
+          partnerJobIssues: toWebPersistPreview(state.partnerJobIssues, 25),
         };
       },
       version: 2,
