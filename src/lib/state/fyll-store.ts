@@ -9,6 +9,7 @@ import { capitalizeDisplayLabel } from "@/lib/display-format";
 import { findOrderTrackingStageByName, sanitizeOrderStatus, sanitizeOrderStatuses, type OrderTrackingStage } from "@/lib/order-status";
 import { syncFyllOrderStatusToWooCommerce } from "@/lib/woocommerce";
 import { formatAddressValue, normalizeDeliveryStateValue } from "@/lib/format-address";
+import type { DashboardSnapshot } from '@/lib/dashboard-snapshot';
 import {
   buildOrderQcRequirement,
   DEFAULT_ORDER_QC_REQUIREMENTS,
@@ -1218,6 +1219,8 @@ interface FyllStore {
   isBackgroundSyncing: boolean;
   lastDataSyncAt: string | null;
   lastFullDataSyncAt: string | null;
+  dashboardSnapshot: DashboardSnapshot | null;
+  hasVerifiedDashboardData: boolean;
   setIsBackgroundSyncing: (value: boolean) => void;
   setDataSyncTimestamps: (timestamps: { lastDataSyncAt?: string | null; lastFullDataSyncAt?: string | null }) => void;
 
@@ -1586,6 +1589,8 @@ const initialState = {
   isBackgroundSyncing: false,
   lastDataSyncAt: null as string | null,
   lastFullDataSyncAt: null as string | null,
+  dashboardSnapshot: null as DashboardSnapshot | null,
+  hasVerifiedDashboardData: false,
   themeMode: 'system' as ThemeMode,
   userRole: 'owner' as UserRole,
   useGlobalLowStockThreshold: false,
@@ -4692,6 +4697,7 @@ const useFyllStore = create<FyllStore>()(
             userRole: state.userRole,
             lastDataSyncAt: state.lastDataSyncAt,
             lastFullDataSyncAt: state.lastFullDataSyncAt,
+            dashboardSnapshot: state.dashboardSnapshot,
           useGlobalLowStockThreshold: state.useGlobalLowStockThreshold,
           globalLowStockThreshold: state.globalLowStockThreshold,
           autoCompleteOrders: state.autoCompleteOrders,

@@ -7,8 +7,8 @@ describe('Fyll Print queue isolation', () => {
   test('stores queues under a business-specific key', () => {
     expect(source).toContain('export const getFyllPrintQueueStorageKey');
     expect(source).toContain('businessId ? `${FYLL_PRINT_QUEUE_STORAGE_KEY}:${businessId}` : FYLL_PRINT_QUEUE_STORAGE_KEY');
-    expect(source).toContain('storage.getItem(getFyllPrintQueueStorageKey(businessId))');
-    expect(source).toContain('storage.setItem(getFyllPrintQueueStorageKey(businessId), JSON.stringify(queue))');
+    expect(source).toContain('storage.getItem(storageKey)');
+    expect(source).toContain('storage.setItem(storageKey, JSON.stringify(queue))');
   });
 
   test('queue mutations pass the business id through to reads and writes', () => {

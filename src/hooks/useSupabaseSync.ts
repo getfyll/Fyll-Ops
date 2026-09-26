@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { AppState, AppStateStatus, Platform } from 'react-native';
 import useAuthStore from '@/lib/state/auth-store';
 import useFyllStore, { DEFAULT_EXPENSE_CATEGORY_NAMES } from '@/lib/state/fyll-store';
+import { buildDashboardSnapshot } from '@/lib/dashboard-snapshot';
 import { supabase } from '@/lib/supabase';
 import { supabaseData } from '@/lib/supabase/data';
 import { supabaseSettings } from '@/lib/supabase/settings';
@@ -2037,6 +2038,14 @@ export function useSupabaseSync() {
 
               if (!isCurrentWorkspace()) return;
               const syncTimestamp = new Date().toISOString();
+              const didLoadVerifiedDashboardData = productDataRowsResult.status === 'fulfilled'
+                && orderDataRowsResult.status === 'fulfilled'
+                && customerRowsResult.status === 'fulfilled'
+                && caseRowsResult.status === 'fulfilled'
+                && expenseRequestRowsResult.status === 'fulfilled'
+                && auditLogRowsResult.status === 'fulfilled'
+                && partnerRowsResult.status === 'fulfilled'
+                && partnerJobRowsResult.status === 'fulfilled';
               useFyllStore.setState({
                 products: fullProducts,
                 orders: autoCompletedOrders,
@@ -2088,6 +2097,22 @@ export function useSupabaseSync() {
                 orderStatusEmailEnabled: remoteSettings.orderStatusEmailEnabled,
                 lastDataSyncAt: syncTimestamp,
                 lastFullDataSyncAt: useIncrementalDataSync ? localState.lastFullDataSyncAt : syncTimestamp,
+                dashboardSnapshot: didLoadVerifiedDashboardData
+                  ? buildDashboardSnapshot({
+                      businessId,
+                      products: fullProducts,
+                      orders: autoCompletedOrders,
+                      customers: fullCustomers,
+                      cases: fullCases,
+                      partners: fullPartners,
+                      partnerJobs: fullPartnerJobs,
+                      expenseRequests: fullExpenseRequests,
+                      auditLogs: fullAuditLogs,
+                      orderStatuses: remoteSettings.orderStatuses,
+                      updatedAt: syncTimestamp,
+                    })
+                  : localState.dashboardSnapshot,
+                hasVerifiedDashboardData: didLoadVerifiedDashboardData,
               });
               prevProductIds.current = toIdSet(fullProducts);
               prevOrderIds.current = toIdSet(autoCompletedOrders);

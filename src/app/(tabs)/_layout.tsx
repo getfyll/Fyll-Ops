@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Tabs, usePathname } from 'expo-router';
-import { View, Platform } from 'react-native';
+import { View, Text, Platform } from 'react-native';
 import { PlatformPressable } from '@react-navigation/elements';
 import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { LayoutDashboard, Package, ShoppingCart, MoreHorizontal, BarChart3, Users, Briefcase, MessageSquare, TrendingUp, ListTodo, Wallet } from 'lucide-react-native';
 import { useThemeColors } from '@/lib/theme';
 import { useBreakpoint } from '@/lib/useBreakpoint';
@@ -23,33 +24,152 @@ const ORDERS_TAB_BADGE_SEEN_KEY_PREFIX = 'orders-tab-badge-seen';
 const getOrdersTabBadgeSeenKey = (businessId: string) =>
   `${ORDERS_TAB_BADGE_SEEN_KEY_PREFIX}:${businessId}`;
 
+const MOBILE_NAV_GLASS = {
+  dark: {
+    rim: [
+      'rgba(255,255,255,0.24)',
+      'rgba(255,255,255,0.075)',
+      'rgba(255,255,255,0.025)',
+      'rgba(255,255,255,0.13)',
+    ] as const,
+    surface: 'rgba(8,8,10,0.68)',
+    sheen: [
+      'rgba(255,255,255,0.045)',
+      'rgba(255,255,255,0.008)',
+      'rgba(0,0,0,0.11)',
+    ] as const,
+    selection: [
+      'rgba(255,255,255,0.24)',
+      'rgba(255,255,255,0.18)',
+      'rgba(255,255,255,0.12)',
+    ] as const,
+  },
+  light: {
+    rim: [
+      'rgba(255,255,255,0.96)',
+      'rgba(255,255,255,0.52)',
+      'rgba(255,255,255,0.18)',
+      'rgba(255,255,255,0.70)',
+    ] as const,
+    surface: 'rgba(250,250,250,0.68)',
+    sheen: [
+      'rgba(255,255,255,0.70)',
+      'rgba(255,255,255,0.18)',
+      'rgba(210,210,210,0.10)',
+    ] as const,
+    selection: [
+      'rgba(255,255,255,0.88)',
+      'rgba(235,235,235,0.74)',
+      'rgba(220,220,220,0.58)',
+    ] as const,
+  },
+} as const;
+
 function TabBarIcon({
   Icon,
   color,
   focused,
+  label,
+  isMobile,
   offsetY = 0,
 }: {
   Icon: React.ComponentType<{ size: number; color: string; strokeWidth: number }>;
   color: string;
   focused: boolean;
+  label: string;
+  isMobile: boolean;
   offsetY?: number;
 }) {
   const colors = useThemeColors();
+
+  if (isMobile) {
+    const isDark = colors.text.primary === '#FFFFFF';
+    const glass = isDark ? MOBILE_NAV_GLASS.dark : MOBILE_NAV_GLASS.light;
+    return (
+      <View style={{ width: 50, height: 50, alignItems: 'center', justifyContent: 'center' }}>
+        {focused ? (
+          <LinearGradient
+            pointerEvents="none"
+            colors={glass.selection}
+            locations={[0, 0.56, 1]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={{
+              position: 'absolute',
+              top: -3,
+              right: -12,
+              bottom: -3,
+              left: -12,
+              borderRadius: 999,
+            }}
+          />
+        ) : null}
+        <View style={{ transform: [{ translateY: offsetY }] }}>
+          <Icon size={23} color={color} strokeWidth={focused ? 2.5 : 2} />
+        </View>
+        <Text
+          numberOfLines={1}
+          style={{
+            color,
+            fontSize: 10,
+            lineHeight: 13,
+            fontWeight: focused ? '700' : '600',
+            marginTop: 1,
+          }}
+        >
+          {label}
+        </Text>
+      </View>
+    );
+  }
+
   return (
     <View
       className="items-center justify-center"
       style={{
-        width: 54,
-        height: 40,
-        marginTop: 2,
-        borderRadius: 999,
-        backgroundColor: focused ? (colors.bg.primary === '#FFFFFF' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.14)') : 'transparent',
+        width: 50,
+        height: 32,
+        marginTop: 1,
       }}
     >
       <View style={{ transform: [{ translateY: offsetY }] }}>
         <Icon size={23} color={color} strokeWidth={focused ? 2.5 : 2} />
       </View>
     </View>
+  );
+}
+
+function FloatingTabBarBackground({ isDark }: { isDark: boolean }) {
+  const glass = isDark ? MOBILE_NAV_GLASS.dark : MOBILE_NAV_GLASS.light;
+  return (
+    <LinearGradient
+      colors={glass.rim}
+      locations={[0, 0.34, 0.68, 1]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={{ flex: 1, borderRadius: 999, padding: 0.65, overflow: 'hidden' }}
+    >
+      <BlurView
+        intensity={Platform.OS === 'ios' ? 54 : 38}
+        tint={isDark ? 'dark' : 'light'}
+        style={{ flex: 1, borderRadius: 998, overflow: 'hidden', backgroundColor: glass.surface }}
+      >
+        <LinearGradient
+          pointerEvents="none"
+          colors={glass.sheen}
+          locations={[0, 0.44, 1]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+          }}
+        />
+      </BlurView>
+    </LinearGradient>
   );
 }
 
@@ -173,10 +293,10 @@ export default function TabLayout() {
 
   const isWeb = Platform.OS === 'web';
   const noWebFocusStyle = isWeb ? ({ outlineStyle: 'none', outlineWidth: 0, outlineColor: 'transparent' } as any) : null;
-  const tabBarHeight = isMobile ? (Platform.OS === 'ios' ? 82 : 76) : isWeb ? 80 : (Platform.OS === 'ios' ? 88 : 70);
 
   // On desktop, show sidebar instead of bottom tabs
   const tabBarStyle = getTabBarStyle(colors, isDesktop, isMobile);
+  const isDark = colors.text.primary === '#FFFFFF';
 
   return (
     <View style={{ flex: 1, flexDirection: 'row' }}>
@@ -190,30 +310,31 @@ export default function TabLayout() {
             sceneStyle: { backgroundColor: colors.bg.primary },
             tabBarActiveTintColor: colors.tabBar.active,
             tabBarInactiveTintColor: colors.tabBar.inactive,
+            tabBarActiveBackgroundColor: 'transparent',
+            tabBarInactiveBackgroundColor: 'transparent',
+            tabBarShowLabel: !isMobile,
             tabBarStyle,
             tabBarBackground: () => (
               isMobile ? (
-                <BlurView
-                  intensity={Platform.OS === 'ios' ? 38 : 26}
-                  tint={colors.bg.primary === '#FFFFFF' ? 'light' : 'dark'}
-                  style={{ flex: 1, borderRadius: 999, overflow: 'hidden' }}
-                />
+                <FloatingTabBarBackground isDark={isDark} />
               ) : null
             ),
             tabBarLabelStyle: {
               fontSize: isMobile ? 10 : isWeb ? 10 : 11,
               fontWeight: '600',
-              marginTop: isMobile ? 0 : isWeb ? 2 : 2,
-              lineHeight: isMobile ? 12 : isWeb ? 12 : 13,
+              marginTop: isMobile ? -1 : isWeb ? 2 : 2,
+              lineHeight: isMobile ? 14 : isWeb ? 12 : 13,
               paddingBottom: isWeb ? 0 : 0,
-              height: isMobile ? 12 : isWeb ? 12 : undefined,
+              height: isMobile ? undefined : isWeb ? 12 : undefined,
             },
             tabBarItemStyle: {
               paddingVertical: isWeb ? 0 : 0,
               paddingTop: isWeb ? 0 : 0,
               paddingBottom: isWeb ? 0 : 0,
-              height: isMobile ? 62 : isWeb ? 55 : undefined,
-              maxHeight: isMobile ? 62 : isWeb ? 55 : undefined,
+              height: isMobile ? 60 : isWeb ? 55 : undefined,
+              maxHeight: isMobile ? 60 : isWeb ? 55 : undefined,
+              marginHorizontal: isMobile ? 2 : 0,
+              borderRadius: isMobile ? 999 : 0,
               justifyContent: 'center',
               alignItems: 'center',
               ...(noWebFocusStyle ?? {}),
@@ -232,7 +353,7 @@ export default function TabLayout() {
             tabBarIconStyle: {
               marginTop: 0,
               marginBottom: 0,
-              height: isMobile ? 40 : isWeb ? 32 : undefined,
+              height: isMobile ? 50 : isWeb ? 32 : undefined,
             },
             headerStyle: {
               backgroundColor: colors.bg.primary,
@@ -249,7 +370,7 @@ export default function TabLayout() {
         name="index"
         options={{
           title: 'Home',
-          tabBarIcon: ({ color, focused }) => <TabBarIcon Icon={LayoutDashboard} color={color} focused={focused} />,
+          tabBarIcon: ({ color, focused }) => <TabBarIcon Icon={LayoutDashboard} color={color} focused={focused} label="Home" isMobile={isMobile} />,
           headerShown: false,
         }}
       />
@@ -257,7 +378,7 @@ export default function TabLayout() {
         name="inventory"
         options={{
           title: 'Inventory',
-          tabBarIcon: ({ color, focused }) => <TabBarIcon Icon={Package} color={color} focused={focused} />,
+          tabBarIcon: ({ color, focused }) => <TabBarIcon Icon={Package} color={color} focused={focused} label="Inventory" isMobile={isMobile} />,
           headerShown: false,
         }}
       />
@@ -265,7 +386,7 @@ export default function TabLayout() {
         name="services"
         options={{
           title: 'Services',
-          tabBarIcon: ({ color, focused }) => <TabBarIcon Icon={Briefcase} color={color} focused={focused} />,
+          tabBarIcon: ({ color, focused }) => <TabBarIcon Icon={Briefcase} color={color} focused={focused} label="Services" isMobile={isMobile} />,
           headerShown: false,
           // Keep Services out of bottom nav on phone + tablet; desktop uses sidebar.
           href: isMobile || isTablet ? null : undefined,
@@ -275,7 +396,7 @@ export default function TabLayout() {
         name="orders"
         options={{
           title: 'Orders',
-          tabBarIcon: ({ color, focused }) => <TabBarIcon Icon={ShoppingCart} color={color} focused={focused} />,
+          tabBarIcon: ({ color, focused }) => <TabBarIcon Icon={ShoppingCart} color={color} focused={focused} label="Orders" isMobile={isMobile} />,
           tabBarBadge: newOrdersCount > 0 ? (newOrdersCount > 99 ? '99+' : newOrdersCount) : undefined,
           tabBarBadgeStyle: {
             backgroundColor: '#3B82F6',
@@ -291,7 +412,7 @@ export default function TabLayout() {
         name="payments"
         options={{
           title: 'Payments',
-          tabBarIcon: ({ color, focused }) => <TabBarIcon Icon={Wallet} color={color} focused={focused} />,
+          tabBarIcon: ({ color, focused }) => <TabBarIcon Icon={Wallet} color={color} focused={focused} label="Payments" isMobile={isMobile} />,
           headerShown: false,
           href: canViewPayments && !isMobile && !isTablet ? undefined : null,
         }}
@@ -316,7 +437,7 @@ export default function TabLayout() {
         name="threads"
         options={{
           title: 'Threads',
-          tabBarIcon: ({ color, focused }) => <TabBarIcon Icon={MessageSquare} color={color} focused={focused} />,
+          tabBarIcon: ({ color, focused }) => <TabBarIcon Icon={MessageSquare} color={color} focused={focused} label="Threads" isMobile={isMobile} />,
           tabBarBadge: totalUnreadThreads > 0 ? (totalUnreadThreads > 99 ? '99+' : totalUnreadThreads) : undefined,
           tabBarBadgeStyle: {
             backgroundColor: '#EF4444',
@@ -331,7 +452,7 @@ export default function TabLayout() {
         name="customers"
         options={{
           title: 'Customers',
-          tabBarIcon: ({ color, focused }) => <TabBarIcon Icon={Users} color={color} focused={focused} />,
+          tabBarIcon: ({ color, focused }) => <TabBarIcon Icon={Users} color={color} focused={focused} label="Partners" isMobile={isMobile} />,
           headerShown: false,
           href: isMobile ? null : undefined,
         }}
@@ -340,7 +461,7 @@ export default function TabLayout() {
         name="insights"
         options={{
           title: 'Insights',
-          tabBarIcon: ({ color, focused }) => <TabBarIcon Icon={BarChart3} color={color} focused={focused} />,
+          tabBarIcon: ({ color, focused }) => <TabBarIcon Icon={BarChart3} color={color} focused={focused} label="Insights" isMobile={isMobile} />,
           headerShown: false,
           // Show on iPad/tablet and desktop, hide on phones.
           href: (isTablet || isDesktop) && canViewInsights ? '/insights' : null,
@@ -350,7 +471,7 @@ export default function TabLayout() {
         name="settings"
         options={{
           title: 'More',
-          tabBarIcon: ({ color, focused }) => <TabBarIcon Icon={MoreHorizontal} color={color} focused={focused} />,
+          tabBarIcon: ({ color, focused }) => <TabBarIcon Icon={MoreHorizontal} color={color} focused={focused} label="More" isMobile={isMobile} />,
           headerShown: false,
         }}
       />
@@ -365,7 +486,7 @@ export default function TabLayout() {
         name="tasks"
         options={{
           title: 'Tasks',
-          tabBarIcon: ({ color, focused }) => <TabBarIcon Icon={ListTodo} color={color} focused={focused} />,
+          tabBarIcon: ({ color, focused }) => <TabBarIcon Icon={ListTodo} color={color} focused={focused} label="Tasks" isMobile={isMobile} />,
           tabBarBadge: totalUnreadTaskThreads > 0 ? (totalUnreadTaskThreads > 99 ? '99+' : totalUnreadTaskThreads) : undefined,
           tabBarBadgeStyle: {
             backgroundColor: '#EF4444',
@@ -381,7 +502,7 @@ export default function TabLayout() {
         name="finance"
         options={{
           title: 'Finance',
-          tabBarIcon: ({ color, focused }) => <TabBarIcon Icon={TrendingUp} color={color} focused={focused} />,
+          tabBarIcon: ({ color, focused }) => <TabBarIcon Icon={TrendingUp} color={color} focused={focused} label="Stats" isMobile={isMobile} />,
           headerShown: false,
           href: canViewFinance && !isMobile && !isTablet ? '/finance' : null,
         }}

@@ -18,25 +18,24 @@ export const getTabBarStyle = (
   }
 
   if (isMobile) {
+    const isDark = colors.text.primary === '#FFFFFF';
     return {
       position: 'absolute',
-      left: 14,
-      right: 14,
+      left: 22,
+      right: 22,
       bottom: Platform.OS === 'ios' ? 24 : 20,
       height: tabBarHeight,
       borderRadius: 999,
-      backgroundColor: colors.bg.primary === '#FFFFFF' ? 'rgba(255, 255, 255, 0.78)' : 'rgba(24, 24, 24, 0.72)',
-      borderTopWidth: 0,
-      borderWidth: 1,
-      borderColor: colors.bg.primary === '#FFFFFF' ? 'rgba(255, 255, 255, 0.72)' : 'rgba(255, 255, 255, 0.12)',
+      backgroundColor: 'transparent',
+      borderWidth: 0,
       overflow: 'hidden',
       paddingTop: 7,
       paddingBottom: Platform.OS === 'ios' ? 12 : 8,
       paddingHorizontal: 6,
       shadowColor: '#000000',
-      shadowOpacity: colors.bg.primary === '#FFFFFF' ? 0.14 : 0.28,
-      shadowRadius: 24,
-      shadowOffset: { width: 0, height: 10 },
+      shadowOpacity: isDark ? 0.24 : 0.12,
+      shadowRadius: 26,
+      shadowOffset: { width: 0, height: 12 },
       elevation: 18,
     };
   }

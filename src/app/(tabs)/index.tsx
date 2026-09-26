@@ -34,16 +34,21 @@ import {
   Wallet,
   Check,
 } from 'lucide-react-native';
-import useFyllStore, { formatCurrency, getSocialCheckoutEffectiveStatus, Order, Product, type PartnerJob } from '@/lib/state/fyll-store';
+import useFyllStore, { formatCurrency, getSocialCheckoutEffectiveStatus, Order } from '@/lib/state/fyll-store';
+import {
+  buildDashboardSnapshot,
+  getDashboardPeriodKey,
+  isCompleteDashboardSnapshot,
+  type DashboardRecentOrder,
+  type DashboardRecentPartnerJob,
+} from '@/lib/dashboard-snapshot';
 import { useThemeColors } from '@/lib/theme';
 import * as Haptics from 'expo-haptics';
-import { getPlatformBreakdown } from '@/lib/analytics-utils';
 import useAuthStore from '@/lib/state/auth-store';
 import { collaborationData, type CollaborationNotification } from '@/lib/supabase/collaboration';
 import { supabase } from '@/lib/supabase';
 import { isTeamThreadEntityId, getTeamThreadDisplayNameFromEntityId } from '@/lib/team-threads';
 import { FulfillmentPipelineCard, type FulfillmentStageKey } from '@/components/FulfillmentPipelineCard';
-import { getFulfillmentPipelineBucket } from '@/lib/fulfillment';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { WebContainer } from '@/components/web/WebContainer';
@@ -661,7 +666,7 @@ function NotificationPanel({
   notifications: CollaborationNotification[];
   onNotificationPress: (n: CollaborationNotification) => void;
   onMarkAllRead: () => void;
-  orders?: Order[];
+  orders?: Pick<Order, 'id' | 'orderNumber' | 'customerName' | 'createdAt' | 'createdBy'>[];
   profilesMap?: Map<string, string>;
 }) {
   const colors = useThemeColors();
@@ -992,7 +997,10 @@ function NotificationPanel({
     );
   };
 
-  const renderNewOrderItem = (order: Order, compact: boolean) => (
+  const renderNewOrderItem = (
+    order: Pick<Order, 'id' | 'orderNumber' | 'customerName' | 'createdAt' | 'createdBy'>,
+    compact: boolean
+  ) => (
     <Pressable
       key={order.id}
       onPress={() => handleOrderPress(order.id)}
@@ -1247,27 +1255,14 @@ function NotificationPanel({
 
 // Recent Order Item Component
 interface RecentOrderItemProps {
-  order: Order;
-  productById: Map<string, Product>;
+  order: DashboardRecentOrder;
   statusColorMap: Record<string, string>;
   onPress: () => void;
   isLast?: boolean;
 }
 
-function RecentOrderItem({ order, productById, statusColorMap, onPress, isLast = false }: RecentOrderItemProps) {
+function RecentOrderItem({ order, statusColorMap, onPress, isLast = false }: RecentOrderItemProps) {
   const colors = useThemeColors();
-
-  // Get first item info
-  const firstItem = order.items[0];
-  const product = firstItem?.productId ? productById.get(firstItem.productId) : undefined;
-  const variant = product?.variants.find((v) => v.id === firstItem?.variantId);
-  const itemName = product?.name ?? 'Unknown Product';
-  const selectedOptions = Object.entries(firstItem?.selectedOptions ?? {})
-    .filter(([name, value]) => name.trim() && String(value).trim())
-    .map(([name, value]) => `${name}: ${value}`)
-    .join(' / ');
-  const variantName = variant ? Object.values(variant.variableValues).join(' / ') : '';
-  const itemDetail = [variantName, selectedOptions].filter(Boolean).join(' / ') || (variant?.sku ?? 'N/A');
 
   const statusColor = getOrderStatusColor(order.status, statusColorMap, '#F59E0B');
 
@@ -1283,7 +1278,7 @@ function RecentOrderItem({ order, productById, statusColorMap, onPress, isLast =
             {order.customerName}
           </Text>
           <Text style={{ color: colors.text.tertiary }} className="text-xs mt-0.5">
-            {itemName} • {itemDetail}
+            {order.itemName} • {order.itemDetail}
           </Text>
         </View>
         <View className="items-end">
@@ -1297,13 +1292,12 @@ function RecentOrderItem({ order, productById, statusColorMap, onPress, isLast =
 }
 
 interface RecentPartnerJobItemProps {
-  job: PartnerJob;
-  partnerName: string;
+  job: DashboardRecentPartnerJob;
   onPress: () => void;
   isLast?: boolean;
 }
 
-function RecentPartnerJobItem({ job, partnerName, onPress, isLast = false }: RecentPartnerJobItemProps) {
+function RecentPartnerJobItem({ job, onPress, isLast = false }: RecentPartnerJobItemProps) {
   const colors = useThemeColors();
 
   const normalizedStatus = String(job.status ?? '').trim().toLowerCase().replace(/[_-]+/g, ' ');
@@ -1331,7 +1325,7 @@ function RecentPartnerJobItem({ job, partnerName, onPress, isLast = false }: Rec
             {job.customerName || 'Customer'}
           </Text>
           <Text style={{ color: colors.text.tertiary }} className="text-xs mt-0.5" numberOfLines={1}>
-            {job.jobType || job.itemLabel || 'Partner job'} • {partnerName || 'No partner'}
+            {job.jobType || job.itemLabel || 'Partner job'} • {job.partnerName || 'No partner'}
           </Text>
         </View>
         <View style={{ alignItems: 'flex-end', flexShrink: 0, marginLeft: 12 }}>
@@ -1361,11 +1355,13 @@ export default function DashboardScreen() {
   const partners = useFyllStore((s) => s.partners);
   const partnerJobs = useFyllStore((s) => s.partnerJobs);
   const cases = useFyllStore((s) => s.cases);
+  const dashboardSnapshot = useFyllStore((s) => s.dashboardSnapshot);
+  const hasVerifiedDashboardData = useFyllStore((s) => s.hasVerifiedDashboardData);
   const orderStatuses = useFyllStore((s) => s.orderStatuses);
   const paymentMethods = useFyllStore((s) => s.paymentMethods);
   const expenseRequests = useFyllStore((s) => s.expenseRequests);
   const customers = useFyllStore((s) => s.customers);
-  const hasAuditForMonth = useFyllStore((s) => s.hasAuditForMonth);
+  const auditLogs = useFyllStore((s) => s.auditLogs);
   const { businessName, businessPhone, returnAddress, storefrontEnabled, featureAccess, isLoading: isLoadingBusinessSettings } = useBusinessSettings();
   const canUseStorefront = isBusinessFeatureEnabled(featureAccess, 'storefront');
   const canUseCases = isBusinessFeatureEnabled(featureAccess, 'cases');
@@ -1625,19 +1621,6 @@ export default function DashboardScreen() {
     () => mobileHomeScopedTasks.slice(0, 5),
     [mobileHomeScopedTasks]
   );
-  const unreadNotificationCount = useMemo(() => {
-    const now = Date.now();
-    const threadUnread = notifications.filter((n) => !n.is_read).length;
-    const newOrdersCount = orders.filter(
-      (o) => {
-        const createdAtMs = new Date(o.createdAt).getTime();
-        if (!Number.isFinite(createdAtMs)) return false;
-        return (now - createdAtMs) < 24 * 60 * 60 * 1000 && createdAtMs > orderNotificationsSeenAt;
-      }
-    ).length;
-    return threadUnread + newOrdersCount;
-  }, [notifications, orders, orderNotificationsSeenAt]);
-
   const handleNotificationPress = useCallback((n: CollaborationNotification) => {
     // Mark as read
     if (!n.is_read) {
@@ -1714,79 +1697,65 @@ export default function DashboardScreen() {
     }
   }, [businessId, queryClient]);
 
-  // Check if audit banner should show (25th-31st of month, and no audit logged this month)
-  const showAuditBanner = useMemo(() => {
-    const today = new Date();
-    const dayOfMonth = today.getDate();
-    const currentMonth = today.getMonth();
-    const currentYear = today.getFullYear();
-
-    // Only show between 25th and 31st
-    if (dayOfMonth < 25) return false;
-
-    // Check if audit already done this month
-    return !hasAuditForMonth(currentMonth, currentYear);
-  }, [hasAuditForMonth]);
-
-  const sortedOrdersByDate = useMemo(() => {
-    return [...orders].sort(
-      (a, b) =>
-        new Date(b.orderDate ?? b.createdAt).getTime() - new Date(a.orderDate ?? a.createdAt).getTime()
-    );
-  }, [orders]);
-
-  const recentOrdersMobile = useMemo(() => sortedOrdersByDate.slice(0, 5), [sortedOrdersByDate]);
-
-  const recentOrdersWeb = useMemo(() => sortedOrdersByDate.slice(0, 10), [sortedOrdersByDate]);
-
-  const partnerById = useMemo(() => {
-    const map = new Map<string, string>();
-    partners.forEach((partner) => {
-      map.set(partner.id, partner.name);
-    });
-    return map;
-  }, [partners]);
-
-  const sortedPartnerJobsByDate = useMemo(() => {
-    return [...partnerJobs].sort(
-      (a, b) =>
-        new Date(b.dispatchedAt ?? b.createdAt).getTime() - new Date(a.dispatchedAt ?? a.createdAt).getTime()
-    );
-  }, [partnerJobs]);
-
-  const recentPartnerJobs = useMemo(() => sortedPartnerJobsByDate.slice(0, 5), [sortedPartnerJobsByDate]);
-
-  const productById = useMemo(() => {
-    const map = new Map<string, Product>();
-    products.forEach((product) => {
-      map.set(product.id, product);
-    });
-    return map;
-  }, [products]);
   const orderStatusColorMap = useMemo(
     () => createOrderStatusColorMap(orderStatuses),
     [orderStatuses]
   );
-  const financeCardBadgeCount = useMemo(() => {
-    if (userRole === 'admin') {
-      return expenseRequests.filter((request) => request.status === 'submitted').length;
-    }
-    if (userRole === 'manager') {
-      return expenseRequests.filter(
-        (request) => request.submittedByUserId === currentUserId && request.status === 'submitted'
-      ).length;
-    }
-    return 0;
-  }, [currentUserId, expenseRequests, userRole]);
 
-  const openCasesCount = useMemo(
-    () => cases.filter((caseItem) => caseItem.status !== 'Closed' && caseItem.status !== 'Resolved').length,
-    [cases]
-  );
-  const activePartnerJobsCount = useMemo(
-    () => partnerJobs.filter((job) => job.status !== 'collected' && job.status !== 'billed' && job.status !== 'cancelled').length,
-    [partnerJobs]
-  );
+  const currentDashboardPeriodKey = getDashboardPeriodKey(new Date(eventNowTick));
+  const currentDashboardHourKey = Math.floor(eventNowTick / (60 * 60 * 1000));
+  const liveDashboardSnapshot = useMemo(() => {
+    if (!businessId) return null;
+    return buildDashboardSnapshot({
+      businessId,
+      products,
+      orders,
+      customers,
+      cases,
+      partners,
+      partnerJobs,
+      expenseRequests,
+      auditLogs,
+      orderStatuses,
+      asOf: new Date(Math.min(Date.now(), (currentDashboardHourKey + 1) * 60 * 60 * 1000 - 1)),
+    });
+  }, [auditLogs, businessId, cases, currentDashboardHourKey, customers, expenseRequests, orderStatuses, orders, partnerJobs, partners, products]);
+  const cachedDashboardSnapshot = isCompleteDashboardSnapshot(dashboardSnapshot)
+    && dashboardSnapshot.businessId === businessId
+    && dashboardSnapshot.periodKey === currentDashboardPeriodKey
+    ? dashboardSnapshot
+    : null;
+  const dashboardMetrics = hasVerifiedDashboardData ? liveDashboardSnapshot : cachedDashboardSnapshot;
+  const recentOrdersWeb = dashboardMetrics?.recentOrders ?? [];
+  const recentOrdersMobile = recentOrdersWeb.slice(0, 5);
+  const recentPartnerJobs = dashboardMetrics?.recentPartnerJobs ?? [];
+  const mostSoldProducts = dashboardMetrics?.mostSoldProducts ?? [];
+  const revenueTrend7d = dashboardMetrics?.revenueTrend7d ?? {
+    days: [],
+    total: 0,
+    ordersTotal: 0,
+    change: null,
+    ordersChange: null,
+  };
+  const platformData = dashboardMetrics?.platformBreakdown ?? [];
+  const financeCardBadgeCount = userRole === 'admin'
+    ? (dashboardMetrics?.submittedExpenseRequestCount ?? 0)
+    : userRole === 'manager'
+      ? (dashboardMetrics?.submittedExpenseRequestCountByUser[currentUserId] ?? 0)
+      : 0;
+  const showAuditBanner = new Date(eventNowTick).getDate() >= 25
+    && dashboardMetrics !== null
+    && !dashboardMetrics.hasAuditForPeriod;
+  const unreadNotificationCount = useMemo(() => {
+    const threadUnread = notifications.filter((notification) => !notification.is_read).length;
+    const newOrdersCount = (dashboardMetrics?.newOrderCreatedAtLast24Hours ?? []).filter((createdAt) => {
+      const createdAtMs = new Date(createdAt).getTime();
+      return Number.isFinite(createdAtMs) && createdAtMs > orderNotificationsSeenAt;
+    }).length;
+    return threadUnread + newOrdersCount;
+  }, [dashboardMetrics?.newOrderCreatedAtLast24Hours, notifications, orderNotificationsSeenAt]);
+  const openCasesCount = dashboardMetrics?.openCasesCount ?? 0;
+  const activePartnerJobsCount = dashboardMetrics?.activePartnerJobsCount ?? 0;
   const pendingPaymentCount = useMemo(
     () => (socialCheckoutDraftsQuery.data ?? []).filter((draft) => getSocialCheckoutEffectiveStatus(draft) === 'payment_submitted').length,
     [socialCheckoutDraftsQuery.data]
@@ -1825,7 +1794,7 @@ export default function DashboardScreen() {
       title: 'Add products or services',
       shortLabel: 'Catalog',
       description: 'Put at least one sellable item into your catalog.',
-      complete: products.length > 0,
+      complete: (dashboardMetrics?.productCount ?? 0) > 0,
       actionLabel: 'Add',
       route: '/new-product',
     },
@@ -1834,7 +1803,7 @@ export default function DashboardScreen() {
       title: 'Create first order',
       shortLabel: 'First order',
       description: 'Test your workflow with a real or sample order.',
-      complete: orders.length > 0,
+      complete: (dashboardMetrics?.totalOrders ?? 0) > 0,
       actionLabel: 'Create',
       route: '/new-order',
     },
@@ -1858,21 +1827,14 @@ export default function DashboardScreen() {
       route: '/storefront-settings?from=settings',
       settingsPanel: 'storefront-settings',
     }] : []),
-  ], [businessName, businessPhone, canUseStorefront, returnAddress, orderStatuses.length, orders.length, paymentMethods.length, pendingInvites, products.length, storefrontEnabled, teamMembers.length]);
+  ], [businessName, businessPhone, canUseStorefront, dashboardMetrics?.productCount, dashboardMetrics?.totalOrders, returnAddress, orderStatuses.length, paymentMethods.length, pendingInvites, storefrontEnabled, teamMembers.length]);
   const onboardingComplete = onboardingSteps.every((step) => step.complete);
   const onboardingReady = onboardingDismissedLoaded && !isLoadingBusinessSettings;
   const showOnboardingChecklist = onboardingReady && (userRole === 'admin' || userRole === 'manager') && !onboardingDismissed && !onboardingComplete;
-  const hasDashboardBodyData = orders.length > 0
-    || products.length > 0
-    || customers.length > 0
-    || cases.length > 0
-    || expenseRequests.length > 0
-    || (socialCheckoutDraftsQuery.data?.length ?? 0) > 0
-    || (mobileHomeTasksQuery.data?.length ?? 0) > 0;
-  // Keep cached figures visible while Supabase quietly refreshes them.
-  // Skeletons are only for the genuine first load when there is nothing to render.
-  const dashboardDataPending = mobileHomeTasksQuery.isPending || socialCheckoutDraftsQuery.isPending;
-  const shouldShowDashboardSkeleton = !hasDashboardBodyData && dashboardDataPending;
+  // Render only a complete, business-scoped snapshot. Partial persisted arrays must never
+  // masquerade as dashboard data while the complete background sync is still running.
+  const shouldShowDashboardSkeleton = !dashboardMetrics;
+  const shouldShowDashboardMetricsSkeleton = !dashboardMetrics;
 
   const handleDismissOnboarding = () => {
     setOnboardingDismissed(true);
@@ -1899,73 +1861,21 @@ export default function DashboardScreen() {
     router.push(step.route as any);
   };
 
-  const stats = useMemo(() => {
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
-    const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
-    const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear;
-    let totalRevenue = 0;
-    let lastMonthRevenue = 0;
-    let productSales = 0;
-    let deliveryFees = 0;
-    let servicesRevenue = 0;
-    let pendingOrders = 0;
+  const stats = dashboardMetrics ?? {
+    productSales: 0,
+    deliveryFees: 0,
+    servicesRevenue: 0,
+    totalRevenue: 0,
+    revenueChange: 0,
+    pendingOrders: 0,
+    totalOrders: 0,
+  };
 
-    orders.forEach((order) => {
-      const status = order.status.trim().toLowerCase();
-      if (status !== 'delivered' && status !== 'completed' && status !== 'refunded') {
-        pendingOrders += 1;
-      }
-      if (status === 'refunded') return;
-
-      const orderDate = new Date(order.orderDate ?? order.createdAt);
-      const month = orderDate.getMonth();
-      const year = orderDate.getFullYear();
-
-      if (month === currentMonth && year === currentYear) {
-        totalRevenue += order.totalAmount;
-        productSales += order.subtotal || order.totalAmount;
-        deliveryFees += order.deliveryFee || 0;
-        servicesRevenue += order.services?.reduce((sSum, service) => sSum + service.price, 0) || 0;
-        return;
-      }
-
-      if (month === lastMonth && year === lastMonthYear) {
-        lastMonthRevenue += order.totalAmount;
-      }
-    });
-
-    const revenueChange = lastMonthRevenue > 0
-      ? Math.round(((totalRevenue - lastMonthRevenue) / lastMonthRevenue) * 100)
-      : 0;
-
-    return {
-      productSales,
-      deliveryFees,
-      servicesRevenue,
-      totalRevenue,
-      revenueChange,
-      pendingOrders,
-      totalOrders: orders.length,
-    };
-  }, [orders]);
-
-  const fulfillment = useMemo(() => {
-    const counts: Record<FulfillmentStageKey, number> = {
-      processing: 0,
-      dispatch: 0,
-      delivered: 0,
-    };
-
-    orders.forEach((o) => {
-      const key = getFulfillmentPipelineBucket(o);
-      if (!key) return;
-      counts[key] += 1;
-    });
-
-    return counts;
-  }, [orders]);
+  const fulfillment: Record<FulfillmentStageKey, number> = dashboardMetrics?.fulfillment ?? {
+    processing: 0,
+    dispatch: 0,
+    delivered: 0,
+  };
 
   const handleQuickAction = (route: string) => {
     if (Platform.OS !== 'web') {
@@ -1992,102 +1902,6 @@ export default function DashboardScreen() {
         : (pathname as any)
     );
   };
-
-  const inventoryVariantCount = useMemo(() => {
-    return products.reduce((sum, p) => sum + (p.variants?.length ?? 0), 0);
-  }, [products]);
-
-  const mostSoldProducts = useMemo(() => {
-    const qtyByProductId = new Map<string, number>();
-
-    orders.forEach((order) => {
-      const status = (order.status || '').toLowerCase();
-      if (status.includes('refund')) return;
-
-      order.items.forEach((item) => {
-        const productId = item.productId;
-        if (!productId) return;
-        qtyByProductId.set(productId, (qtyByProductId.get(productId) ?? 0) + (item.quantity ?? 0));
-      });
-    });
-
-    const rows = Array.from(qtyByProductId.entries()).map(([productId, quantity]) => {
-      const product = productById.get(productId);
-      return {
-        productId,
-        name: product?.name ?? 'Unknown product',
-        sku: product?.variants?.[0]?.sku ?? '—',
-        quantity,
-      };
-    });
-
-    rows.sort((a, b) => b.quantity - a.quantity);
-    return rows;
-  }, [orders, productById]);
-
-  const revenueTrend7d = useMemo(() => {
-    const trendDays = 7;
-    const toDayId = (date: Date) => {
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
-    };
-
-    const today = new Date();
-    const end = new Date(today);
-    end.setHours(23, 59, 59, 999);
-    const start = new Date(today);
-    start.setHours(0, 0, 0, 0);
-    start.setDate(start.getDate() - (trendDays - 1));
-
-    const prevStart = new Date(start);
-    prevStart.setDate(prevStart.getDate() - trendDays);
-
-    let prevTotal = 0;
-    let prevOrdersTotal = 0;
-
-    const revenueByDay = new Map<string, number>();
-    const ordersByDay = new Map<string, number>();
-    orders.forEach((order) => {
-      const status = (order.status || '').toLowerCase();
-      if (status.includes('refund')) return;
-
-      const date = new Date(order.orderDate ?? order.createdAt);
-      if (date < prevStart || date > end) return;
-
-      if (date < start) {
-        prevTotal += order.totalAmount;
-        prevOrdersTotal += 1;
-        return;
-      }
-
-      const key = toDayId(date);
-      revenueByDay.set(key, (revenueByDay.get(key) ?? 0) + order.totalAmount);
-      ordersByDay.set(key, (ordersByDay.get(key) ?? 0) + 1);
-    });
-
-    const days = Array.from({ length: trendDays }, (_, idx) => {
-      const date = new Date(start);
-      date.setDate(start.getDate() + idx);
-      const key = toDayId(date);
-      return {
-        key,
-        label: date.toLocaleDateString('en-US', { weekday: 'short' }),
-        value: revenueByDay.get(key) ?? 0,
-        orders: ordersByDay.get(key) ?? 0,
-      };
-    });
-
-    const total = days.reduce((sum, day) => sum + day.value, 0);
-    const ordersTotal = days.reduce((sum, day) => sum + day.orders, 0);
-    const change =
-      prevTotal > 0 ? Math.round(((total - prevTotal) / prevTotal) * 100) : null;
-    const ordersChange =
-      prevOrdersTotal > 0 ? Math.round(((ordersTotal - prevOrdersTotal) / prevOrdersTotal) * 100) : null;
-
-    return { days, total, ordersTotal, change, ordersChange };
-  }, [orders]);
 
   const formatShortDate = (isoLike: string) => {
     const [yearRaw, monthRaw, dayRaw] = isoLike.split('-');
@@ -2134,8 +1948,6 @@ export default function DashboardScreen() {
     [revenueTrend7d.days]
   );
 
-  const platformData = useMemo(() => getPlatformBreakdown(orders), [orders]);
-
   const formatCompactCurrencyTick = (value: number) => {
     const abs = Math.abs(value);
     if (abs >= 1_000_000) return `₦${Math.round(value / 1_000_000)}m`;
@@ -2160,7 +1972,18 @@ export default function DashboardScreen() {
         </Pressable>
       </View>
 
-      {recentOrdersWeb.length === 0 ? (
+      {shouldShowDashboardSkeleton ? (
+        <View style={{ paddingHorizontal: 18, paddingBottom: 18, gap: 12 }}>
+          {[0, 1, 2].map((index) => (
+            <View key={`web-order-skeleton-${index}`} className="flex-row items-center" style={{ gap: 12 }}>
+              <SkeletonBox width="22%" height={13} rounded="md" />
+              <SkeletonBox width="31%" height={13} rounded="md" />
+              <SkeletonBox width="18%" height={13} rounded="md" />
+              <SkeletonBox width="20%" height={24} rounded="md" />
+            </View>
+          ))}
+        </View>
+      ) : recentOrdersWeb.length === 0 ? (
         <View style={{ paddingHorizontal: 18, paddingBottom: 18 }}>
           <Text style={{ color: colors.text.muted }} className="text-sm">
             No orders yet.
@@ -2227,7 +2050,20 @@ export default function DashboardScreen() {
         </Pressable>
       </View>
 
-      {recentPartnerJobs.length === 0 ? (
+      {shouldShowDashboardSkeleton ? (
+        <View style={{ paddingHorizontal: 18, paddingBottom: 18, gap: 12 }}>
+          {[0, 1, 2].map((index) => (
+            <View key={`web-partner-job-skeleton-${index}`} className="flex-row items-center" style={{ gap: 12 }}>
+              <View style={{ flex: 1 }}>
+                <SkeletonBox width="58%" height={13} rounded="md" />
+                <View style={{ height: 7 }} />
+                <SkeletonBox width="42%" height={11} rounded="md" />
+              </View>
+              <SkeletonBox width={110} height={25} rounded="md" />
+            </View>
+          ))}
+        </View>
+      ) : recentPartnerJobs.length === 0 ? (
         <View style={{ paddingHorizontal: 18, paddingBottom: 18 }}>
           <Text style={{ color: colors.text.muted }} className="text-sm">
             No partner jobs yet.
@@ -2239,7 +2075,6 @@ export default function DashboardScreen() {
             <RecentPartnerJobItem
               key={job.id}
               job={job}
-              partnerName={partnerById.get(job.partnerId) ?? ''}
               onPress={() => router.push('/partners?partnerSection=jobs')}
               isLast={idx === recentPartnerJobs.length - 1}
             />
@@ -2263,11 +2098,15 @@ export default function DashboardScreen() {
             <Text style={{ color: colors.text.primary }} className="font-bold text-base" numberOfLines={1}>
               Most Sold
             </Text>
-            <Text style={{ color: colors.text.tertiary }} className="text-xs" numberOfLines={1}>
-              {mostSoldProducts.length === 0
-                ? 'No sales yet'
-                : `Top ${Math.min(mostSoldProducts.length, 8)} products by quantity`}
-            </Text>
+            {shouldShowDashboardSkeleton ? (
+              <SkeletonBox width={150} height={11} rounded="md" />
+            ) : (
+              <Text style={{ color: colors.text.tertiary }} className="text-xs" numberOfLines={1}>
+                {mostSoldProducts.length === 0
+                  ? 'No sales yet'
+                  : `Top ${Math.min(mostSoldProducts.length, 8)} products by quantity`}
+              </Text>
+            )}
           </View>
         </View>
 
@@ -2279,7 +2118,20 @@ export default function DashboardScreen() {
         </Pressable>
       </View>
 
-      {mostSoldProducts.length === 0 ? (
+      {shouldShowDashboardSkeleton ? (
+        <View style={{ paddingHorizontal: 18, paddingBottom: 18, gap: 12 }}>
+          {[0, 1, 2].map((index) => (
+            <View key={`web-most-sold-skeleton-${index}`} className="flex-row items-center" style={{ gap: 12 }}>
+              <View style={{ flex: 1 }}>
+                <SkeletonBox width="52%" height={13} rounded="md" />
+                <View style={{ height: 7 }} />
+                <SkeletonBox width="30%" height={11} rounded="md" />
+              </View>
+              <SkeletonBox width={44} height={13} rounded="md" />
+            </View>
+          ))}
+        </View>
+      ) : mostSoldProducts.length === 0 ? (
         <View style={{ paddingHorizontal: 18, paddingBottom: 18 }}>
           <Text style={{ color: colors.text.muted }} className="text-sm">
             No sales yet.
@@ -2331,11 +2183,15 @@ export default function DashboardScreen() {
             <Text style={{ color: colors.text.primary }} className="font-bold text-base" numberOfLines={1}>
               Revenue Trend
             </Text>
-            <Text style={{ color: colors.text.tertiary }} className="text-xs" numberOfLines={1}>
-              {selectedTrendDay
-                ? `${formatShortDate(selectedTrendDay.key)} • ${formatCurrency(selectedTrendDay.value)}`
-                : `Last 7 days • ${formatCurrency(revenueTrend7d.total)} • ${revenueTrend7d.ordersTotal} orders`}
-            </Text>
+            {shouldShowDashboardSkeleton ? (
+              <SkeletonBox width={180} height={11} rounded="md" />
+            ) : (
+              <Text style={{ color: colors.text.tertiary }} className="text-xs" numberOfLines={1}>
+                {selectedTrendDay
+                  ? `${formatShortDate(selectedTrendDay.key)} • ${formatCurrency(selectedTrendDay.value)}`
+                  : `Last 7 days • ${formatCurrency(revenueTrend7d.total)} • ${revenueTrend7d.ordersTotal} orders`}
+              </Text>
+            )}
           </View>
         </View>
         {revenueTrend7d.change !== null ? (
@@ -2355,16 +2211,20 @@ export default function DashboardScreen() {
         ) : null}
       </View>
 
-      <InteractiveLineChart
-        data={revenueLineData}
-        height={220}
-        lineColor={colors.text.primary}
-        gridColor={colors.border.light}
-        textColor={colors.text.muted}
-        selectedIndex={selectedTrendIndex}
-        onSelectIndex={setSelectedTrendIndex}
-        formatYLabel={formatCompactCurrencyTick}
-      />
+      {shouldShowDashboardSkeleton ? (
+        <SkeletonBox width="100%" height={220} rounded="lg" />
+      ) : (
+        <InteractiveLineChart
+          data={revenueLineData}
+          height={220}
+          lineColor={colors.text.primary}
+          gridColor={colors.border.light}
+          textColor={colors.text.muted}
+          selectedIndex={selectedTrendIndex}
+          onSelectIndex={setSelectedTrendIndex}
+          formatYLabel={formatCompactCurrencyTick}
+        />
+      )}
     </WebCard>
   );
 
@@ -2382,11 +2242,15 @@ export default function DashboardScreen() {
             <Text style={{ color: colors.text.primary }} className="font-bold text-base" numberOfLines={1}>
               Order Volume
             </Text>
-            <Text style={{ color: colors.text.tertiary }} className="text-xs" numberOfLines={1}>
-              {selectedTrendDay
-                ? `${formatShortDate(selectedTrendDay.key)} • ${selectedTrendDay.orders} orders`
-                : `Last 7 days • ${revenueTrend7d.ordersTotal} orders`}
-            </Text>
+            {shouldShowDashboardSkeleton ? (
+              <SkeletonBox width={150} height={11} rounded="md" />
+            ) : (
+              <Text style={{ color: colors.text.tertiary }} className="text-xs" numberOfLines={1}>
+                {selectedTrendDay
+                  ? `${formatShortDate(selectedTrendDay.key)} • ${selectedTrendDay.orders} orders`
+                  : `Last 7 days • ${revenueTrend7d.ordersTotal} orders`}
+              </Text>
+            )}
           </View>
         </View>
         {revenueTrend7d.ordersChange !== null ? (
@@ -2406,16 +2270,20 @@ export default function DashboardScreen() {
         ) : null}
       </View>
 
-      <InteractiveBarChart
-        data={orderVolumeData}
-        height={220}
-        barColor={colors.text.primary}
-        gridColor={colors.border.light}
-        textColor={colors.text.muted}
-        selectedIndex={selectedTrendIndex}
-        onSelectIndex={setSelectedTrendIndex}
-        formatYLabel={(value) => String(Math.round(value))}
-      />
+      {shouldShowDashboardSkeleton ? (
+        <SkeletonBox width="100%" height={220} rounded="lg" />
+      ) : (
+        <InteractiveBarChart
+          data={orderVolumeData}
+          height={220}
+          barColor={colors.text.primary}
+          gridColor={colors.border.light}
+          textColor={colors.text.muted}
+          selectedIndex={selectedTrendIndex}
+          onSelectIndex={setSelectedTrendIndex}
+          formatYLabel={(value) => String(Math.round(value))}
+        />
+      )}
     </WebCard>
   );
 
@@ -2512,7 +2380,7 @@ export default function DashboardScreen() {
           notifications={notifications}
           onNotificationPress={handleNotificationPress}
           onMarkAllRead={handleMarkAllRead}
-          orders={orders}
+          orders={recentOrdersWeb}
           profilesMap={profilesMap}
         />
         <SafeAreaView className="flex-1" edges={['top']}>
@@ -2595,7 +2463,7 @@ export default function DashboardScreen() {
                     trend={stats.revenueChange}
                     icon={<DollarSign size={18} color={colors.text.primary} strokeWidth={2.5} />}
                     onPress={() => handleCardPress('/insights')}
-                    loading={shouldShowDashboardSkeleton}
+                    loading={shouldShowDashboardMetricsSkeleton}
                   />
                 )}
                 <MetricCard
@@ -2604,23 +2472,23 @@ export default function DashboardScreen() {
                   subtitle={`${stats.totalOrders} total`}
                   icon={<ShoppingCart size={18} color={colors.text.primary} strokeWidth={2.5} />}
                   onPress={() => handleCardPress('/orders')}
-                  loading={shouldShowDashboardSkeleton}
+                  loading={shouldShowDashboardMetricsSkeleton}
                 />
                 <MetricCard
                   title="Inventory Items"
-                  value={String(inventoryVariantCount)}
-                  subtitle={`${products.length} products`}
+                  value={String(dashboardMetrics?.inventoryVariantCount ?? 0)}
+                  subtitle={`${dashboardMetrics?.productCount ?? 0} products`}
                   icon={<Package size={18} color={colors.text.primary} strokeWidth={2.5} />}
                   onPress={() => handleCardPress('/inventory')}
-                  loading={shouldShowDashboardSkeleton}
+                  loading={shouldShowDashboardMetricsSkeleton}
                 />
                 <MetricCard
                   title="Customers"
-                  value={String(customers.length)}
+                  value={String(dashboardMetrics?.customerCount ?? 0)}
                   subtitle="Total customers"
                   icon={<Users size={18} color={colors.text.primary} strokeWidth={2.5} />}
                   onPress={() => handleCardPress('/customers')}
-                  loading={shouldShowDashboardSkeleton}
+                  loading={shouldShowDashboardMetricsSkeleton}
                 />
               </View>
 
@@ -2681,7 +2549,7 @@ export default function DashboardScreen() {
             notifications={notifications}
             onNotificationPress={handleNotificationPress}
             onMarkAllRead={handleMarkAllRead}
-            orders={orders}
+            orders={recentOrdersWeb}
             profilesMap={profilesMap}
           />
 
@@ -2722,7 +2590,7 @@ export default function DashboardScreen() {
             >
               <View className="flex-row items-center justify-between mb-4">
                 <Text style={{ color: colors.text.muted }} className="text-sm font-medium">Total Revenue</Text>
-                {shouldShowDashboardSkeleton ? (
+                {shouldShowDashboardMetricsSkeleton ? (
                   <SkeletonBox width={48} height={24} rounded="full" />
                 ) : stats.revenueChange !== 0 ? (
                   <View style={{ backgroundColor: stats.revenueChange >= 0 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999 }}>
@@ -2737,7 +2605,7 @@ export default function DashboardScreen() {
                   </View>
                 ) : null}
               </View>
-              {shouldShowDashboardSkeleton ? (
+              {shouldShowDashboardMetricsSkeleton ? (
                 <>
                   <SkeletonBox width="72%" height={38} rounded="md" />
                   <View style={{ height: 8 }} />
@@ -2755,15 +2623,15 @@ export default function DashboardScreen() {
               <View className="flex-row mt-4 pt-4" style={{ borderTopWidth: 1, borderTopColor: colors.border.light }}>
                 <View className="flex-1">
                   <Text style={{ color: colors.text.muted }} className="text-xs">Products</Text>
-                  {shouldShowDashboardSkeleton ? <SkeletonBox width="78%" height={14} rounded="md" /> : <Text style={{ color: colors.text.primary }} className="font-semibold">{formatCurrency(stats.productSales)}</Text>}
+                  {shouldShowDashboardMetricsSkeleton ? <SkeletonBox width="78%" height={14} rounded="md" /> : <Text style={{ color: colors.text.primary }} className="font-semibold">{formatCurrency(stats.productSales)}</Text>}
                 </View>
                 <View className="flex-1">
                   <Text style={{ color: colors.text.muted }} className="text-xs">Delivery</Text>
-                  {shouldShowDashboardSkeleton ? <SkeletonBox width="78%" height={14} rounded="md" /> : <Text style={{ color: colors.text.primary }} className="font-semibold">{formatCurrency(stats.deliveryFees)}</Text>}
+                  {shouldShowDashboardMetricsSkeleton ? <SkeletonBox width="78%" height={14} rounded="md" /> : <Text style={{ color: colors.text.primary }} className="font-semibold">{formatCurrency(stats.deliveryFees)}</Text>}
                 </View>
                 <View className="flex-1">
                   <Text style={{ color: colors.text.muted }} className="text-xs">Services</Text>
-                  {shouldShowDashboardSkeleton ? <SkeletonBox width="78%" height={14} rounded="md" /> : <Text style={{ color: colors.text.primary }} className="font-semibold">{formatCurrency(stats.servicesRevenue)}</Text>}
+                  {shouldShowDashboardMetricsSkeleton ? <SkeletonBox width="78%" height={14} rounded="md" /> : <Text style={{ color: colors.text.primary }} className="font-semibold">{formatCurrency(stats.servicesRevenue)}</Text>}
                 </View>
               </View>
             </View>
@@ -2779,15 +2647,15 @@ export default function DashboardScreen() {
                 subtitle={`${stats.totalOrders} total`}
                 icon={<ShoppingCart size={20} color={colors.text.primary} strokeWidth={2} />}
                 onPress={() => handleCardPress('/(tabs)/orders')}
-                loading={shouldShowDashboardSkeleton}
+                loading={shouldShowDashboardMetricsSkeleton}
               />
               <MetricCard
                 title="Products"
-                value={String(products.length)}
+                value={String(dashboardMetrics?.productCount ?? 0)}
                 subtitle="in catalog"
                 icon={<BarChart3 size={20} color={colors.text.primary} strokeWidth={2} />}
                 onPress={() => handleCardPress('/(tabs)/inventory')}
-                loading={shouldShowDashboardSkeleton}
+                loading={shouldShowDashboardMetricsSkeleton}
               />
             </View>
           </View>
@@ -3049,7 +2917,6 @@ export default function DashboardScreen() {
                     <RecentOrderItem
                       key={order.id}
                       order={order}
-                      productById={productById}
                       statusColorMap={orderStatusColorMap}
                       onPress={() => router.push(`/order/${order.id}`)}
                       isLast={index === recentOrdersMobile.length - 1}
@@ -3111,7 +2978,6 @@ export default function DashboardScreen() {
                     <RecentPartnerJobItem
                       key={job.id}
                       job={job}
-                      partnerName={partnerById.get(job.partnerId) ?? ''}
                       onPress={() => router.push('/partners?partnerSection=jobs')}
                       isLast={index === recentPartnerJobs.length - 1}
                     />

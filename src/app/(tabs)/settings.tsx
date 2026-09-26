@@ -5797,13 +5797,10 @@ export default function SettingsScreen() {
           <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase mt-4 mb-3 tracking-wider">Notifications</Text>
           <View style={mobileSettingsCardStyle}>
             {Platform.OS === 'web' && notifPermission !== null && (
-              <View
-                className="rounded-2xl p-4 border"
-                style={{ backgroundColor: colors.bg.card, borderColor: colors.border.light }}
-              >
-                <View className="flex-row items-center gap-3">
+              <View>
+                <View className="flex-row items-center gap-3 px-4 py-3" style={{ minHeight: 76 }}>
                   <View
-                    className="w-9 h-9 rounded-lg items-center justify-center"
+                    className="w-[46px] h-[46px] rounded-full items-center justify-center"
                     style={{ backgroundColor: notifPermission === 'granted' ? '#10B98120' : colors.bg.secondary }}
                   >
                     {notifPermission === 'granted'
@@ -5814,11 +5811,11 @@ export default function SettingsScreen() {
                     <Text style={{ color: colors.text.primary }} className="font-semibold text-sm">
                       Push Notifications
                     </Text>
-                    <Text style={{ color: notifPermission === 'granted' ? '#10B981' : notifPermission === 'denied' ? '#EF4444' : colors.text.tertiary }} className="text-[11px] mt-0.5">
-                      {notifPermission === 'granted' ? 'Enabled — you\'ll receive alerts' : notifPermission === 'denied' ? 'Blocked — enable in browser settings' : 'Not yet enabled'}
+                    <Text style={{ color: notifPermission === 'granted' ? '#10B981' : notifPermission === 'denied' ? '#EF4444' : colors.text.tertiary, fontSize: 12, lineHeight: 16, marginTop: 2 }}>
+                      {notifPermission === 'granted' ? 'Enabled — you’ll receive alerts' : notifPermission === 'denied' ? 'Blocked — enable in browser settings' : 'Not yet enabled'}
                     </Text>
                   </View>
-                  {notifPermission !== 'granted' && notifPermission !== 'denied' && (
+                  {notifPermission !== 'granted' && notifPermission !== 'denied' ? (
                     <Pressable
                       onPress={() => {
                         promptForPermission();
@@ -5830,8 +5827,8 @@ export default function SettingsScreen() {
                     >
                       <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>Enable</Text>
                     </Pressable>
-                  )}
-                  {notifPermission === 'denied' && (
+                  ) : null}
+                  {notifPermission === 'denied' ? (
                     <Pressable
                       onPress={() => {
                         if (typeof window !== 'undefined') window.open('https://support.apple.com/guide/safari/customize-settings-for-a-website-ibrw7f78f7fe/mac', '_blank');
@@ -5841,56 +5838,57 @@ export default function SettingsScreen() {
                     >
                       <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '600' }}>How to fix</Text>
                     </Pressable>
-                  )}
+                  ) : null}
                 </View>
 
-                {notifPermission === 'granted' && (
-                  <View className="mt-3 pt-3" style={{ borderTopWidth: 1, borderTopColor: colors.border.light }}>
-                    <Pressable
-                      onPress={sendTestPushToThisDevice}
-                      disabled={isSendingTestPush || !notifReady}
-                      className="rounded-full items-center justify-center active:opacity-80"
-                      style={{ height: 40, backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light, opacity: isSendingTestPush || !notifReady ? 0.6 : 1 }}
-                    >
-                      <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">
-                        {isSendingTestPush ? 'Sending…' : 'Send test notification to this device'}
+                {notifPermission === 'granted' ? (
+                  <Pressable
+                    onPress={sendTestPushToThisDevice}
+                    disabled={isSendingTestPush || !notifReady}
+                    className="active:opacity-70"
+                    style={{
+                      minHeight: 58,
+                      marginLeft: 16,
+                      paddingLeft: 58,
+                      paddingRight: 16,
+                      borderTopWidth: 1,
+                      borderTopColor: colors.border.light,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      opacity: isSendingTestPush || !notifReady ? 0.55 : 1,
+                    }}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: colors.text.primary }} className="font-semibold text-sm">
+                        Test this device
                       </Text>
-                    </Pressable>
-                    {testPushResult && (
-                      <Text
-                        style={{ color: testPushResult.ok ? '#10B981' : '#EF4444' }}
-                        className="text-[11px] mt-2 text-center"
-                      >
-                        {testPushResult.message}
+                      <Text style={{ color: testPushResult ? (testPushResult.ok ? '#10B981' : '#EF4444') : colors.text.tertiary, fontSize: 12, lineHeight: 16, marginTop: 2 }}>
+                        {testPushResult?.message ?? 'Confirm that push notifications are arriving'}
                       </Text>
-                    )}
-                  </View>
-                )}
+                    </View>
+                    <Text style={{ color: colors.accent.primary, fontSize: 12, fontWeight: '700', marginLeft: 12 }}>
+                      {isSendingTestPush ? 'Sending…' : 'Send'}
+                    </Text>
+                  </Pressable>
+                ) : null}
               </View>
             )}
 
             {canUseOrderAutomation ? (
-              <Pressable
-                onPress={() => openSettingsPanel('email-settings', '/email-settings?from=settings')}
-                className="rounded-2xl p-4 border flex-row items-center gap-3 active:opacity-70"
-                style={{ backgroundColor: colors.bg.card, borderColor: colors.border.light }}
+              <View
+                style={{
+                  borderTopWidth: Platform.OS === 'web' && notifPermission !== null ? 1 : 0,
+                  borderTopColor: colors.border.light,
+                }}
               >
-                <View
-                  className="w-9 h-9 rounded-lg items-center justify-center"
-                  style={{ backgroundColor: colors.bg.secondary }}
-                >
-                  <Mail size={18} color={colors.text.tertiary} strokeWidth={2} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.text.primary }} className="font-semibold text-sm">
-                    Emails
-                  </Text>
-                  <Text style={{ color: colors.text.tertiary }} className="text-[11px] mt-0.5">
-                    Order status update and delivery confirmation emails
-                  </Text>
-                </View>
-                <ChevronRight size={18} color={colors.text.tertiary} strokeWidth={2} />
-              </Pressable>
+                <SettingsRow
+                  title="Emails"
+                  description="Order status updates and delivery confirmations"
+                  icon={<Mail size={18} color={colors.text.tertiary} strokeWidth={2} />}
+                  onPress={() => openSettingsPanel('email-settings', '/email-settings?from=settings')}
+                  showDivider={false}
+                />
+              </View>
             ) : null}
           </View>
           </>
