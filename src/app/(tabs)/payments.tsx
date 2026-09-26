@@ -843,7 +843,6 @@ export default function PaymentsScreen() {
       const order = {
         id: orderId,
         orderNumber,
-        websiteOrderReference: reference,
         customerName: 'Ada Example',
         customerEmail: 'ada@example.com',
         customerPhone: '08012345678',

@@ -30,6 +30,8 @@ type SharedPaymentRecord = {
   businessId: string;
   source: 'storefront' | string;
   sourceOrderId: string;
+  websiteOrderReference?: string;
+  wooCommerceOrderId?: string | number;
   linkedOrderId?: string | null;
   linkedOrderNumber?: string | null;
   linkedOrderLinkedAt?: string | null;
@@ -103,6 +105,24 @@ type SharedPaymentRecord = {
     public_url?: string;
   };
   paymentLinkUrl?: string;
+  fyllCheckout?: {
+    reference?: string;
+    paymentProofUrl?: string;
+    proofUrl?: string;
+    proof_url?: string;
+    payment_proof_url?: string;
+    receiptUrl?: string;
+    receipt_url?: string;
+    receipt?: { url?: string; uri?: string; publicUrl?: string; public_url?: string };
+    proof?: { url?: string; uri?: string; publicUrl?: string; public_url?: string };
+    orderId?: string | number;
+    orderNumber?: string | number;
+    websiteOrderReference?: string | number;
+    wooCommerceOrderId?: string | number;
+    woocommerceOrderId?: string | number;
+    woocommerce_order_id?: string | number;
+    wooOrderId?: string | number;
+  };
   activityLog?: Array<{
     id: string;
     action: string;
@@ -192,6 +212,27 @@ const getVerifiedOrderStatus = (statuses: Array<{ name: string }>) => (
 const isSharedIntegrationPayment = (payment: SharedPaymentRecord) => (
   ['storefront', 'fyll_checkout'].includes(payment.source.trim().toLowerCase())
 );
+
+const resolvePaymentWooOrderReference = (payment: SharedPaymentRecord) => {
+  const candidates = [
+    payment.wooCommerceOrderId,
+    payment.websiteOrderReference,
+    payment.fyllCheckout?.wooCommerceOrderId,
+    payment.fyllCheckout?.woocommerceOrderId,
+    payment.fyllCheckout?.woocommerce_order_id,
+    payment.fyllCheckout?.wooOrderId,
+    payment.fyllCheckout?.websiteOrderReference,
+    payment.fyllCheckout?.orderId,
+    payment.fyllCheckout?.orderNumber,
+  ];
+  const sourceReference = payment.sourceOrderId.trim().toLowerCase();
+
+  for (const value of candidates) {
+    const candidate = String(value ?? '').trim();
+    if (candidate && candidate.toLowerCase() !== sourceReference) return candidate;
+  }
+  return undefined;
+};
 
 type PaymentDetailData = {
   payment: SharedPaymentRecord;
@@ -1041,7 +1082,7 @@ export default function StorefrontPaymentDetailScreen() {
     return {
       id: Math.random().toString(36).substring(2, 15),
       orderNumber,
-      websiteOrderReference: targetPayment.sourceOrderId,
+      websiteOrderReference: resolvePaymentWooOrderReference(targetPayment),
       customerName: targetPayment.customerName || 'Fyll Checkout customer',
       customerEmail: targetPayment.customerEmail ?? '',
       customerPhone: targetPayment.customerPhone ?? '',

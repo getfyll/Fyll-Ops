@@ -3094,9 +3094,20 @@ const useFyllStore = create<FyllStore>()(
         const matchedStatusConfig = nextStatus
           ? get().orderStatuses.find((status) => status.name.trim().toLowerCase() === nextStatus.toLowerCase())
           : undefined;
+        const websiteOrderReference = previousOrder?.websiteOrderReference?.trim() ?? '';
+        const fyllCheckoutReference = previousOrder?.fyllCheckout?.reference?.trim() ?? '';
+        const hasWooCommerceOrderReference = Boolean(
+          websiteOrderReference
+          && websiteOrderReference.toLowerCase() !== fyllCheckoutReference.toLowerCase()
+          && !(
+            previousOrder?.source?.trim().toLowerCase().replace(/[_-]+/g, ' ') === 'fyll checkout'
+            && /^FYL-/i.test(websiteOrderReference)
+          )
+        );
         const shouldSyncWooStatus = Boolean(
           businessId
           && previousOrder
+          && hasWooCommerceOrderReference
           && nextStatus
           && nextStatus !== previousOrder.status
           && updates.updatedBy !== 'WooCommerce Sync'
@@ -3318,6 +3329,7 @@ const useFyllStore = create<FyllStore>()(
                       'woocommerce-disabled',
                       'woocommerce-not-configured',
                       'missing-woocommerce-config',
+                      'missing-website-order-reference',
                     ]);
 
                     if (result.reason && silentSkipReasons.has(result.reason)) {

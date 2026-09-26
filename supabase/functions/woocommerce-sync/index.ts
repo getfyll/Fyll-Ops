@@ -70,6 +70,10 @@ type WooOrder = {
   shipping_total?: string
   payment_method_title?: string
   customer_note?: string
+  meta_data?: Array<{
+    key?: string
+    value?: unknown
+  }>
   billing?: {
     first_name?: string
     last_name?: string
@@ -173,6 +177,7 @@ type NormalizedWooOrder = {
   customerName: string
   customerEmail: string
   customerPhone: string
+  metadataValues: string[]
   deliveryAddress: string
   deliveryState: string
   lineItems: NormalizedWooLineItem[]
@@ -648,6 +653,18 @@ const normalizeWooOrder = (order: WooOrder): NormalizedWooOrder => {
     customerName: getCustomerName(order),
     customerEmail: String(order.billing?.email ?? '').trim(),
     customerPhone: String(order.billing?.phone ?? '').trim(),
+    metadataValues: (order.meta_data ?? [])
+      .flatMap((entry) => {
+        const value = entry?.value
+        if (typeof value === 'string' || typeof value === 'number') return [String(value).trim()]
+        if (Array.isArray(value)) {
+          return value
+            .filter((item) => typeof item === 'string' || typeof item === 'number')
+            .map((item) => String(item).trim())
+        }
+        return []
+      })
+      .filter(Boolean),
     deliveryAddress: getDeliveryAddress(order),
     deliveryState: String(order.shipping?.state ?? order.billing?.state ?? '').trim(),
     lineItems,
@@ -738,7 +755,20 @@ serve(async (req) => {
 
       const businessData = (business.data ?? {}) as Record<string, unknown>
       const enabled = businessData.woocommerceEnabled === true
-      const reference = toTrimmedString(order.data?.websiteOrderReference)
+      const rawReference = toTrimmedString(order.data?.websiteOrderReference)
+      const checkoutData = order.data?.fyllCheckout && typeof order.data.fyllCheckout === 'object'
+        ? order.data.fyllCheckout as Record<string, unknown>
+        : {}
+      const checkoutReference = toTrimmedString(checkoutData.reference)
+      const orderSource = toTrimmedString(order.data?.source).toLowerCase().replace(/[_-]+/g, ' ')
+      const isInternalCheckoutReference = Boolean(
+        rawReference
+        && (
+          rawReference.toLowerCase() === checkoutReference.toLowerCase()
+          || (orderSource === 'fyll checkout' && /^FYL-/i.test(rawReference))
+        )
+      )
+      const reference = isInternalCheckoutReference ? '' : rawReference
 
       if (!enabled) {
         return jsonResponse(200, {
@@ -854,7 +884,7 @@ serve(async (req) => {
     }
 
     if (action === 'fetch_orders') {
-      const requestedLimit = Math.min(100, Math.max(1, Math.floor(Number(payload.limit ?? 50))))
+      const requestedLimit = Math.min(300, Math.max(1, Math.floor(Number(payload.limit ?? 50))))
       const perPage = Math.min(50, requestedLimit)
       const orders: NormalizedWooOrder[] = []
       let page = 1

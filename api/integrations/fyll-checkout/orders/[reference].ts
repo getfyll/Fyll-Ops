@@ -27,19 +27,62 @@ type StatusPatchPayload = ProofCarrier & {
   businessId?: string;
   merchantId?: string;
   storeUrl?: string;
+  orderId?: string | number;
+  orderNumber?: string | number;
+  websiteOrderReference?: string | number;
+  wooCommerceOrderId?: string | number;
+  woocommerceOrderId?: string | number;
+  woocommerce_order_id?: string | number;
+  wooOrderId?: string | number;
   status?: string;
   paymentStatus?: string;
   paymentMethod?: string;
   paidAt?: string;
   bankTransfer?: ProofCarrier;
-  fyllCheckout?: ProofCarrier;
+  fyllCheckout?: ProofCarrier & {
+    orderId?: string | number;
+    orderNumber?: string | number;
+    websiteOrderReference?: string | number;
+    wooCommerceOrderId?: string | number;
+    woocommerceOrderId?: string | number;
+    woocommerce_order_id?: string | number;
+    wooOrderId?: string | number;
+  };
 };
 
 const normalizeText = (value: unknown) => (
-  typeof value === 'string' ? value.trim() : ''
+  typeof value === 'string' || typeof value === 'number' ? String(value).trim() : ''
 );
 
 const firstText = (...values: unknown[]) => values.map(normalizeText).find(Boolean) || '';
+
+const getWooOrderReference = (payload: StatusPatchPayload, checkoutReference: string) => {
+  const candidate = firstText(
+    payload.wooCommerceOrderId,
+    payload.woocommerceOrderId,
+    payload.woocommerce_order_id,
+    payload.wooOrderId,
+    payload.websiteOrderReference,
+    payload.orderId,
+    payload.fyllCheckout?.wooCommerceOrderId,
+    payload.fyllCheckout?.woocommerceOrderId,
+    payload.fyllCheckout?.woocommerce_order_id,
+    payload.fyllCheckout?.wooOrderId,
+    payload.fyllCheckout?.websiteOrderReference,
+    payload.fyllCheckout?.orderId,
+    payload.orderNumber,
+    payload.fyllCheckout?.orderNumber,
+  );
+
+  if (!candidate || candidate.toLowerCase() === checkoutReference.toLowerCase()) return '';
+  return candidate;
+};
+
+const keepExistingWooOrderReference = (value: unknown, checkoutReference: string) => {
+  const candidate = normalizeText(value);
+  if (!candidate || candidate.toLowerCase() === checkoutReference.toLowerCase()) return '';
+  return candidate;
+};
 
 const recordValue = (value: unknown) => (
   value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
@@ -226,6 +269,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const paymentData = (paymentRow?.data && typeof paymentRow.data === 'object' && !Array.isArray(paymentRow.data))
     ? paymentRow.data as Record<string, unknown>
     : {};
+  const wooOrderReference = getWooOrderReference(payload, reference)
+    || keepExistingWooOrderReference(orderData.websiteOrderReference, reference)
+    || keepExistingWooOrderReference(paymentData.websiteOrderReference, reference)
+    || keepExistingWooOrderReference(paymentData.wooCommerceOrderId, reference);
 
   const proofUrl = getPaymentProofUrl(payload, paymentData, orderData);
   const nextPaymentData = {
@@ -234,6 +281,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     businessId,
     source: 'fyll_checkout',
     sourceOrderId: reference,
+    websiteOrderReference: wooOrderReference || undefined,
+    wooCommerceOrderId: wooOrderReference || undefined,
     status: status ? toPaymentStatus(status) : paymentData.status,
     paymentMethod: paymentMethod || paymentData.paymentMethod,
     ...proofAliases(proofUrl),
@@ -263,6 +312,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const nextOrderData = {
     ...orderData,
     id: reference,
+    websiteOrderReference: wooOrderReference || undefined,
     status: status ? toOrderStatusForMethod(status, paymentMethod || String(orderData.paymentMethod ?? '')) : orderData.status,
     orderStatus: status ? toOrderStatusForMethod(status, paymentMethod || String(orderData.paymentMethod ?? '')) : orderData.orderStatus,
     paymentMethod: paymentMethod || orderData.paymentMethod,

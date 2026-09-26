@@ -24,6 +24,7 @@ import {
 } from '@/lib/woocommerce-link';
 import { getSettingsWebPanelStyles, isFromSettingsRoute } from '@/lib/settings-web-panel';
 import { useSettingsBack } from '@/lib/useSettingsBack';
+import { matchWooOrdersForReferenceRepair } from '@/lib/woocommerce-reference-repair';
 
 type ToastState = {
   type: 'success' | 'error';
@@ -33,6 +34,7 @@ type ToastState = {
 type SyncSummary = {
   fetched: number;
   linked: number;
+  repaired: number;
   unmatched: number;
   failed: number;
   customersCreated: number;
@@ -323,7 +325,7 @@ export default function WooCommerceSettingsScreen() {
 
       const { orders: wooOrders } = await fetchWooCommerceOrders({
         ...connectionInput,
-        limit: 50,
+        limit: 300,
       });
 
       const timestamp = new Date().toISOString();
@@ -350,6 +352,8 @@ export default function WooCommerceSettingsScreen() {
 
       const existingByWebsiteRef = new Map<string, Order>();
       const existingByOrderNumber = new Map<string, Order>();
+      const existingById = new Map(orders.map((order) => [order.id, order]));
+      const referenceRepairs = matchWooOrdersForReferenceRepair(wooOrders, orders);
       orders.forEach((order) => {
         const refKey = normalizeWooLookupValue(order.websiteOrderReference);
         const orderKey = normalizeWooLookupValue(order.orderNumber);
@@ -360,6 +364,7 @@ export default function WooCommerceSettingsScreen() {
       const nextSummary: SyncSummary = {
         fetched: wooOrders.length,
         linked: 0,
+        repaired: 0,
         unmatched: 0,
         failed: 0,
         customersCreated: 0,
@@ -370,9 +375,12 @@ export default function WooCommerceSettingsScreen() {
       for (const wooOrder of wooOrders) {
         try {
           const websiteRefKey = normalizeWooLookupValue(wooOrder.websiteOrderReference);
-          const matchedOrder = autoLinkOrders
+          const regularlyMatchedOrder = autoLinkOrders
             ? existingByWebsiteRef.get(websiteRefKey) ?? existingByOrderNumber.get(websiteRefKey)
             : existingByWebsiteRef.get(websiteRefKey);
+          const repairedOrderId = referenceRepairs.get(wooOrder.externalId);
+          const matchedOrder = regularlyMatchedOrder
+            ?? (repairedOrderId ? existingById.get(repairedOrderId) : undefined);
 
           const emailKey = normalizeWooLookupValue(wooOrder.customerEmail);
           const phoneKey = normalizeWooLookupValue(wooOrder.customerPhone);
@@ -430,6 +438,7 @@ export default function WooCommerceSettingsScreen() {
             }, businessId);
 
             nextSummary.linked += 1;
+            if (!regularlyMatchedOrder && repairedOrderId) nextSummary.repaired += 1;
             existingByWebsiteRef.set(websiteRefKey, {
               ...matchedOrder,
               websiteOrderReference: wooOrder.websiteOrderReference,
@@ -446,7 +455,7 @@ export default function WooCommerceSettingsScreen() {
       setSyncSummary(nextSummary);
       showToast(
         nextSummary.failed > 0 ? 'error' : 'success',
-        `WooCommerce sync finished. ${nextSummary.linked} linked, ${nextSummary.unmatched} unmatched.`
+        `WooCommerce sync finished. ${nextSummary.linked} linked (${nextSummary.repaired} repaired), ${nextSummary.unmatched} unmatched.`
       );
       void Haptics.notificationAsync(
         nextSummary.failed > 0
@@ -951,6 +960,7 @@ export default function WooCommerceSettingsScreen() {
                   {[
                     ['Fetched', syncSummary.fetched],
                     ['Linked', syncSummary.linked],
+                    ['Repaired refs', syncSummary.repaired],
                     ['Unmatched', syncSummary.unmatched],
                     ['Failed', syncSummary.failed],
                     ['Customers', syncSummary.customersCreated],

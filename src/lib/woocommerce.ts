@@ -32,6 +32,7 @@ export type WooNormalizedOrder = {
   customerName: string;
   customerEmail: string;
   customerPhone: string;
+  metadataValues: string[];
   deliveryAddress: string;
   deliveryState: string;
   lineItems: WooNormalizedLineItem[];

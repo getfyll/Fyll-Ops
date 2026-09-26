@@ -57,6 +57,13 @@ type CheckoutPayload = ProofCarrier & {
   storeUrl?: string;
   source?: string;
   reference?: string;
+  orderId?: string | number;
+  orderNumber?: string | number;
+  websiteOrderReference?: string | number;
+  wooCommerceOrderId?: string | number;
+  woocommerceOrderId?: string | number;
+  woocommerce_order_id?: string | number;
+  wooOrderId?: string | number;
   status?: string;
   paymentStatus?: string;
   paymentMethod?: string;
@@ -85,16 +92,46 @@ type CheckoutPayload = ProofCarrier & {
     accountName?: string;
     accountNumber?: string;
   };
-  fyllCheckout?: ProofCarrier;
+  fyllCheckout?: ProofCarrier & {
+    orderId?: string | number;
+    orderNumber?: string | number;
+    websiteOrderReference?: string | number;
+    wooCommerceOrderId?: string | number;
+    woocommerceOrderId?: string | number;
+    woocommerce_order_id?: string | number;
+    wooOrderId?: string | number;
+  };
   checkoutUrl?: string;
   createdAt?: string;
 };
 
 const normalizeText = (value: unknown) => (
-  typeof value === 'string' ? value.trim() : ''
+  typeof value === 'string' || typeof value === 'number' ? String(value).trim() : ''
 );
 
 const firstText = (...values: unknown[]) => values.map(normalizeText).find(Boolean) || '';
+
+export const getWooOrderReference = (payload: CheckoutPayload, checkoutReference: string) => {
+  const candidate = firstText(
+    payload.wooCommerceOrderId,
+    payload.woocommerceOrderId,
+    payload.woocommerce_order_id,
+    payload.wooOrderId,
+    payload.websiteOrderReference,
+    payload.orderId,
+    payload.fyllCheckout?.wooCommerceOrderId,
+    payload.fyllCheckout?.woocommerceOrderId,
+    payload.fyllCheckout?.woocommerce_order_id,
+    payload.fyllCheckout?.wooOrderId,
+    payload.fyllCheckout?.websiteOrderReference,
+    payload.fyllCheckout?.orderId,
+    payload.orderNumber,
+    payload.fyllCheckout?.orderNumber,
+  );
+
+  if (!candidate || candidate.toLowerCase() === checkoutReference.toLowerCase()) return '';
+  return candidate;
+};
 
 const getPaymentProofUrl = (payload: CheckoutPayload) => firstText(
   payload.paymentProofUrl,
@@ -316,7 +353,7 @@ const validateCheckoutPayload = (payload: CheckoutPayload) => {
   return '';
 };
 
-const buildRows = (payload: CheckoutPayload, catalogProducts: CatalogProductRow[]) => {
+export const buildRows = (payload: CheckoutPayload, catalogProducts: CatalogProductRow[]) => {
   const now = new Date().toISOString();
   const businessId = normalizeText(payload.businessId);
   const reference = normalizeText(payload.reference);
@@ -328,6 +365,7 @@ const buildRows = (payload: CheckoutPayload, catalogProducts: CatalogProductRow[
   const amountPaid = normalizeAmount(payload.amountPaid ?? payload.paidAmount ?? payload.amount);
   const shippingPrice = normalizeAmount(payload.shipping?.price);
   const sourceOrderId = reference;
+  const wooOrderReference = getWooOrderReference(payload, reference);
   const paymentId = `fyll_checkout_${reference}`;
   const customerName = normalizeText(payload.customer?.name) || 'Fyll Checkout customer';
   const proofUrl = getPaymentProofUrl(payload);
@@ -377,7 +415,7 @@ const buildRows = (payload: CheckoutPayload, catalogProducts: CatalogProductRow[
   const order = {
     id: sourceOrderId,
     orderNumber: reference,
-    websiteOrderReference: reference,
+    websiteOrderReference: wooOrderReference || undefined,
     customerName,
     customerEmail: normalizeText(payload.customer?.email),
     customerPhone: normalizeText(payload.customer?.phone),
@@ -426,6 +464,8 @@ const buildRows = (payload: CheckoutPayload, catalogProducts: CatalogProductRow[
     businessId,
     source: 'fyll_checkout',
     sourceOrderId,
+    websiteOrderReference: wooOrderReference || undefined,
+    wooCommerceOrderId: wooOrderReference || undefined,
     customerName,
     customerEmail: normalizeText(payload.customer?.email),
     customerPhone: normalizeText(payload.customer?.phone),
