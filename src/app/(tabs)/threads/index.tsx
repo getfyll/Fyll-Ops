@@ -2322,7 +2322,7 @@ export default function ThreadsScreen() {
       <Modal
         visible={showFilterMenu}
         transparent
-        animationType={isMobile ? 'slide' : 'fade'}
+        animationType="fade"
         onRequestClose={() => setShowFilterMenu(false)}
       >
         <Pressable
@@ -2339,12 +2339,12 @@ export default function ThreadsScreen() {
           <Pressable
             onPress={(event) => event.stopPropagation()}
             style={{
-              backgroundColor: colors.bg.card,
+              backgroundColor: (Platform.OS === 'web' && showSplitView) ? colors.bg.card : colors.bg.primary,
               borderTopLeftRadius: (Platform.OS === 'web' && showSplitView) ? 18 : MOBILE_FILTER_SHEET.borderRadius,
               borderTopRightRadius: (Platform.OS === 'web' && showSplitView) ? 18 : MOBILE_FILTER_SHEET.borderRadius,
-              borderBottomLeftRadius: (Platform.OS === 'web' && showSplitView) ? 18 : MOBILE_FILTER_SHEET.borderRadius,
-              borderBottomRightRadius: (Platform.OS === 'web' && showSplitView) ? 18 : MOBILE_FILTER_SHEET.borderRadius,
-              borderWidth: 1,
+              borderBottomLeftRadius: (Platform.OS === 'web' && showSplitView) ? 18 : 0,
+              borderBottomRightRadius: (Platform.OS === 'web' && showSplitView) ? 18 : 0,
+              borderWidth: (Platform.OS === 'web' && showSplitView) ? 1 : 0,
               borderColor: colors.border.light,
               paddingHorizontal: 0,
               paddingTop: 8,
@@ -2360,10 +2360,8 @@ export default function ThreadsScreen() {
               </View>
             ) : null}
 
-            <View className="flex-row items-center justify-between px-6 pb-4" style={{ borderBottomWidth: 0.5, borderBottomColor: subtleDivider }}>
-              <Text style={{ color: colors.text.primary, fontSize: 18, fontWeight: '700' }}>
-                Filter & Sort
-              </Text>
+            <View className="flex-row items-center justify-between px-5 pb-4" style={{ borderBottomWidth: 0.5, borderBottomColor: subtleDivider }}>
+              <Text style={{ color: colors.text.primary }} className="font-bold text-lg">Filter & Sort</Text>
               <Pressable
                 onPress={() => setShowFilterMenu(false)}
                 className="items-center justify-center active:opacity-80"
@@ -2379,44 +2377,27 @@ export default function ThreadsScreen() {
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
-              <View className="px-6 pt-5">
-                <Text style={{ color: colors.text.muted, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 }}>
-                  Thread state
+              <View className="px-5 pt-4">
+                <Text style={{ color: colors.text.muted }} className="text-xs font-semibold uppercase tracking-wider mb-3">
+                  Thread State
                 </Text>
                 {[
                   { key: 'open', label: 'Open threads' },
                   { key: 'closed', label: 'Closed threads' },
                   { key: 'all', label: 'All threads' },
-                ].map((option, index, arr) => {
+                ].map((option) => {
                   const isActive = threadVisibilityFilter === option.key;
                   return (
                     <Pressable
                       key={option.key}
                       onPress={() => setThreadVisibilityFilter(option.key as 'open' | 'closed' | 'all')}
-                      className="active:opacity-80"
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        paddingVertical: 12,
-                        borderBottomWidth: index === arr.length - 1 ? 0 : 0.5,
-                        borderBottomColor: subtleDivider,
-                      }}
+                      className="flex-row items-center py-3 active:opacity-70"
                     >
-                      <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600' }}>
-                        {option.label}
-                      </Text>
+                      <View className="flex-1">
+                        <Text style={{ color: colors.text.primary }} className="font-medium text-sm">{option.label}</Text>
+                      </View>
                       {isActive ? (
-                        <View
-                          style={{
-                            width: 20,
-                            height: 20,
-                            borderRadius: 10,
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            backgroundColor: colors.accent.primary,
-                          }}
-                        >
+                        <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: colors.accent.primary }}>
                           <Check size={12} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={3} />
                         </View>
                       ) : null}
@@ -2425,48 +2406,32 @@ export default function ThreadsScreen() {
                 })}
               </View>
 
-              <View className="px-6 pt-5" style={{ borderTopWidth: 0.5, borderTopColor: subtleDivider, marginTop: 10 }}>
-                <Text style={{ color: colors.text.muted, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 }}>
-                  Order status
+              <View className="px-5 pt-4" style={{ borderTopWidth: 0.5, borderTopColor: subtleDivider, marginTop: 8 }}>
+                <Text style={{ color: colors.text.muted }} className="text-xs font-semibold uppercase tracking-wider mb-3">
+                  Order Status
                 </Text>
-                {statusFilterOptions.map((statusKey, index, arr) => {
+                {statusFilterOptions.map((statusKey) => {
                   const isActive = statusFilter === statusKey;
                   const label = statusKey === 'all' ? 'All statuses' : statusKey;
+                  const statusColor = orderStatusColorMap[statusKey]
+                    ?? Object.entries(orderStatusColorMap).find(
+                      ([name]) => name.toLowerCase() === statusKey.toLowerCase()
+                    )?.[1]
+                    ?? '#6B7280';
                   return (
                     <Pressable
                       key={statusKey}
                       onPress={() => setStatusFilter(statusKey)}
-                      className="active:opacity-80"
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        paddingVertical: 12,
-                        borderBottomWidth: index === arr.length - 1 ? 0 : 0.5,
-                        borderBottomColor: subtleDivider,
-                      }}
+                      className="flex-row items-center py-3 active:opacity-70"
                     >
-                      <Text
-                        style={{
-                          color: colors.text.primary,
-                          fontSize: 14,
-                          fontWeight: statusKey === 'all' ? '600' : '700',
-                          textTransform: statusKey === 'all' ? 'none' : 'capitalize',
-                        }}
-                      >
-                        {label}
-                      </Text>
+                      {statusKey !== 'all' ? (
+                        <View className="w-3 h-3 rounded-full mr-3" style={{ backgroundColor: statusColor }} />
+                      ) : null}
+                      <View className="flex-1">
+                        <Text style={{ color: colors.text.primary }} className="font-medium text-sm">{label}</Text>
+                      </View>
                       {isActive ? (
-                        <View
-                          style={{
-                            width: 20,
-                            height: 20,
-                            borderRadius: 10,
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            backgroundColor: colors.accent.primary,
-                          }}
-                        >
+                        <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: colors.accent.primary }}>
                           <Check size={12} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={3} />
                         </View>
                       ) : null}
@@ -2475,7 +2440,7 @@ export default function ThreadsScreen() {
                 })}
               </View>
 
-              <View className="px-6 py-5" style={{ borderTopWidth: 0.5, borderTopColor: subtleDivider, marginTop: 10 }}>
+              <View className="px-5 py-4" style={{ borderTopWidth: 0.5, borderTopColor: subtleDivider, marginTop: 8 }}>
                 <View className="flex-row items-center" style={{ gap: 10 }}>
                   <Pressable
                     onPress={() => {
@@ -2485,14 +2450,14 @@ export default function ThreadsScreen() {
                     className="active:opacity-80 items-center justify-center"
                     style={{
                       flex: 1,
-                      height: 48,
-                      borderRadius: 999,
+                      height: MOBILE_FILTER_SHEET.actionHeight,
+                      borderRadius: MOBILE_FILTER_SHEET.actionRadius,
                       backgroundColor: colors.bg.secondary,
                       borderWidth: 1,
                       borderColor: colors.border.light,
                     }}
                   >
-                    <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600' }}>
+                    <Text style={{ color: colors.text.primary }} className="font-semibold">
                       Clear
                     </Text>
                   </Pressable>
@@ -2501,12 +2466,12 @@ export default function ThreadsScreen() {
                     className="active:opacity-80 items-center justify-center"
                     style={{
                       flex: 1,
-                      height: 48,
-                      borderRadius: 999,
+                      height: MOBILE_FILTER_SHEET.actionHeight,
+                      borderRadius: MOBILE_FILTER_SHEET.actionRadius,
                       backgroundColor: colors.accent.primary,
                     }}
                   >
-                    <Text style={{ color: isDark ? '#000000' : '#FFFFFF', fontSize: 14, fontWeight: '700' }}>
+                    <Text style={{ color: isDark ? '#000000' : '#FFFFFF' }} className="font-semibold">
                       Apply
                     </Text>
                   </Pressable>

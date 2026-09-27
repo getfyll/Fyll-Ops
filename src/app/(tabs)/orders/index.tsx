@@ -1114,7 +1114,7 @@ export default function OrdersScreen() {
         {/* Filter Menu Modal */}
         <Modal
           visible={showFilterMenu}
-          animationType={isMobile ? 'slide' : 'none'}
+          animationType={isMobile ? 'fade' : 'none'}
           transparent
           onRequestClose={() => setShowFilterMenu(false)}
         >
@@ -1145,12 +1145,14 @@ export default function OrdersScreen() {
                       borderColor: isDark ? 'rgba(255, 255, 255, 0.14)' : 'transparent',
                     }
                   : {
-                      backgroundColor: colors.bg.card,
+                      backgroundColor: colors.bg.primary,
                       width: '100%',
                       maxHeight: MOBILE_FILTER_SHEET.maxHeight,
-                      borderRadius: MOBILE_FILTER_SHEET.borderRadius,
-                      borderWidth: 1,
-                      borderColor: colors.border.light,
+                      borderTopLeftRadius: MOBILE_FILTER_SHEET.borderRadius,
+                      borderTopRightRadius: MOBILE_FILTER_SHEET.borderRadius,
+                      borderBottomLeftRadius: 0,
+                      borderBottomRightRadius: 0,
+                      borderWidth: 0,
                       paddingTop: 8,
                       overflow: 'hidden',
                     }
@@ -1396,8 +1398,12 @@ export default function OrdersScreen() {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                       setShowFilterMenu(false);
                     }}
-                    className="rounded-full items-center justify-center active:opacity-80"
-                    style={{ height: 50, backgroundColor: colors.accent.primary }}
+                    className="items-center justify-center active:opacity-80"
+                    style={{
+                      height: MOBILE_FILTER_SHEET.actionHeight,
+                      borderRadius: MOBILE_FILTER_SHEET.actionRadius,
+                      backgroundColor: colors.accent.primary,
+                    }}
                   >
                     <Text style={{ color: isDark ? '#000000' : '#FFFFFF' }} className="font-semibold">Apply</Text>
                   </Pressable>

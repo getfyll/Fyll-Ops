@@ -1317,12 +1317,12 @@ export default function InventoryScreen() {
 	          paddingBottom: tabBarHeight + 16,
         }}
         showsVerticalScrollIndicator={false}
+        stickyHeaderIndices={!isWebDesktop && inventoryTab === 'products' ? [1] : undefined}
         onScroll={handleInventoryScroll}
         scrollEventThrottle={16}
       >
         {!isWebDesktop && inventoryTab === 'products' ? (
-          <>
-            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
+          <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
               <View
                 style={{
                   flex: 1,
@@ -1371,9 +1371,19 @@ export default function InventoryScreen() {
                   {mobileInventoryStats.lowStock}
                 </Text>
               </View>
-            </View>
+          </View>
+        ) : null}
 
-            <View className="flex-row gap-2" style={{ marginBottom: 14 }}>
+        {!isWebDesktop && inventoryTab === 'products' ? (
+          <View
+            className="flex-row gap-2"
+            style={{
+              backgroundColor: colors.bg.primary,
+              paddingTop: 8,
+              paddingBottom: 14,
+              zIndex: 10,
+            }}
+          >
               <View
                 className="flex-1 flex-row items-center rounded-full px-4"
                 style={{ height: 46, backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light }}
@@ -1417,8 +1427,7 @@ export default function InventoryScreen() {
                   </Text>
                 )}
               </Pressable>
-            </View>
-          </>
+          </View>
         ) : null}
 
         {isInitialLoading ? (
@@ -2043,7 +2052,7 @@ export default function InventoryScreen() {
         {/* Filter Menu Modal */}
         <Modal
           visible={showFilterMenu}
-          animationType={isMobile ? 'slide' : 'none'}
+          animationType={isMobile ? 'fade' : 'none'}
           transparent
           onRequestClose={() => setShowFilterMenu(false)}
         >
@@ -2074,12 +2083,14 @@ export default function InventoryScreen() {
                       borderColor: isDark ? 'rgba(255, 255, 255, 0.14)' : 'transparent',
                     }
                   : {
-                      backgroundColor: colors.bg.card,
+                      backgroundColor: colors.bg.primary,
                       width: '100%',
                       maxHeight: MOBILE_FILTER_SHEET.maxHeight,
-                      borderRadius: MOBILE_FILTER_SHEET.borderRadius,
-                      borderWidth: 1,
-                      borderColor: colors.border.light,
+                      borderTopLeftRadius: MOBILE_FILTER_SHEET.borderRadius,
+                      borderTopRightRadius: MOBILE_FILTER_SHEET.borderRadius,
+                      borderBottomLeftRadius: 0,
+                      borderBottomRightRadius: 0,
+                      borderWidth: 0,
                       paddingTop: 8,
                       overflow: 'hidden',
                     }
@@ -2169,8 +2180,15 @@ export default function InventoryScreen() {
                       setInventoryFilter('all');
                       setSortBy('name-asc');
                     }}
-                    className="mt-3 rounded-xl items-center justify-center"
-                    style={{ height: 42, backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}
+                    className="mt-3 items-center justify-center active:opacity-80"
+                    style={{
+                      height: MOBILE_FILTER_SHEET.actionHeight,
+                      borderRadius: MOBILE_FILTER_SHEET.actionRadius,
+                      backgroundColor: colors.bg.secondary,
+                      borderWidth: 1,
+                      borderColor: colors.border.light,
+                      marginBottom: 12,
+                    }}
                   >
                     <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">Clear filters</Text>
                   </Pressable>
@@ -2302,8 +2320,12 @@ export default function InventoryScreen() {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                       setShowFilterMenu(false);
                     }}
-                    className="rounded-xl items-center justify-center active:opacity-80"
-                    style={{ height: 50, backgroundColor: colors.accent.primary }}
+                    className="items-center justify-center active:opacity-80"
+                    style={{
+                      height: MOBILE_FILTER_SHEET.actionHeight,
+                      borderRadius: MOBILE_FILTER_SHEET.actionRadius,
+                      backgroundColor: colors.accent.primary,
+                    }}
                   >
                     <Text style={{ color: isDark ? '#000000' : '#FFFFFF' }} className="font-semibold">Apply</Text>
                   </Pressable>
