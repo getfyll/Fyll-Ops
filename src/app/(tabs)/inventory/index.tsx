@@ -7,6 +7,7 @@ import useFyllStore, { Product, ProductVariant, type Procurement, formatCurrency
 import { normalizeProductType } from '@/lib/product-utils';
 import { useThemeColors } from '@/lib/theme';
 import { useBreakpoint } from '@/lib/useBreakpoint';
+import { MOBILE_FILTER_SHEET } from '@/lib/mobile-filter-sheet';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
 import { getActiveSplitCardStyle } from '@/lib/selection-style';
 import { SplitViewLayout } from '@/components/SplitViewLayout';
@@ -2042,7 +2043,7 @@ export default function InventoryScreen() {
         {/* Filter Menu Modal */}
         <Modal
           visible={showFilterMenu}
-          animationType="none"
+          animationType={isMobile ? 'slide' : 'none'}
           transparent
           onRequestClose={() => setShowFilterMenu(false)}
         >
@@ -2050,16 +2051,18 @@ export default function InventoryScreen() {
             style={{
               flex: 1,
               backgroundColor: 'rgba(0, 0, 0, 0.5)',
-              flexDirection: isWeb ? 'row' : 'column',
+              flexDirection: isWebDesktop ? 'row' : 'column',
               justifyContent: 'flex-end',
+              paddingHorizontal: isWebDesktop ? 0 : MOBILE_FILTER_SHEET.horizontalInset,
+              paddingBottom: isWebDesktop ? 0 : MOBILE_FILTER_SHEET.bottomInset,
             }}
             onPress={() => setShowFilterMenu(false)}
           >
             <Pressable
               onPress={(e) => e.stopPropagation()}
-              className={isWeb ? undefined : 'rounded-t-3xl'}
+              className={isWebDesktop ? undefined : 'overflow-hidden'}
               style={
-                isWeb
+                isWebDesktop
                   ? {
                       backgroundColor: colors.bg.primary,
                       width: 400,
@@ -2070,18 +2073,27 @@ export default function InventoryScreen() {
                       borderWidth: isDark ? 1 : 0,
                       borderColor: isDark ? 'rgba(255, 255, 255, 0.14)' : 'transparent',
                     }
-                  : { backgroundColor: colors.bg.primary, maxHeight: '70%' }
+                  : {
+                      backgroundColor: colors.bg.card,
+                      width: '100%',
+                      maxHeight: MOBILE_FILTER_SHEET.maxHeight,
+                      borderRadius: MOBILE_FILTER_SHEET.borderRadius,
+                      borderWidth: 1,
+                      borderColor: colors.border.light,
+                      paddingTop: 8,
+                      overflow: 'hidden',
+                    }
               }
             >
               {/* Handle */}
-              {!isWeb && (
+              {!isWebDesktop && (
                 <View className="items-center py-3">
                   <View className="w-10 h-1 rounded-full" style={{ backgroundColor: colors.border.light }} />
                 </View>
               )}
 
               {/* Header */}
-              <View className="flex-row items-center justify-between px-5 pb-4" style={{ borderBottomWidth: 0.5, borderBottomColor: separatorColor, paddingTop: isWeb ? 20 : 0 }}>
+              <View className="flex-row items-center justify-between px-5 pb-4" style={{ borderBottomWidth: 0.5, borderBottomColor: separatorColor, paddingTop: isWebDesktop ? 20 : 0 }}>
                 <Text style={{ color: colors.text.primary }} className="font-bold text-lg">Filter & Sort</Text>
                 <Pressable
                   onPress={() => setShowFilterMenu(false)}
@@ -2092,7 +2104,7 @@ export default function InventoryScreen() {
                 </Pressable>
               </View>
 
-              <ScrollView showsVerticalScrollIndicator={false} style={isWeb ? { flex: 1 } : undefined}>
+              <ScrollView showsVerticalScrollIndicator={false} style={isWebDesktop ? { flex: 1 } : undefined}>
                 {/* Filter Section */}
                 <View className="px-5 pt-4">
                   <Text style={{ color: colors.text.muted }} className="text-xs font-semibold uppercase tracking-wider mb-3">Filter</Text>

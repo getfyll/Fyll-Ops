@@ -10,6 +10,7 @@ import useFyllStore from '@/lib/state/fyll-store';
 import type { Order } from '@/lib/state/fyll-store';
 import useAuthStore from '@/lib/state/auth-store';
 import { useBreakpoint } from '@/lib/useBreakpoint';
+import { MOBILE_FILTER_SHEET } from '@/lib/mobile-filter-sheet';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
 import { useThemeColors } from '@/lib/theme';
 import { DESKTOP_PAGE_HEADER_MIN_HEIGHT, getStandardPageHeadingStyle } from '@/lib/page-heading';
@@ -2321,7 +2322,7 @@ export default function ThreadsScreen() {
       <Modal
         visible={showFilterMenu}
         transparent
-        animationType={Platform.OS === 'web' ? 'fade' : 'slide'}
+        animationType={isMobile ? 'slide' : 'fade'}
         onRequestClose={() => setShowFilterMenu(false)}
       >
         <Pressable
@@ -2330,25 +2331,25 @@ export default function ThreadsScreen() {
             flex: 1,
             backgroundColor: 'rgba(0,0,0,0.5)',
             justifyContent: (Platform.OS === 'web' && showSplitView) ? 'center' : 'flex-end',
-            paddingHorizontal: (Platform.OS === 'web' && showSplitView) ? 16 : 10,
+            paddingHorizontal: (Platform.OS === 'web' && showSplitView) ? 16 : MOBILE_FILTER_SHEET.horizontalInset,
             paddingTop: (Platform.OS === 'web' && showSplitView) ? 20 : 0,
-            paddingBottom: (Platform.OS === 'web' && showSplitView) ? 16 : 8,
+            paddingBottom: (Platform.OS === 'web' && showSplitView) ? 16 : MOBILE_FILTER_SHEET.bottomInset,
           }}
         >
           <Pressable
             onPress={(event) => event.stopPropagation()}
             style={{
               backgroundColor: colors.bg.card,
-              borderTopLeftRadius: (Platform.OS === 'web' && showSplitView) ? 18 : 24,
-              borderTopRightRadius: (Platform.OS === 'web' && showSplitView) ? 18 : 24,
-              borderBottomLeftRadius: (Platform.OS === 'web' && showSplitView) ? 18 : 24,
-              borderBottomRightRadius: (Platform.OS === 'web' && showSplitView) ? 18 : 24,
+              borderTopLeftRadius: (Platform.OS === 'web' && showSplitView) ? 18 : MOBILE_FILTER_SHEET.borderRadius,
+              borderTopRightRadius: (Platform.OS === 'web' && showSplitView) ? 18 : MOBILE_FILTER_SHEET.borderRadius,
+              borderBottomLeftRadius: (Platform.OS === 'web' && showSplitView) ? 18 : MOBILE_FILTER_SHEET.borderRadius,
+              borderBottomRightRadius: (Platform.OS === 'web' && showSplitView) ? 18 : MOBILE_FILTER_SHEET.borderRadius,
               borderWidth: 1,
               borderColor: colors.border.light,
               paddingHorizontal: 0,
               paddingTop: 8,
               paddingBottom: Math.max(22, insets.bottom + 14),
-              maxHeight: '80%',
+              maxHeight: MOBILE_FILTER_SHEET.maxHeight,
               width: (Platform.OS === 'web' && showSplitView) ? 430 : '100%',
               alignSelf: 'center',
             }}
