@@ -1,6 +1,19 @@
 import { Platform, type ViewStyle } from 'react-native';
 import type { ThemeColors } from '@/lib/theme';
 
+const MOBILE_TAB_BAR_HIDDEN_ROUTES = new Set([
+  '/inventory-audit',
+  '/settings-panel',
+]);
+
+// Primary destinations remain one tap away. Once a user drills into content,
+// the page's back button owns navigation and the floating bar should recede.
+export const shouldHideMobileTabBar = (pathname: string): boolean => {
+  const normalizedPath = `/${pathname.split('?')[0]?.split('#')[0]?.split('/').filter(Boolean).join('/') ?? ''}`;
+  if (MOBILE_TAB_BAR_HIDDEN_ROUTES.has(normalizedPath)) return true;
+  return normalizedPath.split('/').filter(Boolean).length > 1;
+};
+
 // Single source of truth for the bottom tab bar's style, so screens that
 // temporarily hide it (e.g. an open thread's chat view) can restore the
 // exact same style instead of clearing it to `undefined` — which falls back

@@ -9,6 +9,10 @@ import { supabase } from '@/lib/supabase';
 import { supabaseData } from '@/lib/supabase/data';
 import { supabaseSettings } from '@/lib/supabase/settings';
 import { normalizeProductType } from '@/lib/product-utils';
+import {
+  readVerifiedCoreCollections,
+  writeVerifiedCoreCollections,
+} from '@/lib/verified-collection-cache';
 import type {
   Product,
   Order,
@@ -594,6 +598,9 @@ export function useSupabaseSync() {
 
   const products = useFyllStore((s) => s.products);
   const orders = useFyllStore((s) => s.orders);
+  const hasVerifiedProductsData = useFyllStore((s) => s.hasVerifiedProductsData);
+  const hasVerifiedOrdersData = useFyllStore((s) => s.hasVerifiedOrdersData);
+  const verifiedCollectionsBusinessId = useFyllStore((s) => s.verifiedCollectionsBusinessId);
   const customers = useFyllStore((s) => s.customers);
   const restockLogs = useFyllStore((s) => s.restockLogs);
   const procurements = useFyllStore((s) => s.procurements);
@@ -672,6 +679,29 @@ export function useSupabaseSync() {
   const pendingSettingsSyncSignatureRef = useRef<string | null>(null);
   const hasHydratedBusinessSettingsRef = useRef(false);
   const hasLoadedRemoteBusinessSettingsRef = useRef(false);
+
+  // Keep the complete snapshot current after local product/order edits too.
+  // The business marker prevents data from one workspace being written under another.
+  useEffect(() => {
+    if (
+      !businessId
+      || verifiedCollectionsBusinessId !== businessId
+      || !hasVerifiedProductsData
+      || !hasVerifiedOrdersData
+    ) return;
+
+    const timer = setTimeout(() => {
+      void writeVerifiedCoreCollections({ businessId, products, orders });
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [
+    businessId,
+    hasVerifiedOrdersData,
+    hasVerifiedProductsData,
+    orders,
+    products,
+    verifiedCollectionsBusinessId,
+  ]);
 
   useEffect(() => {
     if (!isAuthenticated || !businessId || isOfflineMode) {
@@ -1284,6 +1314,24 @@ export function useSupabaseSync() {
         }
       }
       try {
+        const verifiedCoreCache = await readVerifiedCoreCollections(businessId);
+        if (!isCurrentWorkspace()) return;
+        if (verifiedCoreCache) {
+          useFyllStore.setState({
+            products: verifiedCoreCache.products,
+            orders: verifiedCoreCache.orders,
+            hasVerifiedProductsData: true,
+            hasVerifiedOrdersData: true,
+            verifiedCollectionsBusinessId: businessId,
+          });
+        } else {
+          useFyllStore.setState({
+            hasVerifiedProductsData: false,
+            hasVerifiedOrdersData: false,
+            verifiedCollectionsBusinessId: null,
+          });
+        }
+
         const localState = useFyllStore.getState();
         const localProducts = localState.products;
         const localOrders = localState.orders;
@@ -2046,6 +2094,10 @@ export function useSupabaseSync() {
                 && auditLogRowsResult.status === 'fulfilled'
                 && partnerRowsResult.status === 'fulfilled'
                 && partnerJobRowsResult.status === 'fulfilled';
+              const hasVerifiedProductsData = productDataRowsResult.status === 'fulfilled'
+                || localState.hasVerifiedProductsData;
+              const hasVerifiedOrdersData = orderDataRowsResult.status === 'fulfilled'
+                || localState.hasVerifiedOrdersData;
               useFyllStore.setState({
                 products: fullProducts,
                 orders: autoCompletedOrders,
@@ -2113,7 +2165,20 @@ export function useSupabaseSync() {
                     })
                   : localState.dashboardSnapshot,
                 hasVerifiedDashboardData: didLoadVerifiedDashboardData,
+                hasVerifiedProductsData,
+                hasVerifiedOrdersData,
+                verifiedCollectionsBusinessId: hasVerifiedProductsData && hasVerifiedOrdersData
+                  ? businessId
+                  : localState.verifiedCollectionsBusinessId,
               });
+              if (hasVerifiedProductsData && hasVerifiedOrdersData) {
+                void writeVerifiedCoreCollections({
+                  businessId,
+                  products: fullProducts,
+                  orders: autoCompletedOrders,
+                  updatedAt: syncTimestamp,
+                });
+              }
               prevProductIds.current = toIdSet(fullProducts);
               prevOrderIds.current = toIdSet(autoCompletedOrders);
               prevCustomerIds.current = toIdSet(fullCustomers);

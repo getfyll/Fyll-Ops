@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, Platform, Modal } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Truck, Pencil, Trash2, FileText, Package, Paperclip, Image as ImageIcon, MoreVertical, User, Calendar, Clock, CheckCircle, XCircle, Send, PlusCircle } from 'lucide-react-native';
+import { ArrowLeft, ChevronDown, ChevronRight, Truck, Pencil, Trash2, FileText, Package, Paperclip, Image as ImageIcon, MoreVertical, User, Calendar, Clock, CheckCircle, XCircle, Send, PlusCircle } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import useFyllStore, { type Procurement, formatCurrency } from '@/lib/state/fyll-store';
 import useAuthStore from '@/lib/state/auth-store';
@@ -176,6 +176,7 @@ export default function ProcurementDetailScreen() {
   const { id, section } = useLocalSearchParams<{ id: string; section?: string }>();
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showPoItems, setShowPoItems] = useState<boolean>(false);
   const procurements = useFyllStore((s) => s.procurements);
   const products = useFyllStore((s) => s.products);
   const deleteProcurement = useFyllStore((s) => s.deleteProcurement);
@@ -245,6 +246,7 @@ export default function ProcurementDetailScreen() {
         costAtPurchase: item.costAtPurchase,
         total: item.costAtPurchase,
         paymentDate: formatPanelDate(item.paymentDate),
+        isPaymentLine: item.productId.startsWith('charge-payment-'),
       };
     }) as {
       id: string;
@@ -256,8 +258,11 @@ export default function ProcurementDetailScreen() {
       costAtPurchase: number;
       total: number;
       paymentDate: string;
+      isPaymentLine: boolean;
     }[];
   }, [procurement, products]);
+  const paymentLineRows = useMemo(() => itemRows.filter((row) => row.isPaymentLine), [itemRows]);
+  const poItemRows = useMemo(() => itemRows.filter((row) => !row.isPaymentLine), [itemRows]);
   const procurementChargeTotals = useMemo(() => {
     if (!procurement) return { transfer: 0, stampDuty: 0, total: 0, count: 0 };
     return procurement.items.reduce((acc, item) => {
@@ -529,13 +534,59 @@ export default function ProcurementDetailScreen() {
             ))}
           </View>
 
+          {/* PO Items (collapsed by default) */}
+          {poItemRows.length > 0 ? (
+            <View style={{ ...cardStyle, overflow: 'hidden' }}>
+              <Pressable
+                onPress={() => {
+                  setShowPoItems((current) => !current);
+                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                }}
+                className="flex-row items-center justify-between"
+                style={{ paddingHorizontal: 16, paddingVertical: 14 }}
+              >
+                <View>
+                  <Text style={{ color: colors.text.muted }} className="text-xs font-semibold uppercase tracking-wider">PO Items</Text>
+                  <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600', marginTop: 4 }}>
+                    {poItemRows.length} item{poItemRows.length === 1 ? '' : 's'}
+                  </Text>
+                </View>
+                {showPoItems ? (
+                  <ChevronDown size={16} color={colors.text.tertiary} strokeWidth={2} />
+                ) : (
+                  <ChevronRight size={16} color={colors.text.tertiary} strokeWidth={2} />
+                )}
+              </Pressable>
+              {showPoItems ? poItemRows.map((item) => (
+                <View
+                  key={item.id}
+                  className="flex-row justify-between"
+                  style={{ alignItems: 'flex-start', paddingHorizontal: 16, paddingVertical: 10, borderTopWidth: 1, borderTopColor: colors.divider, gap: 10 }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, minWidth: 0, paddingRight: 12 }}>
+                    <Package size={13} color={colors.text.tertiary} strokeWidth={2} />
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={{ color: colors.text.secondary, fontSize: 12 }} numberOfLines={2}>{capitalizeDisplayValue(item.name)}</Text>
+                      <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 1 }} numberOfLines={1}>
+                        Qty {item.quantityPurchased || item.quantityReceived}{item.unitCost > 0 ? ` · Unit ${formatCurrency(item.unitCost)}` : ''}
+                      </Text>
+                    </View>
+                  </View>
+                  {item.total > 0 ? (
+                    <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '600', textAlign: 'right' }}>{formatCurrency(item.total)}</Text>
+                  ) : null}
+                </View>
+              )) : null}
+            </View>
+          ) : null}
+
           {/* Payment Breakdown */}
           {itemRows.length > 0 ? (
             <View style={cardStyle}>
               <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 10 }}>
                 <Text style={{ color: colors.text.muted }} className="text-xs font-semibold uppercase tracking-wider">Payment Breakdown</Text>
               </View>
-              {itemRows.map((item, index) => (
+              {paymentLineRows.map((item, index) => (
                 <View
                   key={item.id}
                   className="flex-row justify-between"

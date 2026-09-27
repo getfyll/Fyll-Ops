@@ -17,7 +17,7 @@ import { storage } from '@/lib/storage';
 import { canShowFinanceNavigation } from '@/lib/finance-access';
 import { isBusinessFeatureEnabled } from '@/lib/feature-access';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
-import { getTabBarStyle } from '@/lib/tab-bar-style';
+import { getTabBarStyle, shouldHideMobileTabBar } from '@/lib/tab-bar-style';
 import { supabaseData } from '@/lib/supabase/data';
 
 const ORDERS_TAB_BADGE_SEEN_KEY_PREFIX = 'orders-tab-badge-seen';
@@ -295,7 +295,10 @@ export default function TabLayout() {
   const noWebFocusStyle = isWeb ? ({ outlineStyle: 'none', outlineWidth: 0, outlineColor: 'transparent' } as any) : null;
 
   // On desktop, show sidebar instead of bottom tabs
-  const tabBarStyle = getTabBarStyle(colors, isDesktop, isMobile);
+  const hideMobileTabBar = isMobile && shouldHideMobileTabBar(pathname);
+  const tabBarStyle = hideMobileTabBar
+    ? { display: 'none' as const }
+    : getTabBarStyle(colors, isDesktop, isMobile);
   const isDark = colors.text.primary === '#FFFFFF';
 
   return (
@@ -315,7 +318,7 @@ export default function TabLayout() {
             tabBarShowLabel: !isMobile,
             tabBarStyle,
             tabBarBackground: () => (
-              isMobile ? (
+              isMobile && !hideMobileTabBar ? (
                 <FloatingTabBarBackground isDark={isDark} />
               ) : null
             ),

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView, Modal } from 'react-native';
-import { X, MoreVertical, Truck, Package, Paperclip, FileText, Image as ImageIcon, CheckCircle, XCircle, Send, PlusCircle, User, Calendar, Clock, ChevronRight } from 'lucide-react-native';
+import { View, Text, Pressable, ScrollView } from 'react-native';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
+import { X, MoreVertical, Truck, Package, Paperclip, FileText, Image as ImageIcon, CheckCircle, XCircle, Send, PlusCircle, User, Calendar, Clock, ChevronRight, ChevronLeft } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import useFyllStore, { type Procurement, formatCurrency } from '@/lib/state/fyll-store';
 import useAuthStore from '@/lib/state/auth-store';
@@ -164,6 +165,7 @@ export function ProcurementDetailPanel({ procurementId, compact = false, statusO
 
   useEffect(() => {
     setShowActionMenu(false);
+    setShowPoItemsModal(false);
   }, [procurementId]);
 
   const itemRows = useMemo(() => {
@@ -518,61 +520,6 @@ export function ProcurementDetailPanel({ procurementId, compact = false, statusO
           </Pressable>
         ) : null}
 
-        <Modal
-          visible={showPoItemsModal}
-          transparent
-          animationType="slide"
-          onRequestClose={() => setShowPoItemsModal(false)}
-        >
-          <Pressable
-            onPress={() => setShowPoItemsModal(false)}
-            style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}
-          >
-            <Pressable
-              onPress={(event) => event.stopPropagation()}
-              style={{
-                maxHeight: '80%',
-                borderTopLeftRadius: 20,
-                borderTopRightRadius: 20,
-                backgroundColor: colors.bg.card,
-                overflow: 'hidden',
-              }}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: colors.divider }}>
-                <Text style={{ color: colors.text.primary, fontSize: 16, fontWeight: '700' }}>PO Items</Text>
-                <Pressable onPress={() => setShowPoItemsModal(false)} style={{ padding: 4 }}>
-                  <X size={20} color={colors.text.secondary} strokeWidth={2.5} />
-                </Pressable>
-              </View>
-              <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false}>
-                {poItemRows.map((item, index) => (
-                  <View
-                    key={item.id}
-                    style={{
-                      paddingHorizontal: 18,
-                      paddingVertical: 12,
-                      borderTopWidth: index === 0 ? 0 : 1,
-                      borderTopColor: colors.divider,
-                    }}
-                  >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Package size={13} color={colors.text.tertiary} strokeWidth={2} />
-                      <Text style={{ color: colors.text.secondary, fontSize: 13, flex: 1 }} numberOfLines={1}>
-                        {capitalizeDisplayValue(item.name)}
-                      </Text>
-                    </View>
-                    {item.quantityPurchased > 0 ? (
-                      <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 4, marginLeft: 19 }}>
-                        Qty {item.quantityPurchased}
-                      </Text>
-                    ) : null}
-                  </View>
-                ))}
-              </ScrollView>
-            </Pressable>
-          </Pressable>
-        </Modal>
-
         {/* Payment Breakdown */}
         {paymentLineRows.length > 0 ? (
           <View style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.divider }}>
@@ -722,6 +669,68 @@ export function ProcurementDetailPanel({ procurementId, compact = false, statusO
 
         <View style={{ height: 24 }} />
       </ScrollView>
+
+      {/* PO Items — slides in within the panel */}
+      {showPoItemsModal ? (
+        <Animated.View
+          entering={FadeIn.duration(260)}
+          exiting={FadeOut.duration(200)}
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 50, backgroundColor: colors.bg.screen }}
+        >
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 10,
+              paddingHorizontal: 16,
+              height: 56,
+              borderBottomWidth: 1,
+              borderBottomColor: colors.divider,
+              backgroundColor: colors.bg.card,
+            }}
+          >
+            <Pressable
+              onPress={() => setShowPoItemsModal(false)}
+              style={{ width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg.input, borderWidth: 1, borderColor: colors.divider }}
+            >
+              <ChevronLeft size={18} color={colors.text.secondary} strokeWidth={2.5} />
+            </Pressable>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={{ color: colors.text.primary, fontSize: compact ? 15 : 16, fontWeight: '700' }}>PO Items</Text>
+              <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 1 }} numberOfLines={1}>
+                {poItemRows.length} item{poItemRows.length === 1 ? '' : 's'} · {capitalizeDisplayValue(poName)}
+              </Text>
+            </View>
+          </View>
+          <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
+            <View style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.divider }}>
+              {poItemRows.map((item, index) => (
+                <View
+                  key={item.id}
+                  style={{
+                    paddingHorizontal: 16,
+                    paddingVertical: 12,
+                    borderTopWidth: index === 0 ? 0 : 1,
+                    borderTopColor: colors.divider,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Package size={13} color={colors.text.tertiary} strokeWidth={2} />
+                    <Text style={{ color: colors.text.secondary, fontSize: 13, flex: 1 }} numberOfLines={2}>
+                      {capitalizeDisplayValue(item.name)}
+                    </Text>
+                  </View>
+                  {item.quantityPurchased > 0 ? (
+                    <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 4, marginLeft: 19 }}>
+                      Qty {item.quantityPurchased}
+                    </Text>
+                  ) : null}
+                </View>
+              ))}
+            </View>
+          </ScrollView>
+        </Animated.View>
+      ) : null}
     </View>
   );
 }

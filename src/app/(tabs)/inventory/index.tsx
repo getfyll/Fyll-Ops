@@ -345,6 +345,8 @@ export default function InventoryScreen() {
   const products = useFyllStore((s) => s.products);
   const procurements = useFyllStore((s) => s.procurements);
   const lastDataSyncAt = useFyllStore((s) => s.lastDataSyncAt);
+  const hasVerifiedProductsData = useFyllStore((s) => s.hasVerifiedProductsData);
+  const verifiedCollectionsBusinessId = useFyllStore((s) => s.verifiedCollectionsBusinessId);
   const updateProduct = useFyllStore((s) => s.updateProduct);
   const deleteProduct = useFyllStore((s) => s.deleteProduct);
   const userRole = useFyllStore((s) => s.userRole);
@@ -358,9 +360,11 @@ export default function InventoryScreen() {
 
   const isOwner = userRole === 'owner';
 
-  // Show skeleton loader on first load when authenticated but no products yet
-  const [hasLoadedOnce, setHasLoadedOnce] = useState(() => products.length > 0 || Boolean(lastDataSyncAt));
-  const isInitialLoading = isAuthenticated && products.length === 0 && !hasLoadedOnce;
+  // A persisted web preview is intentionally incomplete. Only render the list
+  // after a business-scoped full snapshot has been restored or fetched.
+  const isInitialLoading = isAuthenticated && !isOfflineMode && (
+    !hasVerifiedProductsData || verifiedCollectionsBusinessId !== businessId
+  );
   const procurementVariantImageRepairSignatureRef = useRef('');
 
   useEffect(() => {
@@ -394,18 +398,6 @@ export default function InventoryScreen() {
     });
   }, [businessId, procurements, products, updateProduct]);
 
-  useEffect(() => {
-    if (products.length > 0 || lastDataSyncAt) {
-      setHasLoadedOnce(true);
-    }
-  }, [lastDataSyncAt, products.length]);
-
-  // Fallback: stop showing skeletons after 4s even if no products loaded (new account)
-  useEffect(() => {
-    if (hasLoadedOnce) return;
-    const timer = setTimeout(() => setHasLoadedOnce(true), 4000);
-    return () => clearTimeout(timer);
-  }, [hasLoadedOnce]);
   const [searchQuery, setSearchQuery] = useState('');
   const [inventoryTab, setInventoryTab] = useState<'products' | 'services'>('products');
   const [inventoryFilter, setInventoryFilter] = useState<'all' | 'low-stock' | 'in-stock' | 'out-of-stock'>('all');
@@ -923,7 +915,16 @@ export default function InventoryScreen() {
                   router.replace('/inventory-audit');
 	                }}
 	                className="rounded-full overflow-hidden active:opacity-80"
-	                style={{ paddingHorizontal: 14, height: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(168, 85, 247, 0.08)' }}
+	                style={{
+                    paddingHorizontal: 14,
+                    height: 44,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: isMobile ? colors.bg.card : 'rgba(168, 85, 247, 0.08)',
+                    borderWidth: isMobile ? 1 : 0,
+                    borderColor: colors.border.light,
+                  }}
 	              >
 	                <ClipboardList size={16} color="#A856F6" strokeWidth={2} />
 	                <Text style={{ color: '#A856F6', marginLeft: 6, fontWeight: '600', fontSize: 12 }}>Audit</Text>
@@ -1303,7 +1304,7 @@ export default function InventoryScreen() {
         style={{
           flex: 1,
           paddingHorizontal: isWebDesktop ? 0 : 20,
-          paddingTop: isWebDesktop ? 0 : 16,
+          paddingTop: isWebDesktop || inventoryTab === 'products' ? 0 : 16,
           backgroundColor: showSplitView ? colors.bg.primary : colors.bg.primary,
           maxWidth: isWebDesktop ? undefined : showSplitView ? undefined : 600,
         }}
@@ -1322,7 +1323,7 @@ export default function InventoryScreen() {
         scrollEventThrottle={16}
       >
         {!isWebDesktop && inventoryTab === 'products' ? (
-          <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
+          <View style={{ flexDirection: 'row', gap: 10, paddingTop: 16, marginBottom: 14 }}>
               <View
                 style={{
                   flex: 1,
@@ -1379,7 +1380,7 @@ export default function InventoryScreen() {
             className="flex-row gap-2"
             style={{
               backgroundColor: colors.bg.primary,
-              paddingTop: 8,
+              paddingTop: 0,
               paddingBottom: 14,
               zIndex: 10,
             }}

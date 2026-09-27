@@ -367,7 +367,9 @@ export default function WarehouseScreen() {
                 flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'center',
-                backgroundColor: 'rgba(168, 85, 247, 0.08)',
+                backgroundColor: isMobile ? colors.bg.card : 'rgba(168, 85, 247, 0.08)',
+                borderWidth: isMobile ? 1 : 0,
+                borderColor: colors.border.light,
                 borderRadius: 999,
               }}
             >

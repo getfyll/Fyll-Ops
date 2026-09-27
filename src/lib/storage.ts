@@ -78,6 +78,7 @@ const createMinimalFyllStoragePayload = (rawValue: string): string | null => {
       userRole: state.userRole,
       lastDataSyncAt: state.lastDataSyncAt,
       lastFullDataSyncAt: state.lastFullDataSyncAt,
+      dashboardSnapshot: state.dashboardSnapshot,
       useGlobalLowStockThreshold: state.useGlobalLowStockThreshold,
       globalLowStockThreshold: state.globalLowStockThreshold,
       autoCompleteOrders: state.autoCompleteOrders,

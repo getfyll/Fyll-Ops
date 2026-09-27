@@ -1626,7 +1626,7 @@ export default function FinanceScreen() {
   const [otherIncomePeriod, setOtherIncomePeriod] = useState<OverviewRange>('30d');
   const [expensePeriod, setExpensePeriod] = useState<OverviewRange>('30d');
   const [refundPeriod, setRefundPeriod] = useState<OverviewRange>('30d');
-  const [procurementPeriod, setProcurementPeriod] = useState<OverviewRange>('30d');
+  const [procurementPeriod, setProcurementPeriod] = useState<OverviewRange>('year');
   const [salaryPeriod, setSalaryPeriod] = useState<OverviewRange>('30d');
   const [expenseFilter, setExpenseFilter] = useState<ExpenseFilter>('all');
   const [expenseSort, setExpenseSort] = useState<ExpenseSort>('newest');

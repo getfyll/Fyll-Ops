@@ -1221,6 +1221,9 @@ interface FyllStore {
   lastFullDataSyncAt: string | null;
   dashboardSnapshot: DashboardSnapshot | null;
   hasVerifiedDashboardData: boolean;
+  hasVerifiedProductsData: boolean;
+  hasVerifiedOrdersData: boolean;
+  verifiedCollectionsBusinessId: string | null;
   setIsBackgroundSyncing: (value: boolean) => void;
   setDataSyncTimestamps: (timestamps: { lastDataSyncAt?: string | null; lastFullDataSyncAt?: string | null }) => void;
 
@@ -1591,6 +1594,9 @@ const initialState = {
   lastFullDataSyncAt: null as string | null,
   dashboardSnapshot: null as DashboardSnapshot | null,
   hasVerifiedDashboardData: false,
+  hasVerifiedProductsData: false,
+  hasVerifiedOrdersData: false,
+  verifiedCollectionsBusinessId: null as string | null,
   themeMode: 'system' as ThemeMode,
   userRole: 'owner' as UserRole,
   useGlobalLowStockThreshold: false,

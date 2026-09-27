@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, Pressable, TextInput, FlatList, Modal, Platform, ScrollView } from 'react-native';
+import { View, Text, Pressable, TextInput, FlatList, Modal, Platform, ScrollView, ActivityIndicator } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import { useNavigation } from '@react-navigation/native';
@@ -16,6 +16,11 @@ import { useThemeColors } from '@/lib/theme';
 import { DESKTOP_PAGE_HEADER_MIN_HEIGHT, getStandardPageHeadingStyle } from '@/lib/page-heading';
 import { collaborationData, type CollaborationThreadSummary } from '@/lib/supabase/collaboration';
 import { storage } from '@/lib/storage';
+import {
+  readVerifiedThreadItems,
+  writeVerifiedThreadItems,
+  type VerifiedThreadListItem,
+} from '@/lib/verified-collection-cache';
 import { createOrderStatusColorMap, getOrderStatusChipColors } from '@/lib/order-status-colors';
 import { CollaborationThreadPanel } from '@/components/CollaborationThreadPanel';
 import { getTabBarStyle } from '@/lib/tab-bar-style';
@@ -28,17 +33,7 @@ import {
   isTeamThreadEntityId,
 } from '@/lib/team-threads';
 
-interface ThreadListItem {
-  threadId: string;
-  orderId: string;
-  orderNumber: string;
-  customerName: string;
-  preview: string;
-  updatedAt: string;
-  unreadCount: number;
-  orderStatus: string;
-  isClosed: boolean;
-}
+type ThreadListItem = VerifiedThreadListItem;
 
 interface TeamThreadListItem {
   threadRecordId: string | null;
@@ -230,6 +225,8 @@ export default function ThreadsScreen() {
   const companyCardTextMuted = 'rgba(226,232,240,0.72)';
 
   const orders = useFyllStore((state) => state.orders);
+  const hasVerifiedOrdersData = useFyllStore((state) => state.hasVerifiedOrdersData);
+  const verifiedCollectionsBusinessId = useFyllStore((state) => state.verifiedCollectionsBusinessId);
   const orderStatuses = useFyllStore((state) => state.orderStatuses);
   const cases = useFyllStore((state) => state.cases);
   const currentUser = useAuthStore((state) => state.currentUser);
@@ -241,6 +238,8 @@ export default function ThreadsScreen() {
   const queryClient = useQueryClient();
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [cachedThreadItems, setCachedThreadItems] = useState<ThreadListItem[] | null>(null);
+  const [hasCheckedThreadCache, setHasCheckedThreadCache] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [selectedTeamThreadEntityId, setSelectedTeamThreadEntityId] = useState<string | null>(null);
   const [selectedCaseThreadEntityId, setSelectedCaseThreadEntityId] = useState<string | null>(null);
@@ -319,6 +318,22 @@ export default function ThreadsScreen() {
     placeholderData: (previous) => previous,
   });
 
+  useEffect(() => {
+    let cancelled = false;
+    setCachedThreadItems(null);
+    setHasCheckedThreadCache(false);
+    if (!businessId) {
+      setHasCheckedThreadCache(true);
+      return () => { cancelled = true; };
+    }
+    void readVerifiedThreadItems(businessId).then((items) => {
+      if (cancelled) return;
+      setCachedThreadItems(items);
+      setHasCheckedThreadCache(true);
+    });
+    return () => { cancelled = true; };
+  }, [businessId]);
+
   const unreadCountsQuery = useQuery({
     queryKey: ['collaboration-thread-counts', businessId, 'order'],
     enabled: Boolean(businessId) && !isOfflineMode,
@@ -381,7 +396,7 @@ export default function ThreadsScreen() {
     return map;
   }, [cases]);
 
-  const allThreadItems = useMemo<ThreadListItem[]>(() => {
+  const liveThreadItems = useMemo<ThreadListItem[]>(() => {
     const summaries = threadSummariesQuery.data ?? [];
     const mappedItems = summaries.flatMap((summary) => {
         const order = ordersById.get(summary.thread.entity_id);
@@ -406,6 +421,25 @@ export default function ThreadsScreen() {
         return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
       });
   }, [threadSummariesQuery.data, ordersById, pinnedThreadIds, unreadCounts]);
+
+  const canUseLiveThreadItems = threadSummariesQuery.isSuccess
+    && !threadSummariesQuery.isPlaceholderData
+    && ((hasVerifiedOrdersData && verifiedCollectionsBusinessId === businessId) || isOfflineMode);
+  const allThreadItems = useMemo(
+    () => (canUseLiveThreadItems ? liveThreadItems : (cachedThreadItems ?? [])),
+    [cachedThreadItems, canUseLiveThreadItems, liveThreadItems]
+  );
+  const isOrderThreadListLoading = Boolean(businessId)
+    && !isOfflineMode
+    && !canUseLiveThreadItems
+    && !threadSummariesQuery.isError
+    && (!hasCheckedThreadCache || cachedThreadItems === null);
+
+  useEffect(() => {
+    if (!businessId || !canUseLiveThreadItems) return;
+    setCachedThreadItems(liveThreadItems);
+    void writeVerifiedThreadItems(businessId, liveThreadItems);
+  }, [businessId, canUseLiveThreadItems, liveThreadItems]);
 
   const isThreadClosed = useCallback(
     (item: ThreadListItem) => Boolean(item.isClosed) || closedThreadIds.includes(item.threadId),
@@ -1529,7 +1563,12 @@ export default function ThreadsScreen() {
     </View>
   );
 
-  const emptyState = (
+  const emptyState = isOrderThreadListLoading ? (
+    <View className="flex-1 items-center justify-center px-8">
+      <ActivityIndicator size="small" color={colors.text.tertiary} />
+      <Text style={{ color: colors.text.muted }} className="text-sm text-center mt-3">Loading threads…</Text>
+    </View>
+  ) : (
     <View className="flex-1 items-center justify-center px-8">
       <View className="w-16 h-16 rounded-2xl items-center justify-center mb-4" style={{ backgroundColor: colors.bg.secondary }}>
         <MessageSquare size={28} color={colors.text.muted} strokeWidth={1.8} />

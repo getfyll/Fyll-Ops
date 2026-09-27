@@ -470,8 +470,13 @@ export default function OrdersScreen() {
   const products = useFyllStore((s) => s.products);
   const orderStatuses = useFyllStore((s) => s.orderStatuses);
   const lastDataSyncAt = useFyllStore((s) => s.lastDataSyncAt);
+  const hasVerifiedOrdersData = useFyllStore((s) => s.hasVerifiedOrdersData);
+  const verifiedCollectionsBusinessId = useFyllStore((s) => s.verifiedCollectionsBusinessId);
   const businessId = useAuthStore((s) => s.businessId);
   const isOfflineMode = useAuthStore((s) => s.isOfflineMode);
+  const isInitialLoading = Boolean(businessId) && !isOfflineMode && (
+    !hasVerifiedOrdersData || verifiedCollectionsBusinessId !== businessId
+  );
 
   // Fetch unread notification counts per order (badges clear after viewing thread)
   const threadCountsQuery = useQuery({
@@ -938,7 +943,7 @@ export default function OrdersScreen() {
 
       {/* Order List */}
         <FlatList
-          data={visibleOrders}
+          data={isInitialLoading ? [] : visibleOrders}
           keyExtractor={(item) => item.id}
           style={{
             flex: 1,
@@ -954,13 +959,18 @@ export default function OrdersScreen() {
             paddingRight: isWebDesktop ? 20 : 0,
             paddingTop: isWebDesktop ? 16 : 0,
             paddingBottom: tabBarHeight + 16,
-            flexGrow: visibleOrders.length === 0 ? 1 : undefined,
+            flexGrow: isInitialLoading || visibleOrders.length === 0 ? 1 : undefined,
           }}
           showsVerticalScrollIndicator={false}
           onEndReachedThreshold={0.5}
           onEndReached={loadMoreOrders}
           ListEmptyComponent={
-            <View className="items-center justify-center py-20">
+            isInitialLoading ? (
+              <View className="flex-1 items-center justify-center py-20">
+                <ActivityIndicator size="small" color={colors.text.tertiary} />
+                <Text style={{ color: colors.text.muted }} className="text-sm mt-3">Loading orders…</Text>
+              </View>
+            ) : <View className="items-center justify-center py-20">
               <View className="w-20 h-20 rounded-2xl items-center justify-center mb-4" style={{ backgroundColor: colors.border.light }}>
                 <ShoppingCart size={40} color={colors.text.muted} strokeWidth={1.5} />
               </View>
