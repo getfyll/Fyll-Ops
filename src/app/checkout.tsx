@@ -60,6 +60,11 @@ function AmountText({ fontReady, style, ...props }: TextProps & { fontReady: boo
 // Styled to match the reference design: quiet card sections, a tap-to-copy
 // account number box, and a plain confirmation screen.
 
+// Every screen mounts its own background; once the Field image has loaded,
+// later screens show it immediately instead of fading it in again.
+let fieldImageHasLoaded = false;
+const FIELD_FADE = Platform.OS === 'web' ? ({ transitionProperty: 'opacity', transitionDuration: '450ms', transitionTimingFunction: 'ease-out' } as object) : null;
+
 function PublicPageBackground({
   children,
   fieldHeight,
@@ -71,11 +76,20 @@ function PublicPageBackground({
 }) {
   const { width } = useWindowDimensions();
   const compact = width < 768;
+  const [fieldVisible, setFieldVisible] = useState<boolean>(fieldImageHasLoaded);
 
   return (
     <View style={{ flex: 1, backgroundColor: fyllColors.ink }}>
       <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: fieldHeight ?? (compact ? 760 : 680), overflow: 'hidden' }}>
-        <Image source={compact ? fyllFieldPhone : fyllFieldDesktop} resizeMode="cover" style={{ width: '100%', height: '100%' }} />
+        <Image
+          source={compact ? fyllFieldPhone : fyllFieldDesktop}
+          resizeMode="cover"
+          onLoad={() => {
+            fieldImageHasLoaded = true;
+            setFieldVisible(true);
+          }}
+          style={[{ width: '100%', height: '100%', opacity: fieldVisible ? 1 : 0 }, FIELD_FADE]}
+        />
         <LinearGradient
           colors={fieldHeight ? ['rgba(20,20,20,0)', fyllColors.ink] : ['rgba(20,20,20,0)', 'rgba(20,20,20,0.08)', fyllColors.ink]}
           locations={fieldHeight ? [fadeStart, 1] : [0, 0.56, 1]}
@@ -270,7 +284,8 @@ function CopyRow({ label, value, copied, onPress, fontReady }: { label: string; 
 }
 
 function DText({ weight = '400', style, ...props }: TextProps & { weight?: '400' | '600' | '700' }) {
-  const family = weight === '700' ? 'DMSans_700Bold' : weight === '600' ? 'DMSans_600SemiBold' : 'DMSans_400Regular';
+  const face = weight === '700' ? 'DMSans_700Bold' : weight === '600' ? 'DMSans_600SemiBold' : 'DMSans_400Regular';
+  const family = Platform.OS === 'web' ? `${face}, system-ui, -apple-system, 'Segoe UI', sans-serif` : face;
   return <NativeText {...props} style={[{ fontFamily: family }, style]} />;
 }
 
@@ -404,7 +419,10 @@ function formatExpiryCountdown(ms: number) {
 }
 
 export default function PublicSocialCheckoutScreen() {
-  const [bricolageReady] = useFonts({ BricolageGrotesque_800ExtraBold, DMSans_400Regular, DMSans_600SemiBold, DMSans_700Bold });
+  const [bricolageReady, fontError] = useFonts({ BricolageGrotesque_800ExtraBold, DMSans_400Regular, DMSans_600SemiBold, DMSans_700Bold });
+  // Hold the loading screen until the fonts are in, so the page never flashes
+  // in the browser's default serif. A font error just falls back to system type.
+  const fontsSettled = bricolageReady || fontError != null;
   const params = useLocalSearchParams<{ code?: string | string[] }>();
   const code = (typeof params.code === 'string' ? params.code : Array.isArray(params.code) ? params.code[0] : '') ?? '';
 
@@ -528,6 +546,18 @@ export default function PublicSocialCheckoutScreen() {
     deliveryState.trim().length > 0 &&
     !!proofUri;
 
+  if (!fontsSettled || draftQuery.isLoading) {
+    return (
+      <PublicPageBackground fieldHeight={420} fadeStart={0.45}>
+        <View style={{ alignItems: 'center', paddingTop: 14 }}>
+          <Image source={fyllWordmarkPng} accessibilityLabel="Fyll" resizeMode="contain" style={{ width: 24 * (344 / 195), height: 24, tintColor: '#F7F8EA' }} />
+        </View>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator color={fyllColors.accent} />
+        </View>
+      </PublicPageBackground>
+    );
+  }
   if (!code.trim()) {
     return (
       <PublicMessageState
@@ -540,18 +570,6 @@ export default function PublicSocialCheckoutScreen() {
     );
   }
 
-  if (draftQuery.isLoading) {
-    return (
-      <PublicPageBackground fieldHeight={420} fadeStart={0.45}>
-        <View style={{ alignItems: 'center', paddingTop: 14 }}>
-          <Image source={fyllWordmarkPng} accessibilityLabel="Fyll" resizeMode="contain" style={{ width: 24 * (344 / 195), height: 24, tintColor: '#F7F8EA' }} />
-        </View>
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator color={fyllColors.accent} />
-        </View>
-      </PublicPageBackground>
-    );
-  }
 
   const draft = draftQuery.data;
 
