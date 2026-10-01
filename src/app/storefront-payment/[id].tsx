@@ -1460,12 +1460,13 @@ export default function StorefrontPaymentDetailScreen() {
 
       await Promise.all(syncTasks);
       if (payment.source.trim().toLowerCase() === 'fyll_checkout') {
-        try {
-          await notifyFyllCheckoutPaymentRejected({ reference: payment.sourceOrderId, businessId });
-        } catch (error) {
+        // Updating the website (Woo + customer email) takes several seconds;
+        // the rejection is already saved here, so don't keep staff waiting.
+        const reference = payment.sourceOrderId;
+        void notifyFyllCheckoutPaymentRejected({ reference, businessId }).catch((error) => {
           console.warn('Fyll Checkout rejection callback failed after local rejection:', error);
-          showFyllCheckoutSyncFailedNotice(payment.sourceOrderId, error, 'rejected');
-        }
+          showFyllCheckoutSyncFailedNotice(reference, error, 'rejected');
+        });
       }
       return { updatedPayment, failedOrder };
     },
