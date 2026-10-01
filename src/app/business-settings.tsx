@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Pressable, TextInput, Image, ActivityIndicator, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Building2, Camera, X, Check, Phone, Globe, MapPin } from 'lucide-react-native';
+import { ArrowLeft, Building2, Camera, X, Check, MessageCircle, Globe, MapPin } from 'lucide-react-native';
 import { useThemeColors } from '@/lib/theme';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import * as Haptics from 'expo-haptics';
@@ -452,35 +452,6 @@ export default function BusinessSettingsScreen() {
               </Text>
             </View>
 
-            {/* Business Phone */}
-            <View className="mb-4">
-              <View className="flex-row items-center mb-2">
-                <Phone size={16} color={colors.text.tertiary} strokeWidth={2} />
-                <Text style={{ color: colors.text.secondary }} className="text-sm font-medium ml-2">Phone Number</Text>
-              </View>
-
-              <View
-                className="rounded-xl px-4"
-                style={{
-                  backgroundColor: colors.input.bg,
-                  borderWidth: 1,
-                  borderColor: colors.border.light,
-                  height: 50,
-                  justifyContent: 'center'
-                }}
-              >
-                <TextInput
-                  value={phone}
-                  onChangeText={setPhone}
-                  placeholder="e.g. +234 800 123 4567"
-                  placeholderTextColor={colors.input.placeholder}
-                  keyboardType="phone-pad"
-                  style={{ color: colors.input.text, fontSize: 14 }}
-                  selectionColor={colors.text.primary}
-                />
-              </View>
-            </View>
-
             {/* Business Website */}
             <View>
               <View className="flex-row items-center mb-2">
@@ -510,6 +481,47 @@ export default function BusinessSettingsScreen() {
                 />
               </View>
             </View>
+          </View>
+
+          {/* Customer contact */}
+          <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase mb-3 tracking-wider">Customer Contact</Text>
+
+          <View className="rounded-xl p-4 mb-6" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
+            <View className="flex-row items-center mb-2">
+              <MessageCircle size={16} color="#25D366" strokeWidth={2} />
+              <Text style={{ color: colors.text.secondary }} className="text-sm font-medium ml-2">WhatsApp number</Text>
+              <Text style={{ color: '#25D366' }} className="text-xs font-medium ml-2">Required</Text>
+            </View>
+
+            <Text style={{ color: colors.text.muted }} className="text-xs mb-3">
+              Customers use this to message you from their payment and order tracking page. Include the country code.
+            </Text>
+
+            <View
+              className="rounded-xl px-4"
+              style={{
+                backgroundColor: colors.input.bg,
+                borderWidth: 1,
+                borderColor: colors.border.light,
+                height: 50,
+                justifyContent: 'center'
+              }}
+            >
+              <TextInput
+                value={phone}
+                onChangeText={setPhone}
+                placeholder="e.g. +234 800 123 4567"
+                placeholderTextColor={colors.input.placeholder}
+                keyboardType="phone-pad"
+                autoComplete="tel"
+                style={{ color: colors.input.text, fontSize: 14 }}
+                selectionColor={colors.text.primary}
+              />
+            </View>
+
+            <Text style={{ color: colors.text.muted }} className="text-xs mt-2">
+              Use a number that accepts WhatsApp messages. It can also be used as the call fallback.
+            </Text>
           </View>
 
           {/* Return Address (for Shipping Labels) */}

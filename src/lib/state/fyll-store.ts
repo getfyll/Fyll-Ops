@@ -3331,14 +3331,13 @@ const useFyllStore = create<FyllStore>()(
                   });
 
                   if (result.skipped) {
-                    const silentSkipReasons = new Set([
-                      'woocommerce-disabled',
-                      'woocommerce-not-configured',
-                      'missing-woocommerce-config',
-                      'missing-website-order-reference',
-                    ]);
-
-                    if (result.reason && silentSkipReasons.has(result.reason)) {
+                    // This order is linked to a website order, so a missing or
+                    // disabled WooCommerce connection is worth telling staff about.
+                    if (result.reason && ['woocommerce-disabled', 'woocommerce-not-configured', 'missing-woocommerce-config'].includes(result.reason)) {
+                      await appendSystemOrderActivity(id, 'Website order not updated: the WooCommerce connection is off or incomplete in Settings → WooCommerce');
+                      return;
+                    }
+                    if (result.reason === 'missing-website-order-reference') {
                       return;
                     }
 

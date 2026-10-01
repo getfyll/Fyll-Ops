@@ -607,7 +607,7 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
           <Stack.Screen name="[businessSlug]/start-return" options={{ headerShown: false }} />
           <Stack.Screen name="checkout" options={{ headerShown: false }} />
           <Stack.Screen name="[businessSlug]/checkout/[code]" options={{ headerShown: false }} />
-          <Stack.Screen name="social-checkout/new" options={{ headerShown: false }} />
+          <Stack.Screen name="social-checkout/new" options={{ headerShown: false, presentation: 'transparentModal', animation: 'fade', contentStyle: { backgroundColor: 'transparent' } }} />
           <Stack.Screen name="social-checkout/[id]" options={{ headerShown: false }} />
           <Stack.Screen name="storefront-payment/[id]" options={{ headerShown: false }} />
           <Stack.Screen name="payment-accounts" options={{ headerShown: false }} />

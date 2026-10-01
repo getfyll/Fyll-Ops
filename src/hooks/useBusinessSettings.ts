@@ -357,6 +357,13 @@ export function useBusinessSettings(): BusinessSettingsResult {
     if (!trimmedBusinessName) {
       return { success: false, error: 'Business name cannot be empty' };
     }
+    const phoneDigits = newSettings.businessPhone.replace(/\D/g, '');
+    if (!newSettings.businessPhone.trim()) {
+      return { success: false, error: 'Customer contact number is required' };
+    }
+    if (!newSettings.businessPhone.trim().startsWith('+') || phoneDigits.length < 8 || phoneDigits.length > 15) {
+      return { success: false, error: 'Add a valid WhatsApp number with its country code, for example +234 800 123 4567.' };
+    }
 
     try {
       isApplyingRemote.current = true;
@@ -386,6 +393,7 @@ export function useBusinessSettings(): BusinessSettingsResult {
         businessName: trimmedBusinessName,
         businessSlug: resolveBusinessSlug(newSettings.businessSlug, trimmedBusinessName, trimmedCompanyName),
         businessLogo: sanitizePersistedBusinessLogo(newSettings.businessLogo),
+        businessPhone: `+${phoneDigits}`,
         businessNameLastUpdatedAt: isBusinessNameChanging
           ? new Date().toISOString()
           : normalizeTimestamp(newSettings.businessNameLastUpdatedAt),

@@ -20,7 +20,13 @@ export interface PublicTrackingOrder {
   customerTrackingCode?: string;
   customerName: string;
   customerEmail: string;
+  customerPhone?: string;
+  deliveryAddress?: string;
   deliveryState: string;
+  deliveryFee?: number;
+  additionalCharges?: number;
+  additionalChargesNote?: string;
+  discountAmount?: number;
   items: Order['items'];
   services: Order['services'];
   orderTypeId?: string;
@@ -48,11 +54,37 @@ export interface PublicOrderTrackingLookupResult {
   businessSlug?: string | null;
   businessName: string;
   businessLogo: string | null;
+  businessPhone: string | null;
   businessWebsite: string | null;
   order: PublicTrackingOrder | null;
-  products: Pick<Product, 'id' | 'name'>[];
+  socialCheckout: PublicSocialCheckoutTracking | null;
+  products: (Pick<Product, 'id' | 'name'> & { imageUrl?: string | null })[];
   orderStatuses: OrderStatus[];
   orderTimelineSettings: OrderTimelineSettings | null;
+}
+
+export type PublicSocialCheckoutStatus = 'awaiting_payment' | 'payment_submitted' | 'verified' | 'rejected' | 'cancelled' | 'expired';
+
+export interface PublicSocialCheckoutTracking {
+  code: string;
+  status: PublicSocialCheckoutStatus;
+  amount: number;
+  billNote: string;
+  customerName: string;
+  customerEmail: string;
+  customerPhone?: string;
+  deliveryAddress: string;
+  deliveryState: string;
+  submittedAt?: string;
+  reviewedAt?: string;
+  convertedOrderId?: string;
+  createdAt: string;
+  updatedAt: string;
+  activityLog: {
+    action: string;
+    actor: string;
+    createdAt: string;
+  }[];
 }
 
 export interface PublicTrackingBusinessResult {
@@ -60,6 +92,7 @@ export interface PublicTrackingBusinessResult {
   businessSlug?: string | null;
   businessName: string;
   businessLogo: string | null;
+  businessPhone: string | null;
   businessWebsite: string | null;
 }
 
@@ -226,6 +259,12 @@ const normalizeLookupOrderPayload = (value: unknown): PublicTrackingOrder | null
     customerTrackingCode: toOptionalTrimmedString(next.customerTrackingCode),
     customerName,
     customerEmail,
+    customerPhone: toOptionalTrimmedString(next.customerPhone),
+    deliveryAddress: toOptionalTrimmedString(next.deliveryAddress),
+    deliveryFee: Number(next.deliveryFee) || 0,
+    additionalCharges: Number(next.additionalCharges) || 0,
+    additionalChargesNote: toOptionalTrimmedString(next.additionalChargesNote),
+    discountAmount: Number(next.discountAmount) || 0,
     deliveryState: toTrimmedString(next.deliveryState),
     items: Array.isArray(next.items) ? next.items as Order['items'] : [],
     services: Array.isArray(next.services) ? next.services as Order['services'] : [],
@@ -264,12 +303,69 @@ const normalizeLookupOrderPayload = (value: unknown): PublicTrackingOrder | null
   };
 };
 
+const normalizeSocialCheckoutPayload = (value: unknown): PublicSocialCheckoutTracking | null => {
+  if (!value || typeof value !== 'object') return null;
+
+  const next = value as Record<string, unknown>;
+  const code = toTrimmedString(next.code);
+  const status = toTrimmedString(next.status) as PublicSocialCheckoutStatus;
+  const customerEmail = toTrimmedString(next.customerEmail);
+  const createdAt = toTrimmedString(next.createdAt);
+  const updatedAt = toTrimmedString(next.updatedAt);
+  const validStatuses: PublicSocialCheckoutStatus[] = [
+    'awaiting_payment',
+    'payment_submitted',
+    'verified',
+    'rejected',
+    'cancelled',
+    'expired',
+  ];
+
+  if (!code || !customerEmail || !createdAt || !updatedAt || !validStatuses.includes(status)) return null;
+
+  const activityLog = Array.isArray(next.activityLog)
+    ? next.activityLog
+        .map((entry) => {
+          if (!entry || typeof entry !== 'object') return null;
+          const row = entry as Record<string, unknown>;
+          const action = toTrimmedString(row.action);
+          const createdAtValue = toTrimmedString(row.createdAt);
+          if (!action || !createdAtValue) return null;
+          return {
+            action,
+            actor: toTrimmedString(row.actor),
+            createdAt: createdAtValue,
+          };
+        })
+        .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
+    : [];
+
+  return {
+    code,
+    status,
+    amount: toFiniteNumber(next.amount, 0),
+    billNote: toTrimmedString(next.billNote),
+    customerName: toTrimmedString(next.customerName),
+    customerEmail,
+    deliveryAddress: toTrimmedString(next.deliveryAddress),
+    deliveryState: toTrimmedString(next.deliveryState),
+    customerPhone: toOptionalTrimmedString(next.customerPhone),
+    submittedAt: toOptionalTrimmedString(next.submittedAt),
+    reviewedAt: toOptionalTrimmedString(next.reviewedAt),
+    convertedOrderId: toOptionalTrimmedString(next.convertedOrderId),
+    createdAt,
+    updatedAt,
+    activityLog,
+  };
+};
+
 const normalizeLookupPayload = (value: unknown): PublicOrderTrackingLookupResult | null => {
   if (!value || typeof value !== 'object') return null;
 
   const next = value as Record<string, unknown>;
   const order = normalizeLookupOrderPayload(next.order);
-  if (!order) return null;
+  const socialCheckout = normalizeSocialCheckoutPayload(next.socialCheckout);
+  if (!order && !socialCheckout) return null;
 
   const orderStatuses = Array.isArray(next.orderStatuses)
     ? sanitizeOrderStatuses(next.orderStatuses as OrderStatus[])
@@ -280,9 +376,13 @@ const normalizeLookupPayload = (value: unknown): PublicOrderTrackingLookupResult
     businessSlug: typeof next.businessSlug === 'string' && next.businessSlug.trim() ? next.businessSlug.trim() : null,
     businessName: typeof next.businessName === 'string' ? next.businessName.trim() : '',
     businessLogo: typeof next.businessLogo === 'string' && next.businessLogo.trim() ? next.businessLogo.trim() : null,
+    businessPhone: typeof next.businessPhone === 'string' && next.businessPhone.trim() ? next.businessPhone.trim() : null,
     businessWebsite: typeof next.businessWebsite === 'string' && next.businessWebsite.trim() ? next.businessWebsite.trim() : null,
     order,
-    products: Array.isArray(next.products) ? next.products as Pick<Product, 'id' | 'name'>[] : [],
+    socialCheckout,
+    products: Array.isArray(next.products)
+      ? (next.products as (Pick<Product, 'id' | 'name'> & { imageUrl?: unknown })[]).map((product) => ({ ...product, imageUrl: resolveBusinessAssetUrl(typeof product.imageUrl === 'string' && product.imageUrl.trim() ? product.imageUrl.trim() : null) }))
+      : [],
     orderStatuses,
     orderTimelineSettings: normalizeOrderTimelineSettings(next.orderTimelineSettings),
   };
@@ -300,6 +400,7 @@ const normalizeBusinessPayload = (value: unknown): PublicTrackingBusinessResult 
     businessSlug: typeof next.businessSlug === 'string' && next.businessSlug.trim() ? next.businessSlug.trim() : null,
     businessName,
     businessLogo: typeof next.businessLogo === 'string' && next.businessLogo.trim() ? next.businessLogo.trim() : null,
+    businessPhone: typeof next.businessPhone === 'string' && next.businessPhone.trim() ? next.businessPhone.trim() : null,
     businessWebsite: typeof next.businessWebsite === 'string' && next.businessWebsite.trim() ? next.businessWebsite.trim() : null,
   };
 };
@@ -314,14 +415,35 @@ export const lookupPublicOrderTracking = async ({
   businessSlug?: string | null;
 }) => {
   const normalizedBusinessSlug = normalizePublicTrackingSlug(businessSlug);
-  const { data, error } = await supabase.rpc('lookup_public_order_tracking', {
+  const { data, error } = await supabase.rpc('lookup_public_purchase_tracking', {
     tracking_code_input: trackingCode,
     email_input: email,
     business_slug_input: normalizedBusinessSlug || null,
   });
 
-  if (error) throw error;
-  const normalized = normalizeLookupPayload(data);
+  let payload = data;
+  if (error) {
+    const missingFunction = error.code === 'PGRST202'
+      || error.code === '42883'
+      || error.message?.toLowerCase().includes('lookup_public_purchase_tracking');
+    if (!missingFunction) throw error;
+  }
+
+  // The edge resolver also understands derived references such as Storefront
+  // IDs (SF-123456), which may not exist as a literal field on older orders.
+  if (!payload) {
+    const { data: functionData, error: functionError } = await supabase.functions.invoke('lookup-public-purchase-tracking', {
+      body: {
+        trackingCode,
+        email,
+        businessSlug: normalizedBusinessSlug || null,
+      },
+    });
+    if (functionError) throw functionError;
+    payload = functionData;
+  }
+
+  const normalized = normalizeLookupPayload(payload);
   if (!normalized) return null;
   return {
     ...normalized,
@@ -392,4 +514,40 @@ export const sendDeliveryConfirmationResultEmail = async ({
   });
 
   if (error) throw error;
+};
+
+export interface PublicTrackingBusinessMatch {
+  name: string;
+  slug: string;
+  logo: string | null;
+  category: string | null;
+  city: string | null;
+}
+
+// Business picker on track.fyll.app — published storefronts only, 8 max
+// (see supabase/search_public_tracking_businesses.sql).
+export const searchPublicTrackingBusinesses = async (query: string): Promise<PublicTrackingBusinessMatch[]> => {
+  const trimmed = query.trim();
+  if (trimmed.length < 2) return [];
+
+  const { data, error } = await supabase.rpc('search_public_tracking_businesses', { query_input: trimmed });
+  if (error) throw error;
+  if (!Array.isArray(data)) return [];
+
+  return data
+    .map((row): PublicTrackingBusinessMatch | null => {
+      const record = (row ?? {}) as Record<string, unknown>;
+      const name = typeof record.name === 'string' ? record.name.trim() : '';
+      const slug = typeof record.slug === 'string' ? record.slug.trim() : '';
+      if (!name || !slug) return null;
+      const text = (value: unknown) => (typeof value === 'string' && value.trim() ? value.trim() : null);
+      return {
+        name,
+        slug,
+        logo: resolveBusinessAssetUrl(text(record.logo)),
+        category: text(record.category),
+        city: text(record.city),
+      };
+    })
+    .filter((match): match is PublicTrackingBusinessMatch => Boolean(match));
 };

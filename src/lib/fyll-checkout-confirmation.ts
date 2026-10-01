@@ -1,3 +1,4 @@
+import { Alert, Platform } from 'react-native';
 import { supabase } from '@/lib/supabase';
 
 export const notifyFyllCheckoutPaymentConfirmed = async (input: {
@@ -23,4 +24,18 @@ export const notifyFyllCheckoutPaymentConfirmed = async (input: {
     const payload = await response.json().catch(() => null) as { error?: string; details?: string } | null;
     throw new Error(payload?.details || payload?.error || 'Fyll Checkout confirmation callback failed.');
   }
+};
+
+// The payment is already approved in Ops when this runs; if WooCommerce
+// couldn't be told, staff need to know so they can update it by hand rather
+// than finding out from the customer.
+export const showFyllCheckoutSyncFailedNotice = (reference: string, error: unknown) => {
+  const reason = error instanceof Error && error.message ? error.message : 'Unknown error';
+  const title = 'Approved in Fyll — website not updated';
+  const message = `Payment ${reference} is approved here, but your website order couldn't be moved to Processing automatically (${reason}). Please update it in WooCommerce.`;
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    window.alert(`${title}\n\n${message}`);
+    return;
+  }
+  Alert.alert(title, message);
 };

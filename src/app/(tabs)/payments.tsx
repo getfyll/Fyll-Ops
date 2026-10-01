@@ -1,14 +1,14 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, Pressable, TextInput, Platform, RefreshControl, ActivityIndicator, Alert } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, ScrollView, Pressable, TextInput, Platform, RefreshControl, ActivityIndicator, Alert, Modal, type PressableStateCallbackType } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Wallet, Link2, Landmark, Store, Check, Trash2, MoreVertical, Pencil, AlertTriangle } from 'lucide-react-native';
+import { Plus, Search, Wallet, Link2, Landmark, Store, Check, Trash2, Pencil, AlertTriangle, ChevronRight } from 'lucide-react-native';
 import useAuthStore from '@/lib/state/auth-store';
 import { supabaseData } from '@/lib/supabase/data';
-import { notifyFyllCheckoutPaymentConfirmed } from '@/lib/fyll-checkout-confirmation';
-import useFyllStore, { formatCurrency, generateOrderNumber, getSocialCheckoutEffectiveStatus, type Order, type OrderActivityEntry, type SocialCheckoutDraft, type SocialCheckoutStatus } from '@/lib/state/fyll-store';
-import { useThemeColors } from '@/lib/theme';
+import { notifyFyllCheckoutPaymentConfirmed, showFyllCheckoutSyncFailedNotice } from '@/lib/fyll-checkout-confirmation';
+import useFyllStore, { formatCurrency, generateOrderNumber, getSocialCheckoutEffectiveStatus, type Order, type OrderActivityEntry, type SocialCheckoutStatus } from '@/lib/state/fyll-store';
+import { FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, InitialsAvatar, MoneyText, StatusDot, isHovered, isUnsuccessfulTone, usePaymentsPalette, type PaymentsPalette, type StatusTone } from '@/components/payments/payments-ui';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
 import { DESKTOP_PAGE_HEADER_MIN_HEIGHT, getStandardPageHeadingStyle } from '@/lib/page-heading';
@@ -17,12 +17,9 @@ import * as Haptics from 'expo-haptics';
 import { SearchClearButton } from '@/components/SearchClearButton';
 import { fetchSocialCheckoutDrafts, getSocialCheckoutQueryKey } from '@/lib/social-checkout-query';
 
-// Styled to match the reference dashboard (clean table on desktop, minimal
-// pill chips, text+dot status instead of filled badges) rather than this
-// app's usual icon-box card list.
+// Payments list: summary, an attention nudge, then payments grouped by day
+// (table on desktop). Ops stays black/white; Fyll lime only marks actions.
 
-const SEPARATOR_LIGHT = '#EEEEEE';
-const SEPARATOR_DARK = '#333333';
 
 const STATUS_LABEL: Record<SocialCheckoutStatus, string> = {
   awaiting_payment: 'Awaiting payment',
@@ -31,24 +28,6 @@ const STATUS_LABEL: Record<SocialCheckoutStatus, string> = {
   rejected: 'Rejected',
   cancelled: 'Cancelled',
   expired: 'Expired',
-};
-
-const STATUS_COLOR: Record<SocialCheckoutStatus, string> = {
-  awaiting_payment: '#D97706',
-  payment_submitted: '#D97706',
-  verified: '#059669',
-  rejected: '#DC2626',
-  cancelled: '#DC2626',
-  expired: '#DC2626',
-};
-
-const STATUS_BG: Record<SocialCheckoutStatus, string> = {
-  awaiting_payment: 'rgba(217, 119, 6, 0.15)',
-  payment_submitted: 'rgba(217, 119, 6, 0.15)',
-  verified: 'rgba(5, 150, 105, 0.15)',
-  rejected: 'rgba(220, 38, 38, 0.15)',
-  cancelled: 'rgba(220, 38, 38, 0.15)',
-  expired: 'rgba(220, 38, 38, 0.15)',
 };
 
 const normalizeStatusName = (value?: string | null) => (
@@ -63,25 +42,6 @@ const getVerifiedOrderStatus = (statuses: Array<{ name: string }>) => (
   statuses.find((status) => normalizeStatusName(status.name) === 'verified')?.name?.trim()
   || 'Verified'
 );
-
-function StatusTag({ status }: { status: SocialCheckoutStatus }) {
-  const color = STATUS_COLOR[status];
-  return (
-    <View
-      className="rounded-full"
-      style={{
-        backgroundColor: STATUS_BG[status],
-        borderWidth: 0,
-        borderColor: STATUS_BG[status],
-        alignSelf: 'flex-start',
-        paddingHorizontal: 8,
-        paddingVertical: 2,
-      }}
-    >
-      <Text style={{ color, fontSize: 10, fontWeight: '600' }} numberOfLines={1}>{STATUS_LABEL[status]}</Text>
-    </View>
-  );
-}
 
 type SharedPaymentStatus = 'pending' | 'proof_submitted' | 'confirmed' | 'verified' | 'rejected' | 'failed' | 'refunded';
 type StorefrontPaymentStatus = 'pending' | 'proof_submitted' | 'confirmed' | 'verified' | 'rejected' | 'failed' | 'refunded';
@@ -278,60 +238,9 @@ const STOREFRONT_STATUS_LABEL: Record<StorefrontPaymentStatus, string> = {
   refunded: 'Refunded',
 };
 
-const STOREFRONT_STATUS_COLOR: Record<StorefrontPaymentStatus, string> = {
-  pending: '#D97706',
-  proof_submitted: '#D97706',
-  confirmed: '#059669',
-  verified: '#059669',
-  rejected: '#DC2626',
-  failed: '#DC2626',
-  refunded: '#DC2626',
-};
-
-const STOREFRONT_STATUS_BG: Record<StorefrontPaymentStatus, string> = {
-  pending: 'rgba(217, 119, 6, 0.15)',
-  proof_submitted: 'rgba(217, 119, 6, 0.15)',
-  confirmed: 'rgba(5, 150, 105, 0.15)',
-  verified: 'rgba(5, 150, 105, 0.15)',
-  rejected: 'rgba(220, 38, 38, 0.15)',
-  failed: 'rgba(220, 38, 38, 0.15)',
-  refunded: 'rgba(220, 38, 38, 0.15)',
-};
-
-function ChannelBadge({ label }: { label: string }) {
-  return (
-    <View
-      className="rounded-full flex-row items-center"
-      style={{ backgroundColor: 'rgba(124, 58, 237, 0.12)', paddingHorizontal: 8, paddingVertical: 2, gap: 4, alignSelf: 'flex-start' }}
-    >
-      <Store size={10} color="#7C3AED" strokeWidth={2.5} />
-      <Text style={{ color: '#7C3AED', fontSize: 10, fontWeight: '600' }} numberOfLines={1}>{label}</Text>
-    </View>
-  );
-}
-
 type PaymentSource = 'social_checkout' | 'storefront' | 'fyll_checkout';
 type PaymentFilter = null | 'awaiting' | 'needs_review' | 'confirmed' | 'expired';
 type PaymentPeriod = 'all' | 'week' | 'month' | 'year';
-
-function SourceBadge({ source }: { source: PaymentSource }) {
-  const isStorefront = source === 'storefront';
-  const isFyllCheckout = source === 'fyll_checkout';
-  const Icon = isStorefront || isFyllCheckout ? Store : Link2;
-  const label = isFyllCheckout ? 'Fyll Checkout' : isStorefront ? 'Storefront' : 'Social Checkout';
-  const color = isFyllCheckout ? '#84CC16' : isStorefront ? '#7C3AED' : '#2563EB';
-  const backgroundColor = isFyllCheckout ? 'rgba(132, 204, 22, 0.16)' : isStorefront ? 'rgba(124, 58, 237, 0.12)' : 'rgba(37, 99, 235, 0.12)';
-
-  return (
-    <View
-      className="rounded-full flex-row items-center"
-      style={{ backgroundColor, paddingHorizontal: 8, paddingVertical: 2, gap: 4, alignSelf: 'flex-start' }}
-    >
-      <Icon size={10} color={color} strokeWidth={2.5} />
-      <Text style={{ color, fontSize: 10, fontWeight: '600' }} numberOfLines={1}>{label}</Text>
-    </View>
-  );
-}
 
 type PaymentRecord = {
   id: string;
@@ -343,8 +252,7 @@ type PaymentRecord = {
   amount: number;
   amountCaption?: string;
   statusLabel: string;
-  statusColor: string;
-  statusBg: string;
+  tone: StatusTone;
   statusGroup: Exclude<PaymentFilter, null>;
   createdAt: string;
   createdLabel: string;
@@ -362,380 +270,297 @@ type PaymentRecord = {
   };
 };
 
-function PaymentRecordRow({
-  record,
-  isDesktop,
-  separatorColor,
-}: {
-  record: PaymentRecord;
-  isDesktop: boolean;
-  separatorColor: string;
-}) {
-  const colors = useThemeColors();
-  const [showMobileActions, setShowMobileActions] = useState(false);
-  const hasMobileActions = Boolean(record.confirmAction || record.editAction || record.deleteAction);
+const SOCIAL_STATUS_TONE: Record<SocialCheckoutStatus, StatusTone> = {
+  awaiting_payment: 'awaiting',
+  payment_submitted: 'review',
+  verified: 'verified',
+  rejected: 'rejected',
+  cancelled: 'closed',
+  expired: 'closed',
+};
 
-  const ConfirmButton = record.confirmAction ? (
+const STOREFRONT_STATUS_TONE: Record<StorefrontPaymentStatus, StatusTone> = {
+  pending: 'awaiting',
+  proof_submitted: 'review',
+  confirmed: 'verified',
+  verified: 'verified',
+  rejected: 'rejected',
+  failed: 'rejected',
+  refunded: 'closed',
+};
+
+function SourceIcon({ source, color, size = 12 }: { source: PaymentSource; color: string; size?: number }) {
+  const Icon = source === 'social_checkout' ? Link2 : Store;
+  return <Icon size={size} color={color} strokeWidth={2.2} />;
+}
+
+const SOURCE_LABEL: Record<PaymentSource, string> = {
+  social_checkout: 'Payment link',
+  storefront: 'Storefront',
+  fyll_checkout: 'Fyll Checkout',
+};
+
+function ConfirmPill({ action, compact = false }: { action: NonNullable<PaymentRecord['confirmAction']>; compact?: boolean }) {
+  return (
     <Pressable
-      onPress={(e) => {
-        e.stopPropagation?.();
-        record.confirmAction?.onConfirm();
+      accessibilityRole="button"
+      accessibilityLabel="Confirm payment"
+      onPress={(event) => {
+        event.stopPropagation?.();
+        action.onConfirm();
       }}
-      disabled={record.confirmAction.isConfirming}
-      className="rounded-full items-center justify-center flex-row active:opacity-70"
-      style={{ height: 28, paddingHorizontal: 10, backgroundColor: '#059669', gap: 4 }}
+      disabled={action.isConfirming}
+      style={(state) => ({
+        height: compact ? 28 : 30,
+        paddingHorizontal: 12,
+        borderRadius: 999,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+        backgroundColor: isHovered(state) ? FYLL_LIME_HOVER : FYLL_LIME,
+        opacity: state.pressed ? 0.8 : 1,
+      })}
     >
-      {record.confirmAction.isConfirming ? (
-        <ActivityIndicator size="small" color="#FFFFFF" />
+      {action.isConfirming ? (
+        <ActivityIndicator size="small" color={FYLL_LIME_INK} />
       ) : (
         <>
-          <Check size={12} color="#FFFFFF" strokeWidth={2.5} />
-          <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '600' }}>Confirm</Text>
+          <Check size={13} color={FYLL_LIME_INK} strokeWidth={2.6} />
+          <Text style={{ color: FYLL_LIME_INK, fontSize: 12.5, fontWeight: '600' }}>Confirm</Text>
         </>
       )}
     </Pressable>
-  ) : null;
+  );
+}
 
-  const DeleteButton = record.deleteAction ? (
-    <Pressable
-      onPress={(e) => {
-        e.stopPropagation?.();
-        record.deleteAction?.onDelete();
-      }}
-      disabled={record.deleteAction.isDeleting}
-      className="rounded-full items-center justify-center active:opacity-70"
-      style={{
-        width: 28,
-        height: 28,
-        backgroundColor: 'rgba(220, 38, 38, 0.1)',
-        opacity: record.deleteAction.isDeleting ? 0.6 : 1,
-      }}
-    >
-      {record.deleteAction.isDeleting ? (
-        <ActivityIndicator size="small" color="#DC2626" />
-      ) : (
-        <Trash2 size={13} color="#DC2626" strokeWidth={2.2} />
-      )}
-    </Pressable>
-  ) : null;
-
-  if (isDesktop) {
-    return (
-      <Pressable
-        onPress={record.onPress}
-        className="flex-row items-center px-5 active:opacity-60"
-        style={{ height: 56, borderBottomWidth: 1, borderBottomColor: separatorColor }}
-      >
-        <View style={{ flex: 1.25, minWidth: 145, paddingRight: 10 }}>
-          <Text style={{ color: colors.text.primary }} className="font-semibold text-sm" numberOfLines={1}>{record.reference}</Text>
-        </View>
-        <View style={{ flex: 0.95, minWidth: 100, paddingRight: 10 }}>
-          <Text style={{ color: colors.text.primary }} className="font-semibold text-sm" numberOfLines={1}>
-            {record.orderNumber ?? '—'}
-          </Text>
-        </View>
-        <View style={{ flex: 1.45, minWidth: 180, paddingRight: 10 }}>
-          <Text style={{ color: colors.text.primary }} className="text-sm font-medium" numberOfLines={1}>{record.customerName || '—'}</Text>
-        </View>
-        <View style={{ flex: 0.9, minWidth: 105, paddingRight: 10 }}>
-          <Text style={{ color: colors.text.primary }} className="font-semibold text-sm">{formatCurrency(record.amount)}</Text>
-          {record.amountCaption ? (
-            <Text style={{ color: colors.text.muted }} className="text-[10px] mt-0.5" numberOfLines={1}>{record.amountCaption}</Text>
-          ) : null}
-        </View>
-        <View style={{ flex: 1.05, minWidth: 130, paddingRight: 10 }}>
-          <SourceBadge source={record.source} />
-        </View>
-        <View style={{ flex: 1.1, minWidth: 140, paddingRight: 10 }}>
-          <View
-            className="rounded-full flex-row items-center"
-            style={{ backgroundColor: record.statusBg, alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 2, gap: 4 }}
-          >
-            {record.statusLabel === 'Needs review' ? (
-              <AlertTriangle size={10} color={record.statusColor} strokeWidth={2.4} />
-            ) : null}
-            <Text style={{ color: record.statusColor, fontSize: 10, fontWeight: '600' }} numberOfLines={1}>
-              {record.statusLabel}
-            </Text>
-          </View>
-        </View>
-        <View style={{ flex: 0.85, minWidth: 96, paddingRight: 10 }}>
-          <Text style={{ color: colors.text.muted }} className="text-sm" numberOfLines={1}>{record.createdLabel}</Text>
-        </View>
-        <View style={{ flex: 0.95, minWidth: 132, alignItems: 'flex-end' }}>
-          <View className="flex-row items-center justify-end" style={{ gap: 8 }}>
-            {ConfirmButton}
-            {DeleteButton}
-            {!ConfirmButton && !DeleteButton ? <Text style={{ color: colors.text.muted }} className="text-sm">—</Text> : null}
-          </View>
-        </View>
-      </Pressable>
-    );
-  }
-
+function PaymentListRow({
+  record,
+  palette,
+  isFirst,
+  onOpenActions,
+}: {
+  record: PaymentRecord;
+  palette: PaymentsPalette;
+  isFirst: boolean;
+  onOpenActions: (record: PaymentRecord) => void;
+}) {
+  const unsuccessful = isUnsuccessfulTone(record.tone);
+  const hasMoreActions = Boolean(record.editAction || record.deleteAction || record.confirmAction);
   return (
     <Pressable
       onPress={() => {
         if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         record.onPress();
       }}
-      className="mb-2.5 active:opacity-70"
+      onLongPress={hasMoreActions ? () => {
+        if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        onOpenActions(record);
+      } : undefined}
+      delayLongPress={350}
+      style={(state) => ({
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        paddingVertical: 14,
+        borderTopWidth: isFirst ? 0 : 1,
+        borderTopColor: palette.hairline,
+        opacity: state.pressed ? 0.7 : 1,
+      })}
     >
-      <View className="rounded-2xl p-4" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: separatorColor }}>
-        <View className="flex-row items-start justify-between mb-2">
-          <View className="flex-1 mr-2">
-            <View className="flex-row items-center" style={{ gap: 6 }}>
-              <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '600', flexShrink: 1 }} numberOfLines={1}>
-                {record.reference}
-              </Text>
-              <SourceBadge source={record.source} />
-            </View>
-            <Text style={{ color: colors.text.tertiary, fontSize: 10, marginTop: 3 }} numberOfLines={1}>
-              {record.customerName || 'No customer'}
-            </Text>
-            {record.orderNumber ? (
-              <Text style={{ color: colors.text.muted, fontSize: 10, marginTop: 3 }} numberOfLines={1}>
-                Order {record.orderNumber}
-              </Text>
-            ) : null}
-          </View>
-          <View style={{ alignItems: 'flex-end' }}>
-            <Text style={{ color: colors.text.primary }} className="font-bold text-base">{formatCurrency(record.amount)}</Text>
-            {record.amountCaption ? (
-              <Text style={{ color: colors.text.muted, fontSize: 10, marginTop: 2 }} numberOfLines={1}>{record.amountCaption}</Text>
-            ) : null}
-            <Text style={{ color: colors.text.muted, fontSize: 10, marginTop: 3 }} numberOfLines={1}>{record.createdLabel}</Text>
-          </View>
-        </View>
-        <View className="flex-row items-center justify-between">
-          <View
-            className="rounded-full flex-row items-center"
-            style={{ backgroundColor: record.statusBg, alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 2, gap: 4 }}
+      <InitialsAvatar name={record.customerName} palette={palette} />
+      <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
+          <Text style={{ flex: 1, color: palette.text, fontSize: 15, fontWeight: '500' }} numberOfLines={1}>
+            {record.customerName && record.customerName !== '—' ? record.customerName : 'Awaiting customer'}
+          </Text>
+          <Text
+            style={{
+              color: unsuccessful ? palette.faint : palette.text,
+              fontSize: 15,
+              fontWeight: '600',
+              textDecorationLine: unsuccessful ? 'line-through' : 'none',
+              fontVariant: ['tabular-nums'],
+            }}
           >
-            {record.statusLabel === 'Needs review' ? (
-              <AlertTriangle size={10} color={record.statusColor} strokeWidth={2.4} />
-            ) : null}
-            <Text style={{ color: record.statusColor, fontSize: 10, fontWeight: '600' }} numberOfLines={1}>
-              {record.statusLabel}
-            </Text>
-          </View>
-          {hasMobileActions ? (
-            <View style={{ position: 'relative' }}>
-              <Pressable
-                onPress={(e) => {
-                  e.stopPropagation?.();
-                  setShowMobileActions((value) => !value);
-                }}
-                className="rounded-full items-center justify-center active:opacity-70"
-                style={{ width: 32, height: 32, backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: separatorColor }}
-              >
-                <MoreVertical size={16} color={colors.text.primary} strokeWidth={2.3} />
-              </Pressable>
-              {showMobileActions ? (
-                <View
-                  className="rounded-2xl p-2"
-                  style={{
-                    position: 'absolute',
-                    right: 0,
-                    bottom: 38,
-                    width: 152,
-                    backgroundColor: colors.bg.card,
-                    borderWidth: 1,
-                    borderColor: separatorColor,
-                    shadowColor: '#000000',
-                    shadowOpacity: 0.16,
-                    shadowRadius: 12,
-                    shadowOffset: { width: 0, height: 6 },
-                    elevation: 8,
-                    zIndex: 20,
-                  }}
-                >
-                  {record.confirmAction ? (
-                    <Pressable
-                      onPress={(e) => {
-                        e.stopPropagation?.();
-                        setShowMobileActions(false);
-                        record.confirmAction?.onConfirm();
-                      }}
-                      disabled={record.confirmAction.isConfirming}
-                      className="rounded-xl flex-row items-center px-3"
-                      style={{ height: 40, gap: 8, opacity: record.confirmAction.isConfirming ? 0.6 : 1 }}
-                    >
-                      <Check size={15} color="#059669" strokeWidth={2.4} />
-                      <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">Confirm</Text>
-                    </Pressable>
-                  ) : null}
-                  {record.editAction ? (
-                    <Pressable
-                      onPress={(e) => {
-                        e.stopPropagation?.();
-                        setShowMobileActions(false);
-                        record.editAction?.onEdit();
-                      }}
-                      className="rounded-xl flex-row items-center px-3"
-                      style={{ height: 40, gap: 8 }}
-                    >
-                      <Pencil size={15} color={colors.text.primary} strokeWidth={2.4} />
-                      <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">Edit</Text>
-                    </Pressable>
-                  ) : null}
-                  {record.deleteAction ? (
-                    <Pressable
-                      onPress={(e) => {
-                        e.stopPropagation?.();
-                        setShowMobileActions(false);
-                        record.deleteAction?.onDelete();
-                      }}
-                      disabled={record.deleteAction.isDeleting}
-                      className="rounded-xl flex-row items-center px-3"
-                      style={{ height: 40, gap: 8, opacity: record.deleteAction.isDeleting ? 0.6 : 1 }}
-                    >
-                      {record.deleteAction.isDeleting ? (
-                        <ActivityIndicator size="small" color="#DC2626" />
-                      ) : (
-                        <Trash2 size={15} color="#DC2626" strokeWidth={2.4} />
-                      )}
-                      <Text style={{ color: '#DC2626' }} className="text-sm font-semibold">Delete</Text>
-                    </Pressable>
-                  ) : null}
-                </View>
-              ) : null}
-            </View>
-          ) : null}
-        </View>
-      </View>
-    </Pressable>
-  );
-}
-
-function PaymentStatCard({
-  label,
-  value,
-  caption,
-  separatorColor,
-  isMobile = false,
-}: {
-  label: string;
-  value: string;
-  caption: string;
-  separatorColor: string;
-  isMobile?: boolean;
-}) {
-  const colors = useThemeColors();
-  return (
-    <View
-      className="rounded-[24px]"
-      style={{
-        flex: 1,
-        minHeight: isMobile ? 104 : 138,
-        paddingHorizontal: isMobile ? 14 : 18,
-        paddingVertical: isMobile ? 12 : 18,
-        backgroundColor: colors.bg.card,
-        borderWidth: 1,
-        borderColor: separatorColor,
-        justifyContent: 'center',
-      }}
-    >
-      <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 1 }}>
-        {label}
-      </Text>
-      <Text style={{ color: colors.text.primary, fontSize: isMobile ? 20 : 26, fontWeight: '700', marginTop: 8 }}>
-        {value}
-      </Text>
-      <Text style={{ color: colors.text.muted, fontSize: isMobile ? 10 : 12, fontWeight: '400', lineHeight: isMobile ? 14 : 18, marginTop: 6 }}>
-        {caption}
-      </Text>
-    </View>
-  );
-}
-
-function DraftRow({
-  draft,
-  isDesktop,
-  orderNumber,
-  separatorColor,
-  onPress,
-}: {
-  draft: SocialCheckoutDraft;
-  isDesktop: boolean;
-  orderNumber?: string;
-  separatorColor: string;
-  onPress: () => void;
-}) {
-  const colors = useThemeColors();
-  const effectiveStatus = getSocialCheckoutEffectiveStatus(draft);
-  const reference = `SC-${draft.id}`;
-  const createdLabel = formatCreatedDate(draft.createdAt);
-
-  if (isDesktop) {
-    return (
-      <Pressable
-        onPress={onPress}
-        className="flex-row items-center px-5 active:opacity-60"
-        style={{ height: 56, borderBottomWidth: 1, borderBottomColor: separatorColor }}
-      >
-        <View className="flex-row items-center" style={{ flex: 1.35, minWidth: 150, paddingRight: 10 }}>
-          <Link2 size={13} color={colors.text.muted} strokeWidth={2} />
-          <Text style={{ color: colors.text.primary }} className="font-semibold text-sm ml-1.5" numberOfLines={1}>{reference}</Text>
-        </View>
-        <View style={{ flex: 1.05, minWidth: 110, paddingRight: 10 }}>
-          <Text style={{ color: colors.text.primary }} className="font-semibold text-sm ml-1.5" numberOfLines={1}>
-            {orderNumber ?? '—'}
+            {formatCurrency(record.amount)}
           </Text>
         </View>
-        <View style={{ flex: 1.65, minWidth: 220, paddingRight: 10 }}>
-          <Text style={{ color: colors.text.primary }} className="text-sm font-medium" numberOfLines={1}>{draft.customerName || '—'}</Text>
-        </View>
-        <View style={{ flex: 0.95, minWidth: 110, paddingRight: 10 }}>
-          <Text style={{ color: colors.text.primary }} className="font-semibold text-sm">{formatCurrency(draft.amount)}</Text>
-        </View>
-        <View style={{ flex: 1.2, minWidth: 160, paddingRight: 10 }}>
-          <StatusTag status={effectiveStatus} />
-        </View>
-        <View style={{ flex: 0.8, minWidth: 92, alignItems: 'flex-end' }}>
-          <Text style={{ color: colors.text.muted }} className="text-sm">{createdLabel}</Text>
-        </View>
-      </Pressable>
-    );
-  }
-
-  return (
-    <Pressable
-      onPress={() => {
-        if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        onPress();
-      }}
-      className="mb-2.5 active:opacity-70"
-    >
-      <View className="rounded-2xl p-4" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: separatorColor }}>
-        <View className="flex-row items-start justify-between">
-          <View className="flex-1 mr-2">
-            <View className="flex-row items-center" style={{ gap: 8 }}>
-              <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '600', flexShrink: 1 }} numberOfLines={1}>
-                {reference}
-              </Text>
-              <StatusTag status={effectiveStatus} />
-            </View>
-            <Text style={{ color: colors.text.tertiary, fontSize: 10, marginTop: 3 }} numberOfLines={1}>
-              {draft.customerName || 'No customer yet'}
-            </Text>
-            {orderNumber ? (
-              <Text style={{ color: colors.text.muted, fontSize: 10, marginTop: 3 }} numberOfLines={1}>
-                Order {orderNumber}
-              </Text>
-            ) : null}
-          </View>
-          <View style={{ alignItems: 'flex-end' }}>
-            <Text style={{ color: colors.text.primary }} className="font-bold text-base">{formatCurrency(draft.amount)}</Text>
-            <Text style={{ color: colors.text.muted, fontSize: 10, marginTop: 3 }} numberOfLines={1}>
-              {createdLabel}
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+          <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+            <SourceIcon source={record.source} color={palette.faint} />
+            <Text style={{ flex: 1, color: palette.faint, fontSize: 12.5 }} numberOfLines={1}>
+              {record.reference} · {record.orderNumber ?? 'No order yet'}
             </Text>
           </View>
+          <StatusDot tone={record.tone} label={record.statusLabel} palette={palette} />
         </View>
+        {record.amountCaption || record.confirmAction ? (
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginTop: 4 }}>
+            <Text style={{ color: palette.faint, fontSize: 12 }} numberOfLines={1}>{record.amountCaption ?? 'Receipt uploaded'}</Text>
+            {record.confirmAction ? <ConfirmPill action={record.confirmAction} compact /> : null}
+          </View>
+        ) : null}
       </View>
     </Pressable>
   );
 }
+
+const DESKTOP_COLUMNS = {
+  customer: { flex: 1.5, minWidth: 200 },
+  reference: { flex: 1.15, minWidth: 140 },
+  order: { flex: 0.9, minWidth: 104 },
+  amount: { flex: 0.9, minWidth: 110 },
+  source: { flex: 1, minWidth: 128 },
+  status: { flex: 1, minWidth: 128 },
+  date: { flex: 0.8, minWidth: 96 },
+  actions: { flex: 0.9, minWidth: 120 },
+} as const;
+
+function PaymentTableRow({ record, palette, isLast }: { record: PaymentRecord; palette: PaymentsPalette; isLast: boolean }) {
+  const unsuccessful = isUnsuccessfulTone(record.tone);
+  return (
+    <Pressable
+      onPress={record.onPress}
+      style={(state) => ({
+        flexDirection: 'row',
+        alignItems: 'center',
+        minHeight: 60,
+        paddingHorizontal: 20,
+        borderBottomWidth: isLast ? 0 : 1,
+        borderBottomColor: palette.hairline,
+        backgroundColor: isHovered(state) ? palette.cardHover : 'transparent',
+      })}
+    >
+      <View style={{ ...DESKTOP_COLUMNS.customer, flexDirection: 'row', alignItems: 'center', gap: 10, paddingRight: 10 }}>
+        <InitialsAvatar name={record.customerName} palette={palette} size={32} />
+        <Text style={{ flex: 1, color: palette.text, fontSize: 14, fontWeight: '500' }} numberOfLines={1}>
+          {record.customerName && record.customerName !== '—' ? record.customerName : 'Awaiting customer'}
+        </Text>
+      </View>
+      <Text style={{ ...DESKTOP_COLUMNS.reference, color: palette.textSoft, fontSize: 13.5, paddingRight: 10 }} numberOfLines={1}>{record.reference}</Text>
+      <Text style={{ ...DESKTOP_COLUMNS.order, color: record.orderNumber ? palette.textSoft : palette.faint, fontSize: 13.5, paddingRight: 10 }} numberOfLines={1}>
+        {record.orderNumber ?? 'No order yet'}
+      </Text>
+      <View style={{ ...DESKTOP_COLUMNS.amount, paddingRight: 10 }}>
+        <Text style={{ color: unsuccessful ? palette.faint : palette.text, fontSize: 14, fontWeight: '600', textDecorationLine: unsuccessful ? 'line-through' : 'none', fontVariant: ['tabular-nums'] }}>
+          {formatCurrency(record.amount)}
+        </Text>
+        {record.amountCaption ? <Text style={{ color: palette.faint, fontSize: 11, marginTop: 2 }} numberOfLines={1}>{record.amountCaption}</Text> : null}
+      </View>
+      <View style={{ ...DESKTOP_COLUMNS.source, flexDirection: 'row', alignItems: 'center', gap: 6, paddingRight: 10 }}>
+        <SourceIcon source={record.source} color={palette.faint} size={13} />
+        <Text style={{ color: palette.muted, fontSize: 13 }} numberOfLines={1}>{SOURCE_LABEL[record.source]}</Text>
+      </View>
+      <View style={{ ...DESKTOP_COLUMNS.status, paddingRight: 10 }}>
+        <StatusDot tone={record.tone} label={record.statusLabel} palette={palette} />
+      </View>
+      <Text style={{ ...DESKTOP_COLUMNS.date, color: palette.faint, fontSize: 13, paddingRight: 10 }} numberOfLines={1}>{record.createdLabel}</Text>
+      <View style={{ ...DESKTOP_COLUMNS.actions, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
+        {record.confirmAction ? <ConfirmPill action={record.confirmAction} compact /> : null}
+        {record.deleteAction ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Delete ${record.reference}`}
+            onPress={(event) => {
+              event.stopPropagation?.();
+              record.deleteAction?.onDelete();
+            }}
+            disabled={record.deleteAction.isDeleting}
+            style={(state) => ({
+              width: 30,
+              height: 30,
+              borderRadius: 15,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: isHovered(state) ? (palette.isDark ? 'rgba(229,119,109,0.16)' : 'rgba(194,69,58,0.1)') : 'transparent',
+            })}
+          >
+            {record.deleteAction.isDeleting ? (
+              <ActivityIndicator size="small" color={palette.danger} />
+            ) : (
+              <Trash2 size={15} color={palette.faint} strokeWidth={2} />
+            )}
+          </Pressable>
+        ) : null}
+        {!record.confirmAction && !record.deleteAction ? <Text style={{ color: palette.faint, fontSize: 13 }}>—</Text> : null}
+      </View>
+    </Pressable>
+  );
+}
+
+function PaymentActionSheet({ record, palette, onClose }: { record: PaymentRecord | null; palette: PaymentsPalette; onClose: () => void }) {
+  const insets = useSafeAreaInsets();
+  if (!record) return null;
+  const run = (action?: () => void) => {
+    onClose();
+    action?.();
+  };
+  const optionStyle = (state: PressableStateCallbackType) => ({
+    height: 52,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 12,
+    backgroundColor: state.pressed || isHovered(state) ? (palette.isDark ? 'rgba(255,255,255,0.06)' : '#F4F4F4') : 'transparent',
+  });
+  return (
+    <Modal transparent visible animationType="fade" onRequestClose={onClose}>
+      <Pressable onPress={onClose} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' }}>
+        <Pressable
+          onPress={(event) => event.stopPropagation?.()}
+          style={{ backgroundColor: palette.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 10, paddingHorizontal: 12, paddingBottom: Math.max(insets.bottom, 12) + 8, borderWidth: 1, borderColor: palette.border }}
+        >
+          <View style={{ alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: palette.isDark ? 'rgba(255,255,255,0.18)' : '#DDDDDD', marginBottom: 12 }} />
+          <View style={{ paddingHorizontal: 14, paddingBottom: 10 }}>
+            <Text style={{ color: palette.text, fontSize: 16, fontWeight: '600' }} numberOfLines={1}>
+              {record.customerName && record.customerName !== '—' ? record.customerName : 'Awaiting customer'} · {formatCurrency(record.amount)}
+            </Text>
+            <Text style={{ color: palette.faint, fontSize: 13, marginTop: 2 }}>{record.reference}</Text>
+          </View>
+          {record.confirmAction ? (
+            <Pressable onPress={() => run(record.confirmAction?.onConfirm)} style={optionStyle}>
+              <View style={{ width: 28, height: 28, borderRadius: 9, backgroundColor: FYLL_LIME, alignItems: 'center', justifyContent: 'center' }}>
+                <Check size={15} color={FYLL_LIME_INK} strokeWidth={2.6} />
+              </View>
+              <Text style={{ color: palette.text, fontSize: 15, fontWeight: '600' }}>Confirm payment</Text>
+            </Pressable>
+          ) : null}
+          <Pressable onPress={() => run(record.onPress)} style={optionStyle}>
+            <ChevronRight size={18} color={palette.muted} strokeWidth={2} style={{ marginHorizontal: 5 }} />
+            <Text style={{ color: palette.text, fontSize: 15, fontWeight: '500' }}>Open payment</Text>
+          </Pressable>
+          {record.editAction ? (
+            <Pressable onPress={() => run(record.editAction?.onEdit)} style={optionStyle}>
+              <Pencil size={17} color={palette.muted} strokeWidth={2.2} style={{ marginHorizontal: 5 }} />
+              <Text style={{ color: palette.text, fontSize: 15, fontWeight: '500' }}>Edit</Text>
+            </Pressable>
+          ) : null}
+          {record.deleteAction ? (
+            <Pressable onPress={() => run(record.deleteAction?.onDelete)} style={optionStyle}>
+              <Trash2 size={17} color={palette.danger} strokeWidth={2.2} style={{ marginHorizontal: 5 }} />
+              <Text style={{ color: palette.danger, fontSize: 15, fontWeight: '500' }}>Delete</Text>
+            </Pressable>
+          ) : null}
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+function formatDayHeading(iso: string) {
+  const created = new Date(iso);
+  if (!Number.isFinite(created.getTime())) return 'Earlier';
+  const today = new Date();
+  const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const dayDiff = Math.round((startOfDay(today) - startOfDay(created)) / 86400000);
+  if (dayDiff === 0) return 'Today';
+  if (dayDiff === 1) return 'Yesterday';
+  return created.toLocaleDateString('en-GB', created.getFullYear() === today.getFullYear()
+    ? { day: 'numeric', month: 'short' }
+    : { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
 
 function formatCreatedDate(iso: string) {
   const created = new Date(iso);
@@ -782,15 +607,11 @@ const isPaymentInPeriod = (iso: string, period: PaymentPeriod) => {
 export default function PaymentsScreen() {
   const router = useRouter();
   const { seedFyllCheckout } = useLocalSearchParams<{ seedFyllCheckout?: string | string[] }>();
-  const colors = useThemeColors();
   const tabBarHeight = useTabBarHeight();
   const { isDesktop, isMobile } = useBreakpoint();
   const isWebDesktop = Platform.OS === 'web' && isDesktop;
   const pageHeadingStyle = getStandardPageHeadingStyle(isMobile);
-  const isDark = colors.bg.primary === '#111111';
-  const separatorColor = isDark ? SEPARATOR_DARK : SEPARATOR_LIGHT;
-  const primaryButtonBg = isDark ? '#FFFFFF' : '#111111';
-  const primaryButtonText = isDark ? '#111111' : '#FFFFFF';
+  const palette = usePaymentsPalette();
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
   const currentUserRole = useAuthStore((s) => s.currentUser?.role ?? 'staff');
   const currentUserName = useAuthStore((s) => s.currentUser?.name ?? 'Staff');
@@ -801,6 +622,8 @@ export default function PaymentsScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<PaymentFilter>(null);
   const [paymentPeriod, setPaymentPeriod] = useState<PaymentPeriod>('all');
+  const [searchFocused, setSearchFocused] = useState<boolean>(false);
+  const [actionRecord, setActionRecord] = useState<PaymentRecord | null>(null);
   const [hasSeededFyllCheckoutDemo, setHasSeededFyllCheckoutDemo] = useState(false);
 
   useEffect(() => {
@@ -972,6 +795,7 @@ export default function PaymentsScreen() {
           });
         } catch (error) {
           console.warn('Fyll Checkout confirmation callback failed after local approval:', error);
+          showFyllCheckoutSyncFailedNotice(payment.sourceOrderId, error);
         }
       }
       return updatedPayment;
@@ -1090,7 +914,7 @@ export default function PaymentsScreen() {
     return result;
   }, [periodDrafts, periodStorefrontPayments]);
 
-  const paymentRecords = useMemo<PaymentRecord[]>(() => {
+  const paymentRecordsInPeriod = useMemo<PaymentRecord[]>(() => {
     const socialRecords = periodDrafts.map((draft): PaymentRecord => {
       const effectiveStatus = getSocialCheckoutEffectiveStatus(draft);
       const statusGroup: PaymentRecord['statusGroup'] = effectiveStatus === 'payment_submitted'
@@ -1110,8 +934,7 @@ export default function PaymentsScreen() {
         customerPhone: draft.customerPhone,
         amount: draft.amount,
         statusLabel: STATUS_LABEL[effectiveStatus],
-        statusColor: STATUS_COLOR[effectiveStatus],
-        statusBg: STATUS_BG[effectiveStatus],
+        tone: SOCIAL_STATUS_TONE[effectiveStatus],
         statusGroup,
         createdAt: draft.createdAt,
         createdLabel: formatCreatedDate(draft.createdAt),
@@ -1169,8 +992,7 @@ export default function PaymentsScreen() {
         amount: payment.amount,
         amountCaption,
         statusLabel: STOREFRONT_STATUS_LABEL[paymentStatus],
-        statusColor: STOREFRONT_STATUS_COLOR[paymentStatus],
-        statusBg: STOREFRONT_STATUS_BG[paymentStatus],
+        tone: STOREFRONT_STATUS_TONE[paymentStatus],
         statusGroup,
         createdAt: payment.createdAt,
         createdLabel: formatCreatedDate(payment.createdAt),
@@ -1199,8 +1021,13 @@ export default function PaymentsScreen() {
       };
     });
 
-    const query = searchQuery.trim().toLowerCase();
     return [...socialRecords, ...storefrontRecords]
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [confirmStorefrontPaymentMutation, currentUserRole, deletePaymentRecordMutation, orderLookup, periodDrafts, periodStorefrontPayments, router]);
+
+  const paymentRecords = useMemo<PaymentRecord[]>(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return paymentRecordsInPeriod
       .filter((record) => !statusFilter || record.statusGroup === statusFilter)
       .filter((record) => {
         if (!query) return true;
@@ -1211,9 +1038,8 @@ export default function PaymentsScreen() {
           || record.customerName.toLowerCase().includes(query)
           || (record.customerPhone ?? '').includes(query)
         );
-      })
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [confirmStorefrontPaymentMutation, currentUserRole, deletePaymentRecordMutation, orderLookup, periodDrafts, periodStorefrontPayments, router, searchQuery, statusFilter]);
+      });
+  }, [paymentRecordsInPeriod, searchQuery, statusFilter]);
 
   const handleNewLink = () => {
     if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -1225,323 +1051,395 @@ export default function PaymentsScreen() {
     { key: 'awaiting', label: 'Awaiting payment', count: counts.awaiting ?? 0 },
     { key: 'needs_review', label: 'Needs review', count: counts.needs_review ?? 0 },
     { key: 'confirmed', label: 'Verified', count: counts.confirmed ?? 0 },
-    { key: 'expired', label: 'Expired', count: counts.expired ?? 0 },
+    { key: 'expired', label: 'Rejected & expired', count: counts.expired ?? 0 },
   ];
   const onSelectChip = (key: PaymentFilter) => {
     Haptics.selectionAsync();
     setStatusFilter(key);
   };
-  const contentMaxWidth = isWebDesktop ? 1400 : isDesktop ? 980 : undefined;
+  const contentMaxWidth = isWebDesktop ? 1456 : isDesktop ? 980 : undefined;
   const contentPaddingBottom = (isDesktop ? 32 : 24) + tabBarHeight;
-  const mobileSectionGap = 12;
-  const confirmedPeriodAmount = periodDrafts
-    .filter((draft) => getSocialCheckoutEffectiveStatus(draft) === 'verified')
-    .reduce((sum, draft) => sum + draft.amount, 0);
-  const awaitingConfirmationAmount = periodDrafts
-    .filter((draft) => getSocialCheckoutEffectiveStatus(draft) === 'payment_submitted')
-    .reduce((sum, draft) => sum + draft.amount, 0);
-  const storefrontConfirmedPeriodAmount = periodStorefrontPayments
-    .filter((payment) => {
-      const status = getStorefrontPaymentStatus(payment);
-      return status === 'confirmed' || status === 'verified';
-    })
-    .reduce((sum, payment) => sum + payment.amount, 0);
-  const storefrontAwaitingConfirmationAmount = periodStorefrontPayments
-    .filter((payment) => {
-      const status = getStorefrontPaymentStatus(payment);
-      return status === 'pending' || status === 'proof_submitted';
-    })
-    .reduce((sum, payment) => sum + payment.amount, 0);
-  const combinedConfirmedPeriodAmount = confirmedPeriodAmount + storefrontConfirmedPeriodAmount;
-  const combinedAwaitingAmount = awaitingConfirmationAmount + storefrontAwaitingConfirmationAmount;
   const isInitialPaymentsLoading = (draftsQuery.isPending || ordersQuery.isPending || sharedPaymentsQuery.isPending)
     && drafts.length === 0
     && storefrontPayments.length === 0;
 
+  const unpaidRecords = paymentRecordsInPeriod.filter((record) => record.statusGroup === 'awaiting');
+  const reviewRecords = paymentRecordsInPeriod.filter((record) => record.statusGroup === 'needs_review');
+  const sumAmounts = (records: PaymentRecord[]) => records.reduce((sum, record) => sum + record.amount, 0);
+  const verifiedAmount = sumAmounts(paymentRecordsInPeriod.filter((record) => record.statusGroup === 'confirmed'));
+  const reviewAmount = sumAmounts(reviewRecords);
+  const unpaidAmount = sumAmounts(unpaidRecords);
+  const attention = reviewRecords.length > 0
+    ? {
+      filter: 'needs_review' as const,
+      title: `${reviewRecords.length} ${reviewRecords.length === 1 ? 'payment needs' : 'payments need'} review`,
+      caption: `${formatCurrency(reviewAmount)} · check the receipt and confirm`,
+    }
+    : unpaidRecords.length > 0
+      ? {
+        filter: 'awaiting' as const,
+        title: `${unpaidRecords.length} ${unpaidRecords.length === 1 ? 'link' : 'links'} still unpaid`,
+        caption: `${formatCurrency(unpaidAmount)} · send the customer a reminder`,
+      }
+      : null;
+
+  const dayGroups = paymentRecords.reduce<{ day: string; rows: PaymentRecord[] }[]>((groups, record) => {
+    const day = formatDayHeading(record.createdAt);
+    const existing = groups.find((group) => group.day === day);
+    if (existing) existing.rows.push(record);
+    else groups.push({ day, rows: [record] });
+    return groups;
+  }, []);
+
+  const periodOptions: { key: PaymentPeriod; label: string }[] = [
+    { key: 'all', label: 'All' },
+    { key: 'week', label: 'Week' },
+    { key: 'month', label: 'Month' },
+    { key: 'year', label: 'Year' },
+  ];
+  // Matches the payment detail page so both screens line up on desktop.
+  const horizontalPadding = isMobile ? 16 : isDesktop ? 28 : 20;
+
   return (
-    <View className="flex-1" style={{ backgroundColor: colors.bg.primary }}>
+    <View className="flex-1" style={{ backgroundColor: palette.page }}>
       <SafeAreaView className="flex-1" edges={['top']}>
         <View
           style={{
-            paddingHorizontal: isMobile ? 16 : 20,
-            paddingTop: isWebDesktop ? 28 : 20,
-            paddingBottom: isMobile ? mobileSectionGap : isWebDesktop ? 16 : 12,
+            paddingHorizontal: horizontalPadding,
+            paddingTop: isWebDesktop ? 28 : 14,
+            paddingBottom: 14,
             maxWidth: contentMaxWidth,
             width: isDesktop ? '100%' : undefined,
             alignSelf: isWebDesktop ? 'flex-start' : isDesktop ? 'center' : undefined,
             minHeight: isWebDesktop ? DESKTOP_PAGE_HEADER_MIN_HEIGHT : undefined,
+            flexDirection: 'row',
+            alignItems: isMobile ? 'center' : 'flex-start',
+            justifyContent: 'space-between',
+            gap: 12,
           }}
         >
-          <View
-            className="flex-row justify-between"
-            style={{
-              alignItems: isMobile ? 'center' : 'flex-start',
-              gap: isMobile ? 8 : 16,
-            }}
-          >
-            <View style={{ flex: 1, minWidth: 0, paddingRight: isMobile ? 2 : 0 }}>
-              <Text style={{ color: colors.text.primary, ...pageHeadingStyle }} numberOfLines={1}>Payments</Text>
-              {!isMobile ? (
-                <Text style={{ color: colors.text.tertiary, fontSize: 14, lineHeight: 20, marginTop: 4 }}>
-                  Storefront payments and social checkout links in one view.
-                </Text>
-              ) : null}
-            </View>
-            <View className="flex-row gap-2">
-              {isDesktop && currentUserRole === 'admin' ? (
-                <Pressable
-                  onPress={() => router.push('/payment-accounts' as never)}
-                  className="rounded-full items-center justify-center flex-row gap-1.5 active:opacity-70 px-4"
-                  style={{ height: 44, backgroundColor: colors.bg.card, borderWidth: 1, borderColor: separatorColor }}
-                >
-                  <Landmark size={18} color={colors.text.primary} strokeWidth={2} />
-                  <Text style={{ color: colors.text.primary }} className="text-sm font-medium">Bank Accounts</Text>
-                </Pressable>
-              ) : null}
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ color: palette.text, ...pageHeadingStyle }} numberOfLines={1}>Payments</Text>
+            {!isMobile ? (
+              <Text style={{ color: palette.muted, fontSize: 14, lineHeight: 20, marginTop: 4 }}>
+                Storefront payments and payment links in one view.
+              </Text>
+            ) : null}
+          </View>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {isDesktop && currentUserRole === 'admin' ? (
               <Pressable
-                onPress={handleNewLink}
-                className="rounded-full active:opacity-80 flex-row items-center"
-                style={{
-                  height: isMobile ? 40 : 44,
-                  paddingHorizontal: isMobile ? 12 : 16,
-                  gap: isMobile ? 5 : 6,
-                  backgroundColor: primaryButtonBg,
-                }}
+                onPress={() => router.push('/payment-accounts' as never)}
+                style={(state) => ({
+                  height: 40,
+                  paddingHorizontal: 16,
+                  borderRadius: 999,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 6,
+                  borderWidth: 1,
+                  borderColor: palette.border,
+                  backgroundColor: isHovered(state) ? palette.cardHover : palette.card,
+                })}
               >
-                <Plus size={isMobile ? 17 : 18} color={primaryButtonText} strokeWidth={2.5} />
-                <Text style={{ color: primaryButtonText, fontSize: isMobile ? 13 : 14 }} className="font-semibold">New Payment</Text>
+                <Landmark size={16} color={palette.text} strokeWidth={2} />
+                <Text style={{ color: palette.text, fontSize: 14, fontWeight: '500' }}>Bank accounts</Text>
               </Pressable>
-            </View>
+            ) : null}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="New payment link"
+              onPress={handleNewLink}
+              style={(state) => ({
+                height: 40,
+                paddingHorizontal: 16,
+                borderRadius: 999,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                backgroundColor: isHovered(state) ? FYLL_LIME_HOVER : FYLL_LIME,
+                opacity: state.pressed ? 0.85 : 1,
+              })}
+            >
+              <Plus size={15} color={FYLL_LIME_INK} strokeWidth={2.6} />
+              <Text style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '600' }}>{isMobile ? 'New' : 'New payment'}</Text>
+            </Pressable>
           </View>
         </View>
-        <View style={{ height: 1, backgroundColor: separatorColor, opacity: 0.7 }} />
 
         <ScrollView
-          style={{ flex: 1, backgroundColor: colors.bg.primary }}
+          style={{ flex: 1, backgroundColor: palette.page }}
           contentContainerStyle={{
-            paddingHorizontal: isDesktop ? 0 : 16,
+            paddingHorizontal: horizontalPadding,
             maxWidth: contentMaxWidth,
             width: isDesktop ? '100%' : undefined,
             alignSelf: isWebDesktop ? 'flex-start' : isDesktop ? 'center' : undefined,
             paddingBottom: contentPaddingBottom,
           }}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
           refreshControl={
             <RefreshControl
-              refreshing={draftsQuery.isRefetching || ordersQuery.isRefetching}
+              refreshing={draftsQuery.isRefetching || ordersQuery.isRefetching || sharedPaymentsQuery.isRefetching}
               onRefresh={() => {
                 draftsQuery.refetch();
                 ordersQuery.refetch();
+                sharedPaymentsQuery.refetch();
               }}
-              tintColor={colors.text.tertiary}
+              tintColor={palette.faint}
             />
           }
         >
           {isInitialPaymentsLoading ? (
             <PaymentListSkeleton isDesktop={isDesktop} />
           ) : (
-            <>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, marginHorizontal: isDesktop ? 20 : 0, marginTop: isMobile ? mobileSectionGap : 20, marginBottom: 14 }} contentContainerStyle={{ gap: 8, paddingRight: 4 }}>
-            {[
-              { key: 'all' as const, label: 'All time' },
-              { key: 'week' as const, label: 'This week' },
-              { key: 'month' as const, label: 'This month' },
-              { key: 'year' as const, label: 'This year' },
-            ].map((period) => {
-              const selected = paymentPeriod === period.key;
-              return (
-                <Pressable
-                  key={period.key}
-                  onPress={() => setPaymentPeriod(period.key)}
-                  className="rounded-full items-center justify-center active:opacity-80"
-                  style={{
-                    height: isMobile ? 40 : 44,
-                    paddingHorizontal: isMobile ? 12 : 16,
-                    backgroundColor: selected ? primaryButtonBg : colors.bg.card,
-                    borderWidth: selected ? 0 : 1,
-                    borderColor: separatorColor,
-                  }}
-                >
-                  <Text style={{ color: selected ? primaryButtonText : colors.text.primary, fontSize: 12, fontWeight: '600' }}>{period.label}</Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-
-          {counts.all > 0 ? (
-            <View
-              className="mx-5"
-              style={{
-                flexDirection: 'row',
-                flexWrap: isDesktop ? 'nowrap' : 'wrap',
-                marginHorizontal: isDesktop ? 20 : -5,
-                marginTop: 0,
-                marginBottom: isMobile ? 0 : 20,
-                gap: isDesktop ? 16 : 0,
-              }}
-            >
-              {[
-                { label: 'Verified', value: formatCurrency(combinedConfirmedPeriodAmount), caption: 'Storefront orders and payment links' },
-                { label: 'Pending', value: formatCurrency(combinedAwaitingAmount), caption: 'Payments awaiting confirmation or review' },
-                { label: 'Total records', value: String(counts.all), caption: 'Across all payment sources' },
-              ].map((item, index) => (
-                <View
-                  key={item.label}
-                  style={{
-                    width: isDesktop ? undefined : index === 2 ? '100%' : '50%',
-                    flex: isDesktop ? 1 : undefined,
-                    paddingHorizontal: isDesktop ? 0 : 5,
-                    marginBottom: isDesktop ? 0 : mobileSectionGap,
-                  }}
-                >
-                  <PaymentStatCard label={item.label} value={item.value} caption={item.caption} separatorColor={separatorColor} isMobile={!isDesktop} />
-                </View>
-              ))}
-            </View>
-          ) : null}
-
-          <View style={{ marginHorizontal: isDesktop ? 20 : 0, marginBottom: isMobile ? mobileSectionGap : 16 }}>
-            <View
-              className={isMobile ? undefined : 'flex-row items-center'}
-              style={isMobile ? undefined : { gap: 10 }}
-            >
+            <View style={{ gap: 14 }}>
               <View
-                className="rounded-full"
-                style={{
-                  height: 44,
-                  minHeight: 44,
-                  width: isDesktop ? 320 : '100%',
-                  flex: isDesktop ? undefined : 0,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  paddingHorizontal: 16,
-                  backgroundColor: colors.input.bg,
-                  borderWidth: 1,
-                  borderColor: separatorColor,
-                  marginBottom: isMobile ? 12 : 0,
-                }}
+                accessibilityRole="tablist"
+                style={{ flexDirection: 'row', padding: 4, borderRadius: 999, backgroundColor: palette.segmentBg, borderWidth: 1, borderColor: palette.border, maxWidth: isDesktop ? 360 : undefined }}
               >
-                <Search size={17} color={colors.text.muted} strokeWidth={2} />
-                <TextInput
-                  placeholder="Search payments, orders, customers"
-                  placeholderTextColor={colors.input.placeholder}
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                  style={{ flex: 1, height: 44, marginLeft: 8, paddingVertical: 0, color: colors.input.text, fontSize: 14 }}
-                  selectionColor={colors.text.primary}
-                />
-                <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
-              </View>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={{ flexGrow: 0, flexShrink: 1 }}
-                contentContainerStyle={{ gap: 8, paddingRight: 4 }}
-              >
-                {filterChips.map((chip) => {
-                  const isActive = statusFilter === chip.key;
+                {periodOptions.map((option) => {
+                  const selected = paymentPeriod === option.key;
                   return (
                     <Pressable
-                      key={chip.label}
-                      onPress={() => onSelectChip(chip.key)}
-                      className="flex-row items-center rounded-full active:opacity-80"
-                      style={{
-                        height: isMobile ? 40 : 44,
-                        paddingHorizontal: isMobile ? 12 : 16,
-                        backgroundColor: isActive ? primaryButtonBg : colors.bg.card,
-                        borderWidth: isActive ? 0 : 1,
-                        borderColor: separatorColor,
+                      key={option.key}
+                      accessibilityRole="tab"
+                      accessibilityState={{ selected }}
+                      onPress={() => {
+                        Haptics.selectionAsync();
+                        setPaymentPeriod(option.key);
                       }}
+                      style={(state) => ({
+                        flex: 1,
+                        height: 34,
+                        borderRadius: 999,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: selected ? palette.inverseBg : isHovered(state) ? (palette.isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)') : 'transparent',
+                      })}
                     >
-                      <Text style={{ color: isActive ? primaryButtonText : colors.text.primary }} className="text-sm font-semibold">
-                        {chip.label}
-                      </Text>
-                      {chip.count > 0 ? (
-                        <Text style={{ color: isActive ? (isDark ? 'rgba(0,0,0,0.62)' : 'rgba(255,255,255,0.7)') : colors.text.muted }} className="text-sm font-semibold ml-1.5">
-                          {chip.count}
-                        </Text>
-                      ) : null}
+                      <Text style={{ color: selected ? palette.inverseText : palette.muted, fontSize: 13, fontWeight: '600' }}>{option.label}</Text>
                     </Pressable>
                   );
                 })}
-              </ScrollView>
-            </View>
-          </View>
+              </View>
 
-          {paymentRecords.length === 0 ? (
-            <View className="items-center justify-center py-20 px-5">
-              <View className="w-16 h-16 rounded-2xl items-center justify-center mb-4" style={{ backgroundColor: colors.border.light }}>
-                <Wallet size={30} color={colors.text.muted} strokeWidth={1.5} />
-              </View>
-              <Text style={{ color: colors.text.tertiary }} className="text-base mb-1">No payments found</Text>
-              <Text style={{ color: colors.text.muted }} className="text-sm mb-4 text-center px-8">
-                Storefront orders and social checkout payment links will show up here.
-              </Text>
-              <Pressable
-                onPress={handleNewLink}
-                className="rounded-full active:opacity-80 px-4"
-                style={{ height: 44, backgroundColor: primaryButtonBg, alignItems: 'center', justifyContent: 'center', borderRadius: 999 }}
+              <View
+                accessibilityLabel="Summary"
+                style={{
+                  borderRadius: 20,
+                  backgroundColor: palette.card,
+                  borderWidth: 1,
+                  borderColor: palette.border,
+                  paddingVertical: isDesktop ? 20 : 18,
+                  paddingHorizontal: isDesktop ? 22 : 18,
+                  flexDirection: isDesktop ? 'row' : 'column',
+                  alignItems: isDesktop ? 'center' : 'stretch',
+                  gap: isDesktop ? 0 : 14,
+                }}
               >
-                <Text style={{ color: primaryButtonText }} className="font-semibold text-sm">Create Payment Link</Text>
-              </Pressable>
-            </View>
-          ) : isDesktop ? (
-            <View className="mx-5 rounded-2xl overflow-hidden" style={{ borderWidth: 1, borderColor: separatorColor, backgroundColor: colors.bg.card }}>
-              <View className="flex-row items-center px-5" style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: separatorColor }}>
-                <Text style={{ color: colors.text.muted, flex: 1.25, minWidth: 145, paddingRight: 10 }} className="text-xs font-semibold">REFERENCE</Text>
-                <Text style={{ color: colors.text.muted, flex: 0.95, minWidth: 100, paddingRight: 10 }} className="text-xs font-semibold">ORDER</Text>
-                <Text style={{ color: colors.text.muted, flex: 1.45, minWidth: 180, paddingRight: 10 }} className="text-xs font-semibold">CUSTOMER</Text>
-                <Text style={{ color: colors.text.muted, flex: 0.9, minWidth: 105, paddingRight: 10 }} className="text-xs font-semibold">AMOUNT</Text>
-                <Text style={{ color: colors.text.muted, flex: 1.05, minWidth: 130, paddingRight: 10 }} className="text-xs font-semibold">SOURCE</Text>
-                <Text style={{ color: colors.text.muted, flex: 1.1, minWidth: 140, paddingRight: 10 }} className="text-xs font-semibold">STATUS</Text>
-                <Text style={{ color: colors.text.muted, flex: 0.85, minWidth: 96, paddingRight: 10 }} className="text-xs font-semibold">DATE</Text>
-                <Text style={{ color: colors.text.muted, flex: 0.95, minWidth: 132, textAlign: 'right' }} className="text-xs font-semibold">ACTION</Text>
+                <View style={{ flex: isDesktop ? 1.6 : undefined, gap: 4, paddingRight: isDesktop ? 24 : 0 }}>
+                  <Text style={{ color: palette.muted, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>Verified</Text>
+                  <MoneyText style={{ color: palette.text, fontSize: 34, lineHeight: 40, letterSpacing: -1 }} numberOfLines={1} adjustsFontSizeToFit>
+                    {formatCurrency(verifiedAmount)}
+                  </MoneyText>
+                  <Text style={{ color: palette.faint, fontSize: 13 }}>Storefront orders and payment links</Text>
+                </View>
+                {!isDesktop ? <View style={{ height: 1, backgroundColor: palette.hairline }} /> : null}
+                <View style={{ flex: isDesktop ? 2.4 : undefined, flexDirection: 'row', gap: isDesktop ? 0 : 12 }}>
+                  {[
+                    { key: 'review', label: 'Needs review', value: formatCurrency(reviewAmount), dot: palette.tones.review.dot, filter: 'needs_review' as const },
+                    { key: 'unpaid', label: 'Unpaid', value: formatCurrency(unpaidAmount), dot: palette.tones.awaiting.dot, filter: 'awaiting' as const },
+                    ...(isDesktop ? [{ key: 'records', label: 'Records', value: String(counts.all), dot: undefined, filter: null }] : []),
+                  ].map((metric) => (
+                    <Pressable
+                      key={metric.key}
+                      accessibilityRole="button"
+                      accessibilityHint={metric.filter ? 'Shows only these payments' : 'Shows all payments'}
+                      onPress={() => onSelectChip(metric.filter)}
+                      style={(state) => ({
+                        flex: 1,
+                        gap: 3,
+                        paddingVertical: isDesktop ? 6 : 0,
+                        paddingLeft: isDesktop ? 22 : 0,
+                        borderLeftWidth: isDesktop ? 1 : 0,
+                        borderLeftColor: palette.hairline,
+                        opacity: state.pressed ? 0.7 : isHovered(state) ? 0.85 : 1,
+                      })}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        {metric.dot ? <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: metric.dot }} /> : null}
+                        <Text style={{ color: palette.muted, fontSize: 12 }}>{metric.label}</Text>
+                      </View>
+                      <Text style={{ color: palette.text, fontSize: isDesktop ? 22 : 18, fontWeight: '600', fontVariant: ['tabular-nums'] }} numberOfLines={1} adjustsFontSizeToFit>{metric.value}</Text>
+                    </Pressable>
+                  ))}
+                </View>
               </View>
-              {paymentRecords.map((record) => (
-                <PaymentRecordRow
-                  key={record.id}
-                  record={record}
-                  isDesktop
-                  separatorColor={separatorColor}
-                />
-              ))}
+
+              {attention ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityHint="Shows only these payments"
+                  onPress={() => onSelectChip(attention.filter)}
+                  style={(state) => ({
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 12,
+                    paddingVertical: 12,
+                    paddingHorizontal: 14,
+                    borderRadius: 16,
+                    backgroundColor: isHovered(state) ? (palette.isDark ? 'rgba(213,224,87,0.15)' : 'rgba(213,224,87,0.24)') : palette.nudgeBg,
+                    borderWidth: 1,
+                    borderColor: palette.nudgeBorder,
+                    opacity: state.pressed ? 0.85 : 1,
+                  })}
+                >
+                  <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: FYLL_LIME, alignItems: 'center', justifyContent: 'center' }}>
+                    <AlertTriangle size={16} color={FYLL_LIME_INK} strokeWidth={2.4} />
+                  </View>
+                  <View style={{ flex: 1, gap: 1, flexDirection: isDesktop ? 'row' : 'column', alignItems: isDesktop ? 'center' : undefined, columnGap: 10 }}>
+                    <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>{attention.title}</Text>
+                    <Text style={{ color: palette.nudgeSub, fontSize: 12.5, flexShrink: 1 }} numberOfLines={1}>{attention.caption}</Text>
+                  </View>
+                  {isDesktop ? <Text style={{ color: palette.isDark ? FYLL_LIME : '#5B6A0E', fontSize: 13, fontWeight: '600' }}>View</Text> : null}
+                  <ChevronRight size={16} color={palette.isDark ? FYLL_LIME : '#5B6A0E'} strokeWidth={2.2} />
+                </Pressable>
+              ) : null}
+
+              <View style={{ flexDirection: isDesktop ? 'row' : 'column', alignItems: isDesktop ? 'center' : undefined, gap: isDesktop ? 12 : 14 }}>
+                <View
+                  style={{
+                    height: 48,
+                    width: isDesktop ? 340 : '100%',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    paddingLeft: 18,
+                    paddingRight: 10,
+                    borderRadius: 999,
+                    backgroundColor: palette.inputBg,
+                    borderWidth: 1,
+                    borderColor: searchFocused ? (palette.isDark ? 'rgba(213,224,87,0.6)' : '#111111') : palette.border,
+                  }}
+                >
+                  <Search size={18} color={palette.faint} strokeWidth={2} />
+                  <TextInput
+                    accessibilityLabel="Search payments"
+                    placeholder="Search payments, orders, customers"
+                    placeholderTextColor={palette.faint}
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    onFocus={() => setSearchFocused(true)}
+                    onBlur={() => setSearchFocused(false)}
+                    style={[{ flex: 1, height: 46, marginLeft: 10, paddingVertical: 0, color: palette.text, fontSize: 15 }, Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null]}
+                    selectionColor={palette.text}
+                  />
+                  <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
+                </View>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={{ flexGrow: 0, flexShrink: 1, marginRight: isMobile ? -horizontalPadding : 0 }}
+                  contentContainerStyle={{ gap: 8, paddingRight: isMobile ? horizontalPadding : 4 }}
+                >
+                  {filterChips.map((chip) => {
+                    const isActive = statusFilter === chip.key;
+                    return (
+                      <Pressable
+                        key={chip.label}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: isActive }}
+                        onPress={() => onSelectChip(chip.key)}
+                        style={(state) => ({
+                          height: 36,
+                          paddingHorizontal: 14,
+                          borderRadius: 999,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 6,
+                          borderWidth: 1,
+                          borderColor: isActive ? palette.inverseBg : palette.isDark ? 'rgba(255,255,255,0.12)' : '#E2E2E2',
+                          backgroundColor: isActive ? palette.inverseBg : isHovered(state) ? (palette.isDark ? 'rgba(255,255,255,0.05)' : '#F6F6F6') : 'transparent',
+                        })}
+                      >
+                        <Text style={{ color: isActive ? palette.inverseText : palette.textSoft, fontSize: 13, fontWeight: '600' }}>{chip.label}</Text>
+                        {chip.count > 0 ? (
+                          <Text style={{ color: isActive ? palette.inverseText : palette.textSoft, opacity: 0.55, fontSize: 13, fontWeight: '600' }}>{chip.count}</Text>
+                        ) : null}
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+
+              {paymentRecords.length === 0 ? (
+                <View style={{ alignItems: 'center', paddingVertical: 56, paddingHorizontal: 20 }}>
+                  <View style={{ width: 56, height: 56, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.avatarBg, marginBottom: 14 }}>
+                    <Wallet size={26} color={palette.muted} strokeWidth={1.6} />
+                  </View>
+                  <Text style={{ color: palette.text, fontSize: 16, fontWeight: '600', marginBottom: 4 }}>
+                    {searchQuery.trim() || statusFilter ? 'No matching payments' : 'No payments yet'}
+                  </Text>
+                  <Text style={{ color: palette.muted, fontSize: 14, textAlign: 'center', maxWidth: 300, marginBottom: 16 }}>
+                    {searchQuery.trim() || statusFilter
+                      ? 'Try another search or filter.'
+                      : 'Storefront orders and payment links you send will show up here.'}
+                  </Text>
+                  {!searchQuery.trim() && !statusFilter ? (
+                    <Pressable
+                      onPress={handleNewLink}
+                      style={(state) => ({ height: 44, paddingHorizontal: 18, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: isHovered(state) ? FYLL_LIME_HOVER : FYLL_LIME })}
+                    >
+                      <Text style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '600' }}>Create payment link</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              ) : isDesktop ? (
+                <View style={{ borderRadius: 18, overflow: 'hidden', borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, marginTop: 4 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: palette.hairline }}>
+                    {([
+                      ['customer', 'Customer'],
+                      ['reference', 'Reference'],
+                      ['order', 'Order'],
+                      ['amount', 'Amount'],
+                      ['source', 'Source'],
+                      ['status', 'Status'],
+                      ['date', 'Date'],
+                      ['actions', ''],
+                    ] as const).map(([key, label]) => (
+                      <Text
+                        key={key}
+                        style={{ ...DESKTOP_COLUMNS[key], color: palette.faint, fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', paddingRight: 10, textAlign: key === 'actions' ? 'right' : 'left' }}
+                      >
+                        {label}
+                      </Text>
+                    ))}
+                  </View>
+                  {paymentRecords.map((record, index) => (
+                    <PaymentTableRow key={record.id} record={record} palette={palette} isLast={index === paymentRecords.length - 1} />
+                  ))}
+                </View>
+              ) : (
+                <View style={{ gap: 18, marginTop: 4 }}>
+                  {dayGroups.map((group) => (
+                    <View key={group.day} style={{ gap: 8 }}>
+                      <Text style={{ paddingHorizontal: 4, color: palette.faint, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{group.day}</Text>
+                      <View style={{ borderRadius: 18, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, paddingHorizontal: 14 }}>
+                        {group.rows.map((record, index) => (
+                          <PaymentListRow key={record.id} record={record} palette={palette} isFirst={index === 0} onOpenActions={setActionRecord} />
+                        ))}
+                      </View>
+                    </View>
+                  ))}
+                  {paymentRecords.some((record) => record.editAction || record.deleteAction) ? (
+                    <Text style={{ color: palette.faint, fontSize: 12, textAlign: 'center', marginTop: 2 }}>Press and hold a payment for more actions</Text>
+                  ) : null}
+                </View>
+              )}
             </View>
-          ) : (
-            <>
-              {paymentRecords.map((record) => (
-                <PaymentRecordRow
-                  key={record.id}
-                  record={record}
-                  isDesktop={false}
-                  separatorColor={separatorColor}
-                />
-              ))}
-              <View className="h-8" />
-            </>
-          )}
-            </>
           )}
         </ScrollView>
-        {!isDesktop ? (
-          <Pressable
-            onPress={handleNewLink}
-            className="absolute rounded-full items-center justify-center active:opacity-80"
-            style={{
-              right: 20,
-              bottom: Math.max(96, tabBarHeight - 48),
-              width: 56,
-              height: 56,
-              backgroundColor: primaryButtonBg,
-              shadowColor: '#000000',
-              shadowOpacity: 0.18,
-              shadowRadius: 12,
-              shadowOffset: { width: 0, height: 6 },
-              elevation: 6,
-            }}
-          >
-            <Plus size={24} color={primaryButtonText} strokeWidth={2.5} />
-          </Pressable>
-        ) : null}
+        <PaymentActionSheet record={actionRecord} palette={palette} onClose={() => setActionRecord(null)} />
       </SafeAreaView>
     </View>
   );

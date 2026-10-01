@@ -3973,7 +3973,7 @@ export default function SettingsScreen() {
     ...(currentUser ? [
       { id: 'my-account', title: 'My Account', description: 'Profile and password', icon: <UserCircle size={18} color="#3B82F6" strokeWidth={2} />, onPress: () => openSettingsPanel('account-settings', '/account-settings?from=settings') },
     ] : []),
-    { id: 'business-settings', title: 'Business Settings', description: 'Company name, business name, logo', icon: <Building2 size={18} color="#10B981" strokeWidth={2} />, onPress: () => openSettingsPanel('business-settings', '/business-settings?from=settings') },
+    { id: 'business-settings', title: 'Business Settings', description: 'Name, logo, customer contact', icon: <Building2 size={18} color="#10B981" strokeWidth={2} />, onPress: () => openSettingsPanel('business-settings', '/business-settings?from=settings') },
     ...(canUseStorefront ? [
       { id: 'storefront-settings', title: 'Storefront', description: 'Public shop link and storefront publishing', icon: <Store size={18} color="#8B5CF6" strokeWidth={2} />, onPress: () => openSettingsPanel('storefront-settings', '/storefront-settings?from=settings&menu=integrations') },
     ] : []),

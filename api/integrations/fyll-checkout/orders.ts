@@ -14,7 +14,28 @@ type CheckoutItem = {
   title?: string;
   product?: {
     name?: string;
+    image?: string;
+    imageUrl?: string;
   };
+  image?: string;
+  imageUrl?: string;
+  image_url?: string;
+  thumbnail?: string;
+  thumbnailUrl?: string;
+  thumbnail_url?: string;
+  sku?: string;
+  variantName?: string;
+  variant_name?: string;
+  productId?: string | number;
+  product_id?: string | number;
+  variationId?: string | number;
+  variation_id?: string | number;
+  variantId?: string | number;
+  variant_id?: string | number;
+  wooCommerceProductId?: string | number;
+  wooCommerceVariationId?: string | number;
+  woo_product_id?: string | number;
+  woo_variation_id?: string | number;
   quantity?: number;
   qty?: number;
   unitPrice?: number;
@@ -29,7 +50,18 @@ type CatalogProductRow = {
   id: string;
   data: {
     name?: string;
-    variants?: { id?: string }[];
+    wooCommerceProductId?: string;
+    sourceProductId?: string;
+    websiteProductId?: string;
+    variants?: {
+      id?: string;
+      sku?: string;
+      variableValues?: Record<string, string>;
+      wooCommerceProductId?: string;
+      wooCommerceVariationId?: string;
+      sourceProductId?: string;
+      sourceVariantId?: string;
+    }[];
   } | null;
 };
 
@@ -202,28 +234,107 @@ const normalizeProductNameValue = (value: unknown) => (
     .trim()
 );
 
-// Fyll Checkout sends only a free-text item name, no SKU or catalog id — this
-// is a best-effort name match against the business's real catalog so the
-// order references a real public.products row instead of always minting a
-// synthetic `fyll-checkout-item-...` id (which then shows as "Product no
-// longer available" in reviews, order history, etc). Falls back to no match
-// (caller keeps the synthetic id) for genuinely catalog-less lines.
-const matchCheckoutItemToCatalogProduct = (itemName: string, products: CatalogProductRow[]) => {
+const normalizeLookupValue = (value: unknown) => (
+  normalizeText(value)
+    .toLowerCase()
+    .replace(/^wc[\s#:-]*/i, '')
+    .replace(/^woo[\s#:-]*/i, '')
+    .replace(/^product[\s#:-]*/i, '')
+    .replace(/^variation[\s#:-]*/i, '')
+    .replace(/[^a-z0-9]+/g, '')
+);
+
+const getCheckoutItemVariantName = (item: CheckoutItem) => (
+  normalizeText(item.variantName) || normalizeText(item.variant_name)
+);
+
+const getCheckoutProductKeys = (item: CheckoutItem) => [
+  item.wooCommerceProductId,
+  item.woo_product_id,
+  item.productId,
+  item.product_id,
+].map(normalizeLookupValue).filter(Boolean);
+
+const getCheckoutVariantKeys = (item: CheckoutItem) => [
+  item.wooCommerceVariationId,
+  item.woo_variation_id,
+  item.variationId,
+  item.variation_id,
+  item.variantId,
+  item.variant_id,
+].map(normalizeLookupValue).filter(Boolean);
+
+const getCatalogProductKeys = (product: CatalogProductRow) => [
+  product.id,
+  product.data?.wooCommerceProductId,
+  product.data?.sourceProductId,
+  product.data?.websiteProductId,
+  product.id.replace(/^woo-product-/i, ''),
+].map(normalizeLookupValue).filter(Boolean);
+
+const getCatalogVariantKeys = (variant: NonNullable<NonNullable<CatalogProductRow['data']>['variants']>[number]) => [
+  variant.id,
+  variant.wooCommerceVariationId,
+  variant.sourceVariantId,
+  variant.wooCommerceProductId,
+  variant.sourceProductId,
+  variant.id?.replace(/^woo-variant-/i, ''),
+].map(normalizeLookupValue).filter(Boolean);
+
+const getCatalogVariantName = (variant: NonNullable<NonNullable<CatalogProductRow['data']>['variants']>[number]) => (
+  Object.values(variant.variableValues ?? {}).join(' ').trim()
+);
+
+// Prefer stable SKU/Woo ids. When an older checkout only supplies a combined
+// name such as "Turkey Silver", infer "Silver" from the catalog product name.
+// Never silently select the first colour when a multi-variant product is
+// ambiguous.
+const matchCheckoutItemToCatalogProduct = (item: CheckoutItem, itemName: string, products: CatalogProductRow[]) => {
   const itemNameKey = normalizeProductNameValue(itemName);
   if (!itemNameKey) return null;
+
+  const itemSku = normalizeLookupValue(item.sku);
+  const productKeys = getCheckoutProductKeys(item);
+  const variantKeys = getCheckoutVariantKeys(item);
+
+  if (itemSku) {
+    for (const product of products) {
+      const variant = product.data?.variants?.find((candidate) => normalizeLookupValue(candidate.sku) === itemSku);
+      if (variant?.id) return { productId: product.id, variantId: variant.id, variantName: getCatalogVariantName(variant) };
+    }
+  }
 
   for (const product of products) {
     const productNameKey = normalizeProductNameValue(product.data?.name);
     if (!productNameKey) continue;
-    const isMatch = productNameKey === itemNameKey
+    const productIdMatches = productKeys.length > 0
+      && productKeys.some((key) => getCatalogProductKeys(product).includes(key));
+    const nameMatches = productNameKey === itemNameKey
       || itemNameKey.startsWith(`${productNameKey} `)
       || productNameKey.includes(itemNameKey);
-    if (!isMatch) continue;
+    if (!productIdMatches && !nameMatches) continue;
 
-    const variantId = product.data?.variants?.[0]?.id;
-    if (!variantId) continue;
+    const variants = product.data?.variants ?? [];
+    const explicitVariantName = normalizeProductNameValue(getCheckoutItemVariantName(item));
+    const inferredVariantName = itemNameKey.startsWith(`${productNameKey} `)
+      ? itemNameKey.slice(productNameKey.length).trim()
+      : '';
+    const requestedVariantName = explicitVariantName || inferredVariantName;
 
-    return { productId: product.id, variantId };
+    const variant = variants.find((candidate) => (
+      variantKeys.length > 0
+      && variantKeys.some((key) => getCatalogVariantKeys(candidate).includes(key))
+    )) ?? variants.find((candidate) => {
+      if (!requestedVariantName) return false;
+      const candidateName = normalizeProductNameValue(getCatalogVariantName(candidate));
+      return candidateName === requestedVariantName
+        || candidateName.includes(requestedVariantName)
+        || requestedVariantName.includes(candidateName);
+    }) ?? (variants.length === 1 ? variants[0] : undefined);
+
+    if (!variant?.id) continue;
+
+    return { productId: product.id, variantId: variant.id, variantName: getCatalogVariantName(variant) };
   }
   return null;
 };
@@ -319,6 +430,45 @@ const toOrderStatus = (status: string, paymentMethod = '') => {
   return 'Payment approval';
 };
 
+// Statuses Fyll Checkout itself sets while an order is still being paid for.
+// Once staff move an order past these, checkout syncs must not overwrite it.
+const CHECKOUT_MANAGED_STATUSES = new Set(['', 'pending payment', 'payment approval', 'payment confirmed', 'payment failed']);
+
+type StoredOrder = Record<string, unknown> & { status?: unknown; orderStatus?: unknown; activityLog?: unknown };
+
+// Repeat syncs (proof uploaded, payment confirmed…) used to replace the whole
+// Ops order, wiping staff status changes, item edits and activity history.
+// Merge instead: checkout owns payment/reference fields; Ops owns the rest.
+const mergeCheckoutOrderIntoExisting = (existing: StoredOrder, incoming: StoredOrder): StoredOrder => {
+  const existingStatus = normalizeText(existing.status);
+  const checkoutStillOwnsStatus = CHECKOUT_MANAGED_STATUSES.has(existingStatus.toLowerCase());
+  const existingLog = Array.isArray(existing.activityLog) ? existing.activityLog : [];
+  const incomingLog = Array.isArray(incoming.activityLog) ? incoming.activityLog : [];
+  const keepText = (key: string) => normalizeText(existing[key]) || incoming[key];
+
+  return {
+    ...incoming,
+    ...existing,
+    // Payment, proof and reference data always comes from checkout.
+    websiteOrderReference: normalizeText(incoming.websiteOrderReference) || existing.websiteOrderReference,
+    paymentMethod: incoming.paymentMethod ?? existing.paymentMethod,
+    fyllCheckout: { ...recordValue(existing.fyllCheckout), ...recordValue(incoming.fyllCheckout) },
+    bankTransfer: { ...recordValue(existing.bankTransfer), ...recordValue(incoming.bankTransfer) },
+    ...proofAliases(normalizeText(incoming.paymentProofUrl) || normalizeText(existing.paymentProofUrl)),
+    // Status only moves while the order is still in a payment stage.
+    status: checkoutStillOwnsStatus ? incoming.status : existing.status,
+    orderStatus: checkoutStillOwnsStatus ? incoming.orderStatus : (existing.orderStatus ?? existing.status),
+    // Staff edits to customer details are kept; blanks are filled from checkout.
+    customerName: keepText('customerName'),
+    customerEmail: keepText('customerEmail'),
+    customerPhone: keepText('customerPhone'),
+    deliveryAddress: keepText('deliveryAddress'),
+    deliveryState: keepText('deliveryState'),
+    activityLog: [...existingLog, ...incomingLog],
+    updatedAt: incoming.updatedAt ?? existing.updatedAt,
+  };
+};
+
 const isActionableCheckoutStatus = (status: string) => {
   const normalized = normalizeStatus(status);
   return isPaidStatus(status)
@@ -378,6 +528,22 @@ export const buildRows = (payload: CheckoutPayload, catalogProducts: CatalogProd
     return {
       name: productName,
       productName,
+      variantName: getCheckoutItemVariantName(item),
+      sku: normalizeText(item.sku),
+      imageUrl: firstText(
+        item.imageUrl,
+        item.image_url,
+        item.thumbnailUrl,
+        item.thumbnail_url,
+        item.thumbnail,
+        item.image,
+        item.product?.imageUrl,
+        item.product?.image,
+      ),
+      productId: firstText(item.productId, item.product_id),
+      variationId: firstText(item.variationId, item.variation_id, item.variantId, item.variant_id),
+      wooCommerceProductId: firstText(item.wooCommerceProductId, item.woo_product_id),
+      wooCommerceVariationId: firstText(item.wooCommerceVariationId, item.woo_variation_id),
       quantity,
       unitPrice,
       lineTotal,
@@ -401,14 +567,15 @@ export const buildRows = (payload: CheckoutPayload, catalogProducts: CatalogProd
 
   const orderItems = checkoutItems.map((item, index) => {
     const fallbackId = `fyll-checkout-item-${reference}-${index + 1}`;
-    const matched = matchCheckoutItemToCatalogProduct(item.productName, catalogProducts);
+    const sourceItem = payload.items?.[index] ?? item;
+    const matched = matchCheckoutItemToCatalogProduct(sourceItem, item.productName, catalogProducts);
     return {
       productId: matched?.productId ?? fallbackId,
       variantId: matched?.variantId ?? fallbackId,
       quantity: item.quantity,
       unitPrice: item.unitPrice || item.lineTotal,
       productName: item.productName,
-      variantName: 'Fyll Checkout',
+      variantName: matched?.variantName || item.variantName || 'Fyll Checkout',
     };
   });
 
@@ -474,6 +641,17 @@ export const buildRows = (payload: CheckoutPayload, catalogProducts: CatalogProd
     expectedAmount,
     orderTotal: expectedAmount,
     balanceDue,
+    deliveryFee: shippingPrice,
+    deliveryAmount: shippingPrice,
+    shippingFee: shippingPrice,
+    shippingAmount: shippingPrice,
+    shipping: payload.shipping ? { ...payload.shipping } : undefined,
+    shippingLines: shippingPrice > 0 ? [{
+      name: normalizeText(payload.shipping?.name) || 'Delivery',
+      amount: shippingPrice,
+      total: shippingPrice,
+      price: shippingPrice,
+    }] : [],
     currency: normalizeText(payload.currency) || 'NGN',
     paymentMethod,
     status: toPaymentStatus(status),
@@ -538,7 +716,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .select('id, data')
     .eq('business_id', businessId);
 
-  const { order, payment } = buildRows(payload, (catalogProducts ?? []) as CatalogProductRow[]);
+  const { order: incomingOrder, payment } = buildRows(payload, (catalogProducts ?? []) as CatalogProductRow[]);
+  const { data: existingOrderRow } = await supabase
+    .from('orders')
+    .select('data')
+    .eq('id', incomingOrder.id)
+    .eq('business_id', businessId)
+    .maybeSingle();
+  const existingOrderData = existingOrderRow?.data && typeof existingOrderRow.data === 'object'
+    ? existingOrderRow.data as StoredOrder
+    : null;
+  const order = existingOrderData
+    ? { ...mergeCheckoutOrderIntoExisting(existingOrderData, incomingOrder as unknown as StoredOrder), id: incomingOrder.id }
+    : incomingOrder;
 
   const timestamp = new Date().toISOString();
   const [{ error: orderError }, { error: paymentError }] = await Promise.all([

@@ -15,9 +15,13 @@ const RESEND_FROM_EMAIL = sanitizeEnvValue(Deno.env.get('RESEND_FROM_EMAIL'))
 const ONESIGNAL_APP_ID = sanitizeEnvValue(Deno.env.get('ONESIGNAL_APP_ID'))
 const ONESIGNAL_REST_API_KEY = sanitizeEnvValue(Deno.env.get('ONESIGNAL_REST_API_KEY'))
 const APP_BASE_URL = sanitizeEnvValue(Deno.env.get('APP_BASE_URL'))
+const TRACKING_BASE_URL = 'https://track.fyll.app'
 const ALLOWED_ORIGIN = sanitizeEnvValue(Deno.env.get('ALLOWED_ORIGIN')) || '*'
 const FYLL_WORDMARK_URL = APP_BASE_URL
   ? new URL('/fyll-wordmark-email.png', APP_BASE_URL).toString()
+  : ''
+const FYLL_FIELD_EMAIL_URL = SUPABASE_URL
+  ? `${SUPABASE_URL.replace(/\/+$/, '')}/functions/v1/fyll-email-assets/field.svg`
   : ''
 const BUSINESS_ASSETS_PUBLIC_BASE = SUPABASE_URL
   ? `${SUPABASE_URL.replace(/\/+$/, '')}/storage/v1/object/public/business-assets/`
@@ -174,9 +178,9 @@ const buildTrackingUrl = ({
 }) => {
   const normalizedBusinessSlug = normalizeSlug(businessSlug ?? '')
   const pathname = normalizedBusinessSlug
-    ? `/${normalizedBusinessSlug}/order-tracking/${encodeURIComponent(code)}`
+    ? `/${normalizedBusinessSlug}/${encodeURIComponent(code)}`
     : '/order-tracking'
-  const url = new URL(pathname, APP_BASE_URL)
+  const url = new URL(pathname, TRACKING_BASE_URL)
   if (!normalizedBusinessSlug) {
     url.searchParams.set('code', code)
   }
@@ -187,6 +191,16 @@ const buildTrackingUrl = ({
 }
 
 const renderNote = (value: string) => escapeHtml(value).replace(/\n/g, '<br />')
+
+const formatEmailDate = (value: string) => {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return new Intl.DateTimeFormat('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  }).format(date)
+}
 
 const toNumber = (value: unknown) => {
   const numeric = Number(value)
@@ -381,6 +395,213 @@ const renderOrderCreatedEmail = ({
   </html>
 `
 
+const renderPaymentConfirmedEmail = ({
+  status,
+  brandName,
+  brandLogoUrl,
+  firstName,
+  amountLabel,
+  confirmedAt,
+  billNote,
+  paymentLabel,
+  ctaUrl,
+}: {
+  status: 'submitted' | 'confirmed'
+  brandName: string
+  brandLogoUrl?: string
+  firstName: string
+  amountLabel: string
+  confirmedAt: string
+  billNote: string
+  paymentLabel: string
+  ctaUrl: string
+}) => {
+  const safeBrandName = escapeHtml(brandName)
+  const safeLogoUrl = brandLogoUrl ? escapeHtml(brandLogoUrl) : ''
+  const safeCtaUrl = escapeHtml(ctaUrl)
+  const safeFieldUrl = escapeHtml(FYLL_FIELD_EMAIL_URL)
+  const displayUrl = escapeHtml(ctaUrl.replace(/^https?:\/\//i, '').replace(/\/$/, ''))
+  const formattedDate = escapeHtml(formatEmailDate(confirmedAt))
+  const helpUrl = escapeHtml(new URL('/help', APP_BASE_URL).toString())
+  const privacyUrl = escapeHtml(new URL('/privacy', APP_BASE_URL).toString())
+  const brandInitial = escapeHtml(brandName.charAt(0).toUpperCase() || 'F')
+  const isConfirmed = status === 'confirmed'
+  const documentTitle = isConfirmed ? `Payment confirmed: ${amountLabel}` : `Payment proof received: ${amountLabel}`
+  const preheader = isConfirmed
+    ? 'Your transfer is verified. Track your order any time with your link.'
+    : `Your payment proof is with ${brandName} and is being reviewed.`
+  const badgeLabel = isConfirmed ? 'Payment receipt' : 'Payment review'
+  const heroMark = isConfirmed ? '✓' : '…'
+  const heroTitle = isConfirmed ? 'Payment confirmed' : 'Proof received'
+  const intro = isConfirmed
+    ? `${safeBrandName} has verified your bank transfer. Your order is now being set up, and you can follow every step from one link.`
+    : `${safeBrandName} has received your bank transfer proof. It is being reviewed now, and you can follow the result from one link.`
+  const amountHeading = isConfirmed ? 'Amount paid' : 'Amount submitted'
+  const ctaLabel = isConfirmed ? 'Track your order' : 'Track your payment'
+  const detailsHeading = isConfirmed ? 'Receipt' : 'Payment details'
+  const totalHeading = isConfirmed ? 'Total paid' : 'Amount submitted'
+  const firstNextStep = isConfirmed
+    ? `${safeBrandName} creates your order from this payment.`
+    : `${safeBrandName} reviews your transfer proof.`
+  const secondNextStep = isConfirmed
+    ? 'Your order is packed and sent out for delivery.'
+    : 'Once verified, your order is created from this payment.'
+  const footerReason = isConfirmed ? 'paid' : 'submitted a payment proof to'
+  const logoMarkup = safeLogoUrl
+    ? `<img src="${safeLogoUrl}" alt="${safeBrandName}" width="48" height="48" style="display:block;width:48px;height:48px;border-radius:50%;object-fit:cover;border:3px solid #d5e057;box-sizing:border-box;" />`
+    : `<span style="display:block;width:42px;height:42px;line-height:42px;border-radius:50%;background:#ffffff;border:3px solid #d5e057;color:#1e1e1e;font-size:19px;font-weight:600;text-align:center;">${brandInitial}</span>`
+
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="color-scheme" content="light only" />
+        <meta name="supported-color-schemes" content="light only" />
+        <title>${escapeHtml(documentTitle)}</title>
+        <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,800&amp;family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&amp;display=swap" rel="stylesheet" />
+        <style>
+          :root { color-scheme: light only; supported-color-schemes: light only; }
+          body, table, td, a { font-family:'DM Sans',-apple-system,'Segoe UI',system-ui,sans-serif; }
+          a:hover { color:#3f4a08 !important; }
+          @media only screen and (max-width:640px) {
+            .email-wrap { padding:18px 12px 28px !important; }
+            .email-card { border-radius:22px !important; }
+            .hero { height:200px !important; padding:26px 24px !important; }
+            .hero-brand { font-size:16px !important; }
+            .hero-title { font-size:30px !important; letter-spacing:-1px !important; }
+            .content { padding:28px 22px 30px !important; }
+            .amount-value { font-size:36px !important; letter-spacing:-1px !important; }
+            .date-cell { font-size:13px !important; }
+            .footer { padding:22px 22px 26px !important; }
+          }
+        </style>
+      </head>
+      <body style="margin:0;padding:0;background:#ffffff;color:#1e1e1e;-webkit-font-smoothing:antialiased;">
+        <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${escapeHtml(preheader)}</div>
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#ffffff;border-collapse:collapse;">
+          <tr>
+            <td class="email-wrap" align="center" style="padding:32px 20px 40px;">
+              <table role="presentation" class="email-card" width="640" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:640px;background:#ffffff;border:1px solid #e3e3de;border-radius:28px;overflow:hidden;box-shadow:0 20px 50px rgba(30,30,30,0.08);border-collapse:separate;">
+                <tr>
+                  <td class="hero" background="${safeFieldUrl}" valign="top" style="height:200px;padding:30px 36px;box-sizing:border-box;background-color:#3f4a08;background-image:linear-gradient(180deg,rgba(20,20,20,0.15),rgba(20,20,20,0.45)),url('${safeFieldUrl}');background-size:cover;background-position:center;">
+                    <table role="presentation" width="100%" height="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;height:100%;border-collapse:collapse;">
+                      <tr>
+                        <td valign="top">
+                          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:collapse;">
+                            <tr>
+                              <td valign="middle">
+                                <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;">
+                                  <tr>
+                                    <td valign="middle" style="padding-right:12px;">${logoMarkup}</td>
+                                    <td class="hero-brand" valign="middle" style="font-size:18px;font-weight:600;color:#ffffff;">${safeBrandName}</td>
+                                  </tr>
+                                </table>
+                              </td>
+                              <td align="right" valign="middle">
+                                <span style="display:inline-block;padding:8px 14px;border-radius:999px;background:rgba(20,20,20,0.35);border:1px solid rgba(255,255,255,0.2);color:#eef2c4;font-size:12.5px;font-weight:600;white-space:nowrap;"><span style="color:#d5e057;font-size:14px;line-height:0;">●</span>&nbsp;&nbsp;${badgeLabel}</span>
+                              </td>
+                            </tr>
+                          </table>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td valign="bottom">
+                          <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;">
+                            <tr>
+                              <td valign="middle" style="padding-right:14px;">
+                                <span style="display:block;width:54px;height:54px;line-height:54px;border-radius:50%;background:#d5e057;color:#1e1e1e;font-size:29px;font-weight:600;text-align:center;box-shadow:0 0 0 8px rgba(213,224,87,0.22);">${heroMark}</span>
+                              </td>
+                              <td class="hero-title" valign="middle" style="font-family:'Bricolage Grotesque','Arial Black',sans-serif;font-weight:800;font-size:34px;letter-spacing:-1.2px;color:#ffffff;line-height:1;">${heroTitle}</td>
+                            </tr>
+                          </table>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td class="content" style="padding:34px 40px 36px;">
+                    <p style="margin:0 0 22px;font-size:16.5px;line-height:1.6;color:#3a3b35;">Hi ${escapeHtml(firstName)},<br />${intro}</p>
+
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;table-layout:fixed;margin:0 0 22px;background:#f6f6f1;border:1px solid rgba(30,30,30,0.06);border-radius:20px;border-collapse:separate;">
+                      <tr>
+                        <td class="amount-cell" width="64%" valign="middle" style="width:64%;padding:20px 8px 20px 22px;vertical-align:middle;">
+                          <div style="font-size:12.5px;font-weight:600;letter-spacing:0.8px;text-transform:uppercase;color:#6b6c63;margin-bottom:4px;">${amountHeading}</div>
+                          <div class="amount-value" style="font-family:'Bricolage Grotesque','Arial Black',sans-serif;font-weight:800;font-size:42px;letter-spacing:-1.4px;line-height:1;color:#1e1e1e;white-space:nowrap;">${escapeHtml(amountLabel)}</div>
+                        </td>
+                        <td class="date-cell" width="36%" align="right" valign="middle" style="width:36%;padding:20px 22px 20px 8px;font-size:14px;color:#6b6c63;line-height:1.5;white-space:nowrap;text-align:right;vertical-align:middle;">${formattedDate}<br />Bank transfer</td>
+                      </tr>
+                    </table>
+
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;margin:0 0 12px;border-collapse:separate;">
+                      <tr>
+                        <td align="center" bgcolor="#d5e057" style="height:58px;border-radius:999px;">
+                          <a href="${safeCtaUrl}" style="display:block;padding:17px 20px;color:#1e1e1e !important;font-size:17px;font-weight:600;text-decoration:none;line-height:24px;">${ctaLabel}&nbsp;&nbsp;→</a>
+                        </td>
+                      </tr>
+                    </table>
+                    <div style="margin:0 0 28px;text-align:center;font-size:13.5px;color:#6b6c63;line-height:1.45;">Or open <a href="${safeCtaUrl}" style="color:#5f6a00;font-weight:600;text-decoration:underline;word-break:break-all;">${displayUrl}</a></div>
+
+                    <div style="font-size:12.5px;font-weight:600;letter-spacing:0.8px;text-transform:uppercase;color:#6b6c63;margin-bottom:12px;">${detailsHeading}</div>
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;margin:0 0 22px;border-collapse:collapse;">
+                      <tr>
+                        <td valign="top" style="padding:0 18px 12px 0;font-size:15.5px;line-height:1.45;color:#1e1e1e;">${renderNote(billNote)}</td>
+                        <td align="right" valign="top" style="padding:0 0 12px;font-size:15.5px;line-height:1.45;color:#1e1e1e;white-space:nowrap;">${escapeHtml(amountLabel)}</td>
+                      </tr>
+                      <tr><td colspan="2" style="height:1px;background:rgba(30,30,30,0.1);font-size:0;line-height:0;">&nbsp;</td></tr>
+                      <tr>
+                        <td style="padding:12px 0 0;font-size:16px;font-weight:600;color:#1e1e1e;">${totalHeading}</td>
+                        <td align="right" style="padding:12px 0 0;font-size:16px;font-weight:600;color:#1e1e1e;">${escapeHtml(amountLabel)}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:8px 0 0;font-size:13.5px;color:#6b6c63;">Social Checkout ID</td>
+                        <td align="right" style="padding:8px 0 0;font-size:13.5px;color:#6b6c63;">${escapeHtml(paymentLabel)}</td>
+                      </tr>
+                      <tr>
+                        <td colspan="2" style="padding:8px 0 0;font-size:12.5px;line-height:1.5;color:#8c8d84;">Use this ID with your email address to track the payment manually on track.fyll.app.</td>
+                      </tr>
+                    </table>
+
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#f6f6f1;border-radius:20px;border-collapse:separate;">
+                      <tr><td colspan="2" style="padding:22px 22px 14px;font-size:12.5px;font-weight:600;letter-spacing:0.8px;text-transform:uppercase;color:#6b6c63;">What happens next</td></tr>
+                      <tr>
+                        <td valign="top" style="padding:0 14px 14px 22px;width:28px;"><span style="display:block;width:28px;height:28px;line-height:28px;border-radius:50%;background:#d5e057;color:#1e1e1e;font-size:13px;font-weight:600;text-align:center;">1</span></td>
+                        <td valign="top" style="padding:3px 22px 14px 0;font-size:15px;line-height:1.5;color:#3a3b35;">${firstNextStep}</td>
+                      </tr>
+                      <tr>
+                        <td valign="top" style="padding:0 14px 14px 22px;width:28px;"><span style="display:block;width:28px;height:28px;line-height:28px;border-radius:50%;background:rgba(30,30,30,0.07);color:#55564e;font-size:13px;font-weight:600;text-align:center;">2</span></td>
+                        <td valign="top" style="padding:3px 22px 14px 0;font-size:15px;line-height:1.5;color:#3a3b35;">${secondNextStep}</td>
+                      </tr>
+                      <tr>
+                        <td valign="top" style="padding:0 14px 22px 22px;width:28px;"><span style="display:block;width:28px;height:28px;line-height:28px;border-radius:50%;background:rgba(30,30,30,0.07);color:#55564e;font-size:13px;font-weight:600;text-align:center;">3</span></td>
+                        <td valign="top" style="padding:3px 22px 22px 0;font-size:15px;line-height:1.5;color:#3a3b35;">Follow every update at the same tracking link.</td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td class="footer" style="padding:22px 40px 28px;border-top:1px solid rgba(30,30,30,0.07);">
+                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 10px;border-collapse:collapse;">
+                      <tr>
+                        <td valign="middle" style="padding-right:8px;font-size:13px;color:#6b6c63;">Secured by</td>
+                        <td valign="middle"><img src="${escapeHtml(FYLL_WORDMARK_URL)}" alt="Fyll" style="display:block;height:17px;max-width:78px;width:auto;border:0;filter:brightness(0.12);" /></td>
+                      </tr>
+                    </table>
+                    <div style="font-size:12.5px;line-height:1.55;color:#8c8d84;margin-bottom:10px;">You're getting this because you ${footerReason} ${safeBrandName} through Fyll. Questions about your purchase? Reply to this email to reach ${safeBrandName}.</div>
+                    <div style="font-size:12.5px;"><a href="${helpUrl}" style="color:#55564e;margin-right:16px;">Help</a><a href="${privacyUrl}" style="color:#55564e;">Privacy</a></div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </body>
+    </html>
+  `
+}
+
 const renderEmailShell = ({
   brandName,
   brandLogoUrl,
@@ -473,6 +694,8 @@ const buildEmailContent = ({
   amount,
   billNote,
   checkoutUrl,
+  submittedAt,
+  confirmedAt,
   orderNumber,
   trackingUrl,
   order,
@@ -486,6 +709,8 @@ const buildEmailContent = ({
   amount: number
   billNote: string
   checkoutUrl: string
+  submittedAt?: string
+  confirmedAt?: string
   orderNumber?: string
   trackingUrl?: string
   order?: Record<string, unknown> | null
@@ -497,21 +722,17 @@ const buildEmailContent = ({
 
   if (type === 'payment_submitted') {
     return {
-      subject: `We received your payment proof - ${paymentLabel}`,
-      html: renderEmailShell({
+      subject: `Payment proof received: ${amountLabel}`,
+      html: renderPaymentConfirmedEmail({
+        status: 'submitted',
         brandName: businessName,
         brandLogoUrl: businessLogoUrl,
-        preheader: `Your payment proof for ${amountLabel} is awaiting review.`,
-        eyebrow: 'Payment received',
-        title: `Hi ${firstName}, we received your payment proof`,
-        subtitle: `${businessName} is reviewing your bank transfer now. You will receive another email once your payment is confirmed.`,
-        highlightLabel: 'Amount received for review',
-        highlightValue: amountLabel,
-        noteLabel: 'Bill',
-        noteValue: billNote,
-        ctaLabel: 'View Payment Link',
+        firstName,
+        amountLabel,
+        confirmedAt: submittedAt || new Date().toISOString(),
+        billNote,
+        paymentLabel,
         ctaUrl: checkoutUrl,
-        footerNote: `Payment reference ${paymentLabel}.`,
       }),
       text: [
         `Hi ${firstName},`,
@@ -520,28 +741,24 @@ const buildEmailContent = ({
         `${businessName} is reviewing your bank transfer now.`,
         '',
         `Payment reference: ${paymentLabel}`,
-        `Payment link: ${checkoutUrl}`,
+        `Track payment: ${checkoutUrl}`,
       ].join('\n'),
     }
   }
 
   if (type === 'payment_confirmed') {
     return {
-      subject: `Payment confirmed - ${paymentLabel}`,
-      html: renderEmailShell({
+      subject: `Payment confirmed: ${amountLabel}`,
+      html: renderPaymentConfirmedEmail({
+        status: 'confirmed',
         brandName: businessName,
         brandLogoUrl: businessLogoUrl,
-        preheader: `Your ${businessName} payment has been confirmed.`,
-        eyebrow: 'Payment confirmed',
-        title: `Hi ${firstName}, your payment is confirmed`,
-        subtitle: `${businessName} has confirmed your payment. Your order will be created and processed next.`,
-        highlightLabel: 'Confirmed payment',
-        highlightValue: amountLabel,
-        noteLabel: 'Bill',
-        noteValue: billNote,
-        ctaLabel: 'View Payment Link',
+        firstName,
+        amountLabel,
+        confirmedAt: confirmedAt || new Date().toISOString(),
+        billNote,
+        paymentLabel,
         ctaUrl: checkoutUrl,
-        footerNote: `Payment reference ${paymentLabel}.`,
       }),
       text: [
         `Hi ${firstName},`,
@@ -958,6 +1175,7 @@ serve(async (req) => {
       ? buildTrackingUrl({ code: orderTrackingCode, email: customerEmail, businessSlug })
       : ''
     const checkoutUrl = buildCheckoutUrl({ code: checkoutCode, businessSlug })
+    const socialTrackingUrl = buildTrackingUrl({ code: checkoutCode, email: customerEmail, businessSlug })
     const emailContent = buildEmailContent({
       type,
       customerName: toTrimmedString(checkout.customerName) || toTrimmedString(order?.customerName) || 'there',
@@ -966,7 +1184,9 @@ serve(async (req) => {
       checkoutCode,
       amount: Number(checkout.amount) || Number(order?.totalAmount) || 0,
       billNote: toTrimmedString(checkout.billNote) || 'No bill details provided.',
-      checkoutUrl,
+      checkoutUrl: type === 'payment_confirmed' || type === 'payment_submitted' ? socialTrackingUrl : checkoutUrl,
+      submittedAt: toTrimmedString(checkout.submittedAt) || toTrimmedString(checkout.updatedAt),
+      confirmedAt: toTrimmedString(checkout.reviewedAt) || toTrimmedString(checkout.updatedAt),
       orderNumber,
       trackingUrl,
       order,
