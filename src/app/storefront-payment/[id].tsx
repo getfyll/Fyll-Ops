@@ -11,13 +11,14 @@ import { formatDeliveryLocation, normalizeDeliveryStateValue } from '@/lib/forma
 import useAuthStore from '@/lib/state/auth-store';
 import useFyllStore, { formatCurrency, generateOrderNumber, type BankAccount, type Order, type OrderActivityEntry, type OrderItem, type Product } from '@/lib/state/fyll-store';
 import { supabaseData } from '@/lib/supabase/data';
-import { notifyFyllCheckoutPaymentConfirmed, showFyllCheckoutSyncFailedNotice } from '@/lib/fyll-checkout-confirmation';
+import { notifyFyllCheckoutPaymentConfirmed, notifyFyllCheckoutPaymentRejected, showFyllCheckoutSyncFailedNotice } from '@/lib/fyll-checkout-confirmation';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
 import { useThemeColors } from '@/lib/theme';
 import { PaymentDetailSkeleton } from '@/components/SkeletonLoader';
 import { SearchClearButton } from '@/components/SearchClearButton';
-import { FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, InitialsAvatar, MoneyText, SectionLabel, isHovered, usePaymentsPalette, type StatusTone } from '@/components/payments/payments-ui';
+import { ResolvedAttachmentImage } from '@/components/ResolvedAttachmentImage';
+import { FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, InitialsAvatar, MoneyText, SectionLabel, isHovered, usePaymentsPalette, type StatusTone, useMobileFont } from '@/components/payments/payments-ui';
 
 const SEPARATOR_LIGHT = '#EEEEEE';
 const SEPARATOR_DARK = '#333333';
@@ -923,6 +924,7 @@ const resolvePaymentDeliveryDetails = (payment: SharedPaymentRecord) => {
 };
 
 export default function StorefrontPaymentDetailScreen() {
+  const fs = useMobileFont();
   const router = useRouter();
   const queryClient = useQueryClient();
   const params = useLocalSearchParams<{ id?: string | string[] }>();
@@ -944,11 +946,13 @@ export default function StorefrontPaymentDetailScreen() {
   const currentUserName = useAuthStore((s) => s.currentUser?.name ?? 'Staff');
   const orderStatuses = useFyllStore((s) => s.orderStatuses);
   const products = useFyllStore((s) => s.products);
+  const procurements = useFyllStore((s) => s.procurements);
   const cachedOrders = useFyllStore((s) => s.orders);
   const [showProofLightbox, setShowProofLightbox] = useState(false);
   const [showLinkOrderModal, setShowLinkOrderModal] = useState(false);
   const [orderSearchQuery, setOrderSearchQuery] = useState('');
   const [summaryCopied, setSummaryCopied] = useState(false);
+  const [refCopied, setRefCopied] = useState<boolean>(false);
   const [showMoreActions, setShowMoreActions] = useState(false);
   const [isEditingAmount, setIsEditingAmount] = useState(false);
   const [editAmount, setEditAmount] = useState('');
@@ -1169,9 +1173,16 @@ export default function StorefrontPaymentDetailScreen() {
     const variant = product?.variants.find((candidate) => candidate.id === item.variantId);
     const variantName = variant ? Object.values(variant.variableValues).join(' / ') : '';
     const title = product?.name ?? enrichedItem.productName ?? enrichedItem.name ?? enrichedItem.title ?? 'Order item';
+    const procurementImage = procurements
+      .flatMap((procurement) => procurement.items)
+      .find((procurementItem) => (
+        (procurementItem.inventoryProductId || procurementItem.productId) === item.productId
+        && procurementItem.variantId === item.variantId
+        && Boolean(procurementItem.imageUrl?.trim())
+      ))?.imageUrl?.trim();
     return {
       title: combineProductVariantName(title, variantName || enrichedItem.variantName),
-      imageUrl: variant?.imageUrl?.trim() || product?.imageUrl?.trim() || '',
+      imageUrl: variant?.imageUrl?.trim() || procurementImage || product?.imageUrl?.trim() || '',
     };
   };
 
@@ -1208,7 +1219,7 @@ export default function StorefrontPaymentDetailScreen() {
         total: item.unitPrice * item.quantity,
       };
     });
-  }, [linkedOrder?.items, payment?.items, products]);
+  }, [linkedOrder?.items, payment?.items, procurements, products]);
 
   const billDeliveryFee = payment
     ? resolvePaymentDeliveryFee(payment) || normalizeNumber(linkedOrder?.deliveryFee)
@@ -1427,30 +1438,50 @@ export default function StorefrontPaymentDetailScreen() {
       const syncTasks: Promise<unknown>[] = [
         supabaseData.upsertCollection('payments', businessId, [updatedPayment]),
       ];
-
+      // A rejected receipt doesn't cancel the order straight away: it waits as
+      // Payment failed so the customer can fix it. Fyll Checkout cancels it (and
+      // WooCommerce restores stock) if nothing changes within 48 hours. Ops stock
+      // is untouched: website orders never deducted it.
+      let failedOrder: Order | null = null;
       if (linkedOrder) {
-        const activityEntry: OrderActivityEntry = {
-          staffName: currentUserName,
-          action: `Rejected storefront payment proof for ${paymentReference}`,
-          date: timestamp,
-        };
-        syncTasks.push(supabaseData.upsertCollection('orders', businessId, [{
+        failedOrder = {
           ...linkedOrder,
+          status: 'Payment failed',
           updatedAt: timestamp,
           updatedBy: currentUserName,
-          activityLog: [...(linkedOrder.activityLog ?? []), activityEntry],
-        }]));
+          activityLog: [
+            ...(linkedOrder.activityLog ?? []),
+            { staffName: currentUserName, action: `Rejected storefront payment proof for ${paymentReference}`, date: timestamp },
+            { staffName: currentUserName, action: 'Updated status to Payment failed', date: timestamp },
+          ],
+        };
+        syncTasks.push(supabaseData.upsertCollection('orders', businessId, [failedOrder]));
       }
 
       await Promise.all(syncTasks);
-      return updatedPayment;
+      if (payment.source.trim().toLowerCase() === 'fyll_checkout') {
+        try {
+          await notifyFyllCheckoutPaymentRejected({ reference: payment.sourceOrderId, businessId });
+        } catch (error) {
+          console.warn('Fyll Checkout rejection callback failed after local rejection:', error);
+          showFyllCheckoutSyncFailedNotice(payment.sourceOrderId, error, 'rejected');
+        }
+      }
+      return { updatedPayment, failedOrder };
     },
-    onSuccess: async () => {
+    onSuccess: async (result) => {
+      if (result?.failedOrder) {
+        const failedOrder = result.failedOrder;
+        useFyllStore.setState((state) => ({
+          orders: state.orders.map((order) => order.id === failedOrder.id ? failedOrder : order),
+        }));
+      }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['storefront-payment-detail', businessId, paymentId] }),
         queryClient.invalidateQueries({ queryKey: ['shared-payments', businessId] }),
         queryClient.invalidateQueries({ queryKey: ['orders-for-payments', businessId] }),
+        queryClient.invalidateQueries({ queryKey: ['products', businessId] }),
       ]);
     },
   });
@@ -1582,9 +1613,28 @@ export default function StorefrontPaymentDetailScreen() {
     router.push((Platform.OS === 'web' && isDesktop ? `/orders/${linkedOrder.id}` : `/order/${linkedOrder.id}`) as never);
   };
 
+  // Opens New Order prefilled from this payment; saving it links the order
+  // back to the payment (new-order handles linkPaymentId).
   const handleCreateLinkedOrder = () => {
-    if (!payment || createLinkedOrderMutation.isPending) return;
-    createLinkedOrderMutation.mutate();
+    if (!payment) return;
+    const { deliveryAddress, deliveryState } = resolvePaymentDeliveryDetails(payment);
+    const deliveryFee = resolvePaymentDeliveryFee(payment);
+    const params = new URLSearchParams();
+    Object.entries({
+      customerName: payment.customerName ?? '',
+      customerPhone: payment.customerPhone ?? '',
+      customerEmail: payment.customerEmail ?? '',
+      deliveryAddress,
+      deliveryState,
+      deliveryFee: deliveryFee > 0 ? String(deliveryFee) : '',
+      websiteOrderReference: resolvePaymentWooOrderReference(payment) ?? '',
+      source: SourcePillLabel(payment.source),
+      paymentMethod: 'Bank Transfer',
+      linkPaymentId: payment.id,
+    }).forEach(([key, value]) => {
+      if (String(value ?? '').trim()) params.set(key, String(value));
+    });
+    router.push(`/new-order?${params.toString()}` as never);
   };
 
   const handleOpenLinkOrder = () => {
@@ -1651,19 +1701,19 @@ export default function StorefrontPaymentDetailScreen() {
 
     const heroSection = (
       <View style={{ gap: 10, paddingBottom: 6 }}>
-        <MoneyText style={{ color: palette.text, fontSize: 42, lineHeight: 48, letterSpacing: -1.4 }} numberOfLines={1} adjustsFontSizeToFit>
+        <MoneyText style={{ color: palette.text, fontSize: 34, lineHeight: 40, letterSpacing: -1 }} numberOfLines={1} adjustsFontSizeToFit>
           {formatCurrency(payment.amount)}
         </MoneyText>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
           <View style={{ height: 26, paddingHorizontal: 10, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: toneStyle.bg }}>
             <StatusIcon size={12} color={toneStyle.ink} strokeWidth={2.8} />
-            <Text style={{ color: toneStyle.ink, fontSize: 12.5, fontWeight: '600' }}>{STATUS_LABEL[paymentStatus]}</Text>
+            <Text style={{ color: toneStyle.ink, fontSize: fs(12.5), fontWeight: '600' }}>{STATUS_LABEL[paymentStatus]}</Text>
           </View>
           <View style={{ height: 26, paddingHorizontal: 10, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: palette.softFill }}>
             <CreditCard size={12} color={palette.textSoft} strokeWidth={2.2} />
-            <Text style={{ color: palette.textSoft, fontSize: 12.5, fontWeight: '600' }}>{SourcePillLabel(payment.source)}</Text>
+            <Text style={{ color: palette.textSoft, fontSize: fs(12.5), fontWeight: '600' }}>{SourcePillLabel(payment.source)}</Text>
           </View>
-          <Text style={{ color: palette.faint, fontSize: 12.5 }}>{formatActivityTimestamp(payment.createdAt)}</Text>
+          <Text style={{ color: palette.faint, fontSize: fs(12.5) }}>{formatActivityTimestamp(payment.createdAt)}</Text>
         </View>
       </View>
     );
@@ -1675,14 +1725,14 @@ export default function StorefrontPaymentDetailScreen() {
             <FileText size={17} color={palette.text} strokeWidth={2.2} />
           </View>
           <View style={{ flex: 1, gap: 2 }}>
-            <Text style={{ color: palette.text, fontSize: 15, fontWeight: '600' }}>Receipt uploaded · needs review</Text>
-            <Text style={{ color: palette.muted, fontSize: 13 }}>Check the transfer landed, then approve or reject.</Text>
+            <Text style={{ color: palette.text, fontSize: fs(15), fontWeight: '600' }}>Receipt uploaded · needs review</Text>
+            <Text style={{ color: palette.muted, fontSize: fs(13) }}>Check the transfer landed, then approve or reject.</Text>
           </View>
         </View>
         {proofUrl ? (
           <Pressable onPress={() => setShowProofLightbox(true)} style={(state) => ({ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 10, borderRadius: 14, backgroundColor: palette.inset, borderWidth: 1, borderColor: palette.hairline, opacity: state.pressed ? 0.8 : 1 })}>
             <Image source={{ uri: proofUrl }} style={{ width: 56, height: 56, borderRadius: 10 }} resizeMode="cover" />
-            <View style={{ flex: 1 }}><Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>Payment receipt</Text><Text style={{ color: palette.faint, fontSize: 12.5, marginTop: 2 }}>Tap to view full size</Text></View>
+            <View style={{ flex: 1 }}><Text style={{ color: palette.text, fontSize: fs(14), fontWeight: '600' }}>Payment receipt</Text><Text style={{ color: palette.faint, fontSize: fs(12.5), marginTop: 2 }}>Tap to view full size</Text></View>
             <ChevronRight size={16} color={palette.faint} strokeWidth={2.2} />
           </Pressable>
         ) : null}
@@ -1690,7 +1740,7 @@ export default function StorefrontPaymentDetailScreen() {
           {canVerify ? (
             <Pressable onPress={() => verifyPaymentMutation.mutate()} disabled={verifyPaymentMutation.isPending || rejectPaymentMutation.isPending} style={(state) => ({ ...limeButton(state), flex: 1.3 })}>
               {verifyPaymentMutation.isPending ? <ActivityIndicator color={FYLL_LIME_INK} size="small" /> : <Check size={15} color={FYLL_LIME_INK} strokeWidth={2.6} />}
-              <Text style={{ color: FYLL_LIME_INK, fontSize: 14.5, fontWeight: '600' }}>{isCardPayment ? 'Mark card paid' : 'Approve'}</Text>
+              <Text style={{ color: FYLL_LIME_INK, fontSize: fs(14.5), fontWeight: '600' }}>{isCardPayment ? 'Mark card paid' : 'Approve'}</Text>
             </Pressable>
           ) : null}
           {canReject ? (
@@ -1703,7 +1753,7 @@ export default function StorefrontPaymentDetailScreen() {
               }
             }} disabled={rejectPaymentMutation.isPending || verifyPaymentMutation.isPending} style={(state) => ({ ...outlineButton(state, 46), flex: 1, borderColor: palette.dangerBorder })}>
               {rejectPaymentMutation.isPending ? <ActivityIndicator color={palette.danger} size="small" /> : <X size={15} color={palette.danger} strokeWidth={2.4} />}
-              <Text style={{ color: palette.danger, fontSize: 14.5, fontWeight: '600' }}>Reject</Text>
+              <Text style={{ color: palette.danger, fontSize: fs(14.5), fontWeight: '600' }}>Reject</Text>
             </Pressable>
           ) : null}
         </View>
@@ -1714,30 +1764,35 @@ export default function StorefrontPaymentDetailScreen() {
       <View style={{ ...cardStyle, overflow: 'hidden' }}>
         <Pressable onPress={handleViewLinkedOrder} style={(state) => ({ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 16, backgroundColor: isHovered(state) ? palette.cardHover : 'transparent' })}>
           <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: palette.inverseBg, alignItems: 'center', justifyContent: 'center' }}><Check size={17} color={palette.inverseText} strokeWidth={2.8} /></View>
-          <View style={{ flex: 1, gap: 2 }}><Text style={{ color: palette.text, fontSize: 15, fontWeight: '600' }}>Order {linkedOrder.orderNumber} linked</Text><Text style={{ color: palette.muted, fontSize: 13 }}>Fulfil this order — don&apos;t create another one.</Text></View>
+          <View style={{ flex: 1, gap: 2 }}><Text style={{ color: palette.text, fontSize: fs(15), fontWeight: '600' }}>Order {linkedOrder.orderNumber} linked</Text><Text style={{ color: palette.muted, fontSize: fs(13) }}>Fulfil this order — don&apos;t create another one.</Text></View>
           <ChevronRight size={16} color={palette.faint} strokeWidth={2.2} />
         </Pressable>
         <View style={{ flexDirection: 'row', borderTopWidth: 1, borderTopColor: palette.hairline }}>
-          <Pressable onPress={handleOpenLinkOrder} style={(state) => ({ flex: 1, height: 42, alignItems: 'center', justifyContent: 'center', backgroundColor: isHovered(state) ? palette.cardHover : 'transparent' })}><Text style={{ color: palette.textSoft, fontSize: 13.5, fontWeight: '600' }}>Replace order</Text></Pressable>
+          <Pressable onPress={handleCreateLinkedOrder} style={(state) => ({ flex: 1, height: 42, alignItems: 'center', justifyContent: 'center', backgroundColor: isHovered(state) ? palette.cardHover : 'transparent' })}><Text style={{ color: palette.textSoft, fontSize: fs(13.5), fontWeight: '600' }}>New order</Text></Pressable>
           <View style={{ width: 1, backgroundColor: palette.hairline }} />
-          <Pressable onPress={handleUnlinkOrder} style={(state) => ({ flex: 1, height: 42, alignItems: 'center', justifyContent: 'center', backgroundColor: isHovered(state) ? palette.cardHover : 'transparent' })}><Text style={{ color: palette.textSoft, fontSize: 13.5, fontWeight: '600' }}>Unlink</Text></Pressable>
+          <Pressable onPress={handleOpenLinkOrder} style={(state) => ({ flex: 1, height: 42, alignItems: 'center', justifyContent: 'center', backgroundColor: isHovered(state) ? palette.cardHover : 'transparent' })}><Text style={{ color: palette.textSoft, fontSize: fs(13.5), fontWeight: '600' }}>Replace order</Text></Pressable>
+          <View style={{ width: 1, backgroundColor: palette.hairline }} />
+          <Pressable onPress={handleUnlinkOrder} style={(state) => ({ flex: 1, height: 42, alignItems: 'center', justifyContent: 'center', backgroundColor: isHovered(state) ? palette.cardHover : 'transparent' })}><Text style={{ color: palette.textSoft, fontSize: fs(13.5), fontWeight: '600' }}>Unlink</Text></Pressable>
         </View>
       </View>
     ) : isInactive ? (
       <View style={{ ...cardStyle, borderColor: palette.dangerBorder, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
         <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: palette.dangerBg, alignItems: 'center', justifyContent: 'center' }}><X size={17} color={palette.danger} strokeWidth={2.4} /></View>
-        <View style={{ flex: 1, gap: 2 }}><Text style={{ color: palette.text, fontSize: 15, fontWeight: '600' }}>Payment {paymentStatus === 'rejected' ? 'rejected' : 'inactive'}</Text><Text style={{ color: palette.muted, fontSize: 13 }}>Order creation is unavailable for this payment.</Text></View>
+        <View style={{ flex: 1, gap: 2 }}><Text style={{ color: palette.text, fontSize: fs(15), fontWeight: '600' }}>Payment {paymentStatus === 'rejected' ? 'rejected' : 'inactive'}</Text><Text style={{ color: palette.muted, fontSize: fs(13) }}>Order creation is unavailable for this payment.</Text></View>
       </View>
     ) : (
       <View style={{ ...cardStyle, borderColor: isVerified ? palette.warnBorder : palette.border, padding: 16, gap: 14 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
           <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: isVerified ? palette.warnBg : palette.softFill, alignItems: 'center', justifyContent: 'center' }}><Package size={17} color={isVerified ? palette.warn : palette.muted} strokeWidth={2.2} /></View>
-          <View style={{ flex: 1, gap: 2 }}><Text style={{ color: palette.text, fontSize: 15, fontWeight: '600' }}>No order linked yet</Text><Text style={{ color: palette.muted, fontSize: 13 }}>{isVerified ? 'Paid and verified. Create the order to start fulfilment.' : 'Link an existing order, or create one from this payment.'}</Text></View>
+          <View style={{ flex: 1, gap: 2 }}><Text style={{ color: palette.text, fontSize: fs(15), fontWeight: '600' }}>No order linked yet</Text><Text style={{ color: palette.muted, fontSize: fs(13) }}>{isVerified ? 'Paid and verified. Create the order to start fulfilment.' : 'Approve the payment first, then create or link its order.'}</Text></View>
         </View>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          {isVerified ? <Pressable onPress={handleCreateLinkedOrder} style={(state) => ({ ...limeButton(state), flex: 1.3 })}><Text style={{ color: FYLL_LIME_INK, fontSize: 14.5, fontWeight: '600' }}>Create order</Text></Pressable> : null}
-          <Pressable onPress={handleOpenLinkOrder} style={(state) => ({ ...outlineButton(state, 46), flex: 1 })}><Text style={{ color: palette.text, fontSize: 14.5, fontWeight: '600' }}>Link existing</Text></Pressable>
-        </View>
+        {/* Orders are only created or linked once the payment is approved. */}
+        {isVerified ? (
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Pressable onPress={handleCreateLinkedOrder} style={(state) => ({ ...limeButton(state), flex: 1.3 })}><Text style={{ color: FYLL_LIME_INK, fontSize: fs(14.5), fontWeight: '600' }}>Create order</Text></Pressable>
+            <Pressable onPress={handleOpenLinkOrder} style={(state) => ({ ...outlineButton(state, 46), flex: 1 })}><Text style={{ color: palette.text, fontSize: fs(14.5), fontWeight: '600' }}>Link existing</Text></Pressable>
+          </View>
+        ) : null}
       </View>
     );
 
@@ -1745,8 +1800,8 @@ export default function StorefrontPaymentDetailScreen() {
       <View style={{ ...cardStyle, paddingHorizontal: 16, paddingVertical: 4 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 }}>
           <InitialsAvatar name={customerName} palette={palette} />
-          <View style={{ flex: 1, gap: 2 }}><Text style={{ color: palette.faint, fontSize: 12 }}>Customer</Text><Text style={{ color: customerName ? palette.text : palette.faint, fontSize: 15, fontWeight: '500' }} numberOfLines={1}>{customerName || 'Not provided'}</Text></View>
-          {customerPhone ? <Pressable onPress={() => { void Linking.openURL(`tel:${customerPhone}`); }} hitSlop={8}><Text style={{ color: palette.limeOnSurface, fontSize: 13.5, fontWeight: '600' }}>Call</Text></Pressable> : null}
+          <View style={{ flex: 1, gap: 2 }}><Text style={{ color: palette.faint, fontSize: fs(12) }}>Customer</Text><Text style={{ color: customerName ? palette.text : palette.faint, fontSize: fs(15), fontWeight: '500' }} numberOfLines={1}>{customerName || 'Not provided'}</Text></View>
+          {customerPhone ? <Pressable onPress={() => { void Linking.openURL(`tel:${customerPhone}`); }} hitSlop={8}><Text style={{ color: palette.limeOnSurface, fontSize: fs(13.5), fontWeight: '600' }}>Call</Text></Pressable> : null}
         </View>
         {[
           customerPhone ? { key: 'phone', icon: Phone, value: customerPhone } : null,
@@ -1754,7 +1809,7 @@ export default function StorefrontPaymentDetailScreen() {
           deliveryLocationText ? { key: 'address', icon: MapPin, value: deliveryLocationText } : null,
         ].filter((row): row is { key: string; icon: typeof Phone; value: string } => Boolean(row)).map((row) => {
           const Icon = row.icon;
-          return <View key={row.key} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingVertical: 10, borderTopWidth: 1, borderTopColor: palette.hairline }}><Icon size={15} color={palette.faint} strokeWidth={2} style={{ marginTop: 2 }} /><Text style={{ flex: 1, color: palette.textSoft, fontSize: 14, lineHeight: 20 }} selectable>{row.value}</Text></View>;
+          return <View key={row.key} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingVertical: 10, borderTopWidth: 1, borderTopColor: palette.hairline }}><Icon size={15} color={palette.faint} strokeWidth={2} style={{ marginTop: 2 }} /><Text style={{ flex: 1, color: palette.textSoft, fontSize: fs(14), lineHeight: 20 }} selectable>{row.value}</Text></View>;
         })}
       </View>
     );
@@ -1765,20 +1820,20 @@ export default function StorefrontPaymentDetailScreen() {
         {displayItems.length > 0 ? displayItems.map((item) => (
           <View key={item.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
             <View style={{ width: 42, height: 42, borderRadius: 10, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: palette.inset, borderWidth: 1, borderColor: palette.hairline }}>
-              {item.imageUrl ? <Image source={{ uri: item.imageUrl }} resizeMode="cover" style={{ width: '100%', height: '100%' }} /> : <Package size={18} color={palette.faint} strokeWidth={1.7} />}
+              <ResolvedAttachmentImage imageUrl={item.imageUrl} resizeMode="cover" style={{ width: '100%', height: '100%' }} fallback={<Package size={18} color={palette.faint} strokeWidth={1.7} />} />
             </View>
-            <View style={{ flex: 1 }}><Text style={{ color: palette.text, fontSize: 15 }}>{item.quantity > 1 ? `${item.quantity}× ` : ''}{item.title}</Text></View>
-            <Text style={{ color: palette.text, fontSize: 15, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{formatCurrency(item.total)}</Text>
+            <View style={{ flex: 1 }}><Text style={{ color: palette.text, fontSize: fs(15) }}>{item.quantity > 1 ? `${item.quantity}× ` : ''}{item.title}</Text></View>
+            <Text style={{ color: palette.text, fontSize: fs(15), fontWeight: '600', fontVariant: ['tabular-nums'] }}>{formatCurrency(item.total)}</Text>
           </View>
-        )) : <Text style={{ color: palette.faint, fontSize: 15, lineHeight: 22 }}>No item details added.</Text>}
+        )) : <Text style={{ color: palette.faint, fontSize: fs(15), lineHeight: 22 }}>No item details added.</Text>}
         {billDeliveryFee > 0 ? (
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
-            <Text style={{ color: palette.textSoft, fontSize: 15 }}>Delivery</Text>
-            <Text style={{ color: palette.textSoft, fontSize: 15, fontWeight: '500', fontVariant: ['tabular-nums'] }}>{formatCurrency(billDeliveryFee)}</Text>
+            <Text style={{ color: palette.textSoft, fontSize: fs(15) }}>Delivery</Text>
+            <Text style={{ color: palette.textSoft, fontSize: fs(15), fontWeight: '500', fontVariant: ['tabular-nums'] }}>{formatCurrency(billDeliveryFee)}</Text>
           </View>
         ) : null}
         <View style={{ height: 1, backgroundColor: palette.hairline }} />
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><Text style={{ color: palette.text, fontSize: 16, fontWeight: '600' }}>Total</Text><Text style={{ color: palette.text, fontSize: 16, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{formatCurrency(billTotal)}</Text></View>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><Text style={{ color: palette.text, fontSize: fs(16), fontWeight: '600' }}>Total</Text><Text style={{ color: palette.text, fontSize: fs(16), fontWeight: '600', fontVariant: ['tabular-nums'] }}>{formatCurrency(billTotal)}</Text></View>
       </View>
     );
 
@@ -1786,21 +1841,21 @@ export default function StorefrontPaymentDetailScreen() {
       <View style={{ ...cardStyle, padding: 16, gap: 12 }}>
         <SectionLabel palette={palette}>{payment.paymentLinkUrl ? 'Payment link' : 'Payment reference'}</SectionLabel>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, paddingLeft: 14, paddingRight: 8, borderRadius: 12, backgroundColor: palette.inset, borderWidth: 1, borderColor: palette.hairline }}>
-          <Text style={{ flex: 1, color: palette.textSoft, fontSize: 13.5 }} numberOfLines={1} selectable>{payment.paymentLinkUrl?.replace(/^https?:\/\//, '') || paymentReference}</Text>
-          <Pressable onPress={() => { void Clipboard.setStringAsync(payment.paymentLinkUrl || paymentReference); setSummaryCopied(true); setTimeout(() => setSummaryCopied(false), 1800); }} style={(state) => ({ height: 32, paddingHorizontal: 10, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: isHovered(state) ? palette.cardHover : palette.softFill })}>{summaryCopied ? <Check size={13} color={palette.text} strokeWidth={2.6} /> : <Copy size={13} color={palette.text} strokeWidth={2.2} />}<Text style={{ color: palette.text, fontSize: 12.5, fontWeight: '600' }}>{summaryCopied ? 'Copied' : 'Copy'}</Text></Pressable>
+          <Text style={{ flex: 1, color: palette.textSoft, fontSize: fs(13.5) }} numberOfLines={1} selectable>{payment.paymentLinkUrl?.replace(/^https?:\/\//, '') || paymentReference}</Text>
+          <Pressable onPress={() => { void Clipboard.setStringAsync(payment.paymentLinkUrl || paymentReference); setSummaryCopied(true); setTimeout(() => setSummaryCopied(false), 1800); }} style={(state) => ({ height: 32, paddingHorizontal: 10, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: isHovered(state) ? palette.cardHover : palette.softFill })}>{summaryCopied ? <Check size={13} color={palette.text} strokeWidth={2.6} /> : <Copy size={13} color={palette.text} strokeWidth={2.2} />}<Text style={{ color: palette.text, fontSize: fs(12.5), fontWeight: '600' }}>{summaryCopied ? 'Copied' : 'Copy'}</Text></Pressable>
         </View>
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          <Pressable onPress={handleCopySummary} style={(state) => ({ ...outlineButton(state), flex: 1 })}><Copy size={15} color={palette.text} strokeWidth={2} /><Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>Copy summary</Text></Pressable>
-          {canEditPaymentAmount ? <Pressable onPress={() => { setEditAmount(String(payment.amount || '')); setIsEditingAmount((current) => !current); }} style={(state) => ({ ...outlineButton(state), flex: 1 })}>{isEditingAmount ? <X size={15} color={palette.text} strokeWidth={2.2} /> : <Pencil size={15} color={palette.text} strokeWidth={2} />}<Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>{isEditingAmount ? 'Cancel edit' : 'Edit payment'}</Text></Pressable> : null}
+          <Pressable onPress={handleCopySummary} style={(state) => ({ ...outlineButton(state), flex: 1 })}><Copy size={15} color={palette.text} strokeWidth={2} /><Text style={{ color: palette.text, fontSize: fs(14), fontWeight: '600' }}>Copy summary</Text></Pressable>
+          {canEditPaymentAmount ? <Pressable onPress={() => { setEditAmount(String(payment.amount || '')); setIsEditingAmount((current) => !current); }} style={(state) => ({ ...outlineButton(state), flex: 1 })}>{isEditingAmount ? <X size={15} color={palette.text} strokeWidth={2.2} /> : <Pencil size={15} color={palette.text} strokeWidth={2} />}<Text style={{ color: palette.text, fontSize: fs(14), fontWeight: '600' }}>{isEditingAmount ? 'Cancel edit' : 'Edit payment'}</Text></Pressable> : null}
         </View>
-        <Text style={{ color: palette.faint, fontSize: 12.5 }}>Use this reference for support and reconciliation.</Text>
+        <Text style={{ color: palette.faint, fontSize: fs(12.5) }}>Use this reference for support and reconciliation.</Text>
       </View>
     );
 
     const messageSection = (
       <View style={{ ...cardStyle, padding: 16, gap: 10 }}>
         <SectionLabel palette={palette}>Message preview</SectionLabel>
-        <Text style={{ color: palette.textSoft, fontSize: 14, lineHeight: 21.5 }} selectable>{paymentSummary}</Text>
+        <Text style={{ color: palette.textSoft, fontSize: fs(14), lineHeight: 21.5 }} selectable>{paymentSummary}</Text>
       </View>
     );
 
@@ -1808,14 +1863,14 @@ export default function StorefrontPaymentDetailScreen() {
       <View style={{ ...cardStyle, padding: 16, gap: 12 }}>
         <SectionLabel palette={palette}>Edit payment amount</SectionLabel>
         <TextInput value={editAmount} onChangeText={setEditAmount} keyboardType="decimal-pad" placeholder="0" placeholderTextColor={palette.faint} style={[{ minHeight: 48, paddingHorizontal: 14, borderRadius: 14, borderWidth: 1, borderColor: palette.outline, backgroundColor: palette.inputBg, color: palette.text, fontSize: 18, fontWeight: '600' }, noWebOutline]} />
-        <View style={{ flexDirection: 'row', gap: 8 }}><Pressable onPress={() => setIsEditingAmount(false)} style={(state) => ({ ...outlineButton(state), flex: 1 })}><Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>Cancel</Text></Pressable><Pressable onPress={() => updatePaymentAmountMutation.mutate()} style={(state) => ({ ...limeButton(state, 44), flex: 1.3 })}>{updatePaymentAmountMutation.isPending ? <ActivityIndicator color={FYLL_LIME_INK} size="small" /> : <Save size={15} color={FYLL_LIME_INK} strokeWidth={2.2} />}<Text style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '600' }}>Save changes</Text></Pressable></View>
+        <View style={{ flexDirection: 'row', gap: 8 }}><Pressable onPress={() => setIsEditingAmount(false)} style={(state) => ({ ...outlineButton(state), flex: 1 })}><Text style={{ color: palette.text, fontSize: fs(14), fontWeight: '600' }}>Cancel</Text></Pressable><Pressable onPress={() => updatePaymentAmountMutation.mutate()} style={(state) => ({ ...limeButton(state, 44), flex: 1.3 })}>{updatePaymentAmountMutation.isPending ? <ActivityIndicator color={FYLL_LIME_INK} size="small" /> : <Save size={15} color={FYLL_LIME_INK} strokeWidth={2.2} />}<Text style={{ color: FYLL_LIME_INK, fontSize: fs(14), fontWeight: '600' }}>Save changes</Text></Pressable></View>
       </View>
     ) : null;
 
     const proofSection = proofUrl && !(canVerify || canReject) ? (
       <Pressable onPress={() => setShowProofLightbox(true)} style={(state) => ({ ...cardStyle, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, backgroundColor: isHovered(state) ? palette.cardHover : palette.card })}>
         <Image source={{ uri: proofUrl }} style={{ width: 52, height: 52, borderRadius: 10 }} resizeMode="cover" />
-        <View style={{ flex: 1 }}><Text style={{ color: palette.text, fontSize: 14.5, fontWeight: '600' }}>Payment receipt</Text><Text style={{ color: palette.faint, fontSize: 12.5, marginTop: 2 }}>Tap to view full size</Text></View>
+        <View style={{ flex: 1 }}><Text style={{ color: palette.text, fontSize: fs(14.5), fontWeight: '600' }}>Payment receipt</Text><Text style={{ color: palette.faint, fontSize: fs(12.5), marginTop: 2 }}>Tap to view full size</Text></View>
         <ChevronRight size={16} color={palette.faint} strokeWidth={2.2} />
       </Pressable>
     ) : null;
@@ -1823,7 +1878,7 @@ export default function StorefrontPaymentDetailScreen() {
     const bankSection = (
       <View style={{ ...cardStyle, padding: 16, gap: 10 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Landmark size={14} color={palette.faint} strokeWidth={2} /><SectionLabel palette={palette}>Paid into</SectionLabel></View>
-        {isCardPayment ? <View style={{ gap: 2 }}><Text style={{ color: palette.text, fontSize: 15, fontWeight: '600' }}>Card / Paystack</Text><Text style={{ color: palette.muted, fontSize: 13.5 }}>Online card payment</Text></View> : bankAccount ? <View style={{ gap: 2 }}><Text style={{ color: palette.text, fontSize: 15, fontWeight: '600' }}>{bankAccount.bankName || bankAccount.bank || 'Bank transfer'}</Text><Text style={{ color: palette.muted, fontSize: 13.5 }} selectable>{[bankAccount.accountName, bankAccount.accountNumber].filter(Boolean).join(' · ')}</Text></View> : <Text style={{ color: palette.muted, fontSize: 13.5 }}>Payment destination not recorded.</Text>}
+        {isCardPayment ? <View style={{ gap: 2 }}><Text style={{ color: palette.text, fontSize: fs(15), fontWeight: '600' }}>Card / Paystack</Text><Text style={{ color: palette.muted, fontSize: fs(13.5) }}>Online card payment</Text></View> : bankAccount ? <View style={{ gap: 2 }}><Text style={{ color: palette.text, fontSize: fs(15), fontWeight: '600' }}>{bankAccount.bankName || bankAccount.bank || 'Bank transfer'}</Text><Text style={{ color: palette.muted, fontSize: fs(13.5) }} selectable>{[bankAccount.accountName, bankAccount.accountNumber].filter(Boolean).join(' · ')}</Text></View> : <Text style={{ color: palette.muted, fontSize: fs(13.5) }}>Payment destination not recorded.</Text>}
       </View>
     );
 
@@ -1832,7 +1887,7 @@ export default function StorefrontPaymentDetailScreen() {
         <View style={{ paddingBottom: 12 }}><SectionLabel palette={palette}>Activity</SectionLabel></View>
         {activityEntries.map((entry, index) => {
           const isLatest = index === activityEntries.length - 1;
-          return <View key={entry.id} style={{ flexDirection: 'row', gap: 12 }}><View style={{ width: 12, alignItems: 'center' }}><View style={{ width: 9, height: 9, borderRadius: 4.5, marginTop: 5, backgroundColor: isLatest ? palette.text : palette.isDark ? '#5D5E56' : '#CFCFCF' }} />{!isLatest ? <View style={{ width: 1.5, flex: 1, marginVertical: 4, backgroundColor: palette.hairline }} /> : null}</View><View style={{ flex: 1, gap: 2, paddingBottom: isLatest ? 0 : 14 }}><Text style={{ color: palette.text, fontSize: 14, fontWeight: '500' }}>{entry.action}</Text><Text style={{ color: palette.faint, fontSize: 12.5 }}>{entry.actor} · {formatActivityTimestamp(entry.createdAt)}</Text></View></View>;
+          return <View key={entry.id} style={{ flexDirection: 'row', gap: 12 }}><View style={{ width: 12, alignItems: 'center' }}><View style={{ width: 9, height: 9, borderRadius: 4.5, marginTop: 5, backgroundColor: isLatest ? palette.text : palette.isDark ? '#5D5E56' : '#CFCFCF' }} />{!isLatest ? <View style={{ width: 1.5, flex: 1, marginVertical: 4, backgroundColor: palette.hairline }} /> : null}</View><View style={{ flex: 1, gap: 2, paddingBottom: isLatest ? 0 : 14 }}><Text style={{ color: palette.text, fontSize: fs(14), fontWeight: '500' }}>{entry.action}</Text><Text style={{ color: palette.faint, fontSize: fs(12.5) }}>{entry.actor} · {formatActivityTimestamp(entry.createdAt)}</Text></View></View>;
         })}
       </View>
     );
@@ -1851,7 +1906,7 @@ export default function StorefrontPaymentDetailScreen() {
   if (payment && unifiedDetail) {
     const unifiedContent = (
       <SafeAreaView className="flex-1" style={{ backgroundColor: palette.page }} edges={['top']}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: isDesktop ? 20 : 8, paddingTop: isDesktop ? 18 : 4, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: palette.hairline }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: isDesktop ? 20 : 8, paddingTop: isDesktop ? 18 : 14, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: palette.hairline }}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Back to payments"
@@ -1861,8 +1916,11 @@ export default function StorefrontPaymentDetailScreen() {
             <ChevronLeft size={21} color={palette.text} strokeWidth={2.2} />
           </Pressable>
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ color: palette.text, fontSize: 16, fontWeight: '600' }}>Payment</Text>
-            <Text style={{ color: palette.faint, fontSize: 12.5, letterSpacing: 0.3 }} numberOfLines={1} selectable>{paymentReference}</Text>
+            <Text style={{ color: palette.text, fontSize: 18, fontWeight: '600' }}>Payment</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="Copy payment reference" onPress={() => { void Clipboard.setStringAsync(paymentReference); setRefCopied(true); setTimeout(() => setRefCopied(false), 1600); }} style={(state) => ({ flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', maxWidth: '100%', opacity: state.pressed ? 0.6 : 1 })}>
+              <Text style={{ color: palette.faint, fontSize: 16, letterSpacing: 0.3, flexShrink: 1 }} numberOfLines={1}>{paymentReference}</Text>
+              {refCopied ? <Check size={14} color={palette.text} strokeWidth={2.6} /> : <Copy size={14} color={palette.faint} strokeWidth={2.2} />}
+            </Pressable>
           </View>
           <Pressable
             accessibilityRole="button"
@@ -1920,7 +1978,7 @@ export default function StorefrontPaymentDetailScreen() {
               {!isDesktop ? <View style={{ alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: palette.outline, marginBottom: 10 }} /> : null}
               {moreActions.map((action) => {
                 const Icon = action.icon;
-                return <Pressable key={action.key} onPress={() => { setShowMoreActions(false); action.onPress(); }} style={(state) => ({ height: 52, borderRadius: 14, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: state.pressed || isHovered(state) ? palette.softFill : 'transparent' })}><Icon size={18} color={palette.muted} strokeWidth={2.1} /><Text style={{ color: palette.text, fontSize: 15, fontWeight: '500' }}>{action.label}</Text></Pressable>;
+                return <Pressable key={action.key} onPress={() => { setShowMoreActions(false); action.onPress(); }} style={(state) => ({ height: 52, borderRadius: 14, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: state.pressed || isHovered(state) ? palette.softFill : 'transparent' })}><Icon size={18} color={palette.muted} strokeWidth={2.1} /><Text style={{ color: palette.text, fontSize: fs(15), fontWeight: '500' }}>{action.label}</Text></Pressable>;
               })}
             </Pressable>
           </Pressable>
@@ -1930,11 +1988,11 @@ export default function StorefrontPaymentDetailScreen() {
           <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' }}>
             <View style={{ width: isDesktop ? 560 : '100%', maxHeight: isDesktop ? 680 : '82%', alignSelf: 'center', backgroundColor: palette.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderBottomLeftRadius: isDesktop ? 24 : 0, borderBottomRightRadius: isDesktop ? 24 : 0, borderWidth: 1, borderColor: palette.border, padding: 20, paddingBottom: isDesktop ? 20 : Math.max(insets.bottom, 12) + 12 }}>
               {!isDesktop ? <View style={{ alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: palette.outline, marginBottom: 14 }} /> : null}
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}><View style={{ flex: 1 }}><Text style={{ color: palette.text, fontSize: 18, fontWeight: '600' }}>{linkedOrder ? 'Replace linked order' : 'Link existing order'}</Text><Text style={{ color: palette.muted, fontSize: 13, marginTop: 3 }}>Choose the order that should receive this payment.</Text></View><Pressable onPress={() => setShowLinkOrderModal(false)} style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: palette.softFill, alignItems: 'center', justifyContent: 'center' }}><X size={18} color={palette.text} strokeWidth={2.2} /></Pressable></View>
-              <View style={{ height: 46, borderRadius: 23, backgroundColor: palette.inputBg, borderWidth: 1, borderColor: palette.outline, justifyContent: 'center', paddingHorizontal: 16, marginBottom: 14 }}><TextInput value={orderSearchQuery} onChangeText={setOrderSearchQuery} placeholder="Search order, customer, phone" placeholderTextColor={palette.faint} style={[{ color: palette.text, fontSize: 14 }, noWebOutline]} /><SearchClearButton visible={Boolean(orderSearchQuery.trim())} onPress={() => setOrderSearchQuery('')} /></View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}><View style={{ flex: 1 }}><Text style={{ color: palette.text, fontSize: 18, fontWeight: '600' }}>{linkedOrder ? 'Replace linked order' : 'Link existing order'}</Text><Text style={{ color: palette.muted, fontSize: fs(13), marginTop: 3 }}>Choose the order that should receive this payment.</Text></View><Pressable onPress={() => setShowLinkOrderModal(false)} style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: palette.softFill, alignItems: 'center', justifyContent: 'center' }}><X size={18} color={palette.text} strokeWidth={2.2} /></Pressable></View>
+              <View style={{ height: 46, borderRadius: 23, backgroundColor: palette.inputBg, borderWidth: 1, borderColor: palette.outline, justifyContent: 'center', paddingHorizontal: 16, marginBottom: 14 }}><TextInput value={orderSearchQuery} onChangeText={setOrderSearchQuery} placeholder="Search order, customer, phone" placeholderTextColor={palette.faint} style={[{ color: palette.text, fontSize: fs(14) }, noWebOutline]} /><SearchClearButton visible={Boolean(orderSearchQuery.trim())} onPress={() => setOrderSearchQuery('')} /></View>
               <ScrollView showsVerticalScrollIndicator={false}>
-                {candidateOrders.map((order) => <Pressable key={order.id} onPress={() => linkExistingOrderMutation.mutate(order)} style={(state) => ({ padding: 14, borderRadius: 14, borderWidth: 1, borderColor: palette.border, backgroundColor: state.pressed || isHovered(state) ? palette.cardHover : palette.card, marginBottom: 8 })}><View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}><View style={{ flex: 1 }}><Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>{order.orderNumber}</Text><Text style={{ color: palette.muted, fontSize: 13, marginTop: 2 }}>{order.customerName || 'No customer'}</Text></View><Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>{formatCurrency(order.totalAmount)}</Text></View></Pressable>)}
-                {candidateOrders.length === 0 ? <Text style={{ color: palette.muted, fontSize: 14, textAlign: 'center', paddingVertical: 28 }}>No matching orders found.</Text> : null}
+                {candidateOrders.map((order) => <Pressable key={order.id} onPress={() => linkExistingOrderMutation.mutate(order)} style={(state) => ({ padding: 14, borderRadius: 14, borderWidth: 1, borderColor: palette.border, backgroundColor: state.pressed || isHovered(state) ? palette.cardHover : palette.card, marginBottom: 8 })}><View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}><View style={{ flex: 1 }}><Text style={{ color: palette.text, fontSize: fs(14), fontWeight: '600' }}>{order.orderNumber}</Text><Text style={{ color: palette.muted, fontSize: fs(13), marginTop: 2 }}>{order.customerName || 'No customer'}</Text></View><Text style={{ color: palette.text, fontSize: fs(14), fontWeight: '600' }}>{formatCurrency(order.totalAmount)}</Text></View></Pressable>)}
+                {candidateOrders.length === 0 ? <Text style={{ color: palette.muted, fontSize: fs(14), textAlign: 'center', paddingVertical: 28 }}>No matching orders found.</Text> : null}
               </ScrollView>
             </View>
           </View>
@@ -1971,8 +2029,11 @@ export default function StorefrontPaymentDetailScreen() {
             <ArrowLeft size={19} color={palette.text} strokeWidth={2.2} />
           </Pressable>
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ color: palette.text, fontSize: 16, fontWeight: '600' }}>Payment</Text>
-            <Text style={{ color: palette.faint, fontSize: 12.5, letterSpacing: 0.3 }} numberOfLines={1} selectable>{paymentReference}</Text>
+            <Text style={{ color: palette.text, fontSize: 18, fontWeight: '600' }}>Payment</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="Copy payment reference" onPress={() => { void Clipboard.setStringAsync(paymentReference); setRefCopied(true); setTimeout(() => setRefCopied(false), 1600); }} style={(state) => ({ flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', maxWidth: '100%', opacity: state.pressed ? 0.6 : 1 })}>
+              <Text style={{ color: palette.faint, fontSize: 16, letterSpacing: 0.3, flexShrink: 1 }} numberOfLines={1}>{paymentReference}</Text>
+              {refCopied ? <Check size={14} color={palette.text} strokeWidth={2.6} /> : <Copy size={14} color={palette.faint} strokeWidth={2.2} />}
+            </Pressable>
           </View>
           {linkedOrder ? (
             <Pressable
@@ -2007,7 +2068,7 @@ export default function StorefrontPaymentDetailScreen() {
             <View className="flex-row items-center flex-wrap" style={{ gap: 8 }}>
               <StatusPill status={paymentStatus} compact />
               <SourcePill source={payment.source} compact />
-              <Text style={{ color: palette.faint, fontSize: 12.5 }}>{formatCreatedLabel(payment.createdAt)}</Text>
+              <Text style={{ color: palette.faint, fontSize: fs(12.5) }}>{formatCreatedLabel(payment.createdAt)}</Text>
             </View>
           </View>
         ) : null}
@@ -2366,7 +2427,7 @@ export default function StorefrontPaymentDetailScreen() {
                         style={{ borderTopWidth: index === 0 ? 0 : 1, borderTopColor: separatorColor }}
                       >
                         <View style={{ width: 40, height: 40, borderRadius: 10, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: palette.inset, borderWidth: 1, borderColor: palette.hairline, marginRight: 10 }}>
-                          {item.imageUrl ? <Image source={{ uri: item.imageUrl }} resizeMode="cover" style={{ width: '100%', height: '100%' }} /> : <Package size={17} color={palette.faint} strokeWidth={1.7} />}
+                          <ResolvedAttachmentImage imageUrl={item.imageUrl} resizeMode="cover" style={{ width: '100%', height: '100%' }} fallback={<Package size={17} color={palette.faint} strokeWidth={1.7} />} />
                         </View>
                         <View className="flex-1 mr-3">
                           <Text style={{ color: colors.text.primary, fontWeight: '400' }} className="text-sm" numberOfLines={1}>
@@ -2434,7 +2495,7 @@ export default function StorefrontPaymentDetailScreen() {
                 onChangeText={setOrderSearchQuery}
                 placeholder="Search order, customer, phone"
                 placeholderTextColor={colors.input.placeholder}
-                style={[{ color: colors.input.text, fontSize: 14 }, noWebOutline]}
+                style={[{ color: colors.input.text, fontSize: fs(14) }, noWebOutline]}
                 selectionColor={colors.text.primary}
               />
               <SearchClearButton visible={Boolean(orderSearchQuery.trim())} onPress={() => setOrderSearchQuery('')} />

@@ -1,4 +1,5 @@
 import { getFulfillmentPipelineBucket, type FulfillmentStageKey } from '@/lib/fulfillment';
+import { findOrderTrackingStageByName } from '@/lib/order-status';
 import type {
   AuditLog,
   Case,
@@ -65,7 +66,7 @@ export interface DashboardRecentPartnerJob {
 }
 
 export interface DashboardSnapshot {
-  schemaVersion: 2;
+  schemaVersion: 3;
   businessId: string;
   periodKey: string;
   updatedAt: string;
@@ -97,6 +98,12 @@ export interface DashboardSnapshot {
 export const getDashboardPeriodKey = (date = new Date()) => (
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
 );
+
+const isExcludedFromSales = (order: Order, orderStatuses?: OrderStatus[]) => {
+  if (findOrderTrackingStageByName(order.status, orderStatuses) === 'cancelled') return true;
+  const normalizedStatus = order.status.trim().toLowerCase().replace(/[_-]+/g, ' ');
+  return /\b(?:fail(?:ed|ure)?|void(?:ed)?)\b/.test(normalizedStatus);
+};
 
 export const buildDashboardSnapshot = ({
   businessId,
@@ -166,7 +173,8 @@ export const buildDashboardSnapshot = ({
 
   orders.forEach((order) => {
     const status = order.status.trim().toLowerCase();
-    if (status !== 'delivered' && status !== 'completed' && status !== 'refunded') {
+    const excludedFromSales = isExcludedFromSales(order, orderStatuses);
+    if (!excludedFromSales && status !== 'delivered' && status !== 'completed') {
       pendingOrders += 1;
     }
 
@@ -174,13 +182,15 @@ export const buildDashboardSnapshot = ({
     if (fulfillmentBucket) fulfillment[fulfillmentBucket] += 1;
     const createdAtMs = new Date(order.createdAt).getTime();
     const createdAgeMs = now.getTime() - createdAtMs;
-    if (Number.isFinite(createdAtMs) && createdAgeMs >= 0 && createdAgeMs < 24 * 60 * 60 * 1000) {
+    if (!excludedFromSales && Number.isFinite(createdAtMs) && createdAgeMs >= 0 && createdAgeMs < 24 * 60 * 60 * 1000) {
       newOrdersLast24Hours += 1;
       newOrderCreatedAtLast24Hours.push(order.createdAt);
     }
-    const platform = order.source || 'Unknown';
-    platformCounts.set(platform, (platformCounts.get(platform) ?? 0) + 1);
-    if (status === 'refunded') return;
+    if (!excludedFromSales) {
+      const platform = order.source || 'Unknown';
+      platformCounts.set(platform, (platformCounts.get(platform) ?? 0) + 1);
+    }
+    if (excludedFromSales) return;
 
     const orderDate = new Date(order.orderDate ?? order.createdAt);
     order.items?.forEach((item) => {
@@ -301,7 +311,7 @@ export const buildDashboardSnapshot = ({
   );
 
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     businessId,
     periodKey: getDashboardPeriodKey(now),
     updatedAt,
@@ -345,4 +355,4 @@ export const buildDashboardSnapshot = ({
 
 export const isCompleteDashboardSnapshot = (
   snapshot: DashboardSnapshot | null | undefined
-): snapshot is DashboardSnapshot => snapshot?.schemaVersion === 2;
+): snapshot is DashboardSnapshot => snapshot?.schemaVersion === 3;

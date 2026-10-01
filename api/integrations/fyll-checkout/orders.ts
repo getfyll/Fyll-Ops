@@ -408,7 +408,7 @@ const toPaymentStatus = (status: string) => {
   if (isManualVerificationStatus(status) || isAmountMismatchStatus(status)) return 'proof_submitted';
   if (normalized === 'failed') return 'failed';
   if (normalized === 'refunded') return 'refunded';
-  if (normalized === 'cancelled' || normalized === 'canceled') return 'rejected';
+  if (normalized === 'cancelled' || normalized === 'canceled' || normalized === 'rejected') return 'rejected';
   return 'pending';
 };
 
@@ -426,7 +426,9 @@ const toOrderStatus = (status: string, paymentMethod = '') => {
   const normalized = normalizeStatus(status);
   if (isPaidStatus(status)) return isInstantCardMethod(paymentMethod) ? 'Processing' : 'Payment confirmed';
   if (isManualVerificationStatus(status) || isAmountMismatchStatus(status)) return 'Payment approval';
+  if (['cancelled', 'canceled', 'rejected', 'refunded'].includes(normalized)) return 'Cancelled';
   if (normalized === 'failed') return 'Payment failed';
+  if (normalized === 'cancelled' || normalized === 'canceled') return 'Cancelled';
   return 'Payment approval';
 };
 
@@ -474,7 +476,7 @@ const isActionableCheckoutStatus = (status: string) => {
   return isPaidStatus(status)
     || isManualVerificationStatus(status)
     || isAmountMismatchStatus(status)
-    || ['failed', 'refunded', 'cancelled', 'canceled'].includes(normalized);
+    || ['failed', 'refunded', 'cancelled', 'canceled', 'rejected'].includes(normalized);
 };
 
 const validateCheckoutPayload = (payload: CheckoutPayload) => {

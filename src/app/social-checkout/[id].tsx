@@ -25,7 +25,7 @@ import { useBusinessSettings } from '@/hooks/useBusinessSettings';
 import { buildSocialCheckoutUrl } from '@/lib/tracking-url';
 import { PaymentDetailSkeleton } from '@/components/SkeletonLoader';
 import { SearchClearButton } from '@/components/SearchClearButton';
-import { FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, InitialsAvatar, MoneyText, SectionLabel, isHovered, usePaymentsPalette, type StatusTone } from '@/components/payments/payments-ui';
+import { FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, InitialsAvatar, MoneyText, SectionLabel, isHovered, usePaymentsPalette, type StatusTone, useMobileFont } from '@/components/payments/payments-ui';
 
 // Payment link detail: amount + status up top, then what to do next (review
 // the receipt, create or link the order), the bill, the link/message to send,
@@ -88,6 +88,7 @@ function formatShortTimestamp(iso?: string) {
 }
 
 export default function SocialCheckoutDetailScreen() {
+  const fs = useMobileFont();
   const router = useRouter();
   const queryClient = useQueryClient();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -115,6 +116,7 @@ export default function SocialCheckoutDetailScreen() {
   const [editDeliveryState, setEditDeliveryState] = useState('');
   const [editAccountId, setEditAccountId] = useState<string | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [refCopied, setRefCopied] = useState<boolean>(false);
   const [messageCopied, setMessageCopied] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
   const [isRejecting, setIsRejecting] = useState(false);
@@ -526,9 +528,9 @@ export default function SocialCheckoutDetailScreen() {
   if (!draft) {
     return (
       <SafeAreaView className="flex-1 items-center justify-center px-6" style={{ backgroundColor: palette.page }} edges={['top']}>
-        <Text style={{ color: palette.text, fontSize: 16, fontWeight: '600' }}>Payment link not found</Text>
+        <Text style={{ color: palette.text, fontSize: fs(16), fontWeight: '600' }}>Payment link not found</Text>
         <Pressable onPress={() => router.back()} style={{ marginTop: 14, height: 40, paddingHorizontal: 16, borderRadius: 999, borderWidth: 1, borderColor: palette.outline, alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>Back to payments</Text>
+          <Text style={{ color: palette.text, fontSize: fs(14), fontWeight: '600' }}>Back to payments</Text>
         </Pressable>
       </SafeAreaView>
     );
@@ -636,26 +638,26 @@ export default function SocialCheckoutDetailScreen() {
     borderColor: palette.outline,
     backgroundColor: palette.inputBg,
     color: palette.text,
-    fontSize: 15,
+    fontSize: fs(15),
   }, noWebOutline];
 
   const StatusIcon = tone === 'verified' ? Check : tone === 'review' ? AlertTriangle : tone === 'rejected' ? X : tone === 'awaiting' ? Clock : Power;
 
   const heroSection = (
     <View style={{ gap: 10, paddingBottom: 6 }}>
-      <MoneyText style={{ color: palette.text, fontSize: 42, lineHeight: 48, letterSpacing: -1.4 }} numberOfLines={1} adjustsFontSizeToFit>
+      <MoneyText style={{ color: palette.text, fontSize: 34, lineHeight: 40, letterSpacing: -1 }} numberOfLines={1} adjustsFontSizeToFit>
         {formatCurrency(draft.amount)}
       </MoneyText>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
         <View style={{ height: 26, paddingHorizontal: 10, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: toneStyle.bg }}>
           <StatusIcon size={12} color={toneStyle.ink} strokeWidth={2.8} />
-          <Text style={{ color: toneStyle.ink, fontSize: 12.5, fontWeight: '600' }}>{STATUS_LABEL[effectiveStatus]}</Text>
+          <Text style={{ color: toneStyle.ink, fontSize: fs(12.5), fontWeight: '600' }}>{STATUS_LABEL[effectiveStatus]}</Text>
         </View>
         <View style={{ height: 26, paddingHorizontal: 10, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: palette.softFill }}>
           <Link2 size={12} color={palette.textSoft} strokeWidth={2.2} />
-          <Text style={{ color: palette.textSoft, fontSize: 12.5, fontWeight: '600' }}>Payment link</Text>
+          <Text style={{ color: palette.textSoft, fontSize: fs(12.5), fontWeight: '600' }}>Payment link</Text>
         </View>
-        <Text style={{ color: palette.faint, fontSize: 12.5 }}>{formatShortTimestamp(draft.createdAt)}</Text>
+        <Text style={{ color: palette.faint, fontSize: fs(12.5) }}>{formatShortTimestamp(draft.createdAt)}</Text>
       </View>
     </View>
   );
@@ -667,8 +669,8 @@ export default function SocialCheckoutDetailScreen() {
           <FileText size={17} color={palette.text} strokeWidth={2.2} />
         </View>
         <View style={{ flex: 1, gap: 2 }}>
-          <Text style={{ color: palette.text, fontSize: 15, fontWeight: '600' }}>Receipt uploaded · needs review</Text>
-          <Text style={{ color: palette.muted, fontSize: 13 }}>Check the transfer landed, then approve or reject.</Text>
+          <Text style={{ color: palette.text, fontSize: fs(15), fontWeight: '600' }}>Receipt uploaded · needs review</Text>
+          <Text style={{ color: palette.muted, fontSize: fs(13) }}>Check the transfer landed, then approve or reject.</Text>
         </View>
       </View>
       {draft.proofImageUrl ? (
@@ -680,8 +682,8 @@ export default function SocialCheckoutDetailScreen() {
         >
           <Image source={{ uri: draft.proofImageUrl }} style={{ width: 56, height: 56, borderRadius: 10 }} resizeMode="cover" />
           <View style={{ flex: 1 }}>
-            <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>Payment receipt</Text>
-            <Text style={{ color: palette.faint, fontSize: 12.5, marginTop: 2 }}>Tap to view full size</Text>
+            <Text style={{ color: palette.text, fontSize: fs(14), fontWeight: '600' }}>Payment receipt</Text>
+            <Text style={{ color: palette.faint, fontSize: fs(12.5), marginTop: 2 }}>Tap to view full size</Text>
           </View>
           <ChevronRight size={16} color={palette.faint} strokeWidth={2.2} />
         </Pressable>
@@ -694,7 +696,7 @@ export default function SocialCheckoutDetailScreen() {
           style={(state) => ({ ...limeButton(state), flex: 1.3 })}
         >
           {isApproving ? <ActivityIndicator color={FYLL_LIME_INK} size="small" /> : <Check size={15} color={FYLL_LIME_INK} strokeWidth={2.6} />}
-          <Text style={{ color: FYLL_LIME_INK, fontSize: 14.5, fontWeight: '600' }}>Approve</Text>
+          <Text style={{ color: FYLL_LIME_INK, fontSize: fs(14.5), fontWeight: '600' }}>Approve</Text>
         </Pressable>
         <Pressable
           accessibilityRole="button"
@@ -703,7 +705,7 @@ export default function SocialCheckoutDetailScreen() {
           style={(state) => ({ ...outlineButton(state, 46), flex: 1, borderColor: palette.dangerBorder })}
         >
           {isRejecting ? <ActivityIndicator color={palette.danger} size="small" /> : <X size={15} color={palette.danger} strokeWidth={2.4} />}
-          <Text style={{ color: palette.danger, fontSize: 14.5, fontWeight: '600' }}>Reject</Text>
+          <Text style={{ color: palette.danger, fontSize: fs(14.5), fontWeight: '600' }}>Reject</Text>
         </Pressable>
       </View>
     </View>
@@ -721,18 +723,22 @@ export default function SocialCheckoutDetailScreen() {
           <Check size={17} color={palette.inverseText} strokeWidth={2.8} />
         </View>
         <View style={{ flex: 1, gap: 2 }}>
-          <Text style={{ color: palette.text, fontSize: 15, fontWeight: '600' }}>Order {linkedOrderNumber} linked</Text>
-          <Text style={{ color: palette.muted, fontSize: 13 }}>Fulfil this order — don't create another one.</Text>
+          <Text style={{ color: palette.text, fontSize: fs(15), fontWeight: '600' }}>Order {linkedOrderNumber} linked</Text>
+          <Text style={{ color: palette.muted, fontSize: fs(13) }}>Fulfil this order — don't create another one.</Text>
         </View>
         <ChevronRight size={16} color={palette.faint} strokeWidth={2.2} />
       </Pressable>
       <View style={{ flexDirection: 'row', borderTopWidth: 1, borderTopColor: palette.hairline }}>
+        <Pressable onPress={handleCreateOrderFromPayment} style={(state) => ({ flex: 1, height: 42, alignItems: 'center', justifyContent: 'center', backgroundColor: isHovered(state) ? palette.cardHover : 'transparent' })}>
+          <Text style={{ color: palette.textSoft, fontSize: fs(13.5), fontWeight: '600' }}>New order</Text>
+        </Pressable>
+        <View style={{ width: 1, backgroundColor: palette.hairline }} />
         <Pressable onPress={openLinkOrderPicker} style={(state) => ({ flex: 1, height: 42, alignItems: 'center', justifyContent: 'center', backgroundColor: isHovered(state) ? palette.cardHover : 'transparent' })}>
-          <Text style={{ color: palette.textSoft, fontSize: 13.5, fontWeight: '600' }}>Replace order</Text>
+          <Text style={{ color: palette.textSoft, fontSize: fs(13.5), fontWeight: '600' }}>Replace order</Text>
         </Pressable>
         <View style={{ width: 1, backgroundColor: palette.hairline }} />
         <Pressable onPress={handleUnlinkOrder} style={(state) => ({ flex: 1, height: 42, alignItems: 'center', justifyContent: 'center', backgroundColor: isHovered(state) ? palette.cardHover : 'transparent' })}>
-          <Text style={{ color: palette.textSoft, fontSize: 13.5, fontWeight: '600' }}>Unlink</Text>
+          <Text style={{ color: palette.textSoft, fontSize: fs(13.5), fontWeight: '600' }}>Unlink</Text>
         </Pressable>
       </View>
     </View>
@@ -742,8 +748,8 @@ export default function SocialCheckoutDetailScreen() {
         <X size={17} color={palette.danger} strokeWidth={2.4} />
       </View>
       <View style={{ flex: 1, gap: 2 }}>
-        <Text style={{ color: palette.text, fontSize: 15, fontWeight: '600' }}>{effectiveStatus === 'rejected' ? 'Payment rejected' : 'Payment link inactive'}</Text>
-        <Text style={{ color: palette.muted, fontSize: 13 }}>
+        <Text style={{ color: palette.text, fontSize: fs(15), fontWeight: '600' }}>{effectiveStatus === 'rejected' ? 'Payment rejected' : 'Payment link inactive'}</Text>
+        <Text style={{ color: palette.muted, fontSize: fs(13) }}>
           {effectiveStatus === 'rejected'
             ? 'Order creation is locked because the receipt was rejected.'
             : 'This link can no longer accept payments.'}
@@ -757,26 +763,27 @@ export default function SocialCheckoutDetailScreen() {
           <Package size={17} color={draft.status === 'verified' ? palette.warn : palette.muted} strokeWidth={2.2} />
         </View>
         <View style={{ flex: 1, gap: 2 }}>
-          <Text style={{ color: palette.text, fontSize: 15, fontWeight: '600' }}>No order linked yet</Text>
-          <Text style={{ color: palette.muted, fontSize: 13 }}>
+          <Text style={{ color: palette.text, fontSize: fs(15), fontWeight: '600' }}>No order linked yet</Text>
+          <Text style={{ color: palette.muted, fontSize: fs(13) }}>
             {draft.status === 'verified'
               ? 'Paid and verified. Create the order to start fulfilment.'
               : draft.status === 'payment_submitted'
-                ? 'Approve the payment to create an order, or link one that already exists.'
-                : 'Waiting for the customer to pay. You can link an existing order now.'}
+                ? 'Approve the payment first, then create or link its order.'
+                : 'Waiting for the customer to pay. You can create or link the order once it is approved.'}
           </Text>
         </View>
       </View>
-      <View style={{ flexDirection: 'row', gap: 8 }}>
-        {draft.status === 'verified' ? (
+      {/* Orders are only created or linked once the payment is approved. */}
+      {draft.status === 'verified' ? (
+        <View style={{ flexDirection: 'row', gap: 8 }}>
           <Pressable accessibilityRole="button" onPress={handleCreateOrderFromPayment} style={(state) => ({ ...limeButton(state), flex: 1.3 })}>
-            <Text style={{ color: FYLL_LIME_INK, fontSize: 14.5, fontWeight: '600' }}>Create order</Text>
+            <Text style={{ color: FYLL_LIME_INK, fontSize: fs(14.5), fontWeight: '600' }}>Create order</Text>
           </Pressable>
-        ) : null}
-        <Pressable accessibilityRole="button" onPress={openLinkOrderPicker} style={(state) => ({ ...outlineButton(state, 46), flex: 1 })}>
-          <Text style={{ color: palette.text, fontSize: 14.5, fontWeight: '600' }}>Link existing</Text>
-        </Pressable>
-      </View>
+          <Pressable accessibilityRole="button" onPress={openLinkOrderPicker} style={(state) => ({ ...outlineButton(state, 46), flex: 1 })}>
+            <Text style={{ color: palette.text, fontSize: fs(14.5), fontWeight: '600' }}>Link existing</Text>
+          </Pressable>
+        </View>
+      ) : null}
     </View>
   );
 
@@ -785,8 +792,8 @@ export default function SocialCheckoutDetailScreen() {
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 }}>
         <InitialsAvatar name={draft.customerName ?? ''} palette={palette} />
         <View style={{ flex: 1, gap: 2 }}>
-          <Text style={{ color: palette.faint, fontSize: 12 }}>Customer</Text>
-          <Text style={{ color: draft.customerName ? palette.text : palette.faint, fontSize: 15, fontWeight: '500' }} numberOfLines={1}>
+          <Text style={{ color: palette.faint, fontSize: fs(12) }}>Customer</Text>
+          <Text style={{ color: draft.customerName ? palette.text : palette.faint, fontSize: fs(15), fontWeight: '500' }} numberOfLines={1}>
             {draft.customerName || 'Not submitted yet'}
           </Text>
         </View>
@@ -797,7 +804,7 @@ export default function SocialCheckoutDetailScreen() {
             onPress={() => { void Linking.openURL(`tel:${draft.customerPhone}`); }}
             hitSlop={8}
           >
-            <Text style={{ color: palette.limeOnSurface, fontSize: 13.5, fontWeight: '600' }}>Call</Text>
+            <Text style={{ color: palette.limeOnSurface, fontSize: fs(13.5), fontWeight: '600' }}>Call</Text>
           </Pressable>
         ) : null}
       </View>
@@ -810,7 +817,7 @@ export default function SocialCheckoutDetailScreen() {
         return (
           <View key={row.key} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingVertical: 10, borderTopWidth: 1, borderTopColor: palette.hairline }}>
             <Icon size={15} color={palette.faint} strokeWidth={2} style={{ marginTop: 2 }} />
-            <Text style={{ flex: 1, color: palette.textSoft, fontSize: 14, lineHeight: 20 }} selectable>{row.value}</Text>
+            <Text style={{ flex: 1, color: palette.textSoft, fontSize: fs(14), lineHeight: 20 }} selectable>{row.value}</Text>
           </View>
         );
       })}
@@ -827,29 +834,29 @@ export default function SocialCheckoutDetailScreen() {
             return (
               <View key={`${item.productId}-${item.variantId}-${index}`} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: palette.text, fontSize: 15 }}>{item.quantity > 1 ? `${item.quantity}× ` : ''}{labels.title}</Text>
-                  {labels.subtitle ? <Text style={{ color: palette.faint, fontSize: 12.5, marginTop: 2 }}>{labels.subtitle}</Text> : null}
+                  <Text style={{ color: palette.text, fontSize: fs(15) }}>{item.quantity > 1 ? `${item.quantity}× ` : ''}{labels.title}</Text>
+                  {labels.subtitle ? <Text style={{ color: palette.faint, fontSize: fs(12.5), marginTop: 2 }}>{labels.subtitle}</Text> : null}
                 </View>
-                <Text style={{ color: palette.text, fontSize: 15, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{formatCurrency(item.unitPrice * item.quantity)}</Text>
+                <Text style={{ color: palette.text, fontSize: fs(15), fontWeight: '600', fontVariant: ['tabular-nums'] }}>{formatCurrency(item.unitPrice * item.quantity)}</Text>
               </View>
             );
           })}
           {linkedOrder?.deliveryFee ? (
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <Text style={{ color: palette.muted, fontSize: 15 }}>Delivery</Text>
-              <Text style={{ color: palette.muted, fontSize: 15, fontVariant: ['tabular-nums'] }}>{formatCurrency(linkedOrder.deliveryFee)}</Text>
+              <Text style={{ color: palette.muted, fontSize: fs(15) }}>Delivery</Text>
+              <Text style={{ color: palette.muted, fontSize: fs(15), fontVariant: ['tabular-nums'] }}>{formatCurrency(linkedOrder.deliveryFee)}</Text>
             </View>
           ) : null}
         </>
       ) : (
-        <Text style={{ color: draft.billNote?.trim() ? palette.text : palette.faint, fontSize: 15, lineHeight: 22 }} selectable>
+        <Text style={{ color: draft.billNote?.trim() ? palette.text : palette.faint, fontSize: fs(15), lineHeight: 22 }} selectable>
           {draft.billNote?.trim() || 'No bill details added.'}
         </Text>
       )}
       <View style={{ height: 1, backgroundColor: palette.hairline }} />
       <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-        <Text style={{ color: palette.text, fontSize: 16, fontWeight: '600' }}>Total</Text>
-        <Text style={{ color: palette.text, fontSize: 16, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{formatCurrency(draft.amount)}</Text>
+        <Text style={{ color: palette.text, fontSize: fs(16), fontWeight: '600' }}>Total</Text>
+        <Text style={{ color: palette.text, fontSize: fs(16), fontWeight: '600', fontVariant: ['tabular-nums'] }}>{formatCurrency(draft.amount)}</Text>
       </View>
     </View>
   );
@@ -858,7 +865,7 @@ export default function SocialCheckoutDetailScreen() {
     <View style={{ ...cardStyle, padding: 16, gap: 12 }}>
       <SectionLabel palette={palette}>Payment link</SectionLabel>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, paddingLeft: 14, paddingRight: 8, borderRadius: 12, backgroundColor: palette.inset, borderWidth: 1, borderColor: palette.hairline }}>
-        <Text style={{ flex: 1, color: palette.textSoft, fontSize: 13.5 }} numberOfLines={1} selectable>{displayLink.replace(/^https?:\/\//, '')}</Text>
+        <Text style={{ flex: 1, color: palette.textSoft, fontSize: fs(13.5) }} numberOfLines={1} selectable>{displayLink.replace(/^https?:\/\//, '')}</Text>
         {publicLink ? (
           <Pressable
             accessibilityRole="button"
@@ -875,14 +882,14 @@ export default function SocialCheckoutDetailScreen() {
             })}
           >
             {linkCopied ? <Check size={13} color={palette.text} strokeWidth={2.6} /> : <Copy size={13} color={palette.text} strokeWidth={2.2} />}
-            <Text style={{ color: palette.text, fontSize: 12.5, fontWeight: '600' }}>{linkCopied ? 'Copied' : 'Copy'}</Text>
+            <Text style={{ color: palette.text, fontSize: fs(12.5), fontWeight: '600' }}>{linkCopied ? 'Copied' : 'Copy'}</Text>
           </Pressable>
         ) : null}
       </View>
       <View style={{ flexDirection: 'row', gap: 8 }}>
         <Pressable accessibilityRole="button" onPress={handleCopyCustomerMessage} style={(state) => ({ ...outlineButton(state), flex: 1 })}>
           {messageCopied ? <Check size={15} color={palette.text} strokeWidth={2.6} /> : <MessageCircle size={15} color={palette.text} strokeWidth={2} />}
-          <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>{messageCopied ? 'Message copied' : 'Copy message'}</Text>
+          <Text style={{ color: palette.text, fontSize: fs(14), fontWeight: '600' }}>{messageCopied ? 'Message copied' : 'Copy message'}</Text>
         </Pressable>
         {canEditLink ? (
           <Pressable
@@ -891,11 +898,11 @@ export default function SocialCheckoutDetailScreen() {
             style={(state) => ({ ...outlineButton(state), flex: 1 })}
           >
             {isEditing ? <X size={15} color={palette.text} strokeWidth={2.2} /> : <Pencil size={15} color={palette.text} strokeWidth={2} />}
-            <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>{isEditing ? 'Cancel edit' : 'Edit link'}</Text>
+            <Text style={{ color: palette.text, fontSize: fs(14), fontWeight: '600' }}>{isEditing ? 'Cancel edit' : 'Edit link'}</Text>
           </Pressable>
         ) : null}
       </View>
-      {canEditLink ? <Text style={{ color: palette.faint, fontSize: 12.5 }}>Edits update the bill without changing the customer's link.</Text> : null}
+      {canEditLink ? <Text style={{ color: palette.faint, fontSize: fs(12.5) }}>Edits update the bill without changing the customer's link.</Text> : null}
     </View>
   );
 
@@ -903,7 +910,7 @@ export default function SocialCheckoutDetailScreen() {
     <View style={{ ...cardStyle, padding: 16, gap: 12 }}>
       <SectionLabel palette={palette}>Edit payment link</SectionLabel>
       <View style={{ gap: 6 }}>
-        <Text style={{ color: palette.muted, fontSize: 12.5 }}>Bill</Text>
+        <Text style={{ color: palette.muted, fontSize: fs(12.5) }}>Bill</Text>
         <TextInput
           placeholder="What the customer is paying for"
           placeholderTextColor={palette.faint}
@@ -917,37 +924,37 @@ export default function SocialCheckoutDetailScreen() {
       </View>
       <View style={{ flexDirection: isDesktop ? 'row' : 'column', gap: 12 }}>
         <View style={{ flex: 1, gap: 6 }}>
-          <Text style={{ color: palette.muted, fontSize: 12.5 }}>Total amount</Text>
+          <Text style={{ color: palette.muted, fontSize: fs(12.5) }}>Total amount</Text>
           <TextInput placeholder="0" placeholderTextColor={palette.faint} value={editAmount} onChangeText={setEditAmount} keyboardType="decimal-pad" style={[...inputStyle, { fontWeight: '600' }]} selectionColor={palette.text} />
         </View>
         <View style={{ flex: 1, gap: 6 }}>
-          <Text style={{ color: palette.muted, fontSize: 12.5 }}>Customer name</Text>
+          <Text style={{ color: palette.muted, fontSize: fs(12.5) }}>Customer name</Text>
           <TextInput placeholder="Customer name" placeholderTextColor={palette.faint} value={editCustomerName} onChangeText={setEditCustomerName} style={inputStyle} selectionColor={palette.text} />
         </View>
       </View>
       <View style={{ flexDirection: isDesktop ? 'row' : 'column', gap: 12 }}>
         <View style={{ flex: 1, gap: 6 }}>
-          <Text style={{ color: palette.muted, fontSize: 12.5 }}>Phone</Text>
+          <Text style={{ color: palette.muted, fontSize: fs(12.5) }}>Phone</Text>
           <TextInput placeholder="Phone" placeholderTextColor={palette.faint} value={editCustomerPhone} onChangeText={setEditCustomerPhone} keyboardType="phone-pad" style={inputStyle} selectionColor={palette.text} />
         </View>
         <View style={{ flex: 1, gap: 6 }}>
-          <Text style={{ color: palette.muted, fontSize: 12.5 }}>Email</Text>
+          <Text style={{ color: palette.muted, fontSize: fs(12.5) }}>Email</Text>
           <TextInput placeholder="Email" placeholderTextColor={palette.faint} value={editCustomerEmail} onChangeText={setEditCustomerEmail} keyboardType="email-address" autoCapitalize="none" style={inputStyle} selectionColor={palette.text} />
         </View>
       </View>
       <View style={{ flexDirection: isDesktop ? 'row' : 'column', gap: 12 }}>
         <View style={{ flex: 1.4, gap: 6 }}>
-          <Text style={{ color: palette.muted, fontSize: 12.5 }}>Delivery address</Text>
+          <Text style={{ color: palette.muted, fontSize: fs(12.5) }}>Delivery address</Text>
           <TextInput placeholder="Delivery address" placeholderTextColor={palette.faint} value={editDeliveryAddress} onChangeText={setEditDeliveryAddress} multiline textAlignVertical="top" style={[...inputStyle, { minHeight: 72, lineHeight: 21 }]} selectionColor={palette.text} />
         </View>
         <View style={{ flex: 1, gap: 6 }}>
-          <Text style={{ color: palette.muted, fontSize: 12.5 }}>Delivery state</Text>
+          <Text style={{ color: palette.muted, fontSize: fs(12.5) }}>Delivery state</Text>
           <TextInput placeholder="State" placeholderTextColor={palette.faint} value={editDeliveryState} onChangeText={setEditDeliveryState} style={inputStyle} selectionColor={palette.text} />
         </View>
       </View>
       {accounts.length > 0 ? (
         <View style={{ gap: 8 }}>
-          <Text style={{ color: palette.muted, fontSize: 12.5 }}>Bank account shown to customer</Text>
+          <Text style={{ color: palette.muted, fontSize: fs(12.5) }}>Bank account shown to customer</Text>
           {accounts.map((account) => {
             const isSelected = editAccountId === account.id;
             return (
@@ -962,8 +969,8 @@ export default function SocialCheckoutDetailScreen() {
                   {isSelected ? <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: palette.inverseBg }} /> : null}
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>{account.bankName}</Text>
-                  <Text style={{ color: palette.muted, fontSize: 13, marginTop: 2 }}>{account.accountName} · {account.accountNumber}</Text>
+                  <Text style={{ color: palette.text, fontSize: fs(14), fontWeight: '600' }}>{account.bankName}</Text>
+                  <Text style={{ color: palette.muted, fontSize: fs(13), marginTop: 2 }}>{account.accountName} · {account.accountNumber}</Text>
                 </View>
               </Pressable>
             );
@@ -972,7 +979,7 @@ export default function SocialCheckoutDetailScreen() {
       ) : null}
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
         <Pressable onPress={handleCancelEdit} disabled={isSavingEdit} style={(state) => ({ ...outlineButton(state), flex: 1 })}>
-          <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>Cancel</Text>
+          <Text style={{ color: palette.text, fontSize: fs(14), fontWeight: '600' }}>Cancel</Text>
         </Pressable>
         <Pressable
           onPress={handleSaveEdit}
@@ -980,7 +987,7 @@ export default function SocialCheckoutDetailScreen() {
           style={(state) => ({ height: 44, flex: 1.3, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: palette.inverseBg, opacity: state.pressed || isSavingEdit ? 0.8 : 1 })}
         >
           {isSavingEdit ? <ActivityIndicator color={palette.inverseText} size="small" /> : <Save size={15} color={palette.inverseText} strokeWidth={2.2} />}
-          <Text style={{ color: palette.inverseText, fontSize: 14, fontWeight: '600' }}>Save changes</Text>
+          <Text style={{ color: palette.inverseText, fontSize: fs(14), fontWeight: '600' }}>Save changes</Text>
         </Pressable>
       </View>
     </View>
@@ -989,7 +996,7 @@ export default function SocialCheckoutDetailScreen() {
   const messageSection = (
     <View style={{ ...cardStyle, padding: 16, gap: 10 }}>
       <SectionLabel palette={palette}>Message preview</SectionLabel>
-      <Text style={{ color: palette.textSoft, fontSize: 14, lineHeight: 21.5 }} selectable>{customerMessage}</Text>
+      <Text style={{ color: palette.textSoft, fontSize: fs(14), lineHeight: 21.5 }} selectable>{customerMessage}</Text>
     </View>
   );
 
@@ -1002,8 +1009,8 @@ export default function SocialCheckoutDetailScreen() {
     >
       <Image source={{ uri: draft.proofImageUrl }} style={{ width: 52, height: 52, borderRadius: 10 }} resizeMode="cover" />
       <View style={{ flex: 1 }}>
-        <Text style={{ color: palette.text, fontSize: 14.5, fontWeight: '600' }}>Payment receipt</Text>
-        <Text style={{ color: palette.faint, fontSize: 12.5, marginTop: 2 }}>
+        <Text style={{ color: palette.text, fontSize: fs(14.5), fontWeight: '600' }}>Payment receipt</Text>
+        <Text style={{ color: palette.faint, fontSize: fs(12.5), marginTop: 2 }}>
           {draft.submittedAt ? `Uploaded ${formatShortTimestamp(draft.submittedAt)}` : 'Tap to view full size'}
         </Text>
       </View>
@@ -1018,8 +1025,8 @@ export default function SocialCheckoutDetailScreen() {
         <SectionLabel palette={palette}>Paid into</SectionLabel>
       </View>
       <View style={{ gap: 2 }}>
-        <Text style={{ color: palette.text, fontSize: 15, fontWeight: '600' }} numberOfLines={1}>{draft.bankAccount.bankName}</Text>
-        <Text style={{ color: palette.muted, fontSize: 13.5 }} numberOfLines={1} selectable>{draft.bankAccount.accountName} · {draft.bankAccount.accountNumber}</Text>
+        <Text style={{ color: palette.text, fontSize: fs(15), fontWeight: '600' }} numberOfLines={1}>{draft.bankAccount.bankName}</Text>
+        <Text style={{ color: palette.muted, fontSize: fs(13.5) }} numberOfLines={1} selectable>{draft.bankAccount.accountName} · {draft.bankAccount.accountNumber}</Text>
       </View>
     </View>
   );
@@ -1038,8 +1045,8 @@ export default function SocialCheckoutDetailScreen() {
               {!isLatest ? <View style={{ width: 1.5, flex: 1, marginVertical: 4, backgroundColor: palette.hairline }} /> : null}
             </View>
             <View style={{ flex: 1, gap: 2, paddingBottom: isLatest ? 0 : 14 }}>
-              <Text style={{ color: palette.text, fontSize: 14, fontWeight: '500' }}>{entry.action}</Text>
-              <Text style={{ color: palette.faint, fontSize: 12.5 }}>{entry.actor} · {formatShortTimestamp(entry.createdAt)}</Text>
+              <Text style={{ color: palette.text, fontSize: fs(14), fontWeight: '500' }}>{entry.action}</Text>
+              <Text style={{ color: palette.faint, fontSize: fs(12.5) }}>{entry.actor} · {formatShortTimestamp(entry.createdAt)}</Text>
             </View>
           </View>
         );
@@ -1062,7 +1069,7 @@ export default function SocialCheckoutDetailScreen() {
     <View className="flex-1 flex-row" style={{ backgroundColor: palette.page }}>
       {isDesktop ? <DesktopSidebar /> : null}
       <SafeAreaView className="flex-1" edges={['top']}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: isDesktop ? 20 : 8, paddingTop: isDesktop ? 18 : 4, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: palette.hairline }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: isDesktop ? 20 : 8, paddingTop: isDesktop ? 18 : 14, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: palette.hairline }}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Back to payments"
@@ -1072,8 +1079,11 @@ export default function SocialCheckoutDetailScreen() {
             <ChevronLeft size={21} color={palette.text} strokeWidth={2.2} />
           </Pressable>
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ color: palette.text, fontSize: 16, fontWeight: '600' }}>Payment</Text>
-            <Text style={{ color: palette.faint, fontSize: 12.5, letterSpacing: 0.3 }} numberOfLines={1} selectable>SC-{draft.id}</Text>
+            <Text style={{ color: palette.text, fontSize: 18, fontWeight: '600' }}>Payment</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="Copy payment reference" onPress={() => { void Clipboard.setStringAsync(`SC-${draft.id}`); setRefCopied(true); setTimeout(() => setRefCopied(false), 1600); }} style={(state) => ({ flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', maxWidth: '100%', opacity: state.pressed ? 0.6 : 1 })}>
+              <Text style={{ color: palette.faint, fontSize: 16, letterSpacing: 0.3, flexShrink: 1 }} numberOfLines={1}>SC-{draft.id}</Text>
+              {refCopied ? <Check size={14} color={palette.text} strokeWidth={2.6} /> : <Copy size={14} color={palette.faint} strokeWidth={2.2} />}
+            </Pressable>
           </View>
           <Pressable
             accessibilityRole="button"
@@ -1151,7 +1161,7 @@ export default function SocialCheckoutDetailScreen() {
                     style={(state) => ({ height: 52, borderRadius: 14, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: state.pressed || isHovered(state) ? palette.softFill : 'transparent' })}
                   >
                     <Icon size={18} color={action.tone ? color : palette.muted} strokeWidth={2.1} />
-                    <Text style={{ color, fontSize: 15, fontWeight: '500' }}>{action.label}</Text>
+                    <Text style={{ color, fontSize: fs(15), fontWeight: '500' }}>{action.label}</Text>
                   </Pressable>
                 );
               })}
@@ -1178,7 +1188,7 @@ export default function SocialCheckoutDetailScreen() {
               <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 14 }}>
                 <View style={{ flex: 1 }}>
                   <Text style={{ color: palette.text, fontSize: 17, fontWeight: '600' }}>{linkedOrder ? 'Replace linked order' : 'Link existing order'}</Text>
-                  <Text style={{ color: palette.muted, fontSize: 13.5, marginTop: 3 }}>Choose the order that should receive this payment.</Text>
+                  <Text style={{ color: palette.muted, fontSize: fs(13.5), marginTop: 3 }}>Choose the order that should receive this payment.</Text>
                 </View>
                 <Pressable
                   accessibilityRole="button"
@@ -1195,7 +1205,7 @@ export default function SocialCheckoutDetailScreen() {
                   onChangeText={setOrderSearchQuery}
                   placeholder="Search order, customer, phone"
                   placeholderTextColor={palette.faint}
-                  style={[{ flex: 1, color: palette.text, fontSize: 14 }, noWebOutline]}
+                  style={[{ flex: 1, color: palette.text, fontSize: fs(14) }, noWebOutline]}
                   selectionColor={palette.text}
                 />
                 <SearchClearButton visible={Boolean(orderSearchQuery.trim())} onPress={() => setOrderSearchQuery('')} />
@@ -1213,25 +1223,25 @@ export default function SocialCheckoutDetailScreen() {
                         <InitialsAvatar name={order.customerName || ''} palette={palette} size={34} />
                         <View style={{ flex: 1, minWidth: 0 }}>
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                            <Text style={{ color: palette.text, fontSize: 14.5, fontWeight: '600' }} numberOfLines={1}>{order.orderNumber}</Text>
+                            <Text style={{ color: palette.text, fontSize: fs(14.5), fontWeight: '600' }} numberOfLines={1}>{order.orderNumber}</Text>
                             {sameCustomer ? (
                               <View style={{ height: 20, paddingHorizontal: 8, borderRadius: 999, justifyContent: 'center', backgroundColor: palette.tones.verified.bg }}>
-                                <Text style={{ color: palette.tones.verified.ink, fontSize: 11, fontWeight: '600' }}>Same customer</Text>
+                                <Text style={{ color: palette.tones.verified.ink, fontSize: fs(11), fontWeight: '600' }}>Same customer</Text>
                               </View>
                             ) : null}
                           </View>
-                          <Text style={{ color: palette.muted, fontSize: 13, marginTop: 2 }} numberOfLines={1}>
+                          <Text style={{ color: palette.muted, fontSize: fs(13), marginTop: 2 }} numberOfLines={1}>
                             {order.customerName || 'No customer'} · {formatShortTimestamp(order.createdAt)} · {order.status}
                           </Text>
                         </View>
-                        <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{formatCurrency(order.totalAmount)}</Text>
+                        <Text style={{ color: palette.text, fontSize: fs(14), fontWeight: '600', fontVariant: ['tabular-nums'] }}>{formatCurrency(order.totalAmount)}</Text>
                       </Pressable>
                     );
                   })
                 ) : (
                   <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 40 }}>
                     <FileText size={22} color={palette.faint} strokeWidth={1.8} />
-                    <Text style={{ color: palette.muted, fontSize: 14, marginTop: 8, textAlign: 'center' }}>No matching orders found.</Text>
+                    <Text style={{ color: palette.muted, fontSize: fs(14), marginTop: 8, textAlign: 'center' }}>No matching orders found.</Text>
                   </View>
                 )}
               </ScrollView>
@@ -1243,7 +1253,7 @@ export default function SocialCheckoutDetailScreen() {
           <Pressable style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20, backgroundColor: 'rgba(0,0,0,0.86)' }} onPress={() => setShowProofLightbox(false)}>
             <Pressable onPress={(event) => event.stopPropagation()} style={{ width: '100%', maxWidth: 860 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '600' }}>Payment receipt</Text>
+                <Text style={{ color: '#FFFFFF', fontSize: fs(14), fontWeight: '600' }}>Payment receipt</Text>
                 <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={() => setShowProofLightbox(false)} style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.14)' }}>
                   <X size={18} color="#FFFFFF" strokeWidth={2} />
                 </Pressable>

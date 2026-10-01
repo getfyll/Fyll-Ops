@@ -7,6 +7,7 @@ import { supabaseData } from "@/lib/supabase/data";
 import { supabaseSettings } from "@/lib/supabase/settings";
 import { capitalizeDisplayLabel } from "@/lib/display-format";
 import { findOrderTrackingStageByName, sanitizeOrderStatus, sanitizeOrderStatuses, type OrderTrackingStage } from "@/lib/order-status";
+import { buildCancelledOrderInventoryUpdate } from '@/lib/order-cancellation';
 import { syncFyllOrderStatusToWooCommerce } from "@/lib/woocommerce";
 import { formatAddressValue, normalizeDeliveryStateValue } from "@/lib/format-address";
 import type { DashboardSnapshot } from '@/lib/dashboard-snapshot';
@@ -453,6 +454,8 @@ export interface Order {
   updatedAt: string;
   createdBy?: string; // Staff name who created the order
   updatedBy?: string; // Staff name who last updated the order
+  inventoryRestoredAt?: string; // Set once so cancellation retries cannot return stock twice
+  inventoryRestoredBy?: string;
   activityLog?: OrderActivityEntry[]; // Trail of all staff activity
   qcPhotos?: string[]; // QC proof photos (storage paths)
   qcVerified?: boolean; // QC verified flag
@@ -3100,6 +3103,16 @@ const useFyllStore = create<FyllStore>()(
         const matchedStatusConfig = nextStatus
           ? get().orderStatuses.find((status) => status.name.trim().toLowerCase() === nextStatus.toLowerCase())
           : undefined;
+        const previousTrackingStage = previousOrder
+          ? findOrderTrackingStageByName(previousOrder.status, get().orderStatuses)
+          : undefined;
+        const nextTrackingStage = nextStatus
+          ? findOrderTrackingStageByName(nextStatus, matchedStatusConfig ? [matchedStatusConfig] : get().orderStatuses)
+          : undefined;
+        if (previousOrder && nextTrackingStage === 'cancelled' && previousTrackingStage !== 'cancelled') {
+          await get().cancelOrder(id, businessId, updates.updatedBy);
+          return;
+        }
         const websiteOrderReference = previousOrder?.websiteOrderReference?.trim() ?? '';
         const fyllCheckoutReference = previousOrder?.fyllCheckout?.reference?.trim() ?? '';
         const hasWooCommerceOrderReference = Boolean(
@@ -3376,7 +3389,6 @@ const useFyllStore = create<FyllStore>()(
 
         if (!orderToCancel) return;
 
-        const isAlreadyCancelled = (orderToCancel.status ?? '').toLowerCase().includes('cancel');
         const now = new Date().toISOString();
         const nextOrderStatuses = previousOrderStatuses.some((status) => status.name.trim().toLowerCase() === 'cancelled')
           ? previousOrderStatuses
@@ -3391,69 +3403,19 @@ const useFyllStore = create<FyllStore>()(
             },
           ];
 
-        const stockAdjustments = new Map<string, Map<string, number>>();
-        if (!isAlreadyCancelled) {
-          orderToCancel.items.forEach((item) => {
-            const product = previousProducts.find((candidate) => candidate.id === item.productId);
-            if (!product || product.productType === 'service') return;
-
-            const existingProductAdjustments = stockAdjustments.get(item.productId) ?? new Map<string, number>();
-            existingProductAdjustments.set(
-              item.variantId,
-              (existingProductAdjustments.get(item.variantId) ?? 0) + item.quantity
-            );
-            stockAdjustments.set(item.productId, existingProductAdjustments);
-          });
-        }
-
-        const nextProducts = previousProducts.map((product) => {
-          const productAdjustments = stockAdjustments.get(product.id);
-          if (!productAdjustments) return product;
-
-          return {
-            ...product,
-            variants: product.variants.map((variant) => {
-              const restoreQty = productAdjustments.get(variant.id) ?? 0;
-              if (!restoreQty) return variant;
-              return {
-                ...variant,
-                stock: Math.max(0, variant.stock + restoreQty),
-              };
-            }),
-          };
+        const cancellation = buildCancelledOrderInventoryUpdate({
+          order: orderToCancel,
+          products: previousProducts,
+          orderStatuses: previousOrderStatuses,
+          cancelledBy,
+          now,
         });
-
-        const restoredProducts = nextProducts.filter((product) => stockAdjustments.has(product.id));
-        const previousRestoredProducts = previousProducts.filter((product) => stockAdjustments.has(product.id));
-        const nextOrders = previousOrders.map((order) => {
-          if (order.id !== id) return order;
-
-          const nextActivityLog = cancelledBy
-            ? [
-              ...(order.activityLog ?? []),
-              {
-                staffName: cancelledBy,
-                action: 'Cancelled order',
-                date: now,
-              },
-            ]
-            : order.activityLog;
-
-          return {
-            ...order,
-            status: 'Cancelled',
-            ...buildSharedOrderTrackingFields('Cancelled', {
-              name: 'Cancelled',
-              trackingStage: 'cancelled',
-            }),
-            updatedAt: now,
-            updatedBy: cancelledBy ?? order.updatedBy,
-            activityLog: nextActivityLog,
-          };
-        });
-
-        const cancelledOrder = nextOrders.find((order) => order.id === id);
-        if (!cancelledOrder) return;
+        const nextProducts = cancellation.products;
+        const restoredProducts = cancellation.changedProducts;
+        const restoredProductIds = new Set(restoredProducts.map((product) => product.id));
+        const previousRestoredProducts = previousProducts.filter((product) => restoredProductIds.has(product.id));
+        const cancelledOrder = cancellation.order;
+        const nextOrders = previousOrders.map((order) => order.id === id ? cancelledOrder : order);
 
         set({
           orders: nextOrders,

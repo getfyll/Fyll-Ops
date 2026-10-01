@@ -505,13 +505,19 @@ export default function NewSocialCheckoutScreen() {
       </ScrollView>
     </View>
   ) : (
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingVertical: 18, paddingHorizontal: 20, gap: 20 }} keyboardShouldPersistTaps="handled">
+    // Phones: one scrolling page with the button at the end, so the keyboard
+    // never covers the fields or the Create button.
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingTop: 18, paddingHorizontal: 20, paddingBottom: Math.max(insets.bottom, 16) + 24, gap: 20 }} keyboardShouldPersistTaps="handled">
       {billSection}
       {accountSection}
       {customerSection}
       <View style={{ gap: 8 }}>
         <Text style={{ color: palette.faint, fontSize: 13, fontWeight: '600' }}>Message preview</Text>
         <View style={{ paddingVertical: 12, paddingHorizontal: 14, borderRadius: 14, backgroundColor: palette.isDark ? '#1E1E1E' : '#F6F6F4' }}>{messageBubble}</View>
+      </View>
+      <View style={{ gap: 10, paddingTop: 4 }}>
+        {createButton(50)}
+        <Text style={{ color: palette.faint, fontSize: 12.5, textAlign: 'center' }}>Link expires 24 hours after you create it</Text>
       </View>
     </ScrollView>
   );
@@ -597,7 +603,7 @@ export default function NewSocialCheckoutScreen() {
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         pointerEvents="box-none"
-        style={{ flex: 1, justifyContent: isDesktop ? 'center' : 'flex-end', alignItems: 'center', padding: isDesktop ? 24 : 0 }}
+        style={{ flex: 1, justifyContent: isDesktop ? 'center' : 'flex-start', alignItems: 'center', padding: isDesktop ? 24 : 0 }}
       >
         <View
           accessibilityRole="none"
@@ -605,21 +611,18 @@ export default function NewSocialCheckoutScreen() {
             {
               width: isDesktop ? 940 : '100%',
               maxWidth: '100%',
-              height: isDesktop ? Math.min(780, windowHeight - 48) : undefined,
-              maxHeight: isDesktop ? undefined : windowHeight - Math.max(insets.top, 20) - 56,
+              height: isDesktop ? Math.min(780, windowHeight - 48) : '100%',
               flexShrink: 1,
+              paddingTop: isDesktop ? 0 : insets.top,
               backgroundColor: palette.isDark ? '#161616' : '#FFFFFF',
-              borderRadius: isDesktop ? 24 : 26,
-              borderBottomLeftRadius: isDesktop ? 24 : 0,
-              borderBottomRightRadius: isDesktop ? 24 : 0,
-              borderWidth: 1,
+              borderRadius: isDesktop ? 24 : 0,
+              borderWidth: isDesktop ? 1 : 0,
               borderColor: palette.isDark ? 'rgba(255,255,255,0.08)' : '#E8E8E8',
               overflow: 'hidden',
             },
             Platform.OS === 'web' ? ({ boxShadow: '0 30px 80px rgba(0,0,0,0.5)' } as object) : { shadowColor: '#000000', shadowOpacity: 0.4, shadowRadius: 40, shadowOffset: { width: 0, height: 20 }, elevation: 24 },
           ]}
         >
-          {!isDesktop ? <View style={{ alignSelf: 'center', width: 38, height: 5, borderRadius: 3, backgroundColor: palette.outline, marginTop: 8 }} /> : null}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingTop: isDesktop ? 20 : 12, paddingBottom: isDesktop ? 18 : 14, paddingLeft: isDesktop ? 28 : 20, paddingRight: isDesktop ? 20 : 14, borderBottomWidth: 1, borderBottomColor: palette.hairline }}>
             <View style={{ flex: 1, gap: 3 }}>
               <Text style={{ color: palette.text, fontSize: isDesktop ? 18 : 17, fontWeight: '600' }}>{title}</Text>
@@ -637,7 +640,7 @@ export default function NewSocialCheckoutScreen() {
           {created ? successBody : (
             <>
               {formBody}
-              {formFooter}
+              {isDesktop ? formFooter : null}
             </>
           )}
         </View>

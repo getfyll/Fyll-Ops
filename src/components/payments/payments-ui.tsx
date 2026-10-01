@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, type PressableStateCallbackType, type TextProps } from 'react-native';
 import { useFonts, BricolageGrotesque_700Bold } from '@expo-google-fonts/bricolage-grotesque';
 import { useThemeColors, useResolvedThemeMode } from '@/lib/theme';
+import { useBreakpoint } from '@/lib/useBreakpoint';
 
 // Shared look for the Ops payments screens (list + detail). Ops stays
 // black/white; Fyll lime only marks the few things that need a tap.
@@ -79,10 +80,11 @@ export const getInitials = (name: string) => {
 
 export function StatusDot({ tone, label, palette }: { tone: StatusTone; label: string; palette: PaymentsPalette }) {
   const { ink, dot } = palette.tones[tone];
+  const fs = useMobileFont();
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, flexShrink: 0 }}>
       <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: dot }} />
-      <Text style={{ color: ink, fontSize: 12.5, fontWeight: '600' }} numberOfLines={1}>{label}</Text>
+      <Text style={{ color: ink, fontSize: fs(12.5), fontWeight: '600' }} numberOfLines={1}>{label}</Text>
     </View>
   );
 }
@@ -96,8 +98,9 @@ export function InitialsAvatar({ name, palette, size = 38 }: { name: string; pal
 }
 
 export function SectionLabel({ children, palette }: { children: React.ReactNode; palette: PaymentsPalette }) {
+  const fs = useMobileFont();
   return (
-    <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{children}</Text>
+    <Text style={{ color: palette.faint, fontSize: fs(12), fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{children}</Text>
   );
 }
 
@@ -117,4 +120,14 @@ export function MoneyText({ style, ...props }: TextProps) {
       ]}
     />
   );
+}
+
+// Phones: body text on the payments screens is 12px (main) or 10px (secondary:
+// status, captions, dates). Headings (17px+) keep their size. Desktop unchanged.
+export function useMobileFont() {
+  const { isMobile } = useBreakpoint();
+  return (size: number) => {
+    if (!isMobile || size > 16) return size;
+    return size >= 13 ? 12 : 10;
+  };
 }

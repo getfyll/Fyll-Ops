@@ -102,4 +102,15 @@ describe('Fyll Checkout WooCommerce order references', () => {
       price: 4500,
     }]);
   });
+
+  test('turns a rejected checkout payment into a cancelled order', () => {
+    const rows = buildRows({
+      ...checkoutPayload,
+      paymentStatus: 'rejected',
+    }, []);
+
+    expect(rows.payment.status).toBe('rejected');
+    expect(rows.order.status).toBe('Cancelled');
+    expect(rows.order.orderStatus).toBe('Cancelled');
+  });
 });

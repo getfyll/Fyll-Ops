@@ -129,7 +129,7 @@ describe('verified dashboard snapshot', () => {
       auditLogs: [{ id: 'audit-a', month: 8, year: 2026 }] as never,
     });
 
-    expect(snapshot.schemaVersion).toBe(2);
+    expect(snapshot.schemaVersion).toBe(3);
     expect(snapshot.revenueTrend7d.total).toBe(800);
     expect(snapshot.revenueTrend7d.ordersTotal).toBe(2);
     expect(snapshot.mostSoldProducts[0]).toEqual({
@@ -157,5 +157,59 @@ describe('verified dashboard snapshot', () => {
     expect(snapshot.hasAuditForPeriod).toBe(true);
     expect(isCompleteDashboardSnapshot(snapshot)).toBe(true);
     expect(isCompleteDashboardSnapshot({ businessId: 'legacy' } as never)).toBe(false);
+  });
+
+  test('excludes cancelled and rejected-payment orders from every sales metric', () => {
+    const snapshot = buildDashboardSnapshot({
+      businessId: 'business-c',
+      asOf: new Date('2026-10-01T12:00:00.000Z'),
+      products: [{
+        id: 'turkey',
+        name: 'Turkey',
+        variants: [{ id: 'turkey-black', sku: 'TURKEY-BLACK', variableValues: { Color: 'Black' } }],
+      }] as never,
+      orders: [{
+        id: 'cancelled-order',
+        orderNumber: 'FYL-CANCELLED',
+        customerName: 'Zainab Sarumi',
+        status: 'Cancelled',
+        source: 'Fyll Checkout',
+        orderDate: '2026-10-01T10:00:00.000Z',
+        createdAt: '2026-10-01T10:00:00.000Z',
+        totalAmount: 19500,
+        subtotal: 15000,
+        deliveryFee: 4500,
+        services: [],
+        items: [{ productId: 'turkey', variantId: 'turkey-black', quantity: 1 }],
+      }, {
+        id: 'failed-order',
+        orderNumber: 'FYL-FAILED',
+        customerName: 'Failed Customer',
+        status: 'Payment failed',
+        source: 'Fyll Checkout',
+        orderDate: '2026-10-01T11:00:00.000Z',
+        createdAt: '2026-10-01T11:00:00.000Z',
+        totalAmount: 9000,
+        subtotal: 9000,
+        deliveryFee: 0,
+        services: [],
+        items: [{ productId: 'turkey', variantId: 'turkey-black', quantity: 1 }],
+      }] as never,
+      customers: [] as never,
+      cases: [] as never,
+      partnerJobs: [] as never,
+    });
+
+    expect(snapshot.totalRevenue).toBe(0);
+    expect(snapshot.productSales).toBe(0);
+    expect(snapshot.deliveryFees).toBe(0);
+    expect(snapshot.pendingOrders).toBe(0);
+    expect(snapshot.revenueTrend7d.total).toBe(0);
+    expect(snapshot.revenueTrend7d.ordersTotal).toBe(0);
+    expect(snapshot.mostSoldProducts).toEqual([]);
+    expect(snapshot.platformBreakdown).toEqual([]);
+    expect(snapshot.newOrdersLast24Hours).toBe(0);
+    expect(snapshot.totalOrders).toBe(2);
+    expect(snapshot.recentOrders).toHaveLength(2);
   });
 });

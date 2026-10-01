@@ -8,7 +8,7 @@ import useAuthStore from '@/lib/state/auth-store';
 import { supabaseData } from '@/lib/supabase/data';
 import { notifyFyllCheckoutPaymentConfirmed, showFyllCheckoutSyncFailedNotice } from '@/lib/fyll-checkout-confirmation';
 import useFyllStore, { formatCurrency, generateOrderNumber, getSocialCheckoutEffectiveStatus, type Order, type OrderActivityEntry, type SocialCheckoutStatus } from '@/lib/state/fyll-store';
-import { FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, InitialsAvatar, MoneyText, StatusDot, isHovered, isUnsuccessfulTone, usePaymentsPalette, type PaymentsPalette, type StatusTone } from '@/components/payments/payments-ui';
+import { FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, InitialsAvatar, MoneyText, StatusDot, isHovered, isUnsuccessfulTone, usePaymentsPalette, type PaymentsPalette, type StatusTone, useMobileFont } from '@/components/payments/payments-ui';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
 import { DESKTOP_PAGE_HEADER_MIN_HEIGHT, getStandardPageHeadingStyle } from '@/lib/page-heading';
@@ -301,6 +301,7 @@ const SOURCE_LABEL: Record<PaymentSource, string> = {
 };
 
 function ConfirmPill({ action, compact = false }: { action: NonNullable<PaymentRecord['confirmAction']>; compact?: boolean }) {
+  const fs = useMobileFont();
   return (
     <Pressable
       accessibilityRole="button"
@@ -326,7 +327,7 @@ function ConfirmPill({ action, compact = false }: { action: NonNullable<PaymentR
       ) : (
         <>
           <Check size={13} color={FYLL_LIME_INK} strokeWidth={2.6} />
-          <Text style={{ color: FYLL_LIME_INK, fontSize: 12.5, fontWeight: '600' }}>Confirm</Text>
+          <Text style={{ color: FYLL_LIME_INK, fontSize: fs(12.5), fontWeight: '600' }}>Confirm</Text>
         </>
       )}
     </Pressable>
@@ -344,6 +345,7 @@ function PaymentListRow({
   isFirst: boolean;
   onOpenActions: (record: PaymentRecord) => void;
 }) {
+  const fs = useMobileFont();
   const unsuccessful = isUnsuccessfulTone(record.tone);
   const hasMoreActions = Boolean(record.editAction || record.deleteAction || record.confirmAction);
   return (
@@ -370,13 +372,13 @@ function PaymentListRow({
       <InitialsAvatar name={record.customerName} palette={palette} />
       <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
-          <Text style={{ flex: 1, color: palette.text, fontSize: 15, fontWeight: '500' }} numberOfLines={1}>
+          <Text style={{ flex: 1, color: palette.text, fontSize: fs(15), fontWeight: '500' }} numberOfLines={1}>
             {record.customerName && record.customerName !== '—' ? record.customerName : 'Awaiting customer'}
           </Text>
           <Text
             style={{
               color: unsuccessful ? palette.faint : palette.text,
-              fontSize: 15,
+              fontSize: fs(15),
               fontWeight: '600',
               textDecorationLine: unsuccessful ? 'line-through' : 'none',
               fontVariant: ['tabular-nums'],
@@ -388,7 +390,7 @@ function PaymentListRow({
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
           <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 5 }}>
             <SourceIcon source={record.source} color={palette.faint} />
-            <Text style={{ flex: 1, color: palette.faint, fontSize: 12.5 }} numberOfLines={1}>
+            <Text style={{ flex: 1, color: palette.faint, fontSize: fs(12.5) }} numberOfLines={1}>
               {record.reference} · {record.orderNumber ?? 'No order yet'}
             </Text>
           </View>
@@ -396,7 +398,7 @@ function PaymentListRow({
         </View>
         {record.amountCaption || record.confirmAction ? (
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginTop: 4 }}>
-            <Text style={{ color: palette.faint, fontSize: 12 }} numberOfLines={1}>{record.amountCaption ?? 'Receipt uploaded'}</Text>
+            <Text style={{ color: palette.faint, fontSize: fs(12) }} numberOfLines={1}>{record.amountCaption ?? 'Receipt uploaded'}</Text>
             {record.confirmAction ? <ConfirmPill action={record.confirmAction} compact /> : null}
           </View>
         ) : null}
@@ -417,6 +419,7 @@ const DESKTOP_COLUMNS = {
 } as const;
 
 function PaymentTableRow({ record, palette, isLast }: { record: PaymentRecord; palette: PaymentsPalette; isLast: boolean }) {
+  const fs = useMobileFont();
   const unsuccessful = isUnsuccessfulTone(record.tone);
   return (
     <Pressable
@@ -433,28 +436,28 @@ function PaymentTableRow({ record, palette, isLast }: { record: PaymentRecord; p
     >
       <View style={{ ...DESKTOP_COLUMNS.customer, flexDirection: 'row', alignItems: 'center', gap: 10, paddingRight: 10 }}>
         <InitialsAvatar name={record.customerName} palette={palette} size={32} />
-        <Text style={{ flex: 1, color: palette.text, fontSize: 14, fontWeight: '500' }} numberOfLines={1}>
+        <Text style={{ flex: 1, color: palette.text, fontSize: fs(14), fontWeight: '500' }} numberOfLines={1}>
           {record.customerName && record.customerName !== '—' ? record.customerName : 'Awaiting customer'}
         </Text>
       </View>
-      <Text style={{ ...DESKTOP_COLUMNS.reference, color: palette.textSoft, fontSize: 13.5, paddingRight: 10 }} numberOfLines={1}>{record.reference}</Text>
-      <Text style={{ ...DESKTOP_COLUMNS.order, color: record.orderNumber ? palette.textSoft : palette.faint, fontSize: 13.5, paddingRight: 10 }} numberOfLines={1}>
+      <Text style={{ ...DESKTOP_COLUMNS.reference, color: palette.textSoft, fontSize: fs(13.5), paddingRight: 10 }} numberOfLines={1}>{record.reference}</Text>
+      <Text style={{ ...DESKTOP_COLUMNS.order, color: record.orderNumber ? palette.textSoft : palette.faint, fontSize: fs(13.5), paddingRight: 10 }} numberOfLines={1}>
         {record.orderNumber ?? 'No order yet'}
       </Text>
       <View style={{ ...DESKTOP_COLUMNS.amount, paddingRight: 10 }}>
-        <Text style={{ color: unsuccessful ? palette.faint : palette.text, fontSize: 14, fontWeight: '600', textDecorationLine: unsuccessful ? 'line-through' : 'none', fontVariant: ['tabular-nums'] }}>
+        <Text style={{ color: unsuccessful ? palette.faint : palette.text, fontSize: fs(14), fontWeight: '600', textDecorationLine: unsuccessful ? 'line-through' : 'none', fontVariant: ['tabular-nums'] }}>
           {formatCurrency(record.amount)}
         </Text>
-        {record.amountCaption ? <Text style={{ color: palette.faint, fontSize: 11, marginTop: 2 }} numberOfLines={1}>{record.amountCaption}</Text> : null}
+        {record.amountCaption ? <Text style={{ color: palette.faint, fontSize: fs(11), marginTop: 2 }} numberOfLines={1}>{record.amountCaption}</Text> : null}
       </View>
       <View style={{ ...DESKTOP_COLUMNS.source, flexDirection: 'row', alignItems: 'center', gap: 6, paddingRight: 10 }}>
         <SourceIcon source={record.source} color={palette.faint} size={13} />
-        <Text style={{ color: palette.muted, fontSize: 13 }} numberOfLines={1}>{SOURCE_LABEL[record.source]}</Text>
+        <Text style={{ color: palette.muted, fontSize: fs(13) }} numberOfLines={1}>{SOURCE_LABEL[record.source]}</Text>
       </View>
       <View style={{ ...DESKTOP_COLUMNS.status, paddingRight: 10 }}>
         <StatusDot tone={record.tone} label={record.statusLabel} palette={palette} />
       </View>
-      <Text style={{ ...DESKTOP_COLUMNS.date, color: palette.faint, fontSize: 13, paddingRight: 10 }} numberOfLines={1}>{record.createdLabel}</Text>
+      <Text style={{ ...DESKTOP_COLUMNS.date, color: palette.faint, fontSize: fs(13), paddingRight: 10 }} numberOfLines={1}>{record.createdLabel}</Text>
       <View style={{ ...DESKTOP_COLUMNS.actions, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
         {record.confirmAction ? <ConfirmPill action={record.confirmAction} compact /> : null}
         {record.deleteAction ? (
@@ -482,13 +485,14 @@ function PaymentTableRow({ record, palette, isLast }: { record: PaymentRecord; p
             )}
           </Pressable>
         ) : null}
-        {!record.confirmAction && !record.deleteAction ? <Text style={{ color: palette.faint, fontSize: 13 }}>—</Text> : null}
+        {!record.confirmAction && !record.deleteAction ? <Text style={{ color: palette.faint, fontSize: fs(13) }}>—</Text> : null}
       </View>
     </Pressable>
   );
 }
 
 function PaymentActionSheet({ record, palette, onClose }: { record: PaymentRecord | null; palette: PaymentsPalette; onClose: () => void }) {
+  const fs = useMobileFont();
   const insets = useSafeAreaInsets();
   if (!record) return null;
   const run = (action?: () => void) => {
@@ -513,33 +517,33 @@ function PaymentActionSheet({ record, palette, onClose }: { record: PaymentRecor
         >
           <View style={{ alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: palette.isDark ? 'rgba(255,255,255,0.18)' : '#DDDDDD', marginBottom: 12 }} />
           <View style={{ paddingHorizontal: 14, paddingBottom: 10 }}>
-            <Text style={{ color: palette.text, fontSize: 16, fontWeight: '600' }} numberOfLines={1}>
+            <Text style={{ color: palette.text, fontSize: fs(16), fontWeight: '600' }} numberOfLines={1}>
               {record.customerName && record.customerName !== '—' ? record.customerName : 'Awaiting customer'} · {formatCurrency(record.amount)}
             </Text>
-            <Text style={{ color: palette.faint, fontSize: 13, marginTop: 2 }}>{record.reference}</Text>
+            <Text style={{ color: palette.faint, fontSize: fs(13), marginTop: 2 }}>{record.reference}</Text>
           </View>
           {record.confirmAction ? (
             <Pressable onPress={() => run(record.confirmAction?.onConfirm)} style={optionStyle}>
               <View style={{ width: 28, height: 28, borderRadius: 9, backgroundColor: FYLL_LIME, alignItems: 'center', justifyContent: 'center' }}>
                 <Check size={15} color={FYLL_LIME_INK} strokeWidth={2.6} />
               </View>
-              <Text style={{ color: palette.text, fontSize: 15, fontWeight: '600' }}>Confirm payment</Text>
+              <Text style={{ color: palette.text, fontSize: fs(15), fontWeight: '600' }}>Confirm payment</Text>
             </Pressable>
           ) : null}
           <Pressable onPress={() => run(record.onPress)} style={optionStyle}>
             <ChevronRight size={18} color={palette.muted} strokeWidth={2} style={{ marginHorizontal: 5 }} />
-            <Text style={{ color: palette.text, fontSize: 15, fontWeight: '500' }}>Open payment</Text>
+            <Text style={{ color: palette.text, fontSize: fs(15), fontWeight: '500' }}>Open payment</Text>
           </Pressable>
           {record.editAction ? (
             <Pressable onPress={() => run(record.editAction?.onEdit)} style={optionStyle}>
               <Pencil size={17} color={palette.muted} strokeWidth={2.2} style={{ marginHorizontal: 5 }} />
-              <Text style={{ color: palette.text, fontSize: 15, fontWeight: '500' }}>Edit</Text>
+              <Text style={{ color: palette.text, fontSize: fs(15), fontWeight: '500' }}>Edit</Text>
             </Pressable>
           ) : null}
           {record.deleteAction ? (
             <Pressable onPress={() => run(record.deleteAction?.onDelete)} style={optionStyle}>
               <Trash2 size={17} color={palette.danger} strokeWidth={2.2} style={{ marginHorizontal: 5 }} />
-              <Text style={{ color: palette.danger, fontSize: 15, fontWeight: '500' }}>Delete</Text>
+              <Text style={{ color: palette.danger, fontSize: fs(15), fontWeight: '500' }}>Delete</Text>
             </Pressable>
           ) : null}
         </Pressable>
@@ -605,6 +609,7 @@ const isPaymentInPeriod = (iso: string, period: PaymentPeriod) => {
 };
 
 export default function PaymentsScreen() {
+  const fs = useMobileFont();
   const router = useRouter();
   const { seedFyllCheckout } = useLocalSearchParams<{ seedFyllCheckout?: string | string[] }>();
   const tabBarHeight = useTabBarHeight();
@@ -1121,7 +1126,7 @@ export default function PaymentsScreen() {
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={{ color: palette.text, ...pageHeadingStyle }} numberOfLines={1}>Payments</Text>
             {!isMobile ? (
-              <Text style={{ color: palette.muted, fontSize: 14, lineHeight: 20, marginTop: 4 }}>
+              <Text style={{ color: palette.muted, fontSize: fs(14), lineHeight: 20, marginTop: 4 }}>
                 Storefront payments and payment links in one view.
               </Text>
             ) : null}
@@ -1143,7 +1148,7 @@ export default function PaymentsScreen() {
                 })}
               >
                 <Landmark size={16} color={palette.text} strokeWidth={2} />
-                <Text style={{ color: palette.text, fontSize: 14, fontWeight: '500' }}>Bank accounts</Text>
+                <Text style={{ color: palette.text, fontSize: fs(14), fontWeight: '500' }}>Bank accounts</Text>
               </Pressable>
             ) : null}
             <Pressable
@@ -1162,7 +1167,7 @@ export default function PaymentsScreen() {
               })}
             >
               <Plus size={15} color={FYLL_LIME_INK} strokeWidth={2.6} />
-              <Text style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '600' }}>{isMobile ? 'New' : 'New payment'}</Text>
+              <Text style={{ color: FYLL_LIME_INK, fontSize: fs(14), fontWeight: '600' }}>{isMobile ? 'New' : 'New payment'}</Text>
             </Pressable>
           </View>
         </View>
@@ -1218,7 +1223,7 @@ export default function PaymentsScreen() {
                         backgroundColor: selected ? palette.inverseBg : isHovered(state) ? (palette.isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)') : 'transparent',
                       })}
                     >
-                      <Text style={{ color: selected ? palette.inverseText : palette.muted, fontSize: 13, fontWeight: '600' }}>{option.label}</Text>
+                      <Text style={{ color: selected ? palette.inverseText : palette.muted, fontSize: fs(13), fontWeight: '600' }}>{option.label}</Text>
                     </Pressable>
                   );
                 })}
@@ -1239,11 +1244,11 @@ export default function PaymentsScreen() {
                 }}
               >
                 <View style={{ flex: isDesktop ? 1.6 : undefined, gap: 4, paddingRight: isDesktop ? 24 : 0 }}>
-                  <Text style={{ color: palette.muted, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>Verified</Text>
+                  <Text style={{ color: palette.muted, fontSize: fs(12), fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>Verified</Text>
                   <MoneyText style={{ color: palette.text, fontSize: 34, lineHeight: 40, letterSpacing: -1 }} numberOfLines={1} adjustsFontSizeToFit>
                     {formatCurrency(verifiedAmount)}
                   </MoneyText>
-                  <Text style={{ color: palette.faint, fontSize: 13 }}>Storefront orders and payment links</Text>
+                  <Text style={{ color: palette.faint, fontSize: fs(13) }}>Storefront orders and payment links</Text>
                 </View>
                 {!isDesktop ? <View style={{ height: 1, backgroundColor: palette.hairline }} /> : null}
                 <View style={{ flex: isDesktop ? 2.4 : undefined, flexDirection: 'row', gap: isDesktop ? 0 : 12 }}>
@@ -1269,7 +1274,7 @@ export default function PaymentsScreen() {
                     >
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                         {metric.dot ? <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: metric.dot }} /> : null}
-                        <Text style={{ color: palette.muted, fontSize: 12 }}>{metric.label}</Text>
+                        <Text style={{ color: palette.muted, fontSize: fs(12) }}>{metric.label}</Text>
                       </View>
                       <Text style={{ color: palette.text, fontSize: isDesktop ? 22 : 18, fontWeight: '600', fontVariant: ['tabular-nums'] }} numberOfLines={1} adjustsFontSizeToFit>{metric.value}</Text>
                     </Pressable>
@@ -1299,10 +1304,10 @@ export default function PaymentsScreen() {
                     <AlertTriangle size={16} color={FYLL_LIME_INK} strokeWidth={2.4} />
                   </View>
                   <View style={{ flex: 1, gap: 1, flexDirection: isDesktop ? 'row' : 'column', alignItems: isDesktop ? 'center' : undefined, columnGap: 10 }}>
-                    <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>{attention.title}</Text>
-                    <Text style={{ color: palette.nudgeSub, fontSize: 12.5, flexShrink: 1 }} numberOfLines={1}>{attention.caption}</Text>
+                    <Text style={{ color: palette.text, fontSize: fs(14), fontWeight: '600' }}>{attention.title}</Text>
+                    <Text style={{ color: palette.nudgeSub, fontSize: fs(12.5), flexShrink: 1 }} numberOfLines={1}>{attention.caption}</Text>
                   </View>
-                  {isDesktop ? <Text style={{ color: palette.isDark ? FYLL_LIME : '#5B6A0E', fontSize: 13, fontWeight: '600' }}>View</Text> : null}
+                  {isDesktop ? <Text style={{ color: palette.isDark ? FYLL_LIME : '#5B6A0E', fontSize: fs(13), fontWeight: '600' }}>View</Text> : null}
                   <ChevronRight size={16} color={palette.isDark ? FYLL_LIME : '#5B6A0E'} strokeWidth={2.2} />
                 </Pressable>
               ) : null}
@@ -1331,7 +1336,7 @@ export default function PaymentsScreen() {
                     onChangeText={setSearchQuery}
                     onFocus={() => setSearchFocused(true)}
                     onBlur={() => setSearchFocused(false)}
-                    style={[{ flex: 1, height: 46, marginLeft: 10, paddingVertical: 0, color: palette.text, fontSize: 15 }, Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null]}
+                    style={[{ flex: 1, height: 46, marginLeft: 10, paddingVertical: 0, color: palette.text, fontSize: fs(15) }, Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null]}
                     selectionColor={palette.text}
                   />
                   <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
@@ -1362,9 +1367,9 @@ export default function PaymentsScreen() {
                           backgroundColor: isActive ? palette.inverseBg : isHovered(state) ? (palette.isDark ? 'rgba(255,255,255,0.05)' : '#F6F6F6') : 'transparent',
                         })}
                       >
-                        <Text style={{ color: isActive ? palette.inverseText : palette.textSoft, fontSize: 13, fontWeight: '600' }}>{chip.label}</Text>
+                        <Text style={{ color: isActive ? palette.inverseText : palette.textSoft, fontSize: fs(13), fontWeight: '600' }}>{chip.label}</Text>
                         {chip.count > 0 ? (
-                          <Text style={{ color: isActive ? palette.inverseText : palette.textSoft, opacity: 0.55, fontSize: 13, fontWeight: '600' }}>{chip.count}</Text>
+                          <Text style={{ color: isActive ? palette.inverseText : palette.textSoft, opacity: 0.55, fontSize: fs(13), fontWeight: '600' }}>{chip.count}</Text>
                         ) : null}
                       </Pressable>
                     );
@@ -1377,10 +1382,10 @@ export default function PaymentsScreen() {
                   <View style={{ width: 56, height: 56, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.avatarBg, marginBottom: 14 }}>
                     <Wallet size={26} color={palette.muted} strokeWidth={1.6} />
                   </View>
-                  <Text style={{ color: palette.text, fontSize: 16, fontWeight: '600', marginBottom: 4 }}>
+                  <Text style={{ color: palette.text, fontSize: fs(16), fontWeight: '600', marginBottom: 4 }}>
                     {searchQuery.trim() || statusFilter ? 'No matching payments' : 'No payments yet'}
                   </Text>
-                  <Text style={{ color: palette.muted, fontSize: 14, textAlign: 'center', maxWidth: 300, marginBottom: 16 }}>
+                  <Text style={{ color: palette.muted, fontSize: fs(14), textAlign: 'center', maxWidth: 300, marginBottom: 16 }}>
                     {searchQuery.trim() || statusFilter
                       ? 'Try another search or filter.'
                       : 'Storefront orders and payment links you send will show up here.'}
@@ -1390,7 +1395,7 @@ export default function PaymentsScreen() {
                       onPress={handleNewLink}
                       style={(state) => ({ height: 44, paddingHorizontal: 18, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: isHovered(state) ? FYLL_LIME_HOVER : FYLL_LIME })}
                     >
-                      <Text style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '600' }}>Create payment link</Text>
+                      <Text style={{ color: FYLL_LIME_INK, fontSize: fs(14), fontWeight: '600' }}>Create payment link</Text>
                     </Pressable>
                   ) : null}
                 </View>
@@ -1409,7 +1414,7 @@ export default function PaymentsScreen() {
                     ] as const).map(([key, label]) => (
                       <Text
                         key={key}
-                        style={{ ...DESKTOP_COLUMNS[key], color: palette.faint, fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', paddingRight: 10, textAlign: key === 'actions' ? 'right' : 'left' }}
+                        style={{ ...DESKTOP_COLUMNS[key], color: palette.faint, fontSize: fs(11.5), fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', paddingRight: 10, textAlign: key === 'actions' ? 'right' : 'left' }}
                       >
                         {label}
                       </Text>
@@ -1423,7 +1428,7 @@ export default function PaymentsScreen() {
                 <View style={{ gap: 18, marginTop: 4 }}>
                   {dayGroups.map((group) => (
                     <View key={group.day} style={{ gap: 8 }}>
-                      <Text style={{ paddingHorizontal: 4, color: palette.faint, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{group.day}</Text>
+                      <Text style={{ paddingHorizontal: 4, color: palette.faint, fontSize: fs(12), fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{group.day}</Text>
                       <View style={{ borderRadius: 18, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, paddingHorizontal: 14 }}>
                         {group.rows.map((record, index) => (
                           <PaymentListRow key={record.id} record={record} palette={palette} isFirst={index === 0} onOpenActions={setActionRecord} />
@@ -1432,13 +1437,39 @@ export default function PaymentsScreen() {
                     </View>
                   ))}
                   {paymentRecords.some((record) => record.editAction || record.deleteAction) ? (
-                    <Text style={{ color: palette.faint, fontSize: 12, textAlign: 'center', marginTop: 2 }}>Press and hold a payment for more actions</Text>
+                    <Text style={{ color: palette.faint, fontSize: fs(12), textAlign: 'center', marginTop: 2 }}>Press and hold a payment for more actions</Text>
                   ) : null}
                 </View>
               )}
             </View>
           )}
         </ScrollView>
+        {isMobile ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="New payment link"
+            onPress={handleNewLink}
+            style={(state) => [
+              {
+                position: 'absolute',
+                right: 20,
+                bottom: Math.max(96, tabBarHeight - 48),
+                width: 56,
+                height: 56,
+                borderRadius: 28,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: FYLL_LIME,
+                transform: [{ scale: state.pressed ? 0.94 : 1 }],
+              },
+              Platform.OS === 'web'
+                ? ({ boxShadow: '0 10px 28px rgba(0,0,0,0.35)' } as object)
+                : { shadowColor: '#000000', shadowOpacity: 0.3, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
+            ]}
+          >
+            <Plus size={24} color={FYLL_LIME_INK} strokeWidth={2.6} />
+          </Pressable>
+        ) : null}
         <PaymentActionSheet record={actionRecord} palette={palette} onClose={() => setActionRecord(null)} />
       </SafeAreaView>
     </View>

@@ -207,6 +207,7 @@ export default function NewOrderScreen() {
     source?: string;
     paymentMethod?: string;
     socialCheckoutReference?: string;
+    linkPaymentId?: string;
     socialCheckoutBill?: string;
     socialCheckoutAmount?: string;
     items?: string;
@@ -1080,6 +1081,29 @@ export default function NewOrderScreen() {
       };
 
       await addOrder(order, businessId);
+
+      // Created from a storefront / website payment: link that payment to this order.
+      const linkPaymentId = typeof params.linkPaymentId === 'string' ? params.linkPaymentId.trim() : '';
+      if (linkPaymentId && businessId) {
+        try {
+          const paymentRows = await supabaseData.fetchCollection<{ id: string } & Record<string, unknown>>('payments', businessId);
+          const paymentRecord = paymentRows.find((row) => row.id === linkPaymentId || row.data?.id === linkPaymentId)?.data;
+          if (paymentRecord) {
+            const linkedAt = new Date().toISOString();
+            await supabaseData.upsertCollection('payments', businessId, [{
+              ...paymentRecord,
+              linkedOrderId: order.id,
+              linkedOrderNumber: order.orderNumber,
+              linkedOrderLinkedAt: linkedAt,
+              unlinkedOrderId: null,
+              unlinkedOrderAt: null,
+              updatedAt: linkedAt,
+            }]);
+          }
+        } catch (linkError) {
+          console.warn('Payment link update failed:', linkError);
+        }
+      }
 
       const socialCheckoutCode = /^SC-(.+)$/i.exec(socialCheckoutReference.trim())?.[1];
       if (socialCheckoutCode && businessId) {
