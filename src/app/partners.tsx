@@ -1,14 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Modal, Platform, Pressable, ScrollView, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { Modal, Pressable, ScrollView, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
+import { useFonts, BricolageGrotesque_700Bold } from '@expo-google-fonts/bricolage-grotesque';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Ban,
   Building2,
   Banknote,
   BarChart3,
-  Calendar,
   Camera,
   Check,
   ChevronDown,
@@ -24,7 +24,6 @@ import {
   Search,
   Trash2,
   Truck,
-  User as UserIcon,
   Wrench,
   X,
 } from 'lucide-react-native';
@@ -35,7 +34,7 @@ import { ResolvedAttachmentImage } from '@/components/ResolvedAttachmentImage';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
-import { useThemeColors } from '@/lib/theme';
+import { useResolvedThemeMode, useThemeColors } from '@/lib/theme';
 import { FYLL_PARTNER_PORTAL_ORIGIN } from '@/lib/partner-host';
 import { DESKTOP_PAGE_HEADER_MIN_HEIGHT, getStandardPageHeadingStyle } from '@/lib/page-heading';
 import useAuthStore from '@/lib/state/auth-store';
@@ -54,11 +53,12 @@ import { notifyPartnerJobDispatched, notifyPartnerOfIssue, notifyPartnerOfIssueR
 import { pickImageSimple } from '@/hooks/useImagePicker';
 import { uploadBusinessAttachment } from '@/lib/storage-attachments';
 import { SearchClearButton } from '@/components/SearchClearButton';
+import { FYLL_LIME, FYLL_LIME_INK } from '@/components/payments/payments-ui';
 
 const generateId = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
 type PartnerSection = 'jobs' | 'all' | 'bills' | 'issues';
-type BillPeriod = 'week' | 'month' | 'year';
+type BillPeriod = 'all' | 'week' | 'month' | 'year';
 type JobPeriod = 'all' | 'week' | 'month' | 'year';
 type StatusColorMap = Record<string, { bg: string; text: string }>;
 
@@ -76,21 +76,21 @@ const STATUS_META: Record<string, { label: string; bg: string; text: string }> =
   sent: { label: 'Sent to partner', bg: '#F4F4F0', text: '#6B7280' },
   accepted: { label: 'Job accepted', bg: 'rgba(180, 83, 9, 0.1)', text: '#B45309' },
   in_progress: { label: 'In progress', bg: 'rgba(202, 138, 4, 0.14)', text: '#A16207' },
-  ready: { label: 'Ready for pickup', bg: '#E8F0FF', text: '#3B82F6' },
-  pickup_requested: { label: 'Pickup requested', bg: '#E8F0FF', text: '#3B82F6' },
-  received: { label: 'Received', bg: '#E6F7EC', text: '#16A34A' },
-  sent_to_business: { label: 'Sent to business', bg: '#E6F7EC', text: '#16A34A' },
-  collected: { label: 'Returned to business', bg: '#E6F7EC', text: '#16A34A' },
-  billed: { label: 'Invoiced', bg: '#E6F7EC', text: '#16A34A' },
-  cancelled: { label: 'Cancelled', bg: '#FEE9E9', text: '#DC2626' },
+  ready: { label: 'Ready for pickup', bg: 'rgba(59, 130, 246, 0.12)', text: '#3B82F6' },
+  pickup_requested: { label: 'Pickup requested', bg: 'rgba(59, 130, 246, 0.12)', text: '#3B82F6' },
+  received: { label: 'Received', bg: 'rgba(22, 163, 74, 0.12)', text: '#16A34A' },
+  sent_to_business: { label: 'Sent to business', bg: 'rgba(22, 163, 74, 0.12)', text: '#16A34A' },
+  collected: { label: 'Returned to business', bg: 'rgba(22, 163, 74, 0.12)', text: '#16A34A' },
+  billed: { label: 'Invoiced', bg: 'rgba(22, 163, 74, 0.12)', text: '#16A34A' },
+  cancelled: { label: 'Cancelled', bg: 'rgba(220, 38, 38, 0.12)', text: '#DC2626' },
 };
 
 const BILL_STATUS_META: Record<PartnerBillStatus, { label: string; bg: string; text: string }> = {
-  pending: { label: 'Pending', bg: 'rgba(180, 83, 9, 0.1)', text: '#B45309' },
-  approved: { label: 'Approved', bg: '#E8F0FF', text: '#3B82F6' },
-  rejected: { label: 'Rejected', bg: '#FEE9E9', text: '#DC2626' },
-  queried: { label: 'Queried', bg: '#F3E8FF', text: '#7E22CE' },
-  paid: { label: 'Paid', bg: '#E6F7EC', text: '#16A34A' },
+  pending: { label: 'Pending', bg: 'rgba(180, 83, 9, 0.12)', text: '#B45309' },
+  approved: { label: 'Approved', bg: 'rgba(59, 130, 246, 0.12)', text: '#3B82F6' },
+  rejected: { label: 'Rejected', bg: 'rgba(220, 38, 38, 0.12)', text: '#DC2626' },
+  queried: { label: 'Queried', bg: 'rgba(126, 34, 206, 0.12)', text: '#7E22CE' },
+  paid: { label: 'Paid', bg: 'rgba(22, 163, 74, 0.12)', text: '#16A34A' },
 };
 
 type PartnerStatusFilter = 'all' | string;
@@ -101,10 +101,10 @@ const DEFAULT_PARTNER_STATUSES: PartnerJobStatus[] = ['in_progress', 'ready', 's
 const STATUS_COLOR_OPTIONS = [
   { bg: '#F4F4F0', text: '#6B7280' },
   { bg: 'rgba(180, 83, 9, 0.1)', text: '#B45309' },
-  { bg: '#E8F0FF', text: '#3B82F6' },
-  { bg: '#E6F7EC', text: '#16A34A' },
-  { bg: '#FEE9E9', text: '#DC2626' },
-  { bg: '#F3E8FF', text: '#7E22CE' },
+  { bg: 'rgba(59, 130, 246, 0.12)', text: '#3B82F6' },
+  { bg: 'rgba(22, 163, 74, 0.12)', text: '#16A34A' },
+  { bg: 'rgba(220, 38, 38, 0.12)', text: '#DC2626' },
+  { bg: 'rgba(126, 34, 206, 0.12)', text: '#7E22CE' },
 ];
 
 const mergeStatuses = (...groups: PartnerJobStatus[][]) => (
@@ -129,10 +129,10 @@ const getPartnerStatusFlow = (partner?: Partner) => (
 
 const getStatusMeta = (status: PartnerJobStatus, businessName = 'business') => {
   if (status === 'collected') {
-    return { label: 'Returned to Business', bg: '#E6F7EC', text: '#16A34A' };
+    return { label: 'Returned to Business', bg: 'rgba(22, 163, 74, 0.12)', text: '#16A34A' };
   }
   if (status === 'sent_to_business') {
-    return { label: 'Sent to Business', bg: '#E6F7EC', text: '#16A34A' };
+    return { label: 'Sent to Business', bg: 'rgba(22, 163, 74, 0.12)', text: '#16A34A' };
   }
   if (status.toLowerCase().replace(/[_-]+/g, ' ') === 'sent to fyll') {
     return { label: 'Sent to Business', bg: '#F4F4F0', text: '#6B7280' };
@@ -149,13 +149,23 @@ const getStatusMeta = (status: PartnerJobStatus, businessName = 'business') => {
 const getPartnerStatusMeta = (status: PartnerJobStatus, businessName = 'business', partner?: Partner | null) => {
   const base = getStatusMeta(status, businessName);
   const customColor = partner?.statusColors?.[status];
-  return customColor ? { ...base, ...customColor } : base;
+  const meta = customColor ? { ...base, ...customColor } : base;
+  const textColor = meta.text.toUpperCase();
+  if (textColor === '#16A34A' || textColor === '#7E22CE' || textColor === '#3B82F6' || textColor === '#DC2626') {
+    return { ...meta, bg: hexToRgba(meta.text, 0.12) };
+  }
+  return meta;
 };
 
 const getDraftStatusMeta = (status: PartnerJobStatus, businessName: string, statusColors: StatusColorMap) => {
   const base = getStatusMeta(status, businessName);
   const customColor = statusColors[status];
-  return customColor ? { ...base, ...customColor } : base;
+  const meta = customColor ? { ...base, ...customColor } : base;
+  const textColor = meta.text.toUpperCase();
+  if (textColor === '#16A34A' || textColor === '#7E22CE' || textColor === '#3B82F6' || textColor === '#DC2626') {
+    return { ...meta, bg: hexToRgba(meta.text, 0.12) };
+  }
+  return meta;
 };
 
 const addUniqueStatus = (items: PartnerJobStatus[], value: string) => {
@@ -189,6 +199,26 @@ const formatDate = (iso?: string) => {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 };
 
+const getPartnerJobDate = (job: PartnerJob) => new Date(job.dispatchedAt ?? job.createdAt);
+
+const getPartnerJobDayKey = (job: PartnerJob) => {
+  const date = getPartnerJobDate(job);
+  if (Number.isNaN(date.getTime())) return 'unknown';
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+};
+
+const getPartnerJobDayLabel = (job: PartnerJob) => {
+  const date = getPartnerJobDate(job);
+  if (Number.isNaN(date.getTime())) return 'Unknown date';
+  const today = new Date();
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const startOfDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const dayDifference = Math.round((startOfToday.getTime() - startOfDate.getTime()) / 86_400_000);
+  if (dayDifference === 0) return 'Today';
+  if (dayDifference === 1) return `Yesterday · ${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+  return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+};
+
 const formatDateTime = (iso?: string) => {
   if (!iso) return '-';
   const date = new Date(iso);
@@ -200,6 +230,26 @@ const formatBillingCycle = (cycle?: PartnerBillingCycle) => {
   if (!cycle) return '';
   if (cycle === 'biweekly') return 'Biweekly';
   return cycle.charAt(0).toUpperCase() + cycle.slice(1);
+};
+
+const getBillDayKey = (iso?: string) => {
+  if (!iso) return 'unknown';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return 'unknown';
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+};
+
+const getBillDayLabel = (iso?: string) => {
+  if (!iso) return 'Unknown date';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return 'Unknown date';
+  const today = new Date();
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const startOfDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const dayDifference = Math.round((startOfToday.getTime() - startOfDate.getTime()) / 86_400_000);
+  if (dayDifference === 0) return 'Today';
+  if (dayDifference === 1) return `Yesterday · ${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+  return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 };
 
 const getInitials = (name: string) => {
@@ -240,7 +290,9 @@ const isJobInPeriod = (job: PartnerJob, period: JobPeriod) => {
 };
 
 export default function PartnersScreen() {
+  const [bricolageLoaded] = useFonts({ BricolageGrotesque_700Bold });
   const colors = useThemeColors();
+  const isDark = useResolvedThemeMode() === 'dark';
   const { height: viewportHeight } = useWindowDimensions();
   const router = useRouter();
   const { businessName, companyName } = useBusinessSettings();
@@ -282,7 +334,7 @@ export default function PartnersScreen() {
   const [partnerFilter, setPartnerFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<PartnerStatusFilter>('all');
   const [jobPeriod, setJobPeriod] = useState<JobPeriod>('all');
-  const [billPeriod, setBillPeriod] = useState<BillPeriod>('month');
+  const [billPeriod, setBillPeriod] = useState<BillPeriod>('all');
   const [billStatusFilter, setBillStatusFilter] = useState<'all' | PartnerBillStatus>('all');
   const [activeBillId, setActiveBillId] = useState<string | null>(null);
   const [billNoteDraft, setBillNoteDraft] = useState('');
@@ -480,6 +532,7 @@ export default function PartnersScreen() {
   }, [partnerJobs, partnerById]);
 
   const billPeriodFilteredBills = useMemo(() => {
+    if (billPeriod === 'all') return submittedBills;
     const { startMs, endMs } = getBillPeriodRange(billPeriod);
     return submittedBills.filter((bill) => {
       const t = new Date(bill.submittedAt).getTime();
@@ -1073,7 +1126,8 @@ export default function PartnersScreen() {
     setStatusDropdownJobId(null);
   };
 
-  const contentMaxWidth = isDesktop ? 1500 : undefined;
+  const horizontalPadding = isMobile ? 16 : isDesktop ? 28 : 20;
+  const contentMaxWidth = isDesktop ? 1456 : undefined;
   const separatorColor = colors.border.light;
   const openPartnerIssueCount = useMemo(() => {
     return partnerJobIssues.filter((issue) => issue.status === 'open').length;
@@ -1094,15 +1148,15 @@ export default function PartnersScreen() {
   const body = (
     <Pressable onPress={() => { closeJobMenus(); setShowMobilePartnerMenu(false); }} style={{ flex: 1, backgroundColor: colors.bg.primary }}>
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg.primary }} edges={isDesktop ? [] : ['top']}>
-        <View style={{ borderBottomWidth: 0.5, borderBottomColor: separatorColor }}>
+        <View style={{ borderBottomWidth: activePartnerSection === 'jobs' || activePartnerSection === 'bills' ? 0 : 0.5, borderBottomColor: separatorColor }}>
           <View
             style={{
               width: '100%',
               maxWidth: contentMaxWidth,
               alignSelf: isDesktop ? 'flex-start' : 'stretch',
               minHeight: isDesktop ? DESKTOP_PAGE_HEADER_MIN_HEIGHT : undefined,
-              paddingHorizontal: 20,
-              paddingTop: isDesktop ? 20 : 16,
+              paddingHorizontal: horizontalPadding,
+              paddingTop: isDesktop ? 28 : 16,
               paddingBottom: isDesktop ? 16 : 12,
               flexDirection: 'row',
               alignItems: 'center',
@@ -1115,15 +1169,13 @@ export default function PartnersScreen() {
               <Text style={isDesktop ? { color: colors.text.primary, fontSize: 26, fontWeight: '700', lineHeight: 32 } : [headingStyle, { color: colors.text.primary }]}>
                 {activePartnerSection === 'jobs' ? 'Partner Jobs' : activePartnerSection === 'bills' ? 'Partner Bills' : activePartnerSection === 'issues' ? 'Issues' : 'Partners'}
               </Text>
-              <Text style={{ color: colors.text.tertiary, fontSize: isMobile ? 10 : 12, fontWeight: '400', marginTop: 4 }}>
-                {activePartnerSection === 'jobs'
-                  ? 'Glazing and fitting work sent out to opticians.'
-                  : activePartnerSection === 'bills'
-                    ? 'Priced jobs rolled up for partner payments.'
-                    : activePartnerSection === 'issues'
+              {activePartnerSection !== 'jobs' && activePartnerSection !== 'bills' ? (
+                <Text style={{ color: colors.text.tertiary, fontSize: isMobile ? 10 : 12, fontWeight: '400', marginTop: 4 }}>
+                  {activePartnerSection === 'issues'
                       ? 'Defects and complaints reported against partner jobs.'
                       : 'External business partners who work for you.'}
-              </Text>
+                </Text>
+              ) : null}
             </View>
             {!isMobile ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -1146,27 +1198,27 @@ export default function PartnersScreen() {
               <Pressable
                 onPress={() => { setMobileJobFormReturnId(null); resetJobForm(); setShowNewJobModal(true); }}
                 disabled={partners.length === 0}
-                style={{ height: 40, borderRadius: 999, backgroundColor: partners.length === 0 ? colors.bg.secondary : colors.text.primary, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 }}
+                style={{ height: 40, borderRadius: 999, backgroundColor: partners.length === 0 ? colors.bg.secondary : FYLL_LIME, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 }}
               >
-                <Plus size={16} color={partners.length === 0 ? colors.text.tertiary : colors.bg.primary} strokeWidth={2.5} />
-                <Text style={{ color: partners.length === 0 ? colors.text.tertiary : colors.bg.primary, fontSize: 12.5, fontWeight: '600' }}>New Job</Text>
+                <Plus size={16} color={partners.length === 0 ? colors.text.tertiary : FYLL_LIME_INK} strokeWidth={2.6} />
+                <Text style={{ color: partners.length === 0 ? colors.text.tertiary : FYLL_LIME_INK, fontSize: 14, fontWeight: '600' }}>New Job</Text>
               </Pressable>
             </View>
             ) : (
               <Pressable
                 onPress={() => { setMobileJobFormReturnId(null); resetJobForm(); setShowNewJobModal(true); }}
                 disabled={partners.length === 0}
-                style={{ height: 36, borderRadius: 999, backgroundColor: partners.length === 0 ? colors.bg.secondary : colors.text.primary, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 }}
+                style={{ height: 40, borderRadius: 999, backgroundColor: partners.length === 0 ? colors.bg.secondary : FYLL_LIME, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 }}
               >
-                <Plus size={15} color={partners.length === 0 ? colors.text.tertiary : colors.bg.primary} strokeWidth={2.5} />
-                <Text style={{ color: partners.length === 0 ? colors.text.tertiary : colors.bg.primary, fontSize: 12, fontWeight: '600' }}>New Job</Text>
+                <Plus size={16} color={partners.length === 0 ? colors.text.tertiary : FYLL_LIME_INK} strokeWidth={2.6} />
+                <Text style={{ color: partners.length === 0 ? colors.text.tertiary : FYLL_LIME_INK, fontSize: 14, fontWeight: '600' }}>New Job</Text>
               </Pressable>
             )}
           </View>
         </View>
 
         <ScrollView
-          contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: (isDesktop ? 32 : 24) + tabBarHeight, maxWidth: contentMaxWidth, width: '100%', alignSelf: isDesktop ? 'flex-start' : 'stretch' }}
+          contentContainerStyle={{ paddingHorizontal: horizontalPadding, paddingTop: 16, paddingBottom: (isDesktop ? 32 : 24) + tabBarHeight, maxWidth: contentMaxWidth, width: '100%', alignSelf: isDesktop ? 'flex-start' : 'stretch' }}
           showsVerticalScrollIndicator={false}
         >
           {activePartnerSection === 'jobs' ? (
@@ -1187,12 +1239,23 @@ export default function PartnersScreen() {
             </View>
           ) : null}
 
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, marginBottom: isMobile ? 0 : 14 }} contentContainerStyle={{ gap: 8, paddingRight: 4 }}>
+          <View
+            style={{
+              flexDirection: 'row',
+              padding: 4,
+              borderRadius: 999,
+              backgroundColor: colors.bg.secondary,
+              borderWidth: 1,
+              borderColor: colors.border.light,
+              width: isMobile ? '100%' : 360,
+              marginBottom: isMobile ? 0 : 14,
+            }}
+          >
             {[
-              { key: 'all' as const, label: 'All time' },
-              { key: 'week' as const, label: 'This week' },
-              { key: 'month' as const, label: 'This month' },
-              { key: 'year' as const, label: 'This year' },
+              { key: 'all' as const, label: 'All' },
+              { key: 'week' as const, label: 'Week' },
+              { key: 'month' as const, label: 'Month' },
+              { key: 'year' as const, label: 'Year' },
             ].map((period) => {
               const selected = jobPeriod === period.key;
               return (
@@ -1200,70 +1263,68 @@ export default function PartnersScreen() {
                   key={period.key}
                   onPress={() => setJobPeriod(period.key)}
                   style={{
-                    height: 40,
+                    flex: 1,
+                    height: 34,
                     borderRadius: 999,
-                    paddingHorizontal: 14,
                     alignItems: 'center',
                     justifyContent: 'center',
-                    backgroundColor: selected ? colors.text.primary : colors.bg.card,
-                    borderWidth: selected ? 0 : 1,
-                    borderColor: colors.border.light,
+                    backgroundColor: selected ? colors.text.primary : 'transparent',
                   }}
                 >
-                  <Text style={{ color: selected ? colors.bg.primary : colors.text.primary, fontSize: 12, fontWeight: '600' }}>{period.label}</Text>
+                  <Text style={{ color: selected ? colors.bg.primary : colors.text.muted, fontSize: 12, fontWeight: '600' }}>{period.label}</Text>
                 </Pressable>
               );
             })}
-          </ScrollView>
-
-          <View style={{ flexDirection: 'row', flexWrap: isDesktop ? 'nowrap' : 'wrap', gap: isDesktop ? 16 : 10, marginHorizontal: isDesktop ? 0 : 0, marginBottom: isMobile ? 0 : 20 }}>
-            {[
-              { label: 'WITH PARTNERS', value: String(stats.withPartners), caption: 'Jobs currently away with partners' },
-              { label: 'PAST DUE', value: String(stats.pastDue), caption: 'Sent jobs older than seven days', valueColor: stats.pastDue > 0 ? '#DC2626' : undefined },
-              { label: 'UNBILLED VALUE', value: formatCurrency(stats.unbilled), caption: 'Priced jobs awaiting invoicing' },
-              { label: 'ACTIVE PARTNERS', value: String(stats.activePartners), caption: 'External partners available for work' },
-            ].map((stat) => (
-              <View
-                key={stat.label}
-                style={{
-                  flex: isDesktop ? 1 : undefined,
-                  flexBasis: isDesktop ? undefined : '48%',
-                  width: isDesktop ? undefined : '48%',
-                  minWidth: isDesktop ? 170 : 0,
-                  paddingHorizontal: 0,
-                  marginBottom: 0,
-                }}
-              >
-                <View
-                  style={{
-                  minHeight: isMobile ? 104 : 138,
-                  borderRadius: 24,
-                  borderWidth: 1,
-                  borderColor: colors.border.light,
-                  backgroundColor: colors.bg.card,
-                  paddingHorizontal: isMobile ? 14 : 18,
-                  paddingVertical: isMobile ? 12 : 18,
-                  justifyContent: 'center',
-                }}
-              >
-                <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 1 }}>
-                  {stat.label}
-                </Text>
-                <Text style={{ color: stat.valueColor ?? colors.text.primary, fontSize: isMobile ? 20 : 26, fontWeight: '700', marginTop: 8 }}>
-                  {stat.value}
-                </Text>
-                <Text style={{ color: colors.text.muted, fontSize: isMobile ? 8 : 12, fontWeight: '400', lineHeight: isMobile ? 11 : 18, marginTop: 6 }}>
-                  {stat.caption}
-                </Text>
-              </View>
-              </View>
-            ))}
           </View>
 
-          <View style={{ flexDirection: isDesktop ? 'row' : 'column', alignItems: isDesktop ? 'center' : 'stretch', gap: isMobile ? 16 : 10, marginBottom: isMobile ? 0 : 18 }}>
+          {isMobile ? (
+            <View style={{ borderRadius: 20, borderWidth: 1, borderColor: separatorColor, backgroundColor: colors.bg.card, padding: 18, gap: 14 }}>
+              <View style={{ gap: 4 }}>
+                <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>With partners</Text>
+                <Text style={{ color: colors.text.primary, fontSize: 32, lineHeight: 36, fontWeight: bricolageLoaded ? '400' : '700', fontFamily: bricolageLoaded ? 'BricolageGrotesque_700Bold' : undefined, letterSpacing: -1 }}>{stats.withPartners} jobs</Text>
+                <Text style={{ color: colors.text.muted, fontSize: 13 }}>Currently away with external partners</Text>
+              </View>
+              <View style={{ height: 1, backgroundColor: separatorColor }} />
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                {[
+                  ['Past due', String(stats.pastDue), stats.pastDue > 0 ? '#DC2626' : colors.text.muted],
+                  ['Unbilled', formatCurrency(stats.unbilled), colors.text.muted],
+                  ['Active', String(stats.activePartners), '#059669'],
+                ].map(([label, value, dot]) => (
+                  <View key={String(label)} style={{ flex: 1, gap: 3 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: String(dot) }} />
+                      <Text style={{ color: colors.text.tertiary, fontSize: 12 }}>{label}</Text>
+                    </View>
+                    <Text style={{ color: colors.text.primary, fontSize: 18, fontWeight: '600' }} numberOfLines={1}>{value}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          ) : (
+            <View style={{ flexDirection: 'row', borderRadius: 20, borderWidth: 1, borderColor: separatorColor, backgroundColor: colors.bg.card, overflow: 'hidden', marginBottom: 20 }}>
+              {[
+                ['With partners', `${stats.withPartners} jobs`, 'Currently away with partners', null, 1.3],
+                ['Past due', String(stats.pastDue), 'Older than seven days', stats.pastDue > 0 ? '#DC2626' : colors.text.muted, 1],
+                ['Unbilled value', formatCurrency(stats.unbilled), 'Awaiting invoicing', colors.text.muted, 1],
+                ['Active partners', String(stats.activePartners), 'Available for work', '#059669', 1],
+              ].map(([label, value, caption, dot, flex], index) => (
+                <View key={String(label)} style={{ flex: Number(flex), paddingHorizontal: 22, paddingVertical: 18, gap: 4, borderLeftWidth: index ? 1 : 0, borderLeftColor: separatorColor }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    {dot ? <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: String(dot) }} /> : null}
+                    <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{label}</Text>
+                  </View>
+                  <Text style={{ color: colors.text.primary, fontSize: index ? 22 : 28, fontWeight: index ? '600' : bricolageLoaded ? '400' : '700', fontFamily: !index && bricolageLoaded ? 'BricolageGrotesque_700Bold' : undefined, letterSpacing: index ? -0.5 : -0.9 }}>{value}</Text>
+                  <Text style={{ color: colors.text.muted, fontSize: 13 }}>{caption}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          <View style={{ flexDirection: isDesktop ? 'row' : 'column', alignItems: isDesktop ? 'center' : 'stretch', gap: 10, marginBottom: isMobile ? 0 : 18 }}>
             <View
               style={{
-                height: 44,
+                height: isMobile ? 48 : 44,
                 width: isDesktop ? 340 : undefined,
                 flexDirection: 'row',
                 alignItems: 'center',
@@ -1293,7 +1354,7 @@ export default function PartnersScreen() {
                     key={chip.key}
                     onPress={() => setStatusFilter(chip.key)}
                     style={{
-                      height: 40,
+                      height: 36,
                       borderRadius: 999,
                       paddingHorizontal: 14,
                       alignItems: 'center',
@@ -1324,27 +1385,34 @@ export default function PartnersScreen() {
               </Text>
             </View>
           ) : isDesktop ? (
-            <View style={{ borderRadius: 18, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card, overflow: 'visible', zIndex: actionMenuJobId || statusDropdownJobId ? 50 : 1 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 46, paddingHorizontal: 18, borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
-                <Text style={{ color: colors.text.muted, flex: 0.55, minWidth: 76, paddingRight: 10, fontSize: 10, fontWeight: '600' }}>GLASSES</Text>
-                <Text style={{ color: colors.text.muted, flex: 1.2, minWidth: 150, paddingRight: 10, fontSize: 10, fontWeight: '600' }}>CUSTOMER NAME</Text>
-                <Text style={{ color: colors.text.muted, flex: 0.9, minWidth: 110, paddingRight: 10, fontSize: 10, fontWeight: '600' }}>CATEGORY</Text>
-                <Text style={{ color: colors.text.muted, flex: 1.4, minWidth: 180, paddingRight: 10, fontSize: 10, fontWeight: '600' }}>SERVICE</Text>
-                <Text style={{ color: colors.text.muted, flex: 1.15, minWidth: 150, paddingRight: 10, fontSize: 10, fontWeight: '600' }}>DESCRIPTION</Text>
-                <Text style={{ color: colors.text.muted, flex: 1.05, minWidth: 140, paddingRight: 10, fontSize: 10, fontWeight: '600' }}>PARTNER</Text>
-                <Text style={{ color: colors.text.muted, flex: 0.85, minWidth: 105, paddingRight: 10, fontSize: 10, fontWeight: '600' }}>DATE SENT</Text>
-                <Text style={{ color: colors.text.muted, flex: 1.25, minWidth: 165, paddingRight: 10, fontSize: 10, fontWeight: '600' }}>STATUS</Text>
-                <Text style={{ color: colors.text.muted, flex: 0.95, minWidth: 132, paddingRight: 24, textAlign: 'right', fontSize: 10, fontWeight: '600' }}>FEE</Text>
-                <Text style={{ color: colors.text.muted, width: 84, paddingLeft: 18, textAlign: 'right', fontSize: 10, fontWeight: '600' }}>ACTION</Text>
+            <View style={{ borderRadius: 18, borderWidth: 1, borderColor: separatorColor, backgroundColor: colors.bg.card, overflow: 'visible', zIndex: actionMenuJobId || statusDropdownJobId ? 50 : 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 22, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: separatorColor }}>
+                <Text style={{ color: colors.text.muted, flex: 0.55, minWidth: 76, paddingRight: 10, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>GLASSES</Text>
+                <Text style={{ color: colors.text.muted, flex: 1.2, minWidth: 150, paddingRight: 10, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>CUSTOMER</Text>
+                <Text style={{ color: colors.text.muted, flex: 0.9, minWidth: 110, paddingRight: 10, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>CATEGORY</Text>
+                <Text style={{ color: colors.text.muted, flex: 1.4, minWidth: 180, paddingRight: 10, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>SERVICE</Text>
+                <Text style={{ color: colors.text.muted, flex: 1.15, minWidth: 150, paddingRight: 10, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>DESCRIPTION</Text>
+                <Text style={{ color: colors.text.muted, flex: 1.05, minWidth: 140, paddingRight: 10, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>PARTNER</Text>
+                <Text style={{ color: colors.text.muted, flex: 0.85, minWidth: 105, paddingRight: 10, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>DATE SENT</Text>
+                <Text style={{ color: colors.text.muted, flex: 1.25, minWidth: 165, paddingRight: 10, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>STATUS</Text>
+                <Text style={{ color: colors.text.muted, flex: 0.95, minWidth: 132, paddingRight: 24, textAlign: 'right', fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>FEE</Text>
+                <Text style={{ color: colors.text.muted, width: 84, paddingLeft: 18, textAlign: 'right', fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>ACTION</Text>
               </View>
               {filteredJobs.map((job, index) => {
                 const partner = partnerById.get(job.partnerId);
                 const meta = getPartnerStatusMeta(job.status, statusBusinessName, partner);
                 const statusMenuOptions = getPartnerBusinessStatusFlow(partner).filter((status) => status !== job.status);
                 const isRowElevated = statusDropdownJobId === job.id || actionMenuJobId === job.id;
+                const previousJob = index > 0 ? filteredJobs[index - 1] : null;
+                const isFirstInGroup = !previousJob || getPartnerJobDayKey(previousJob) !== getPartnerJobDayKey(job);
                 return (
+                  <React.Fragment key={job.id}>
+                  {isFirstInGroup ? (
+                    <View style={{ paddingHorizontal: 22, paddingTop: 10, paddingBottom: 8, backgroundColor: isDark ? '#101010' : '#E9E9E6', borderBottomWidth: 1, borderBottomColor: separatorColor }}>
+                      <Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{getPartnerJobDayLabel(job)}</Text>
+                    </View>
+                  ) : null}
                   <Pressable
-                    key={job.id}
                     onPress={() => {
                       closeJobMenus();
                       setActiveMobileJobId(job.id);
@@ -1354,11 +1422,11 @@ export default function PartnersScreen() {
                     style={{
                       flexDirection: 'row',
                       alignItems: 'center',
-                      minHeight: 56,
-                      paddingHorizontal: 18,
+                      minHeight: 58,
+                      paddingHorizontal: 22,
                       paddingVertical: 8,
-                      borderTopWidth: index === 0 ? 0 : 1,
-                      borderTopColor: colors.border.light,
+                      borderTopWidth: isFirstInGroup ? 0 : 1,
+                      borderTopColor: separatorColor,
                       position: 'relative',
                       zIndex: isRowElevated ? 150 : 1,
                     }}
@@ -1516,120 +1584,89 @@ export default function PartnersScreen() {
                       ) : null}
                     </View>
                   </Pressable>
+                  </React.Fragment>
                 );
               })}
             </View>
           ) : (
-            <View style={{ gap: 12 }}>
-              {filteredJobs.map((job) => {
+            <View>
+              {filteredJobs.map((job, index) => {
                 const partner = partnerById.get(job.partnerId);
                 const meta = getPartnerStatusMeta(job.status, statusBusinessName, partner);
-                const mobileStatusBg = hexToRgba(meta.text, 0.14);
                 const orderNumber = job.orderId && orderById.get(job.orderId)
                   ? orderById.get(job.orderId)?.orderNumber
-                  : job.id.slice(-6).toUpperCase();
-                const createdAtMs = new Date(job.createdAt).getTime();
-                const isNewJob = Number.isFinite(createdAtMs) && Date.now() - createdAtMs < 24 * 60 * 60 * 1000;
+                  : `JOB-${job.id.slice(-6).toUpperCase()}`;
+                const previousJob = index > 0 ? filteredJobs[index - 1] : null;
+                const nextJob = index < filteredJobs.length - 1 ? filteredJobs[index + 1] : null;
+                const isFirstInGroup = !previousJob || getPartnerJobDayKey(previousJob) !== getPartnerJobDayKey(job);
+                const isLastInGroup = !nextJob || getPartnerJobDayKey(nextJob) !== getPartnerJobDayKey(job);
                 return (
-                  <Pressable
-                    key={job.id}
-                    onPress={() => {
-                      closeJobMenus();
-                      setActiveMobileJobId(job.id);
-                      setShowMobileJobStatusOptions(false);
-                    }}
-                    onLongPress={() => handleOpenEditJob(job)}
-                    style={{
-                      borderRadius: 18,
-                      borderWidth: 1,
-                      borderColor: colors.border.light,
-                      backgroundColor: colors.bg.card,
-                      padding: 14,
-                      zIndex: actionMenuJobId === job.id || statusDropdownJobId === job.id ? 60 : 1,
-                    }}
-                  >
-                    <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <View key={job.id} style={{ marginTop: isFirstInGroup && index > 0 ? 18 : 0 }}>
+                    {isFirstInGroup ? (
+                      <Text style={{ color: colors.text.muted, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', paddingHorizontal: 4, marginBottom: 8 }}>
+                        {getPartnerJobDayLabel(job)}
+                      </Text>
+                    ) : null}
+                    <Pressable
+                      onPress={() => {
+                        closeJobMenus();
+                        setActiveMobileJobId(job.id);
+                        setShowMobileJobStatusOptions(false);
+                      }}
+                      onLongPress={() => handleOpenEditJob(job)}
+                      style={({ pressed }) => ({
+                        minHeight: 88,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        paddingHorizontal: 14,
+                        paddingVertical: 12,
+                        borderLeftWidth: 1,
+                        borderRightWidth: 1,
+                        borderTopWidth: isFirstInGroup ? 1 : 0,
+                        borderBottomWidth: 1,
+                        borderColor: separatorColor,
+                        borderTopLeftRadius: isFirstInGroup ? 18 : 0,
+                        borderTopRightRadius: isFirstInGroup ? 18 : 0,
+                        borderBottomLeftRadius: isLastInGroup ? 18 : 0,
+                        borderBottomRightRadius: isLastInGroup ? 18 : 0,
+                        backgroundColor: pressed ? colors.bg.secondary : colors.bg.card,
+                      })}
+                    >
+                      <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: colors.bg.secondary, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                        {job.imageUrl ? (
+                          <ResolvedAttachmentImage imageUrl={job.imageUrl} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                        ) : (
+                          <Glasses size={20} color={colors.text.tertiary} strokeWidth={1.8} />
+                        )}
+                      </View>
                       <View style={{ flex: 1, minWidth: 0, paddingRight: 10 }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                          {job.orderId && orderById.get(job.orderId) ? (
-                            <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '700' }} numberOfLines={1}>
-                              {orderNumber}
-                            </Text>
-                          ) : (
-                            <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '700' }} numberOfLines={1}>
-                              JOB-{orderNumber}
-                            </Text>
-                          )}
-                          {isNewJob ? (
-                            <View
-                              style={{
-                                backgroundColor: '#3B82F6',
-                                paddingHorizontal: 5,
-                                paddingVertical: 2,
-                                borderRadius: 5,
-                                marginLeft: 6,
-                              }}
-                            >
-                              <Text style={{ color: '#FFFFFF', fontSize: 9, fontWeight: '800', letterSpacing: 0.5 }}>NEW</Text>
-                            </View>
-                          ) : null}
-                          <View
-                            style={{
-                              marginLeft: 8,
-                              paddingHorizontal: 8,
-                              paddingVertical: 2,
-                              borderRadius: 6,
-                              backgroundColor: mobileStatusBg,
-                              flexDirection: 'row',
-                              alignItems: 'center',
-                              gap: 5,
-                            }}
-                          >
-                            <Text style={{ color: meta.text, fontSize: 10, fontWeight: '600' }} numberOfLines={1}>{meta.label}</Text>
-                          </View>
-                        </View>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-                          <UserIcon size={12} color={colors.text.tertiary} strokeWidth={2} />
-                          <Text style={{ color: colors.text.tertiary, fontSize: 12, marginLeft: 4 }} numberOfLines={1}>
-                            {job.customerName || 'Customer name'}
-                          </Text>
+                        <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>{job.customerName || 'Customer name'}</Text>
+                        <Text style={{ color: colors.text.tertiary, fontSize: 10, marginTop: 3 }} numberOfLines={1}>
+                          {orderNumber} · {[job.jobType, job.jobService].filter(Boolean).join(' · ') || job.itemLabel || 'Job'}
+                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 5 }}>
+                          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: meta.text }} />
+                          <Text style={{ color: meta.text, fontSize: 10, fontWeight: '600' }} numberOfLines={1}>{meta.label}</Text>
+                          <Text style={{ color: colors.text.muted, fontSize: 10 }} numberOfLines={1}>· {partner?.name ?? 'Unknown partner'}</Text>
                         </View>
                       </View>
-                      <View style={{ alignItems: 'flex-end' }}>
-                        <Text style={{ color: job.amount ? colors.text.primary : colors.text.tertiary, fontSize: 14, fontWeight: '700' }}>
+                      <View style={{ alignItems: 'flex-end', gap: 7 }}>
+                        <Text style={{ color: job.amount ? colors.text.primary : colors.text.tertiary, fontSize: 12, fontWeight: '600' }}>
                           {job.amount ? formatCurrency(job.amount) : '—'}
                         </Text>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
-                          <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: colors.bg.secondary }}>
-                            <Text style={{ color: colors.text.muted, fontSize: 10 }} numberOfLines={1}>
-                              {partner?.name ?? 'partner'}
-                            </Text>
-                          </View>
-                        </View>
                         {job.status === 'awaiting_dispatch' ? (
                           <Pressable
-                            onPress={(e) => { e.stopPropagation(); handleDispatchJob(job); }}
-                            style={{ marginTop: 8, height: 28, borderRadius: 999, backgroundColor: colors.text.primary, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center' }}
+                            onPress={(event) => { event.stopPropagation(); handleDispatchJob(job); }}
+                            style={{ height: 26, borderRadius: 999, backgroundColor: colors.text.primary, paddingHorizontal: 11, alignItems: 'center', justifyContent: 'center' }}
                           >
-                            <Text style={{ color: colors.bg.primary, fontSize: 12, fontWeight: '600' }}>Send</Text>
+                            <Text style={{ color: colors.bg.primary, fontSize: 10, fontWeight: '600' }}>Send</Text>
                           </Pressable>
-                        ) : null}
+                        ) : (
+                          <ChevronRight size={15} color={colors.text.muted} strokeWidth={2} />
+                        )}
                       </View>
-                    </View>
-                    <Text style={{ color: colors.text.tertiary, fontSize: 10, lineHeight: 14, marginBottom: 9 }} numberOfLines={1}>
-                      {job.jobType || job.jobService ? [job.jobType, job.jobService].filter(Boolean).join(' · ') : job.itemLabel || 'Job'}
-                    </Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', paddingTop: 8, borderTopWidth: 0.5, borderTopColor: colors.border.light }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 16 }}>
-                        <Calendar size={12} color={colors.text.muted} strokeWidth={2} />
-                        <Text style={{ color: colors.text.muted, fontSize: 10, marginLeft: 4 }}>
-                          {formatDate(job.dispatchedAt ?? job.createdAt)}
-                        </Text>
-                      </View>
-                      <View style={{ flex: 1 }} />
-                      <ChevronRight size={16} color={colors.text.muted} strokeWidth={2} />
-                    </View>
-                  </Pressable>
+                    </Pressable>
+                  </View>
                 );
               })}
             </View>
@@ -1639,11 +1676,23 @@ export default function PartnersScreen() {
 
           {activePartnerSection === 'bills' ? (
             <View style={{ gap: isMobile ? 16 : 0 }}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, marginBottom: isMobile ? 0 : 10 }} contentContainerStyle={{ gap: 8, paddingRight: 4 }}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  padding: 4,
+                  borderRadius: 999,
+                  backgroundColor: colors.bg.secondary,
+                  borderWidth: 1,
+                  borderColor: colors.border.light,
+                  width: isMobile ? '100%' : 360,
+                  marginBottom: isMobile ? 0 : 14,
+                }}
+              >
                 {[
-                  { key: 'week' as const, label: 'This week' },
-                  { key: 'month' as const, label: 'This month' },
-                  { key: 'year' as const, label: 'This year' },
+                  { key: 'all' as const, label: 'All' },
+                  { key: 'week' as const, label: 'Week' },
+                  { key: 'month' as const, label: 'Month' },
+                  { key: 'year' as const, label: 'Year' },
                 ].map((period) => {
                   const selected = billPeriod === period.key;
                   return (
@@ -1651,57 +1700,56 @@ export default function PartnersScreen() {
                       key={period.key}
                       onPress={() => setBillPeriod(period.key)}
                       style={{
-                        height: 40,
+                        flex: 1,
+                        height: 34,
                         borderRadius: 999,
-                        paddingHorizontal: 14,
                         alignItems: 'center',
                         justifyContent: 'center',
-                        backgroundColor: selected ? colors.text.primary : colors.bg.card,
-                        borderWidth: selected ? 0 : 1,
-                        borderColor: colors.border.light,
+                        backgroundColor: selected ? colors.text.primary : 'transparent',
                       }}
                     >
-                      <Text style={{ color: selected ? colors.bg.primary : colors.text.primary, fontSize: 12, fontWeight: '600' }}>{period.label}</Text>
+                      <Text style={{ color: selected ? colors.bg.primary : colors.text.muted, fontSize: 12, fontWeight: '600' }}>{period.label}</Text>
                     </Pressable>
                   );
                 })}
-              </ScrollView>
-              <View style={{ flexDirection: 'row', flexWrap: isDesktop ? 'nowrap' : 'wrap', gap: isDesktop ? 16 : 10, marginBottom: isMobile ? 0 : 20 }}>
-                {[
-                  { label: 'TOTAL BILLS', value: formatCurrency(billStats.total), caption: 'Submitted in this period' },
-                  { label: 'PRICED JOBS', value: String(billStats.pricedJobs), caption: 'Jobs included in bills' },
-                  { label: 'PAYABLE PARTNERS', value: String(billStats.payablePartners), caption: 'Partners with a bill' },
-                  { label: 'AVERAGE BILL', value: formatCurrency(billStats.averageBill), caption: 'Average per submitted bill' },
-                ].map((stat) => (
-                  <View
-                    key={stat.label}
-                    style={{
-                      flex: isDesktop ? 1 : undefined,
-                      flexBasis: isDesktop ? undefined : '48%',
-                      width: isDesktop ? undefined : '48%',
-                      minWidth: isDesktop ? 170 : 0,
-                      minHeight: isMobile ? 104 : 138,
-                      borderRadius: 24,
-                      borderWidth: 1,
-                      borderColor: colors.border.light,
-                      backgroundColor: colors.bg.card,
-                      paddingHorizontal: isMobile ? 14 : 18,
-                      paddingVertical: isMobile ? 12 : 18,
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 1 }}>
-                      {stat.label}
-                    </Text>
-                    <Text style={{ color: colors.text.primary, fontSize: isMobile ? 20 : 26, fontWeight: '700', marginTop: 8 }}>
-                      {stat.value}
-                    </Text>
-                    <Text style={{ color: colors.text.muted, fontSize: isMobile ? 10 : 12, fontWeight: '400', lineHeight: isMobile ? 14 : 18, marginTop: 6 }}>
-                      {stat.caption}
-                    </Text>
-                  </View>
-                ))}
               </View>
+              {isMobile ? (
+                <View style={{ borderRadius: 20, borderWidth: 1, borderColor: separatorColor, backgroundColor: colors.bg.card, padding: 18, gap: 14 }}>
+                  <View style={{ gap: 4 }}>
+                    <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>Total bills</Text>
+                    <Text style={{ color: colors.text.primary, fontSize: 32, lineHeight: 36, fontWeight: bricolageLoaded ? '400' : '700', fontFamily: bricolageLoaded ? 'BricolageGrotesque_700Bold' : undefined, letterSpacing: -1 }}>{formatCurrency(billStats.total)}</Text>
+                    <Text style={{ color: colors.text.muted, fontSize: 13 }}>Submitted in this period</Text>
+                  </View>
+                  <View style={{ height: 1, backgroundColor: separatorColor }} />
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    {[
+                      ['Priced jobs', String(billStats.pricedJobs)],
+                      ['Partners', String(billStats.payablePartners)],
+                      ['Average', formatCurrency(billStats.averageBill)],
+                    ].map(([label, value]) => (
+                      <View key={label} style={{ flex: 1, gap: 3 }}>
+                        <Text style={{ color: colors.text.tertiary, fontSize: 12 }}>{label}</Text>
+                        <Text style={{ color: colors.text.primary, fontSize: 18, fontWeight: '600' }} numberOfLines={1}>{value}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              ) : (
+                <View style={{ flexDirection: 'row', borderRadius: 20, borderWidth: 1, borderColor: separatorColor, backgroundColor: colors.bg.card, overflow: 'hidden', marginBottom: 20 }}>
+                  {[
+                    ['Total bills', formatCurrency(billStats.total), 'Submitted in this period', 1.3],
+                    ['Priced jobs', String(billStats.pricedJobs), 'Jobs included in bills', 1],
+                    ['Payable partners', String(billStats.payablePartners), 'Partners with a bill', 1],
+                    ['Average bill', formatCurrency(billStats.averageBill), 'Average submitted bill', 1],
+                  ].map(([label, value, caption, flex], index) => (
+                    <View key={String(label)} style={{ flex: Number(flex), paddingHorizontal: 22, paddingVertical: 18, gap: 4, borderLeftWidth: index ? 1 : 0, borderLeftColor: separatorColor }}>
+                      <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{label}</Text>
+                      <Text style={{ color: colors.text.primary, fontSize: index ? 22 : 28, fontWeight: index ? '600' : bricolageLoaded ? '400' : '700', fontFamily: !index && bricolageLoaded ? 'BricolageGrotesque_700Bold' : undefined, letterSpacing: index ? -0.5 : -0.9 }}>{value}</Text>
+                      <Text style={{ color: colors.text.muted, fontSize: 13 }}>{caption}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, marginBottom: isMobile ? 0 : 14 }} contentContainerStyle={{ gap: 8, paddingRight: 4 }}>
                 {([
                   { key: 'all' as const, label: 'All' },
@@ -1739,7 +1787,7 @@ export default function PartnersScreen() {
                   );
                 })}
               </ScrollView>
-              <View style={isDesktop ? { borderRadius: 18, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card, overflow: 'hidden' } : { gap: 12 }}>
+              <View style={isDesktop ? { borderRadius: 18, borderWidth: 1, borderColor: separatorColor, backgroundColor: colors.bg.card, overflow: 'hidden' } : undefined}>
               {visibleBills.length === 0 ? (
                 <View style={{ padding: 28, alignItems: 'center', borderRadius: 18, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card }}>
                   <Banknote size={26} color={colors.text.tertiary} strokeWidth={1.7} />
@@ -1751,28 +1799,35 @@ export default function PartnersScreen() {
               ) : (
                 isDesktop ? (
                   <>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 46, paddingHorizontal: 18, borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
-                      <Text style={{ color: colors.text.muted, flex: 0.55, minWidth: 76, paddingRight: 10, fontSize: 10, fontWeight: '600' }}>PARTNER</Text>
-                      <Text style={{ color: colors.text.muted, flex: 1.35, minWidth: 180, paddingRight: 10, fontSize: 10, fontWeight: '600' }}>PARTNER NAME</Text>
-                      <Text style={{ color: colors.text.muted, flex: 1.1, minWidth: 140, paddingRight: 10, fontSize: 10, fontWeight: '600' }}>JOBS</Text>
-                      <Text style={{ color: colors.text.muted, flex: 0.9, minWidth: 110, paddingRight: 10, fontSize: 10, fontWeight: '600' }}>STATUS</Text>
-                      <Text style={{ color: colors.text.muted, flex: 0.95, minWidth: 132, paddingRight: 16, textAlign: 'right', fontSize: 10, fontWeight: '600' }}>TOTAL</Text>
-                      <Text style={{ color: colors.text.muted, width: 110, paddingLeft: 10, textAlign: 'right', fontSize: 10, fontWeight: '600' }}>ACTION</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 22, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: separatorColor }}>
+                      <Text style={{ color: colors.text.muted, flex: 0.55, minWidth: 76, paddingRight: 10, fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>PARTNER</Text>
+                      <Text style={{ color: colors.text.muted, flex: 1.35, minWidth: 180, paddingRight: 10, fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>PARTNER NAME</Text>
+                      <Text style={{ color: colors.text.muted, flex: 1.1, minWidth: 140, paddingRight: 10, fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>JOBS</Text>
+                      <Text style={{ color: colors.text.muted, flex: 0.9, minWidth: 110, paddingRight: 10, fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>STATUS</Text>
+                      <Text style={{ color: colors.text.muted, flex: 0.95, minWidth: 132, paddingRight: 16, textAlign: 'right', fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>TOTAL</Text>
+                      <Text style={{ color: colors.text.muted, width: 110, paddingLeft: 10, textAlign: 'right', fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>ACTION</Text>
                     </View>
                     {visibleBills.map((bill, index) => {
                       const meta = BILL_STATUS_META[bill.status];
+                      const previousBill = index > 0 ? visibleBills[index - 1] : null;
+                      const isFirstInGroup = !previousBill || getBillDayKey(previousBill.submittedAt) !== getBillDayKey(bill.submittedAt);
                       return (
+                        <React.Fragment key={bill.billId}>
+                        {isFirstInGroup ? (
+                          <View style={{ paddingHorizontal: 22, paddingTop: 10, paddingBottom: 8, backgroundColor: isDark ? '#101010' : '#E9E9E6', borderBottomWidth: 1, borderBottomColor: separatorColor }}>
+                            <Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{getBillDayLabel(bill.submittedAt)}</Text>
+                          </View>
+                        ) : null}
                         <Pressable
-                          key={bill.billId}
                           onPress={() => openBillReview(bill.billId)}
                           style={{
                             flexDirection: 'row',
                             alignItems: 'center',
-                            minHeight: 56,
-                            paddingHorizontal: 18,
+                            minHeight: 58,
+                            paddingHorizontal: 22,
                             paddingVertical: 8,
-                            borderTopWidth: index === 0 ? 0 : 1,
-                            borderTopColor: colors.border.light,
+                            borderTopWidth: isFirstInGroup ? 0 : 1,
+                            borderTopColor: separatorColor,
                           }}
                         >
                           <View style={{ flex: 0.55, minWidth: 76, paddingRight: 10 }}>
@@ -1829,71 +1884,66 @@ export default function PartnersScreen() {
                             </View>
                           </View>
                         </Pressable>
+                        </React.Fragment>
                       );
                     })}
                   </>
                 ) : (
                   visibleBills.map((bill, index) => {
                     const meta = BILL_STATUS_META[bill.status];
-                    const mobileStatusBg = hexToRgba(meta.text, 0.14);
                     const actionLabel = bill.status === 'pending' ? 'Review' : bill.status === 'approved' ? 'Mark Paid' : 'View';
+                    const previousBill = index > 0 ? visibleBills[index - 1] : null;
+                    const nextBill = index < visibleBills.length - 1 ? visibleBills[index + 1] : null;
+                    const isFirstInGroup = !previousBill || getBillDayKey(previousBill.submittedAt) !== getBillDayKey(bill.submittedAt);
+                    const isLastInGroup = !nextBill || getBillDayKey(nextBill.submittedAt) !== getBillDayKey(bill.submittedAt);
                     return (
-                      <Pressable
-                        key={bill.billId}
-                        onPress={() => openBillReview(bill.billId)}
-                        style={{
-                          borderRadius: 18,
-                          borderWidth: 1,
-                          borderColor: colors.border.light,
-                          backgroundColor: colors.bg.card,
-                          padding: 14,
-                        }}
-                      >
-                        <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <View key={bill.billId} style={{ marginTop: isFirstInGroup && index > 0 ? 18 : 0 }}>
+                        {isFirstInGroup ? (
+                          <Text style={{ color: colors.text.muted, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', paddingHorizontal: 4, marginBottom: 8 }}>
+                            {getBillDayLabel(bill.submittedAt)}
+                          </Text>
+                        ) : null}
+                        <Pressable
+                          onPress={() => openBillReview(bill.billId)}
+                          style={({ pressed }) => ({
+                            minHeight: 88,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            paddingHorizontal: 14,
+                            paddingVertical: 12,
+                            borderLeftWidth: 1,
+                            borderRightWidth: 1,
+                            borderTopWidth: isFirstInGroup ? 1 : 0,
+                            borderBottomWidth: 1,
+                            borderColor: separatorColor,
+                            borderTopLeftRadius: isFirstInGroup ? 18 : 0,
+                            borderTopRightRadius: isFirstInGroup ? 18 : 0,
+                            borderBottomLeftRadius: isLastInGroup ? 18 : 0,
+                            borderBottomRightRadius: isLastInGroup ? 18 : 0,
+                            backgroundColor: pressed ? colors.bg.secondary : colors.bg.card,
+                          })}
+                        >
+                          <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.text.primary, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                            <Text style={{ color: colors.bg.primary, fontSize: 12, fontWeight: '600' }}>{getInitials(bill.partner.name)}</Text>
+                          </View>
                           <View style={{ flex: 1, minWidth: 0, paddingRight: 10 }}>
-                            <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '700' }} numberOfLines={1}>
-                              {bill.partner.name}
+                            <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>{bill.partner.name}</Text>
+                            <Text style={{ color: colors.text.tertiary, fontSize: 10, marginTop: 3 }} numberOfLines={1}>
+                              {bill.jobCount} {bill.jobCount === 1 ? 'job' : 'jobs'}{bill.partner.billingCycle ? ` · ${formatBillingCycle(bill.partner.billingCycle)}` : ''}
                             </Text>
-                            <Text style={{ color: colors.text.tertiary, fontSize: 10, lineHeight: 14, marginTop: 4 }} numberOfLines={1}>
-                              {bill.jobCount} {bill.jobCount === 1 ? 'job' : 'jobs'} {bill.partner.billingCycle ? `· ${formatBillingCycle(bill.partner.billingCycle)}` : ''}
-                            </Text>
-                            <View
-                              style={{
-                                marginTop: 10,
-                                alignSelf: 'flex-start',
-                                paddingHorizontal: 8,
-                                paddingVertical: 2,
-                                borderRadius: 6,
-                                backgroundColor: mobileStatusBg,
-                              }}
-                            >
-                              <Text style={{ color: meta.text, fontSize: 10, fontWeight: '600' }} numberOfLines={1}>{meta.label}</Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 5 }}>
+                              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: meta.text }} />
+                              <Text style={{ color: meta.text, fontSize: 10, fontWeight: '600' }}>{meta.label}</Text>
                             </View>
                           </View>
-                          <View style={{ alignItems: 'flex-end' }}>
-                            <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '700' }}>
-                              {formatCurrency(bill.total)}
-                            </Text>
-                            <Text style={{ color: colors.text.muted, fontSize: 10, marginTop: 4 }}>
-                              {formatDate(bill.submittedAt)}
-                            </Text>
+                          <View style={{ alignItems: 'flex-end', gap: 7 }}>
+                            <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '600' }}>{formatCurrency(bill.total)}</Text>
+                            <View style={{ height: 26, borderRadius: 999, backgroundColor: colors.bg.secondary, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center' }}>
+                              <Text style={{ color: colors.text.secondary, fontSize: 10, fontWeight: '600' }}>{actionLabel}</Text>
+                            </View>
                           </View>
-                        </View>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', paddingTop: 8, borderTopWidth: 0.5, borderTopColor: colors.border.light }}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 16 }}>
-                            <Calendar size={12} color={colors.text.muted} strokeWidth={2} />
-                            <Text style={{ color: colors.text.muted, fontSize: 10, marginLeft: 4 }}>
-                              {formatDate(bill.submittedAt)}
-                            </Text>
-                          </View>
-                          <View style={{ flex: 1 }} />
-                          <View style={{ height: 26, borderRadius: 999, backgroundColor: colors.bg.secondary, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center' }}>
-                            <Text style={{ color: colors.text.secondary, fontSize: 10, fontWeight: '600' }}>
-                              {actionLabel}
-                            </Text>
-                          </View>
-                        </View>
-                      </Pressable>
+                        </Pressable>
+                      </View>
                     );
                   })
                 )
@@ -1967,14 +2017,17 @@ export default function PartnersScreen() {
                             <View
                               style={{
                                 alignSelf: 'flex-start',
+                                flexDirection: 'row',
+                                gap: 5,
                                 paddingHorizontal: 10,
                                 height: 24,
                                 borderRadius: 999,
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                backgroundColor: isOpen ? hexToRgba('#DC2626', 0.14) : hexToRgba('#16A34A', 0.14),
+                                backgroundColor: isOpen ? hexToRgba('#DC2626', 0.12) : hexToRgba('#16A34A', 0.12),
                               }}
                             >
+                              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: isOpen ? '#DC2626' : '#16A34A' }} />
                               <Text style={{ color: isOpen ? '#DC2626' : '#16A34A', fontSize: 11, fontWeight: '600' }}>
                                 {isOpen ? 'Open' : 'Resolved'}
                               </Text>
@@ -2025,14 +2078,17 @@ export default function PartnersScreen() {
                             </View>
                             <View
                               style={{
+                                flexDirection: 'row',
+                                gap: 5,
                                 paddingHorizontal: 9,
                                 height: 22,
                                 borderRadius: 999,
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                backgroundColor: isOpen ? hexToRgba('#DC2626', 0.14) : hexToRgba('#16A34A', 0.14),
+                                backgroundColor: isOpen ? hexToRgba('#DC2626', 0.12) : hexToRgba('#16A34A', 0.12),
                               }}
                             >
+                              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: isOpen ? '#DC2626' : '#16A34A' }} />
                               <Text style={{ color: isOpen ? '#DC2626' : '#16A34A', fontSize: 10, fontWeight: '600' }}>
                                 {isOpen ? 'Open' : 'Resolved'}
                               </Text>
@@ -2120,8 +2176,9 @@ export default function PartnersScreen() {
                             <Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '400' }} numberOfLines={1}>{partner.email || '—'}</Text>
                           </View>
                           <View style={{ flex: 0.75, minWidth: 92, paddingRight: 10 }}>
-                            <View style={{ alignSelf: 'flex-start', paddingHorizontal: 10, height: 24, borderRadius: 999, backgroundColor: partner.isActive ? '#E6F7EC' : '#F4F4F0', alignItems: 'center', justifyContent: 'center' }}>
-                              <Text style={{ color: partner.isActive ? '#16A34A' : colors.text.tertiary, fontSize: 12, fontWeight: '600' }}>{partner.isActive ? 'Active' : 'Inactive'}</Text>
+                            <View style={{ alignSelf: 'flex-start', flexDirection: 'row', gap: 5, paddingHorizontal: 10, height: 24, borderRadius: 999, backgroundColor: partner.isActive ? hexToRgba('#16A34A', 0.12) : hexToRgba('#6B7280', 0.12), alignItems: 'center', justifyContent: 'center' }}>
+                              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: partner.isActive ? '#16A34A' : '#6B7280' }} />
+                              <Text style={{ color: partner.isActive ? '#16A34A' : '#6B7280', fontSize: 12, fontWeight: '600' }}>{partner.isActive ? 'Active' : 'Inactive'}</Text>
                             </View>
                           </View>
                           <View style={{ flex: 0.85, minWidth: 105, paddingRight: 24, alignItems: 'flex-end' }}>
@@ -2160,6 +2217,10 @@ export default function PartnersScreen() {
                           <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 3 }} numberOfLines={1}>
                             {[partner.contactName, partner.phone].filter(Boolean).join(' · ') || 'No contact info'}
                           </Text>
+                          <View style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 5, height: 22, marginTop: 6, paddingHorizontal: 9, borderRadius: 999, backgroundColor: partner.isActive ? hexToRgba('#16A34A', 0.12) : hexToRgba('#6B7280', 0.12) }}>
+                            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: partner.isActive ? '#16A34A' : '#6B7280' }} />
+                            <Text style={{ color: partner.isActive ? '#16A34A' : '#6B7280', fontSize: 10, fontWeight: '600' }}>{partner.isActive ? 'Active' : 'Inactive'}</Text>
+                          </View>
                         </View>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                           <Pressable

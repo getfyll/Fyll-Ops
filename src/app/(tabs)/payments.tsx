@@ -16,6 +16,7 @@ import { PaymentListSkeleton } from '@/components/SkeletonLoader';
 import * as Haptics from 'expo-haptics';
 import { SearchClearButton } from '@/components/SearchClearButton';
 import { fetchSocialCheckoutDrafts, getSocialCheckoutQueryKey } from '@/lib/social-checkout-query';
+import { syncFyllOrderStatusToWooCommerce } from '@/lib/woocommerce';
 
 // Payments list: summary, an attention nudge, then payments grouped by day
 // (table on desktop). Ops stays black/white; Fyll lime only marks actions.
@@ -38,9 +39,10 @@ const normalizeStatusName = (value?: string | null) => (
     .replace(/\s+/g, ' ')
 );
 
-const getVerifiedOrderStatus = (statuses: Array<{ name: string }>) => (
-  statuses.find((status) => normalizeStatusName(status.name) === 'verified')?.name?.trim()
-  || 'Verified'
+const getVerifiedOrderStatus = (statuses: { name: string; trackingStage?: string }[]) => (
+  statuses.find((status) => normalizeStatusName(status.name) === 'processing')?.name?.trim()
+  || statuses.find((status) => status.trackingStage === 'processing')?.name?.trim()
+  || 'Processing'
 );
 
 type SharedPaymentStatus = 'pending' | 'proof_submitted' | 'confirmed' | 'verified' | 'rejected' | 'failed' | 'refunded';
@@ -770,7 +772,13 @@ export default function PaymentsScreen() {
         status: 'verified',
         updatedAt: timestamp,
       };
-      const linkedOrder = (ordersQuery.data ?? []).find((order) => order.id === payment.sourceOrderId);
+      const linkedOrder = (ordersQuery.data ?? []).find((order) => (
+        order.id === payment.linkedOrderId
+        || order.id === payment.sourceOrderId
+        || order.orderNumber === payment.linkedOrderNumber
+        || order.websiteOrderReference === payment.sourceOrderId
+        || order.fyllCheckout?.reference === payment.sourceOrderId
+      ));
       const syncTasks: Promise<unknown>[] = [
         supabaseData.upsertCollection('payments', businessId!, [updatedPayment]),
       ];
@@ -800,6 +808,22 @@ export default function PaymentsScreen() {
           });
         } catch (error) {
           console.warn('Fyll Checkout confirmation callback failed after local approval:', error);
+          showFyllCheckoutSyncFailedNotice(payment.sourceOrderId, error);
+        }
+      }
+
+      // A Fyll Checkout payment can still belong to a storefront order that was
+      // mirrored into WooCommerce. Confirm the checkout and advance that Woo
+      // order as two independent steps instead of treating them as exclusive.
+      if (linkedOrder?.websiteOrderReference) {
+        try {
+          await syncFyllOrderStatusToWooCommerce({
+            businessId: businessId!,
+            orderId: linkedOrder.id,
+            status: nextStatus,
+          });
+        } catch (error) {
+          console.warn('WooCommerce status sync failed after storefront payment approval:', error);
           showFyllCheckoutSyncFailedNotice(payment.sourceOrderId, error);
         }
       }
@@ -1414,14 +1438,26 @@ export default function PaymentsScreen() {
                     ] as const).map(([key, label]) => (
                       <Text
                         key={key}
-                        style={{ ...DESKTOP_COLUMNS[key], color: palette.faint, fontSize: fs(11.5), fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', paddingRight: 10, textAlign: key === 'actions' ? 'right' : 'left' }}
+                        style={{ ...DESKTOP_COLUMNS[key], color: palette.faint, fontSize: 10, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', paddingRight: 10, textAlign: key === 'actions' ? 'right' : 'left' }}
                       >
                         {label}
                       </Text>
                     ))}
                   </View>
-                  {paymentRecords.map((record, index) => (
-                    <PaymentTableRow key={record.id} record={record} palette={palette} isLast={index === paymentRecords.length - 1} />
+                  {dayGroups.map((group, groupIndex) => (
+                    <React.Fragment key={group.day}>
+                      <View style={{ paddingHorizontal: 20, paddingTop: 10, paddingBottom: 8, backgroundColor: palette.isDark ? '#101010' : '#E9E9E6', borderBottomWidth: 1, borderBottomColor: palette.hairline }}>
+                        <Text style={{ color: palette.textSoft, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{group.day}</Text>
+                      </View>
+                      {group.rows.map((record, rowIndex) => (
+                        <PaymentTableRow
+                          key={record.id}
+                          record={record}
+                          palette={palette}
+                          isLast={groupIndex === dayGroups.length - 1 && rowIndex === group.rows.length - 1}
+                        />
+                      ))}
+                    </React.Fragment>
                   ))}
                 </View>
               ) : (

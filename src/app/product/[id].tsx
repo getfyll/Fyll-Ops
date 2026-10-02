@@ -988,9 +988,81 @@ export default function ProductDetailScreen() {
               No stock movement yet.
             </Text>
           </View>
+        ) : isWebDesktop ? (
+          <View>
+            <View
+              style={{
+                minHeight: 38,
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingHorizontal: 16,
+                backgroundColor: isDark ? '#151515' : '#F2F2EF',
+                borderBottomWidth: 1,
+                borderBottomColor: colors.border.light,
+              }}
+            >
+              <View style={{ width: 44 }} />
+              <Text style={{ color: colors.text.muted, width: 150, fontSize: 10, fontWeight: '600', letterSpacing: 0.7 }}>ADJUSTMENT</Text>
+              <Text style={{ color: colors.text.muted, width: 130, fontSize: 10, fontWeight: '600', letterSpacing: 0.7 }}>VARIANT</Text>
+              <Text style={{ color: colors.text.muted, flex: 1, fontSize: 10, fontWeight: '600', letterSpacing: 0.7 }}>DETAILS</Text>
+              <Text style={{ color: colors.text.muted, width: 120, fontSize: 10, fontWeight: '600', letterSpacing: 0.7 }}>BY</Text>
+              <Text style={{ color: colors.text.muted, width: 112, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textAlign: 'right' }}>DATE</Text>
+            </View>
+            <ScrollView style={{ maxHeight: 320 }} nestedScrollEnabled showsVerticalScrollIndicator>
+              {inventoryActivity.map((entry, index) => {
+                const date = new Date(entry.at);
+                const formattedDate = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                const formattedTime = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+                const isRestock = entry.type === 'restock';
+                const isAuditAdjustment = entry.type === 'audit_adjustment';
+                const isPositiveDelta = entry.delta >= 0;
+                const isProcurementReceipt = isRestock && 'sourceType' in entry && entry.sourceType === 'procurement_receipt';
+                const accentColor = isPositiveDelta ? '#10B981' : '#EF4444';
+                const activityLabel = isAuditAdjustment
+                  ? `${isPositiveDelta ? '+' : '-'}${entry.quantity} adjusted`
+                  : isRestock
+                    ? `${isPositiveDelta ? '+' : '-'}${entry.quantity} ${isProcurementReceipt && isPositiveDelta ? 'received' : isPositiveDelta ? 'restocked' : 'adjusted'}`
+                    : `-${entry.quantity} sold`;
+
+                return (
+                  <View
+                    key={entry.id}
+                    style={{
+                      minHeight: 56,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      paddingHorizontal: 16,
+                      borderBottomWidth: index < inventoryActivity.length - 1 ? 1 : 0,
+                      borderBottomColor: colors.border.light,
+                    }}
+                  >
+                    <View style={{ width: 44 }}>
+                      <View style={{ width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: isPositiveDelta ? 'rgba(16, 185, 129, 0.13)' : 'rgba(239, 68, 68, 0.13)' }}>
+                        {isAuditAdjustment ? (
+                          <ClipboardCheck size={14} color={accentColor} strokeWidth={2} />
+                        ) : isRestock && isPositiveDelta ? (
+                          <PackagePlus size={15} color={accentColor} strokeWidth={2} />
+                        ) : (
+                          <Minus size={14} color={accentColor} strokeWidth={2.4} />
+                        )}
+                      </View>
+                    </View>
+                    <Text style={{ color: accentColor, width: 150, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>{activityLabel}</Text>
+                    <Text style={{ color: colors.text.primary, width: 130, paddingRight: 12, fontSize: 12, fontWeight: '500' }} numberOfLines={1}>{entry.variantName}</Text>
+                    <Text style={{ color: colors.text.secondary, flex: 1, paddingRight: 16, fontSize: 12 }} numberOfLines={1}>{entry.subtitle}</Text>
+                    <Text style={{ color: colors.text.secondary, width: 120, paddingRight: 12, fontSize: 12 }} numberOfLines={1}>{entry.actor || 'System'}</Text>
+                    <View style={{ width: 112, alignItems: 'flex-end' }}>
+                      <Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '500' }}>{formattedDate}</Text>
+                      <Text style={{ color: colors.text.muted, fontSize: 10, marginTop: 2 }}>{formattedTime}</Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </ScrollView>
+          </View>
         ) : (
           <ScrollView
-            style={{ maxHeight: isWebDesktop ? 320 : 260 }}
+            style={{ maxHeight: 260 }}
             nestedScrollEnabled
             showsVerticalScrollIndicator
           >
@@ -2037,8 +2109,14 @@ export default function ProductDetailScreen() {
                 </View>
 
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                  <Pressable onPress={handleDelete} className="active:opacity-80" style={{ paddingHorizontal: 8, height: 44, justifyContent: 'center' }}>
-                    <Text style={{ color: '#EF4444', fontSize: 16, fontWeight: '700' }}>Delete Product</Text>
+                  <Pressable
+                    onPress={handleDelete}
+                    accessibilityRole="button"
+                    accessibilityLabel="Delete product"
+                    className="active:opacity-70"
+                    style={{ width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(239, 68, 68, 0.10)', borderWidth: 1, borderColor: 'rgba(239, 68, 68, 0.22)' }}
+                  >
+                    <Trash2 size={18} color="#EF4444" strokeWidth={2} />
                   </Pressable>
 
                   <Pressable

@@ -18,7 +18,7 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
-type WooSyncAction = 'test_connection' | 'fetch_orders' | 'fetch_order' | 'fetch_products' | 'update_order_status' | 'sync_fyll_order_status'
+type WooSyncAction = 'test_connection' | 'fetch_orders' | 'fetch_order' | 'fetch_products' | 'update_order_status' | 'sync_fyll_order_status' | 'create_fyll_order'
 
 type WooSyncPayload = {
   action?: WooSyncAction
@@ -30,6 +30,7 @@ type WooSyncPayload = {
   status?: string
   businessId?: string
   orderId?: string
+  silentImport?: boolean
 }
 
 type BusinessRow = {
@@ -39,6 +40,12 @@ type BusinessRow = {
 }
 
 type OrderRow = {
+  id: string
+  business_id: string
+  data?: Record<string, unknown> | null
+}
+
+type ProductRow = {
   id: string
   business_id: string
   data?: Record<string, unknown> | null
@@ -296,7 +303,7 @@ const requestWoo = async (
   storeUrl: string,
   consumerKey: string,
   consumerSecret: string,
-  method: 'GET' | 'PUT',
+  method: 'GET' | 'POST' | 'PUT',
   path: string,
   params: Record<string, string | number>,
   body?: Record<string, unknown>,
@@ -312,7 +319,16 @@ const requestWoo = async (
 
   if (!response.ok) {
     const text = await response.text().catch(() => '')
-    throw new Error(text.trim() || `WooCommerce request failed with status ${response.status}.`)
+    let detail = text.trim()
+    try {
+      const parsed = JSON.parse(text) as { message?: unknown; code?: unknown }
+      const message = typeof parsed.message === 'string' ? parsed.message.trim() : ''
+      const code = typeof parsed.code === 'string' ? parsed.code.trim() : ''
+      detail = [message, code ? `(${code})` : ''].filter(Boolean).join(' ')
+    } catch {
+      // Keep Woo's plain-text response when it is not JSON.
+    }
+    throw new Error(detail || `WooCommerce request failed with status ${response.status}.`)
   }
 
   return response.json()
@@ -335,6 +351,14 @@ const updateWoo = async (
   body: Record<string, unknown>,
 ) => requestWoo(storeUrl, consumerKey, consumerSecret, 'PUT', path, params, body)
 
+const createWoo = async (
+  storeUrl: string,
+  consumerKey: string,
+  consumerSecret: string,
+  path: string,
+  body: Record<string, unknown>,
+) => requestWoo(storeUrl, consumerKey, consumerSecret, 'POST', path, {}, body)
+
 const normalizeWooStatusSlug = (value: string | undefined) => {
   const normalized = (value ?? '').trim().toLowerCase().replace(/[_\s]+/g, '-')
   if (!normalized) throw new Error('WooCommerce status is required.')
@@ -343,6 +367,31 @@ const normalizeWooStatusSlug = (value: string | undefined) => {
 
 const toTrimmedString = (value: unknown) => (
   typeof value === 'string' ? value.trim() : ''
+)
+
+const toWooId = (...values: unknown[]) => {
+  for (const value of values) {
+    const normalized = toTrimmedString(value).replace(/^woo-(?:product|variant)-/i, '')
+    const parsed = Number(normalized)
+    if (Number.isInteger(parsed) && parsed > 0) return parsed
+  }
+  return 0
+}
+
+const splitCustomerName = (value: unknown) => {
+  const parts = toTrimmedString(value).split(/\s+/).filter(Boolean)
+  return {
+    firstName: parts.shift() ?? '',
+    lastName: parts.join(' '),
+  }
+}
+
+const normalizeCatalogIdentity = (value: unknown) => (
+  toTrimmedString(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
 )
 
 const findConfiguredWooStatusSlug = async ({
@@ -375,9 +424,20 @@ const findConfiguredWooStatusSlug = async ({
     .map((row) => row.data ?? {})
     .find((entry) => toTrimmedString(entry.name).toLowerCase() === normalizedStatusName)
 
-  return matched?.wooCommerceStatusSlug
-    ? normalizeWooStatusSlug(String(matched.wooCommerceStatusSlug))
-    : ''
+  if (matched?.wooCommerceStatusSlug) {
+    return normalizeWooStatusSlug(String(matched.wooCommerceStatusSlug))
+  }
+
+  const normalizedTrackingStage = toTrimmedString(matched?.trackingStage).toLowerCase()
+  const fallbackKey = `${normalizedStatusName} ${normalizedTrackingStage}`
+  if (/refund/.test(fallbackKey)) return 'refunded'
+  if (/reject|fail/.test(fallbackKey)) return 'failed'
+  if (/cancel/.test(fallbackKey)) return 'cancelled'
+  if (/deliver|complete/.test(fallbackKey)) return 'completed'
+  if (/hold/.test(fallbackKey)) return 'on-hold'
+  if (/processing|prepar|verified|payment confirmed|paid/.test(fallbackKey)) return 'processing'
+  if (/pending|awaiting/.test(fallbackKey)) return 'pending'
+  return ''
 }
 
 const findWooOrderByReference = async (
@@ -698,6 +758,387 @@ serve(async (req) => {
 
     const payload = await req.json() as WooSyncPayload
     const action = payload.action
+
+    if (action === 'create_fyll_order') {
+      const businessId = String(payload.businessId ?? '').trim()
+      const orderId = String(payload.orderId ?? '').trim()
+      const silentImport = payload.silentImport === true
+      if (!businessId || !orderId) {
+        return jsonResponse(400, { error: 'Business ID and order ID are required.' })
+      }
+
+      const businessIds = getBusinessIdAliases(businessId)
+      let businessQuery = admin.from('businesses').select('id,name,data')
+      let orderQuery = admin.from('orders').select('id,business_id,data').eq('id', orderId)
+      businessQuery = businessIds.length === 1 ? businessQuery.eq('id', businessIds[0]) : businessQuery.in('id', businessIds)
+      orderQuery = businessIds.length === 1 ? orderQuery.eq('business_id', businessIds[0]) : orderQuery.in('business_id', businessIds)
+
+      const [{ data: businessRows, error: businessError }, { data: orderRows, error: orderError }] = await Promise.all([
+        businessQuery,
+        orderQuery,
+      ])
+      if (businessError) throw businessError
+      if (orderError) throw orderError
+
+      const business = ((businessRows ?? []) as BusinessRow[])[0] ?? null
+      const order = ((orderRows ?? []) as OrderRow[])[0] ?? null
+      if (!business) return jsonResponse(404, { error: 'Business was not found.' })
+      if (!order) return jsonResponse(404, { error: 'Order was not found.' })
+
+      const businessData = (business.data ?? {}) as Record<string, unknown>
+      if (businessData.woocommerceEnabled !== true) {
+        return jsonResponse(200, { success: true, skipped: true, reason: 'woocommerce-disabled' })
+      }
+
+      const orderData = (order.data ?? {}) as Record<string, unknown>
+      const existingReference = toTrimmedString(orderData.websiteOrderReference)
+      if (existingReference) {
+        return jsonResponse(200, {
+          success: true,
+          skipped: true,
+          reason: 'already-linked',
+          websiteOrderReference: existingReference,
+        })
+      }
+
+      const storeUrl = normalizeStoreUrl(String(businessData.woocommerceStoreUrl ?? ''))
+      const consumerKey = normalizeCredential(String(businessData.woocommerceConsumerKey ?? ''), 'Consumer key')
+      const consumerSecret = normalizeCredential(String(businessData.woocommerceConsumerSecret ?? ''), 'Consumer secret')
+
+      // Idempotency check: recover a previously-created Woo order if Fyll did
+      // not get to save its reference after the remote request succeeded.
+      const recentWooOrders = await fetchWoo(storeUrl, consumerKey, consumerSecret, '/wp-json/wc/v3/orders', {
+        per_page: 100,
+        page: 1,
+        orderby: 'date',
+        order: 'desc',
+      }) as WooOrder[]
+      const duplicate = (Array.isArray(recentWooOrders) ? recentWooOrders : []).find((wooOrder) => (
+        (wooOrder.meta_data ?? []).some((meta) => meta.key === '_fyll_order_id' && String(meta.value ?? '') === order.id)
+      ))
+
+      if (duplicate?.id) {
+        const customerEmail = toTrimmedString(orderData.customerEmail)
+        let recoveredOrder = duplicate
+        let emailAttachWarning = ''
+        if (customerEmail && toTrimmedString(duplicate.billing?.email).toLowerCase() !== customerEmail.toLowerCase()) {
+          try {
+            recoveredOrder = await updateWoo(
+              storeUrl,
+              consumerKey,
+              consumerSecret,
+              `/wp-json/wc/v3/orders/${duplicate.id}`,
+              {},
+              {
+                billing: { email: customerEmail },
+              },
+            ) as WooOrder
+          } catch (emailError) {
+            emailAttachWarning = emailError instanceof Error ? emailError.message : 'Could not attach the customer email.'
+            console.error('WooCommerce order recovered, but customer email attachment failed:', emailAttachWarning)
+          }
+        }
+        const recoveredReference = String(recoveredOrder.number ?? recoveredOrder.id)
+        const recoveredData = {
+          ...orderData,
+          websiteOrderReference: recoveredReference,
+          updatedAt: new Date().toISOString(),
+        }
+        const { error: recoverError } = await admin.from('orders').update({ data: recoveredData }).eq('id', order.id)
+        if (recoverError) throw recoverError
+        return jsonResponse(200, {
+          success: true,
+          skipped: true,
+          reason: 'recovered-existing-order',
+          websiteOrderReference: recoveredReference,
+          order: normalizeWooOrder(recoveredOrder),
+          warning: emailAttachWarning || undefined,
+        })
+      }
+
+      const rawItems = Array.isArray(orderData.items) ? orderData.items as Record<string, unknown>[] : []
+      const productIds = Array.from(new Set(rawItems.map((item) => toTrimmedString(item.productId)).filter(Boolean)))
+      let productRows: ProductRow[] = []
+      if (productIds.length > 0) {
+        let productQuery = admin.from('products').select('id,business_id,data').in('id', productIds)
+        productQuery = businessIds.length === 1 ? productQuery.eq('business_id', businessIds[0]) : productQuery.in('business_id', businessIds)
+        const { data, error } = await productQuery
+        if (error) throw error
+        productRows = (data ?? []) as ProductRow[]
+      }
+      const productsById = new Map(productRows.map((row) => [row.id, row.data ?? {}]))
+
+      const needsCatalogRecovery = rawItems.some((item) => {
+        const product = productsById.get(toTrimmedString(item.productId))
+        if (!product) return false
+        const variants = Array.isArray(product.variants) ? product.variants as Record<string, unknown>[] : []
+        const variant = variants.find((candidate) => toTrimmedString(candidate.id) === toTrimmedString(item.variantId)) ?? variants[0]
+        return !toWooId(
+          variant?.wooCommerceProductId,
+          product.wooCommerceProductId,
+          product.sourceProductId,
+          product.websiteProductId,
+        )
+      })
+      const recoveryCatalog = needsCatalogRecovery
+        ? await fetchWooProductsCatalog(storeUrl, consumerKey, consumerSecret, 300)
+        : []
+      const recoveredLinks = new Map<string, { productId: number; variationId: number }>()
+
+      let lineItems = rawItems.map((item) => {
+        const productId = toTrimmedString(item.productId)
+        const variantId = toTrimmedString(item.variantId)
+        const product = productsById.get(productId)
+        if (!product) throw new Error(`Product ${productId || 'unknown'} is not available for WooCommerce sync.`)
+        const variants = Array.isArray(product.variants) ? product.variants as Record<string, unknown>[] : []
+        const variant = variants.find((candidate) => toTrimmedString(candidate.id) === variantId) ?? variants[0]
+        let wooProductId = toWooId(
+          variant?.wooCommerceProductId,
+          product.wooCommerceProductId,
+          product.sourceProductId,
+          product.websiteProductId,
+        )
+        let wooVariationId = toWooId(variant?.wooCommerceVariationId, variant?.sourceVariantId)
+        if (!wooProductId) {
+          const skuIdentity = normalizeCatalogIdentity(variant?.sku)
+          const variantValues = variant?.variableValues && typeof variant.variableValues === 'object'
+            ? Object.values(variant.variableValues as Record<string, unknown>).map(toTrimmedString).filter(Boolean).join(' ')
+            : ''
+          const expectedName = normalizeCatalogIdentity(`${toTrimmedString(product.name)} ${variantValues}`)
+          const skuMatches = skuIdentity
+            ? recoveryCatalog.filter((candidate) => normalizeCatalogIdentity(candidate.sku) === skuIdentity)
+            : []
+          const nameMatches = expectedName
+            ? recoveryCatalog.filter((candidate) => {
+              const candidateAttributes = Object.values(candidate.attributes ?? {}).join(' ')
+              return normalizeCatalogIdentity(`${candidate.name} ${candidateAttributes}`) === expectedName
+                || normalizeCatalogIdentity(candidate.name) === expectedName
+            })
+            : []
+          const uniqueMatches = skuMatches.length === 1 ? skuMatches : nameMatches
+          if (uniqueMatches.length === 1) {
+            const recovered = uniqueMatches[0]
+            wooProductId = toWooId(recovered.productId)
+            wooVariationId = /^woo-variant-/i.test(recovered.variationId) ? toWooId(recovered.variationId) : 0
+            if (wooProductId) recoveredLinks.set(`${productId}:${variantId}`, { productId: wooProductId, variationId: wooVariationId })
+          }
+        }
+        if (!wooProductId) {
+          const variantValues = variant?.variableValues && typeof variant.variableValues === 'object'
+            ? Object.values(variant.variableValues as Record<string, unknown>).map(toTrimmedString).filter(Boolean).join(' ')
+            : ''
+          const itemLabel = [toTrimmedString(product.name), variantValues].filter(Boolean).join(' ')
+          throw new Error(`${itemLabel || 'An ordered product'} is not linked to WooCommerce and no exact SKU or product-name match was found.`)
+        }
+        const quantity = Math.max(1, Math.floor(Number(item.quantity) || 1))
+        const unitPrice = Math.max(0, Number(item.unitPrice) || Number(variant?.sellingPrice) || 0)
+        const availableStock = Math.max(0, Math.floor(Number(variant?.stock) || 0))
+        const backorderedQuantity = Math.max(0, quantity - availableStock)
+        return {
+          product_id: wooProductId,
+          ...(wooVariationId ? { variation_id: wooVariationId } : {}),
+          quantity,
+          subtotal: (unitPrice * quantity).toFixed(2),
+          total: (unitPrice * quantity).toFixed(2),
+          ...(backorderedQuantity > 0 ? {
+            meta_data: [{ key: 'Backordered via Fyll', value: String(backorderedQuantity) }],
+          } : {}),
+        }
+      })
+
+      if (lineItems.length === 0) {
+        return jsonResponse(400, { error: 'The Fyll order has no linked product items to send to WooCommerce.' })
+      }
+
+      if (recoveredLinks.size > 0) {
+        await Promise.all(productRows.map(async (row) => {
+          const productData = (row.data ?? {}) as Record<string, unknown>
+          const variants = Array.isArray(productData.variants) ? productData.variants as Record<string, unknown>[] : []
+          let productWooId = toTrimmedString(productData.wooCommerceProductId)
+          let changed = false
+          const nextVariants = variants.map((variant) => {
+            const recovered = recoveredLinks.get(`${row.id}:${toTrimmedString(variant.id)}`)
+            if (!recovered) return variant
+            changed = true
+            productWooId = String(recovered.productId)
+            return {
+              ...variant,
+              wooCommerceProductId: String(recovered.productId),
+              sourceProductId: String(recovered.productId),
+              ...(recovered.variationId ? {
+                wooCommerceVariationId: String(recovered.variationId),
+                sourceVariantId: String(recovered.variationId),
+              } : {}),
+            }
+          })
+          if (!changed) return
+          const { error } = await admin.from('products').update({
+            data: {
+              ...productData,
+              wooCommerceProductId: productWooId,
+              sourceProductId: productWooId,
+              websiteProductId: productWooId,
+              variants: nextVariants,
+            },
+          }).eq('id', row.id)
+          if (error) throw error
+        }))
+      }
+
+      // Standalone simple Woo products do not need a verification request.
+      // Only inspect products whose Fyll link contains a real numeric
+      // variation ID; this keeps linked simple-product orders fast while
+      // retaining safe support for any variable products added later.
+      const uniqueWooProductIds = Array.from(new Set(
+        lineItems
+          .filter((lineItem) => Boolean(lineItem.variation_id))
+          .map((lineItem) => lineItem.product_id),
+      ))
+      const wooProductTypes = new Map<number, string>()
+      await Promise.all(uniqueWooProductIds.map(async (wooProductId) => {
+        const wooProduct = await fetchWoo(
+          storeUrl,
+          consumerKey,
+          consumerSecret,
+          `/wp-json/wc/v3/products/${wooProductId}`,
+          {},
+        ) as WooProduct
+        wooProductTypes.set(wooProductId, toTrimmedString(wooProduct.type).toLowerCase())
+      }))
+      lineItems = lineItems.map((lineItem) => {
+        if (wooProductTypes.get(lineItem.product_id) === 'variable') return lineItem
+        const { variation_id: _ignoredVariationId, ...simpleProductLine } = lineItem
+        return simpleProductLine
+      })
+
+      const customer = splitCustomerName(orderData.customerName)
+      const customerEmail = toTrimmedString(orderData.customerEmail)
+      const deliveryAddress = toTrimmedString(orderData.deliveryAddress)
+      const deliveryState = toTrimmedString(orderData.deliveryState)
+      const services = Array.isArray(orderData.services) ? orderData.services as Record<string, unknown>[] : []
+      const hasBackorderedItems = lineItems.some((lineItem) => Array.isArray(lineItem.meta_data) && lineItem.meta_data.length > 0)
+      const feeLines = services.map((service) => ({
+        name: toTrimmedString(service.name) || 'Service',
+        total: Math.max(0, Number(service.price) || 0).toFixed(2),
+        tax_status: 'none',
+      }))
+      const additionalCharges = Math.max(0, Number(orderData.additionalCharges) || 0)
+      if (additionalCharges > 0) {
+        feeLines.push({
+          name: toTrimmedString(orderData.additionalChargesNote) || 'Additional charge',
+          total: additionalCharges.toFixed(2),
+          tax_status: 'none',
+        })
+      }
+
+      const wooOrderPayload: Record<string, unknown> = {
+        status: 'processing',
+        set_paid: true,
+        payment_method: 'bacs',
+        payment_method_title: toTrimmedString(orderData.paymentMethod) || 'Fyll payment',
+        customer_note: toTrimmedString(orderData.customerNote),
+        date_created: toTrimmedString(orderData.orderDate) || toTrimmedString(orderData.createdAt) || undefined,
+        billing: {
+          first_name: customer.firstName,
+          last_name: customer.lastName,
+          // Woo rejects an empty email as an invalid billing object. Omit the
+          // field completely for silent backlog imports, then attach it after
+          // creation without changing the order status.
+          ...(!silentImport && customerEmail ? { email: customerEmail } : {}),
+          phone: toTrimmedString(orderData.customerPhone),
+          address_1: deliveryAddress,
+          state: deliveryState,
+          country: 'NG',
+        },
+        shipping: {
+          first_name: customer.firstName,
+          last_name: customer.lastName,
+          address_1: deliveryAddress,
+          state: deliveryState,
+          country: 'NG',
+        },
+        line_items: lineItems,
+        shipping_lines: Number(orderData.deliveryFee) > 0 ? [{
+          method_title: 'Delivery',
+          method_id: 'fyll_delivery',
+          total: Math.max(0, Number(orderData.deliveryFee) || 0).toFixed(2),
+        }] : [],
+        fee_lines: feeLines,
+        meta_data: [
+          { key: '_fyll_order_id', value: order.id },
+          { key: '_fyll_order_number', value: toTrimmedString(orderData.orderNumber) },
+          { key: '_fyll_order_source', value: toTrimmedString(orderData.source) || 'Fyll Ops' },
+          { key: '_fyll_original_order_date', value: toTrimmedString(orderData.orderDate) || toTrimmedString(orderData.createdAt) },
+          { key: '_fyll_backorder_required', value: hasBackorderedItems ? 'yes' : 'no' },
+          ...(silentImport ? [{ key: '_fyll_silent_import', value: 'yes' }] : []),
+        ],
+      }
+
+      let createdAsBackorder = false
+      let wooOrder: WooOrder
+      try {
+        wooOrder = await createWoo(storeUrl, consumerKey, consumerSecret, '/wp-json/wc/v3/orders', wooOrderPayload) as WooOrder
+      } catch (createError) {
+        const createMessage = createError instanceof Error ? createError.message : ''
+        const isStockRejection = /stock|backorder|purchasable|purchaseable|out[ -]?of[ -]?stock/i.test(createMessage)
+        if (!isStockRejection) throw createError
+
+        createdAsBackorder = true
+        wooOrder = await createWoo(storeUrl, consumerKey, consumerSecret, '/wp-json/wc/v3/orders', {
+          ...wooOrderPayload,
+          status: 'on-hold',
+          set_paid: false,
+          meta_data: [
+            ...((wooOrderPayload.meta_data as Record<string, unknown>[]) ?? []),
+            { key: '_fyll_backorder_reason', value: createMessage || 'Insufficient WooCommerce stock' },
+          ],
+        }) as WooOrder
+      }
+
+      if (!wooOrder.id) throw new Error('WooCommerce did not return the created order ID.')
+      let emailAttachWarning = ''
+      if (silentImport && customerEmail) {
+        try {
+          wooOrder = await updateWoo(
+            storeUrl,
+            consumerKey,
+            consumerSecret,
+            `/wp-json/wc/v3/orders/${wooOrder.id}`,
+            {},
+            {
+              billing: { email: customerEmail },
+            },
+          ) as WooOrder
+        } catch (emailError) {
+          emailAttachWarning = emailError instanceof Error ? emailError.message : 'Could not attach the customer email.'
+          console.error('WooCommerce order created, but customer email attachment failed:', emailAttachWarning)
+        }
+      }
+      const websiteOrderReference = String(wooOrder.number ?? wooOrder.id)
+      const updatedOrderData = {
+        ...orderData,
+        websiteOrderReference,
+        updatedAt: new Date().toISOString(),
+        activityLog: [
+          ...(Array.isArray(orderData.activityLog) ? orderData.activityLog : []),
+          {
+            staffName: 'System',
+            action: `Added WooCommerce order ${websiteOrderReference}${silentImport ? ' without sending a customer email' : ''}${createdAsBackorder ? ' as backorder' : ''}`,
+            date: new Date().toISOString(),
+          },
+        ],
+      }
+      const { error: updateError } = await admin.from('orders').update({ data: updatedOrderData }).eq('id', order.id)
+      if (updateError) throw updateError
+
+      return jsonResponse(200, {
+        success: true,
+        order: normalizeWooOrder(wooOrder),
+        websiteOrderReference,
+        backordered: createdAsBackorder || hasBackorderedItems,
+        warning: emailAttachWarning || undefined,
+      })
+    }
 
     if (action === 'sync_fyll_order_status') {
       const businessId = String(payload.businessId ?? '').trim()

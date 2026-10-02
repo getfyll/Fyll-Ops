@@ -59,8 +59,10 @@ type WooSyncFunctionResponse = {
   products?: WooNormalizedProduct[];
   order?: WooNormalizedOrder | null;
   updatedStatus?: string;
+  websiteOrderReference?: string;
   skipped?: boolean;
   reason?: string;
+  warning?: string;
   debug?: {
     businessId?: string;
     matchedBusinessId?: string;
@@ -259,5 +261,34 @@ export const syncFyllOrderStatusToWooCommerce = async (
     order: data.order ?? null,
     updatedStatus: data.updatedStatus ?? input.status.trim(),
     debug: data.debug ?? null,
+  };
+};
+
+export const createWooCommerceOrderFromFyll = async (
+  input: { businessId: string; orderId: string; silentImport?: boolean },
+) => {
+  const { data, error } = await supabase.functions.invoke<WooSyncFunctionResponse>('woocommerce-sync', {
+    body: {
+      action: 'create_fyll_order',
+      businessId: input.businessId.trim(),
+      orderId: input.orderId.trim(),
+      silentImport: input.silentImport === true,
+    },
+  });
+
+  if (error) {
+    throw new Error(await getFunctionErrorMessage(error));
+  }
+
+  if (!data?.success) {
+    throw new Error(data?.error || 'WooCommerce order creation failed.');
+  }
+
+  return {
+    skipped: data.skipped === true,
+    reason: data.reason ?? null,
+    order: data.order ?? null,
+    websiteOrderReference: data.websiteOrderReference ?? data.order?.websiteOrderReference ?? null,
+    warning: data.warning ?? null,
   };
 };

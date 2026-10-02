@@ -1,9 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { View, Text, ScrollView, FlatList, Pressable, TextInput, Modal, Platform, ActivityIndicator } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { Plus, Search, ShoppingCart, ChevronRight, MapPin, Calendar, User as UserIcon, Filter, Check, X, ArrowDownAZ, ArrowUpAZ, DollarSign, Clock, AlertCircle, Flag } from 'lucide-react-native';
+import { Plus, Search, ShoppingCart, ChevronRight, Filter, Check, X, ArrowDownAZ, ArrowUpAZ, DollarSign, Clock, AlertCircle, Flag, Sparkles } from 'lucide-react-native';
 import useFyllStore, { Order, Product, formatCurrency } from '@/lib/state/fyll-store';
 import useAuthStore from '@/lib/state/auth-store';
 import { collaborationData } from '@/lib/supabase/collaboration';
@@ -16,18 +16,29 @@ import { SplitViewLayout } from '@/components/SplitViewLayout';
 import { OrderDetailPanel } from '@/components/OrderDetailPanel';
 import { FyllAiButton } from '@/components/FyllAiButton';
 import { parseOrderFromText, type ParsedOrderData } from '@/lib/ai-order-parser';
-import { DESKTOP_PAGE_HEADER_MIN_HEIGHT, getStandardPageHeadingStyle } from '@/lib/page-heading';
 import { getOrderStatusColor } from '@/lib/order-status-colors';
-import { sortOrderStatusesForFulfillment } from '@/lib/order-status';
+import { findOrderTrackingStageByName, sortOrderStatusesForFulfillment } from '@/lib/order-status';
 import { getFulfillmentSnapshot } from '@/lib/fulfillment';
-import { formatAddressValue } from '@/lib/format-address';
 import * as Haptics from 'expo-haptics';
+import { useFonts, BricolageGrotesque_700Bold } from '@expo-google-fonts/bricolage-grotesque';
 import { SearchClearButton } from '@/components/SearchClearButton';
+import { supabaseData } from '@/lib/supabase/data';
+import { FYLL_LIME, FYLL_LIME_INK } from '@/components/payments/payments-ui';
 
 // Hairline separator colors
 const SEPARATOR_LIGHT = '#EEEEEE';
 const SEPARATOR_DARK = '#333333';
 const ORDERS_PAGE_SIZE = 20;
+
+type OrdersPaymentRecord = {
+  id: string;
+  status?: string;
+  customerName?: string;
+  amount?: number;
+  sourceOrderId?: string;
+  linkedOrderId?: string | null;
+  unlinkedOrderId?: string | null;
+};
 
 const normalizeOrderStatusLabel = (value?: string | null) => (
   String(value ?? '')
@@ -180,7 +191,38 @@ interface OrderCardProps {
   showSplitView?: boolean;
   separatorColor: string;
   unreadCount?: number;
+  isFirstInGroup?: boolean;
+  isLastInGroup?: boolean;
 }
+
+const getOrderDate = (order: Order) => new Date(order.orderDate ?? order.createdAt);
+
+const getOrderDayKey = (order: Order) => {
+  const date = getOrderDate(order);
+  return Number.isNaN(date.getTime()) ? 'unknown' : date.toISOString().slice(0, 10);
+};
+
+const getOrderDayLabel = (order: Order) => {
+  const date = getOrderDate(order);
+  if (Number.isNaN(date.getTime())) return 'Earlier';
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const target = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const difference = Math.round((today.getTime() - target.getTime()) / 86_400_000);
+  if (difference === 0) return 'Today';
+  if (difference === 1) return `Yesterday · ${date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
+  return date.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+};
+
+const getCustomerInitials = (name: string) => (
+  name
+    .trim()
+    .split(/[\s-]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join('') || '—'
+);
 
 const formatOrderItemSummary = (order: Order, products: Product[]) => {
   const firstItem = order.items?.[0];
@@ -198,23 +240,16 @@ const formatOrderItemSummary = (order: Order, products: Product[]) => {
   return `${productName}${details ? ` - ${details}` : ''}${suffix}`;
 };
 
-function OrderCard({ order, products, statusColor, onPress, isSelected, showSplitView, separatorColor, unreadCount }: OrderCardProps) {
+function OrderCard({ order, products, statusColor, onPress, isSelected, showSplitView, separatorColor, unreadCount, isFirstInGroup, isLastInGroup }: OrderCardProps) {
   const colors = useThemeColors();
   const isDark = colors.bg.primary === '#111111';
-
-  const orderDateSource = order.orderDate ?? order.createdAt;
-  const orderDate = new Date(orderDateSource).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-  });
-
-  // Determine if status is Refunded for red color
-  const isRefunded = order.status === 'Refunded';
   const statusDisplay = getOrderStatusDisplay(order.status);
-  const chipTextColor = statusDisplay.color || (isRefunded ? '#EF4444' : statusColor);
-  const chipBgColor = statusDisplay.bg || (isRefunded ? 'rgba(239, 68, 68, 0.15)' : `${statusColor}15`);
-  const deliveryStateText = formatAddressValue(order.deliveryState);
+  const chipTextColor = statusDisplay.color || statusColor;
   const itemSummary = formatOrderItemSummary(order, products);
+  const orderStatuses = useFyllStore((s) => s.orderStatuses);
+  const timelineMeta = getTimelineCellMeta(order, orderStatuses);
+  const TimelineIcon = timelineMeta?.icon;
+  const isCancelled = findOrderTrackingStageByName(order.status, orderStatuses) === 'cancelled';
 
   return (
     <Pressable
@@ -224,91 +259,46 @@ function OrderCard({ order, products, statusColor, onPress, isSelected, showSpli
         }
         onPress();
       }}
-      className="mb-2 active:opacity-80"
+      className="active:opacity-80"
     >
       <View
         style={{
           backgroundColor: colors.bg.card,
-          borderWidth: 0.5,
+          borderTopWidth: isFirstInGroup ? 1 : 0,
+          borderBottomWidth: 1,
+          borderLeftWidth: 1,
+          borderRightWidth: 1,
           borderColor: separatorColor,
-          borderLeftWidth: 0.5,
-          borderLeftColor: separatorColor,
+          borderTopLeftRadius: isFirstInGroup ? 18 : 0,
+          borderTopRightRadius: isFirstInGroup ? 18 : 0,
+          borderBottomLeftRadius: isLastInGroup ? 18 : 0,
+          borderBottomRightRadius: isLastInGroup ? 18 : 0,
           ...getActiveSplitCardStyle({ isSelected, showSplitView, isDark, colors }),
         }}
-        className="rounded-xl p-3"
+        className="px-3.5 py-3"
       >
-        {/* Header */}
-        <View className="flex-row items-start justify-between mb-2">
-          <View className="flex-1">
-            <View className="flex-row items-center">
-              <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '700' }}>{order.orderNumber}</Text>
-              {order.flagNote && (
-                <Flag size={11} color={colors.accent.warning} fill={colors.accent.warning} strokeWidth={2} style={{ marginLeft: 6 }} />
-              )}
-              {Date.now() - new Date(order.createdAt).getTime() < 24 * 60 * 60 * 1000 && (
-                <View style={{
-                  backgroundColor: '#3B82F6',
-                  paddingHorizontal: 5,
-                  paddingVertical: 2,
-                  borderRadius: 5,
-                  marginLeft: 6,
-                }}>
-                  <Text style={{ color: '#FFFFFF', fontSize: 9, fontWeight: '800', letterSpacing: 0.5 }}>NEW</Text>
-                </View>
-              )}
-              {(unreadCount ?? 0) > 0 && (
-                <View style={{
-                  backgroundColor: '#DC2626',
-                  minWidth: 18,
-                  height: 18,
-                  borderRadius: 9,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  paddingHorizontal: 5,
-                  marginLeft: 6,
-                }}>
-                  <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '700' }}>{unreadCount}</Text>
-                </View>
-              )}
-              <View
-                className="ml-2 px-2 py-0.5 rounded-md"
-                style={{ backgroundColor: chipBgColor }}
-              >
-                <Text style={{ color: chipTextColor }} className="text-xs font-semibold">
-                  {statusDisplay.label}
-                </Text>
+        <View className="flex-row items-center" style={{ gap: 12 }}>
+          <View style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? '#2A2B24' : colors.bg.secondary }}>
+            <Text style={{ color: colors.text.secondary, fontSize: 11, fontWeight: '600' }}>{getCustomerInitials(order.customerName)}</Text>
+          </View>
+          <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+            <View className="flex-row items-center justify-between" style={{ gap: 8 }}>
+              <View className="flex-row items-center" style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '500', flexShrink: 1 }} numberOfLines={1}>{order.customerName}</Text>
+                {order.flagNote ? <Flag size={11} color={colors.accent.warning} fill={colors.accent.warning} strokeWidth={2} style={{ marginLeft: 6 }} /> : null}
+                {(unreadCount ?? 0) > 0 ? <View style={{ minWidth: 17, height: 17, borderRadius: 9, backgroundColor: '#DC2626', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, marginLeft: 6 }}><Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '700' }}>{unreadCount}</Text></View> : null}
               </View>
+              <Text style={{ color: isCancelled ? colors.text.muted : colors.text.primary, fontSize: 12, fontWeight: '600', textDecorationLine: isCancelled ? 'line-through' : 'none' }}>{formatCurrency(order.totalAmount)}</Text>
             </View>
-            <View className="flex-row items-center mt-1">
-              <UserIcon size={12} color={colors.text.tertiary} strokeWidth={2} />
-              <Text style={{ color: colors.text.tertiary }} className="text-sm ml-1">{order.customerName}</Text>
-            </View>
-            <Text style={{ color: colors.text.secondary }} className="text-xs mt-1" numberOfLines={1}>
-              {itemSummary}
-            </Text>
-          </View>
-          <View className="items-end">
-            <Text style={{ color: colors.text.primary, fontSize: 14 }} className="font-bold">{formatCurrency(order.totalAmount)}</Text>
-            <View className="flex-row items-center mt-0.5">
-              <View className="px-1.5 py-0.5 rounded" style={{ backgroundColor: colors.bg.secondary }}>
-                <Text style={{ color: colors.text.muted }} className="text-xs">{order.source}</Text>
+            <Text style={{ color: colors.text.muted, fontSize: 10 }} numberOfLines={1}>{order.orderNumber} · {itemSummary}</Text>
+            <View className="flex-row items-center justify-between" style={{ gap: 8 }}>
+              <View className="flex-row items-center" style={{ gap: 5, minWidth: 0 }}>
+                <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: chipTextColor }} />
+                <Text style={{ color: chipTextColor, fontSize: 10, fontWeight: '600' }} numberOfLines={1}>{statusDisplay.label}</Text>
               </View>
+              {timelineMeta ? <View className="flex-row items-center" style={{ gap: 5 }}>{TimelineIcon ? <TimelineIcon size={11} color={timelineMeta.text} strokeWidth={2.2} /> : null}<Text style={{ color: timelineMeta.text, fontSize: 10 }} numberOfLines={1}>{timelineMeta.dayLabel ? `${timelineMeta.dayLabel} · ` : ''}{timelineMeta.label}</Text></View> : null}
             </View>
           </View>
-        </View>
-
-        {/* Footer */}
-        <View className="flex-row items-center pt-2" style={{ borderTopWidth: 0.5, borderTopColor: separatorColor }}>
-          <View className="flex-row items-center mr-4">
-            <Calendar size={12} color={colors.text.muted} strokeWidth={2} />
-            <Text style={{ color: colors.text.muted }} className="text-xs ml-1">{orderDate}</Text>
-          </View>
-          <View className="flex-row items-center">
-            <MapPin size={12} color={colors.text.muted} strokeWidth={2} />
-            <Text style={{ color: colors.text.muted }} className="text-xs ml-1">{deliveryStateText || 'N/A'}</Text>
-          </View>
-          <View className="flex-1" />
-          <ChevronRight size={16} color={colors.text.muted} strokeWidth={2} />
         </View>
       </View>
     </Pressable>
@@ -340,20 +330,14 @@ function OrderRowWeb({
   const isDark = colors.bg.primary === '#111111';
   const orderStatuses = useFyllStore((s) => s.orderStatuses);
 
-  const orderDateSource = order.orderDate ?? order.createdAt;
-  const orderDate = new Date(orderDateSource).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
-
-  const isRefunded = order.status === 'Refunded';
   const statusDisplay = getOrderStatusDisplay(order.status);
-  const chipTextColor = statusDisplay.color || (isRefunded ? '#EF4444' : statusColor);
-  const chipBgColor = statusDisplay.bg || (isRefunded ? 'rgba(239, 68, 68, 0.15)' : `${statusColor}15`);
+  const chipTextColor = statusDisplay.color || statusColor;
   const timelineMeta = getTimelineCellMeta(order, orderStatuses);
   const TimelineIcon = timelineMeta?.icon;
   const itemSummary = formatOrderItemSummary(order, products);
+  const isCancelled = findOrderTrackingStageByName(order.status, orderStatuses) === 'cancelled';
+  const dayCount = timelineMeta?.dayLabel ? parseTimelineDayCount(timelineMeta.dayLabel) : null;
+  const progress = dayCount ? Math.min(100, Math.max(0, (dayCount.elapsedDays / Math.max(1, dayCount.timelineDays)) * 100)) : 0;
 
   return (
     <Pressable
@@ -367,9 +351,9 @@ function OrderRowWeb({
         borderBottomColor: separatorColor,
       }}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 14 }}>
-        <View style={{ flex: 1.1, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <Text style={{ color: colors.text.primary }} className="text-sm font-semibold" numberOfLines={1}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 58, paddingHorizontal: 22, gap: 16 }}>
+        <View style={{ width: 150, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Text style={{ color: colors.text.primary, fontSize: 12 }} className="font-semibold" numberOfLines={1}>
             {order.orderNumber}
           </Text>
           {order.flagNote && (
@@ -389,19 +373,17 @@ function OrderRowWeb({
             </View>
           )}
         </View>
-        <Text style={{ color: colors.text.secondary, flex: 1.6 }} className="text-sm" numberOfLines={1}>
-          {order.customerName}
-        </Text>
-        <Text style={{ color: colors.text.secondary, flex: 1.8 }} className="text-sm" numberOfLines={1}>
+        <View style={{ flex: 1.3, flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 0 }}><View style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? '#2A2B24' : colors.bg.secondary }}><Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '600' }}>{getCustomerInitials(order.customerName)}</Text></View><Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '500', flex: 1 }} numberOfLines={1}>{order.customerName}</Text></View>
+        <Text style={{ color: colors.text.secondary, flex: 1.2, fontSize: 12 }} numberOfLines={1}>
           {itemSummary}
         </Text>
-        <Text style={{ color: colors.text.tertiary, width: 56, textAlign: 'center' }} className="text-sm" numberOfLines={1}>
+        <Text style={{ color: colors.text.tertiary, width: 56, textAlign: 'right', fontSize: 12 }} numberOfLines={1}>
           {order.items?.length ?? 0}
         </Text>
-        <Text style={{ color: colors.text.primary, flex: 1 }} className="text-sm font-semibold" numberOfLines={1}>
+        <Text style={{ color: isCancelled ? colors.text.muted : colors.text.primary, width: 110, textAlign: 'right', fontSize: 12, fontWeight: '600', textDecorationLine: isCancelled ? 'line-through' : 'none' }} numberOfLines={1}>
           {formatCurrency(order.totalAmount)}
         </Text>
-        <View style={{ flex: 1.5, minWidth: 0, paddingRight: 8 }}>
+        <View style={{ width: 200, minWidth: 0 }}>
           {timelineMeta ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               <View
@@ -409,40 +391,26 @@ function OrderRowWeb({
                   flexDirection: 'row',
                   alignItems: 'center',
                   alignSelf: 'flex-start',
-                  paddingHorizontal: 10,
-                  paddingVertical: 7,
+                  height: 24,
+                  paddingHorizontal: 9,
                   borderRadius: 999,
                   backgroundColor: timelineMeta.bg,
                 }}
               >
                 {TimelineIcon ? <TimelineIcon size={13} color={timelineMeta.text} strokeWidth={2.2} /> : null}
-                <Text style={{ color: timelineMeta.text, fontSize: 10, fontWeight: '600', marginLeft: 6 }} numberOfLines={1}>
+                <Text style={{ color: timelineMeta.text, fontSize: 12, fontWeight: '600', marginLeft: 5 }} numberOfLines={1}>
                   {timelineMeta.label}
                 </Text>
               </View>
               {timelineMeta.dayLabel ? (
-                <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '500' }} numberOfLines={1}>
-                  {timelineMeta.dayLabel}
-                </Text>
+                <View style={{ width: 64, gap: 4 }}><Text style={{ color: colors.text.tertiary, fontSize: 12 }} numberOfLines={1}>{timelineMeta.dayLabel}</Text><View style={{ height: 3, borderRadius: 2, overflow: 'hidden', backgroundColor: colors.border.light }}><View style={{ height: 3, width: `${progress}%`, backgroundColor: timelineMeta.text }} /></View></View>
               ) : null}
             </View>
           ) : (
-            <Text style={{ color: colors.text.muted, fontSize: 18, fontWeight: '400' }}>-</Text>
+            <Text style={{ color: colors.text.muted, fontSize: 12, fontWeight: '400' }}>-</Text>
           )}
         </View>
-        <View style={{ flex: 1.2, flexDirection: 'row' }}>
-          <View
-            className="px-2 py-1 rounded-md"
-            style={{ backgroundColor: chipBgColor }}
-          >
-            <Text style={{ color: chipTextColor }} className="text-xs font-semibold" numberOfLines={1}>
-              {statusDisplay.label}
-            </Text>
-          </View>
-        </View>
-        <Text style={{ color: colors.text.tertiary, width: 128, textAlign: 'right' }} className="text-sm" numberOfLines={1}>
-          {orderDate}
-        </Text>
+        <View style={{ width: 150, flexDirection: 'row', alignItems: 'center', gap: 7 }}><View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: chipTextColor }} /><Text style={{ color: chipTextColor, fontSize: 12, fontWeight: '600', flex: 1 }} numberOfLines={1}>{statusDisplay.label}</Text></View>
         <View style={{ width: 24, alignItems: 'flex-end' }}>
           <ChevronRight size={16} color={colors.text.muted} strokeWidth={2} />
         </View>
@@ -452,8 +420,8 @@ function OrderRowWeb({
 }
 
 export default function OrdersScreen() {
+  const [bricolageLoaded] = useFonts({ BricolageGrotesque_700Bold });
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const colors = useThemeColors();
   const tabBarHeight = useTabBarHeight();
   const { isMobile, isDesktop } = useBreakpoint();
@@ -462,9 +430,8 @@ export default function OrdersScreen() {
   const isWeb = Platform.OS === 'web';
   const isWebDesktop = isWeb && isDesktop;
   const showSplitView = !isMobile && !isWebDesktop;
-  const showMobileFab = isMobile;
-  const pageHeadingStyle = getStandardPageHeadingStyle(isMobile);
-  const desktopHeaderMinHeight = DESKTOP_PAGE_HEADER_MIN_HEIGHT;
+  const horizontalPadding = isMobile ? 16 : isDesktop ? 28 : 20;
+  const contentMaxWidth = isWebDesktop ? 1456 : isDesktop ? 980 : undefined;
 
   const orders = useFyllStore((s) => s.orders);
   const products = useFyllStore((s) => s.products);
@@ -486,6 +453,15 @@ export default function OrdersScreen() {
     refetchInterval: 15000,
   });
   const unreadCounts = threadCountsQuery.data ?? {};
+  const paymentsQuery = useQuery({
+    queryKey: ['orders-unlinked-verified-payments', businessId],
+    enabled: Boolean(businessId) && !isOfflineMode,
+    queryFn: async () => {
+      const rows = await supabaseData.fetchCollection<OrdersPaymentRecord>('payments', businessId!);
+      return rows.map((row) => row.data);
+    },
+    staleTime: 30_000,
+  });
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
@@ -532,7 +508,8 @@ export default function OrdersScreen() {
         (o) =>
           o.orderNumber.toLowerCase().includes(query) ||
           o.customerName?.toLowerCase().includes(query) ||
-          (o.customerEmail && o.customerEmail.toLowerCase().includes(query))
+          (o.customerEmail && o.customerEmail.toLowerCase().includes(query)) ||
+          formatOrderItemSummary(o, products).toLowerCase().includes(query)
       );
     }
 
@@ -565,7 +542,7 @@ export default function OrdersScreen() {
     });
 
     return result;
-  }, [orders, searchQuery, selectedStatus, selectedSource, sortBy]);
+  }, [orders, products, searchQuery, selectedStatus, selectedSource, sortBy]);
 
   const visibleOrders = useMemo(
     () => filteredOrders.slice(0, visibleOrdersCount),
@@ -687,277 +664,140 @@ export default function OrdersScreen() {
         hour: '2-digit',
         minute: '2-digit',
       });
-    } catch (error) {
+    } catch {
       return 'Recently';
     }
   }, [lastDataSyncAt]);
 
+  const orderSummary = useMemo(() => {
+    const now = new Date();
+    const stages = orders.map((order) => ({
+      order,
+      stage: findOrderTrackingStageByName(order.status, orderStatuses),
+    }));
+    const inProgress = stages.filter(({ stage }) => !['cancelled', 'delivered', 'completed'].includes(stage));
+    return {
+      inProgressCount: inProgress.length,
+      inProgressValue: inProgress.reduce((sum, { order }) => sum + (order.totalAmount || 0), 0),
+      processingCount: stages.filter(({ stage }) => stage === 'processing').length,
+      dispatchedCount: stages.filter(({ stage }) => stage === 'out-for-delivery').length,
+      completedThisMonth: orders.filter((order) => {
+        const status = normalizeOrderStatusLabel(order.status);
+        const date = getOrderDate(order);
+        return (status === 'completed' || status === 'complete')
+          && !Number.isNaN(date.getTime())
+          && date.getMonth() === now.getMonth()
+          && date.getFullYear() === now.getFullYear();
+      }).length,
+    };
+  }, [orderStatuses, orders]);
+
+  const statusCounts = useMemo(() => orders.reduce<Record<string, number>>((counts, order) => {
+    counts[order.status] = (counts[order.status] ?? 0) + 1;
+    return counts;
+  }, {}), [orders]);
+
+  const activeFilterCount = (selectedStatus ? 1 : 0) + (selectedSource ? 1 : 0) + (sortBy !== 'newest' ? 1 : 0);
+  const unlinkedVerifiedPayments = useMemo(() => (paymentsQuery.data ?? []).filter((payment) => {
+    const status = normalizeOrderStatusLabel(payment.status);
+    if (!['verified', 'confirmed', 'payment confirmed', 'paid'].includes(status)) return false;
+    if (payment.linkedOrderId) return false;
+    return !orders.some((order) => (
+      order.id === payment.sourceOrderId
+      || order.orderNumber === payment.sourceOrderId
+      || order.id === payment.unlinkedOrderId
+    ));
+  }), [orders, paymentsQuery.data]);
+  const firstUnlinkedPayment = unlinkedVerifiedPayments[0];
+
+  const ordersHeaderContent = (
+    <View style={{ paddingTop: isWebDesktop ? 28 : 14, paddingBottom: 12, width: '100%', gap: isWebDesktop ? 18 : 14 }}>
+        <View className="flex-row items-end justify-between" style={{ gap: 12 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: colors.text.primary, fontSize: 30, lineHeight: 36, fontWeight: '700', letterSpacing: -0.6 }}>Orders</Text>
+            {isWebDesktop ? <Text style={{ color: colors.text.muted, fontSize: 14, marginTop: 4 }}>Track customer orders, fulfilment and delivery.</Text> : null}
+            {isOfflineMode ? <Text style={{ color: isDark ? '#FCA5A5' : '#B91C1C', fontSize: 12, fontWeight: '600', marginTop: 5 }}>Offline · Last synced {lastSyncLabel}</Text> : null}
+          </View>
+          <View className="flex-row items-center" style={{ gap: 8 }}>
+            <Pressable onPress={openOrderAi} style={({ pressed }) => ({ width: isMobile ? 40 : undefined, height: 40, paddingHorizontal: isMobile ? 0 : 16, borderRadius: 999, borderWidth: 1, borderColor: colors.border.medium, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, opacity: pressed ? 0.72 : 1 })}>
+              <Sparkles size={15} color={colors.text.primary} strokeWidth={2} />
+              {!isMobile ? <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600' }}>Fyll AI</Text> : null}
+            </Pressable>
+            <Pressable onPress={handleNewOrder} style={({ pressed }) => ({ height: 40, paddingHorizontal: 16, borderRadius: 999, backgroundColor: FYLL_LIME, flexDirection: 'row', alignItems: 'center', gap: 6, opacity: pressed ? 0.78 : 1 })}>
+              <Plus size={16} color={FYLL_LIME_INK} strokeWidth={2.6} />
+              <Text style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '600' }}>{isMobile ? 'New' : 'New order'}</Text>
+            </Pressable>
+          </View>
+        </View>
+
+        {isMobile ? (
+          <View style={{ borderRadius: 20, borderWidth: 1, borderColor: separatorColor, backgroundColor: colors.bg.card, padding: 18, gap: 14 }}>
+            <View style={{ gap: 4 }}><Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>In progress</Text><Text style={{ color: colors.text.primary, fontSize: 32, lineHeight: 36, fontWeight: bricolageLoaded ? '400' : '700', fontFamily: bricolageLoaded ? 'BricolageGrotesque_700Bold' : undefined, letterSpacing: -1 }}>{orderSummary.inProgressCount} orders</Text><Text style={{ color: colors.text.muted, fontSize: 13 }}>{formatCurrency(orderSummary.inProgressValue)} across processing and delivery</Text></View>
+            <View style={{ height: 1, backgroundColor: separatorColor }} />
+            <View className="flex-row" style={{ gap: 10 }}>
+              {[
+                ['Processing', orderSummary.processingCount, getOrderStatusColor('Processing', statusColorMap, '#D97706')],
+                ['Dispatched', orderSummary.dispatchedCount, getOrderStatusColor('Dispatched', statusColorMap, '#2563EB')],
+                ['Completed', orderSummary.completedThisMonth, getOrderStatusColor('Completed', statusColorMap, '#059669')],
+              ].map(([label, value, dot]) => <View key={String(label)} style={{ flex: 1, gap: 3 }}><View className="flex-row items-center" style={{ gap: 6 }}><View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: String(dot) }} /><Text style={{ color: colors.text.tertiary, fontSize: 12 }}>{label}</Text></View><Text style={{ color: colors.text.primary, fontSize: 18, fontWeight: '600' }}>{value}</Text></View>)}
+            </View>
+          </View>
+        ) : (
+          <View className="flex-row" style={{ borderRadius: 20, borderWidth: 1, borderColor: separatorColor, backgroundColor: colors.bg.card, overflow: 'hidden' }}>
+            {[
+              ['In progress', `${orderSummary.inProgressCount} orders`, `${formatCurrency(orderSummary.inProgressValue)} being fulfilled`, null, 1.3],
+              ['Processing', String(orderSummary.processingCount), 'Currently being prepared', getOrderStatusColor('Processing', statusColorMap, '#D97706'), 1],
+              ['Dispatched', String(orderSummary.dispatchedCount), 'With delivery', getOrderStatusColor('Dispatched', statusColorMap, '#2563EB'), 1],
+              ['Completed', String(orderSummary.completedThisMonth), 'This month', getOrderStatusColor('Completed', statusColorMap, '#059669'), 1],
+            ].map(([label, value, sub, dot, flex], index) => <View key={String(label)} style={{ flex: Number(flex), paddingHorizontal: 22, paddingVertical: 18, gap: 4, borderLeftWidth: index ? 1 : 0, borderLeftColor: separatorColor }}><View className="flex-row items-center" style={{ gap: 6 }}>{dot ? <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: String(dot) }} /> : null}<Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{label}</Text></View><Text style={{ color: colors.text.primary, fontSize: index ? 22 : 28, fontWeight: index ? '600' : bricolageLoaded ? '400' : '700', fontFamily: !index && bricolageLoaded ? 'BricolageGrotesque_700Bold' : undefined, letterSpacing: index ? -0.5 : -0.9 }}>{value}</Text><Text style={{ color: colors.text.muted, fontSize: 13 }}>{sub}</Text></View>)}
+          </View>
+        )}
+
+        {isWebDesktop && firstUnlinkedPayment ? (
+          <Pressable onPress={() => router.push(`/storefront-payment/${firstUnlinkedPayment.id}`)} style={({ pressed }) => ({ minHeight: 54, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 11, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: isDark ? 'rgba(213,224,87,0.10)' : 'rgba(133,145,26,0.08)', borderWidth: 1, borderColor: isDark ? 'rgba(213,224,87,0.28)' : 'rgba(133,145,26,0.25)', opacity: pressed ? 0.75 : 1 })}>
+            <View style={{ width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accent.primary }}><Check size={15} color={isDark ? '#1E1E1E' : '#FFFFFF'} strokeWidth={2.4} /></View>
+            <Text style={{ color: colors.text.primary, flex: 1, fontSize: 14, fontWeight: '600' }}>{unlinkedVerifiedPayments.length} verified payment{unlinkedVerifiedPayments.length === 1 ? '' : 's'} {unlinkedVerifiedPayments.length === 1 ? 'has' : 'have'} no order yet <Text style={{ color: colors.text.muted, fontWeight: '400' }}>· {firstUnlinkedPayment.customerName || 'Customer'} · {formatCurrency(firstUnlinkedPayment.amount ?? 0)} · create it from the payment</Text></Text>
+            <ChevronRight size={16} color={colors.accent.primary} strokeWidth={2.2} />
+          </Pressable>
+        ) : null}
+
+        <View style={{ gap: 10 }}>
+          <View className="flex-row items-center" style={{ gap: 10 }}>
+            <View className="flex-row items-center" style={{ height: isMobile ? 48 : 44, width: isWebDesktop ? 340 : undefined, flex: isWebDesktop ? undefined : 1, paddingHorizontal: 14, borderRadius: 999, backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light }}>
+              <Search size={17} color={colors.text.muted} strokeWidth={2} />
+              <TextInput placeholder="Search orders, customers, products" placeholderTextColor={colors.input.placeholder} value={searchQuery} onChangeText={setSearchQuery} style={{ flex: 1, marginLeft: 10, color: colors.input.text, fontSize: 14.5 }} selectionColor={colors.text.primary} />
+              <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
+            </View>
+            {!isWebDesktop ? <Pressable onPress={() => setShowFilterMenu(true)} style={{ width: 48, height: 48, borderRadius: 999, borderWidth: 1, borderColor: activeFilterCount ? colors.accent.primary : colors.border.light, backgroundColor: activeFilterCount ? colors.accent.primary : colors.bg.card, alignItems: 'center', justifyContent: 'center' }}><Filter size={18} color={activeFilterCount ? (isDark ? '#1E1E1E' : '#FFFFFF') : colors.text.muted} strokeWidth={2} /></Pressable> : null}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={isWebDesktop ? { flex: 1 } : { position: 'absolute', width: 0, height: 0 }} contentContainerStyle={{ gap: 8 }}>
+              <Pressable onPress={() => setSelectedStatus(null)} style={{ height: 36, paddingHorizontal: 14, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: selectedStatus === null ? colors.text.primary : 'transparent', borderWidth: 1, borderColor: selectedStatus === null ? colors.text.primary : colors.border.medium }}><Text style={{ color: selectedStatus === null ? colors.bg.primary : colors.text.secondary, fontSize: 13, fontWeight: '600' }}>All <Text style={{ opacity: 0.55 }}>{orders.length}</Text></Text></Pressable>
+              {sortedOrderStatuses.map((status) => <Pressable key={status.id} onPress={() => setSelectedStatus(status.name)} style={{ height: 36, paddingHorizontal: 14, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: selectedStatus === status.name ? colors.text.primary : 'transparent', borderWidth: 1, borderColor: selectedStatus === status.name ? colors.text.primary : colors.border.medium }}><Text style={{ color: selectedStatus === status.name ? colors.bg.primary : colors.text.secondary, fontSize: 13, fontWeight: '600' }}>{status.name} <Text style={{ opacity: 0.55 }}>{statusCounts[status.name] ?? 0}</Text></Text></Pressable>)}
+            </ScrollView>
+            {isWebDesktop ? <Pressable onPress={() => setShowFilterMenu(true)} style={{ width: 40, height: 40, borderRadius: 999, borderWidth: 1, borderColor: activeFilterCount ? colors.accent.primary : colors.border.medium, backgroundColor: activeFilterCount ? colors.accent.primary : 'transparent', alignItems: 'center', justifyContent: 'center' }}><Filter size={17} color={activeFilterCount ? (isDark ? '#1E1E1E' : '#FFFFFF') : colors.text.secondary} strokeWidth={2} /></Pressable> : null}
+          </View>
+          {!isWebDesktop ? <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginRight: -horizontalPadding }} contentContainerStyle={{ gap: 8, paddingRight: horizontalPadding }}><Pressable onPress={() => setSelectedStatus(null)} style={{ height: 36, paddingHorizontal: 14, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: selectedStatus === null ? colors.text.primary : 'transparent', borderWidth: 1, borderColor: selectedStatus === null ? colors.text.primary : colors.border.medium }}><Text style={{ color: selectedStatus === null ? colors.bg.primary : colors.text.secondary, fontSize: 12, fontWeight: '600' }}>All <Text style={{ opacity: 0.55 }}>{orders.length}</Text></Text></Pressable>{sortedOrderStatuses.map((status) => <Pressable key={status.id} onPress={() => setSelectedStatus(status.name)} style={{ height: 36, paddingHorizontal: 14, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: selectedStatus === status.name ? colors.text.primary : 'transparent', borderWidth: 1, borderColor: selectedStatus === status.name ? colors.text.primary : colors.border.medium }}><Text style={{ color: selectedStatus === status.name ? colors.bg.primary : colors.text.secondary, fontSize: 12, fontWeight: '600' }}>{status.name} <Text style={{ opacity: 0.55 }}>{statusCounts[status.name] ?? 0}</Text></Text></Pressable>)}</ScrollView> : null}
+        </View>
+    </View>
+  );
+
   // Master pane content
   const masterContent = (
     <>
-      {/* Header + Search */}
-      <View
-        style={{
-          backgroundColor: isWebDesktop ? colors.bg.card : colors.bg.primary,
-          borderBottomWidth: isWebDesktop ? 1 : 0.5,
-          borderBottomColor: separatorColor,
-        }}
-      >
-        <View
-          style={[
-            {
-              paddingHorizontal: isWebDesktop ? 0 : 20,
-              paddingTop: isWebDesktop ? 0 : 16,
-              paddingBottom: isWebDesktop ? 0 : 8,
-            },
-            isWebDesktop ? { width: '100%' } : undefined,
-          ]}
-        >
-          <View
-            className={isWebDesktop ? 'flex-row items-center justify-between' : undefined}
-            style={isWebDesktop ? {
-              width: '100%',
-              maxWidth: 1400,
-              alignSelf: 'flex-start',
-              minHeight: desktopHeaderMinHeight,
-              paddingLeft: 20,
-              paddingRight: 20,
-              paddingTop: 20,
-              paddingBottom: 16,
-            } : {
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-            }}
-          >
-            <View style={isWebDesktop ? undefined : { flex: 1, paddingRight: 12 }}>
-              <Text style={{ color: colors.text.primary, ...pageHeadingStyle }}>Orders</Text>
-              {!isMobile ? (
-                <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 4, lineHeight: 18 }}>
-                  Track customer orders, fulfillment progress, and delivery activity.
-                </Text>
-              ) : null}
-              {isOfflineMode ? (
-                <View
-                  style={{
-                    marginTop: !isWebDesktop ? 8 : 6,
-                    alignSelf: 'flex-start',
-                    paddingHorizontal: 10,
-                    paddingVertical: 4,
-                    borderRadius: 999,
-                    backgroundColor: isDark ? 'rgba(248,113,113,0.16)' : 'rgba(239,68,68,0.12)',
-                    borderWidth: 1,
-                    borderColor: isDark ? 'rgba(248,113,113,0.35)' : 'rgba(239,68,68,0.28)',
-                  }}
-                >
-                  <Text style={{ color: isDark ? '#FCA5A5' : '#B91C1C', fontSize: 12, fontWeight: '600' }}>
-                    Offline · Last synced {lastSyncLabel}
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-              <FyllAiButton
-                label="Fyll AI"
-                onPress={openOrderAi}
-                height={44}
-                borderRadius={22}
-                iconSize={16}
-                textSize={14}
-              />
-              <Pressable
-                onPress={handleNewOrder}
-                className="rounded-full active:opacity-80 px-4 flex-row items-center"
-                style={{ backgroundColor: colors.accent.primary, height: 44, borderRadius: 999 }}
-              >
-                <Plus size={18} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={2.5} />
-                <Text style={{ color: isDark ? '#000000' : '#FFFFFF' }} className="font-semibold ml-1.5 text-sm">New Order</Text>
-              </Pressable>
-            </View>
-          </View>
-
-        </View>
-      </View>
-
-      <View
-        style={[
-          {
-            paddingHorizontal: isWebDesktop ? 0 : 20,
-            paddingTop: 12,
-            paddingBottom: 12,
-          },
-          isWebDesktop ? { width: '100%' } : undefined,
-        ]}
-      >
-        {isWebDesktop ? (
-          <View style={{ width: '100%', maxWidth: 1400, alignSelf: 'flex-start', paddingLeft: 20, paddingRight: 20 }}>
-        {/* Search + Tabs + Filter */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-            <View
-              className="flex-row items-center rounded-full px-4"
-              style={{
-                height: 44,
-                width: '30%',
-                maxWidth: 420,
-                minWidth: 320,
-                backgroundColor: colors.input.bg,
-                borderWidth: 1,
-                borderColor: colors.border.light,
-              }}
-            >
-              <Search size={18} color={colors.text.muted} strokeWidth={2} />
-              <TextInput
-                placeholder="Search orders..."
-                placeholderTextColor={colors.input.placeholder}
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                style={{ flex: 1, marginLeft: 8, color: colors.input.text, fontSize: 14 }}
-                selectionColor={colors.text.primary}
-              />
-              <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
-            </View>
-
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={{ flex: 1 }}
-              contentContainerStyle={{ flexGrow: 0, gap: 8, paddingRight: 4 }}
-            >
-              <Pressable
-                onPress={() => setSelectedStatus(null)}
-                className="rounded-full active:opacity-70"
-                style={{
-                  height: 44,
-                  paddingHorizontal: 16,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: selectedStatus === null ? colors.accent.primary : colors.bg.card,
-                  borderWidth: selectedStatus === null ? 0 : 1,
-                  borderColor: separatorColor,
-                }}
-              >
-                <Text
-                  className="text-sm font-semibold"
-                  style={{
-                    color: selectedStatus === null ? (isDark ? '#000000' : '#FFFFFF') : colors.text.primary,
-                  }}
-                >
-                  All
-                </Text>
-              </Pressable>
-              {sortedOrderStatuses.map((status) => (
-                <Pressable
-                  key={status.id}
-                  onPress={() => setSelectedStatus(status.name)}
-                  className="rounded-full active:opacity-70"
-                  style={{
-                    height: 44,
-                    paddingHorizontal: 16,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: selectedStatus === status.name ? colors.accent.primary : colors.bg.card,
-                    borderWidth: selectedStatus === status.name ? 0 : 1,
-                    borderColor: separatorColor,
-                  }}
-                >
-                  <Text
-                    className="text-sm font-semibold"
-                    style={{
-                      color: selectedStatus === status.name ? (isDark ? '#000000' : '#FFFFFF') : colors.text.primary,
-                    }}
-                  >
-                    {status.name}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-
-            <Pressable
-              onPress={() => {
-                if (Platform.OS !== 'web') {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                }
-                setShowFilterMenu(true);
-              }}
-              className="rounded-full items-center justify-center active:opacity-70 flex-row px-4"
-              style={{
-                height: 44,
-                backgroundColor: (selectedStatus || selectedSource || sortBy !== 'newest') ? colors.accent.primary : colors.bg.card,
-                borderWidth: (selectedStatus || selectedSource || sortBy !== 'newest') ? 0 : 1,
-                borderColor: separatorColor,
-              }}
-            >
-              <Filter size={18} color={(selectedStatus || selectedSource || sortBy !== 'newest') ? (isDark ? '#000000' : '#FFFFFF') : colors.text.tertiary} strokeWidth={2} />
-              {(selectedStatus || selectedSource || sortBy !== 'newest') && (
-                <Text style={{ color: isDark ? '#000000' : '#FFFFFF' }} className="font-semibold text-sm ml-1.5">
-                  {(selectedStatus ? 1 : 0) + (selectedSource ? 1 : 0) + (sortBy !== 'newest' ? 1 : 0)}
-                </Text>
-              )}
-            </Pressable>
-          </View>
-          </View>
-        ) : (
-          <View className="flex-row gap-2">
-            <View
-              className="flex-1 flex-row items-center rounded-full px-4"
-              style={{ height: 46, backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light }}
-            >
-              <Search size={18} color={colors.text.muted} strokeWidth={2} />
-              <TextInput
-                placeholder="Search orders..."
-                placeholderTextColor={colors.input.placeholder}
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                style={{ flex: 1, marginLeft: 8, color: colors.input.text, fontSize: 14 }}
-                selectionColor={colors.text.primary}
-              />
-              <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
-            </View>
-            <Pressable
-              onPress={() => {
-                if (Platform.OS !== 'web') {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                }
-                setShowFilterMenu(true);
-              }}
-              className="rounded-full items-center justify-center active:opacity-70 flex-row px-4"
-              style={{
-                width: 46,
-                height: 46,
-                paddingHorizontal: 0,
-                backgroundColor: (selectedStatus || selectedSource || sortBy !== 'newest') ? colors.accent.primary : colors.bg.secondary,
-                borderWidth: (selectedStatus || selectedSource || sortBy !== 'newest') ? 0 : 0.5,
-                borderColor: separatorColor,
-              }}
-            >
-              <Filter size={18} color={(selectedStatus || selectedSource || sortBy !== 'newest') ? (isDark ? '#000000' : '#FFFFFF') : colors.text.tertiary} strokeWidth={2} />
-              {(selectedStatus || selectedSource || sortBy !== 'newest') && (
-                <Text style={{ color: isDark ? '#000000' : '#FFFFFF' }} className="font-semibold text-sm ml-1.5">
-                  {(selectedStatus ? 1 : 0) + (selectedSource ? 1 : 0) + (sortBy !== 'newest' ? 1 : 0)}
-                </Text>
-              )}
-            </Pressable>
-          </View>
-        )}
-      </View>
-
       {/* Order List */}
         <FlatList
           data={isInitialLoading ? [] : visibleOrders}
           keyExtractor={(item) => item.id}
           style={{
             flex: 1,
-            paddingHorizontal: isWebDesktop ? 0 : 20,
-            paddingTop: isWebDesktop ? 0 : 16,
+            paddingTop: isWebDesktop || isMobile ? 0 : 4,
             backgroundColor: colors.bg.primary,
           }}
           contentContainerStyle={{
-            maxWidth: isWebDesktop ? 1400 : isDesktop ? 600 : undefined,
-            alignSelf: isWebDesktop ? 'flex-start' : isDesktop && !selectedOrderId ? 'center' : undefined,
-            width: '100%',
-            paddingLeft: isWebDesktop ? 20 : 0,
-            paddingRight: isWebDesktop ? 20 : 0,
-            paddingTop: isWebDesktop ? 16 : 0,
+            maxWidth: contentMaxWidth,
+            alignSelf: isWebDesktop ? 'flex-start' : isDesktop ? 'center' : undefined,
+            width: isDesktop ? '100%' : undefined,
+            paddingHorizontal: horizontalPadding,
+            paddingTop: isWebDesktop || isMobile ? 0 : 14,
             paddingBottom: tabBarHeight + 16,
             flexGrow: isInitialLoading || visibleOrders.length === 0 ? 1 : undefined,
           }}
@@ -987,32 +827,34 @@ export default function OrdersScreen() {
             </View>
           }
           ListHeaderComponent={
-            isWebDesktop && visibleOrders.length > 0 ? (
-              <View
-                style={{
-                  width: '100%',
-                  borderWidth: 1,
-                  borderBottomWidth: 0,
-                  borderColor: separatorColor,
-                  borderTopLeftRadius: 16,
-                  borderTopRightRadius: 16,
-                  overflow: 'hidden',
-                  backgroundColor: colors.bg.card,
-                }}
-              >
-                <View style={{ flexDirection: 'row', paddingHorizontal: 8, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
-                  <Text style={{ color: colors.text.muted, flex: 1.1 }} className="text-xs font-semibold">ORDER ID</Text>
-                  <Text style={{ color: colors.text.muted, flex: 1.6 }} className="text-xs font-semibold">CUSTOMER</Text>
-                  <Text style={{ color: colors.text.muted, flex: 1.8 }} className="text-xs font-semibold">PRODUCT</Text>
-                  <Text style={{ color: colors.text.muted, width: 56, textAlign: 'center' }} className="text-xs font-semibold">ITEMS</Text>
-                  <Text style={{ color: colors.text.muted, flex: 1 }} className="text-xs font-semibold">TOTAL</Text>
-                  <Text style={{ color: colors.text.muted, flex: 1.5 }} className="text-xs font-semibold">TIMELINE</Text>
-                  <Text style={{ color: colors.text.muted, flex: 1.2 }} className="text-xs font-semibold">STATUS</Text>
-                  <Text style={{ color: colors.text.muted, width: 128, textAlign: 'right' }} className="text-xs font-semibold">DATE</Text>
-                  <View style={{ width: 24 }} />
+            <>
+              {ordersHeaderContent}
+              {isWebDesktop && visibleOrders.length > 0 ? (
+                <View
+                  style={{
+                    width: '100%',
+                    borderWidth: 1,
+                    borderBottomWidth: 0,
+                    borderColor: separatorColor,
+                    borderTopLeftRadius: 18,
+                    borderTopRightRadius: 18,
+                    overflow: 'hidden',
+                    backgroundColor: colors.bg.card,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 22, paddingVertical: 14, gap: 16, borderBottomWidth: 1, borderBottomColor: separatorColor }}>
+                    <Text style={{ color: colors.text.muted, width: 150, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>ORDER</Text>
+                    <Text style={{ color: colors.text.muted, flex: 1.3, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>CUSTOMER</Text>
+                    <Text style={{ color: colors.text.muted, flex: 1.2, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>PRODUCT</Text>
+                    <Text style={{ color: colors.text.muted, width: 56, textAlign: 'right', fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>ITEMS</Text>
+                    <Text style={{ color: colors.text.muted, width: 110, textAlign: 'right', fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>TOTAL</Text>
+                    <Text style={{ color: colors.text.muted, width: 200, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>DELIVERY</Text>
+                    <Text style={{ color: colors.text.muted, width: 150, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>STATUS</Text>
+                    <View style={{ width: 24 }} />
+                  </View>
                 </View>
-              </View>
-            ) : null
+              ) : null}
+            </>
           }
           ListFooterComponent={
             <View className="items-center pb-6">
@@ -1040,46 +882,33 @@ export default function OrdersScreen() {
               <View className="h-24" />
             </View>
           }
-          renderItem={({ item: order, index }) =>
-            isWebDesktop ? (
-              <View style={index === visibleOrders.length - 1 ? {
-                borderWidth: 1,
-                borderTopWidth: 0,
-                borderColor: separatorColor,
-                borderBottomLeftRadius: 16,
-                borderBottomRightRadius: 16,
-                overflow: 'hidden',
-                backgroundColor: colors.bg.card,
-              } : {
-                borderLeftWidth: 1,
-                borderRightWidth: 1,
-                borderColor: separatorColor,
-                backgroundColor: colors.bg.card,
-              }}>
-                <OrderRowWeb
-                  order={order}
-                  products={products}
-                  statusColor={getOrderStatusColor(order.status, statusColorMap, '#888888')}
-                  isSelected={selectedOrderId === order.id}
-                  onPress={() => handleOrderSelect(order.id)}
-                  separatorColor={separatorColor}
-                  isLast={index === visibleOrders.length - 1}
-                  unreadCount={unreadCounts[order.id] ?? 0}
-                />
+          renderItem={({ item: order, index }) => {
+            const previousOrder = index > 0 ? visibleOrders[index - 1] : null;
+            const nextOrder = index < visibleOrders.length - 1 ? visibleOrders[index + 1] : null;
+            const groupByDate = sortBy === 'newest' || sortBy === 'oldest';
+            const isFirstInGroup = groupByDate
+              ? !previousOrder || getOrderDayKey(previousOrder) !== getOrderDayKey(order)
+              : index === 0;
+            const isLastInGroup = groupByDate
+              ? !nextOrder || getOrderDayKey(nextOrder) !== getOrderDayKey(order)
+              : index === visibleOrders.length - 1;
+            const groupLabel = groupByDate ? getOrderDayLabel(order) : 'All orders';
+            const isLast = index === visibleOrders.length - 1;
+
+            return isWebDesktop ? (
+              <View>
+                {isFirstInGroup ? <View style={{ paddingHorizontal: 22, paddingTop: 10, paddingBottom: 8, backgroundColor: isDark ? '#101010' : '#E9E9E6', borderLeftWidth: 1, borderRightWidth: 1, borderBottomWidth: 1, borderColor: separatorColor }}><Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{groupLabel}</Text></View> : null}
+                <View style={{ borderLeftWidth: 1, borderRightWidth: 1, borderBottomWidth: isLast ? 1 : 0, borderColor: separatorColor, borderBottomLeftRadius: isLast ? 18 : 0, borderBottomRightRadius: isLast ? 18 : 0, overflow: 'hidden', backgroundColor: colors.bg.card }}>
+                  <OrderRowWeb order={order} products={products} statusColor={getOrderStatusColor(order.status, statusColorMap, '#888888')} isSelected={selectedOrderId === order.id} onPress={() => handleOrderSelect(order.id)} separatorColor={separatorColor} isLast={isLast} unreadCount={unreadCounts[order.id] ?? 0} />
+                </View>
               </View>
             ) : (
-              <OrderCard
-                order={order}
-                products={products}
-                statusColor={getOrderStatusColor(order.status, statusColorMap, '#888888')}
-                isSelected={selectedOrderId === order.id}
-                showSplitView={showSplitView}
-                onPress={() => handleOrderSelect(order.id)}
-                separatorColor={separatorColor}
-                unreadCount={unreadCounts[order.id] ?? 0}
-              />
-            )
-          }
+              <View style={{ marginTop: isFirstInGroup && index > 0 ? 18 : 0 }}>
+                {isFirstInGroup ? <Text style={{ color: colors.text.muted, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', paddingHorizontal: 4, marginBottom: 8 }}>{groupLabel}</Text> : null}
+                <OrderCard order={order} products={products} statusColor={getOrderStatusColor(order.status, statusColorMap, '#888888')} isSelected={selectedOrderId === order.id} showSplitView={showSplitView} onPress={() => handleOrderSelect(order.id)} separatorColor={separatorColor} unreadCount={unreadCounts[order.id] ?? 0} isFirstInGroup={isFirstInGroup} isLastInGroup={isLastInGroup} />
+              </View>
+            );
+          }}
         />
     </>
   );
@@ -1099,25 +928,31 @@ export default function OrdersScreen() {
           {masterContent}
         </SplitViewLayout>
 
-        {showMobileFab ? (
+        {isMobile ? (
           <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Create new order"
             onPress={handleNewOrder}
-            className="absolute right-5 active:opacity-80 items-center justify-center"
-            style={{
-              bottom: Math.max(tabBarHeight + insets.bottom - 20, 6),
-              width: 56,
-              height: 56,
-              minWidth: 56,
-              borderRadius: 999,
-              backgroundColor: colors.accent.primary,
-              shadowColor: '#000000',
-              shadowOpacity: 0.16,
-              shadowRadius: 14,
-              shadowOffset: { width: 0, height: 6 },
-              elevation: 8,
-            }}
+            style={(state) => [
+              {
+                position: 'absolute',
+                right: 20,
+                bottom: Math.max(96, tabBarHeight - 48),
+                width: 56,
+                height: 56,
+                borderRadius: 28,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: FYLL_LIME,
+                transform: [{ scale: state.pressed ? 0.94 : 1 }],
+                zIndex: 40,
+              },
+              Platform.OS === 'web'
+                ? ({ boxShadow: '0 10px 28px rgba(0,0,0,0.35)' } as object)
+                : { shadowColor: '#000000', shadowOpacity: 0.3, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
+            ]}
           >
-            <Plus size={18} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={2.5} />
+            <Plus size={24} color={FYLL_LIME_INK} strokeWidth={2.6} />
           </Pressable>
         ) : null}
 

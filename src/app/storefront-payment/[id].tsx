@@ -19,6 +19,7 @@ import { PaymentDetailSkeleton } from '@/components/SkeletonLoader';
 import { SearchClearButton } from '@/components/SearchClearButton';
 import { ResolvedAttachmentImage } from '@/components/ResolvedAttachmentImage';
 import { FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, InitialsAvatar, MoneyText, SectionLabel, isHovered, usePaymentsPalette, type StatusTone, useMobileFont } from '@/components/payments/payments-ui';
+import { syncFyllOrderStatusToWooCommerce } from '@/lib/woocommerce';
 
 const SEPARATOR_LIGHT = '#EEEEEE';
 const SEPARATOR_DARK = '#333333';
@@ -214,9 +215,10 @@ const normalizeStatusName = (value?: string | null) => (
     .replace(/\s+/g, ' ')
 );
 
-const getVerifiedOrderStatus = (statuses: Array<{ name: string }>) => (
-  statuses.find((status) => normalizeStatusName(status.name) === 'verified')?.name?.trim()
-  || 'Verified'
+const getVerifiedOrderStatus = (statuses: { name: string; trackingStage?: string }[]) => (
+  statuses.find((status) => normalizeStatusName(status.name) === 'processing')?.name?.trim()
+  || statuses.find((status) => status.trackingStage === 'processing')?.name?.trim()
+  || 'Processing'
 );
 
 const isSharedIntegrationPayment = (payment: SharedPaymentRecord) => (
@@ -1366,6 +1368,7 @@ export default function StorefrontPaymentDetailScreen() {
       const syncTasks: Promise<unknown>[] = [
         supabaseData.upsertCollection('payments', businessId, [updatedPayment]),
       ];
+      let orderToSync: Order | null = linkedOrder;
 
       if (linkedOrder) {
         const activityEntry: OrderActivityEntry = {
@@ -1383,6 +1386,7 @@ export default function StorefrontPaymentDetailScreen() {
         syncTasks.push(supabaseData.upsertCollection('orders', businessId, [updatedOrder]));
       } else if (payment.sourceOrderId) {
         const order = buildOrderFromPayment(payment, nextStatus, timestamp);
+        orderToSync = order;
         updatedPayment = {
           ...updatedPayment,
           linkedOrderId: order.id,
@@ -1402,6 +1406,22 @@ export default function StorefrontPaymentDetailScreen() {
           });
         } catch (error) {
           console.warn('Fyll Checkout confirmation callback failed after local approval:', error);
+          showFyllCheckoutSyncFailedNotice(payment.sourceOrderId, error);
+        }
+      }
+
+      // Storefront checkouts may also have a WooCommerce order. Both systems
+      // must move forward after verification: checkout becomes paid and the
+      // fulfilment order becomes Processing.
+      if (orderToSync?.websiteOrderReference) {
+        try {
+          await syncFyllOrderStatusToWooCommerce({
+            businessId,
+            orderId: orderToSync.id,
+            status: nextStatus,
+          });
+        } catch (error) {
+          console.warn('WooCommerce status sync failed after storefront payment approval:', error);
           showFyllCheckoutSyncFailedNotice(payment.sourceOrderId, error);
         }
       }

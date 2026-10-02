@@ -3096,6 +3096,7 @@ const useFyllStore = create<FyllStore>()(
           console.warn('Supabase order add failed:', error);
           throw error;
         }
+
       },
       updateOrder: async (id, updates, businessId) => {
         const previousOrder = get().orders.find((o) => o.id === id);

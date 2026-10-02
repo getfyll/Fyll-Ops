@@ -783,7 +783,7 @@ function PurchaseTrackingResult({
 
   const updatesCard = (
     <View style={{ ...card, paddingBottom: compact ? 4 : 10 }}>
-      <Text style={{ ...cardTitle, paddingBottom: 18 }}>Updates</Text>
+      <Text style={{ ...cardTitle, fontSize: compact ? 16 : cardTitle.fontSize, paddingBottom: 18 }}>Updates</Text>
       {updates.map((update, index) => (
         <View key={update.key} style={{ flexDirection: 'row', gap: 16 }}>
           <View style={{ width: 14, alignItems: 'center' }}>
@@ -893,7 +893,7 @@ function PurchaseTrackingResult({
   const paymentCard = payment ? (
     <View style={{ ...card, gap: 13 }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Text style={cardTitle}>Payment</Text>
+        <Text style={{ ...cardTitle, fontSize: compact ? 16 : cardTitle.fontSize }}>Payment</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, height: 28, paddingHorizontal: 11, borderRadius: 999, backgroundColor: paymentVerified ? 'rgba(213,224,87,0.3)' : '#F1F1EC' }}>
           {paymentVerified ? <Check size={12} color="#3F4A08" strokeWidth={3} /> : <Clock3 size={12} color="#55564E" strokeWidth={2.5} />}
           <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? 10 : 12.5, color: paymentVerified ? '#3F4A08' : '#55564E' }}>{socialStatusLabel(payment.status)}</Text>
@@ -903,7 +903,7 @@ function PurchaseTrackingResult({
       <View style={{ height: 1, backgroundColor: 'rgba(30,30,30,0.07)' }} />
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
         <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? 12 : 15.5, color: '#1E1E1E' }}>{paymentVerified ? 'Total paid' : 'Amount'}</Text>
-        <Text style={{ fontFamily: displayFont, fontWeight: displayWeight, fontSize: 28, letterSpacing: -0.8, color: '#1E1E1E' }}>{formatCurrency(payment.amount)}</Text>
+                      <Text style={{ fontFamily: displayFont, fontWeight: displayWeight, fontSize: compact ? 18 : 28, letterSpacing: compact ? -0.4 : -0.8, color: '#1E1E1E' }}>{formatCurrency(payment.amount)}</Text>
       </View>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
         <Text style={{ flex: 1, fontFamily: trackingBodyFont, fontSize: compact ? 11 : 13, color: muted }}>Bank transfer · {formatShortStamp(payment.reviewedAt || payment.submittedAt || payment.createdAt)}</Text>
@@ -912,7 +912,7 @@ function PurchaseTrackingResult({
     </View>
   ) : order ? (
     <View style={{ ...card, gap: 13 }}>
-      <Text style={cardTitle}>Payment</Text>
+      <Text style={{ ...cardTitle, fontSize: compact ? 16 : cardTitle.fontSize }}>Payment</Text>
       {receiptList}
       {receiptList.length > 0 ? <View style={{ height: 1, backgroundColor: 'rgba(30,30,30,0.07)' }} /> : null}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
@@ -933,7 +933,7 @@ function PurchaseTrackingResult({
           style={{ height: 54, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#1E1E1E' }}
         >
           <MessageCircle size={18} color="#FFFFFF" strokeWidth={2} />
-          <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? 12 : 15, color: '#FFFFFF' }} numberOfLines={1}>Message {businessName}</Text>
+          <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? 14 : 15, color: '#FFFFFF' }} numberOfLines={1}>Message {businessName}</Text>
         </Pressable>
       ) : null}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14, paddingHorizontal: 16, borderRadius: 18, backgroundColor: '#EFEFE9' }}>
@@ -942,7 +942,7 @@ function PurchaseTrackingResult({
       </View>
       {compact ? (
         <Pressable accessibilityRole="button" onPress={onReset} style={{ height: 48, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(30,30,30,0.14)', alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? 12 : 14.5, color: '#1E1E1E' }}>Track another order</Text>
+          <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? 14 : 14.5, color: '#1E1E1E' }}>Track another order</Text>
         </Pressable>
       ) : null}
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingTop: 6 }}>
@@ -963,7 +963,7 @@ function PurchaseTrackingResult({
             style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
           />
           <SafeAreaView edges={['top']}>
-            <View style={{ width: '100%', maxWidth: 1160 + sidePadding * 2, alignSelf: 'center', paddingHorizontal: sidePadding, paddingTop: compact ? 18 : 28, paddingBottom: compact ? 70 : 92, gap: compact ? 22 : 44 }}>
+            <View style={{ width: '100%', maxWidth: 1160 + sidePadding * 2, alignSelf: 'center', paddingHorizontal: sidePadding, paddingTop: compact ? 30 : 28, paddingBottom: compact ? 70 : 92, gap: compact ? 22 : 44 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
                   <View style={{ width: compact ? 40 : 46, height: compact ? 40 : 46, borderRadius: 999, borderWidth: 2, borderColor: '#D5E057', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
@@ -980,7 +980,7 @@ function PurchaseTrackingResult({
                 </View>
                 {!compact ? (
                   <Pressable accessibilityRole="button" onPress={onReset} style={{ height: 38, paddingHorizontal: 16, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)', justifyContent: 'center' }}>
-                    <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? 12 : 14, color: '#FFFFFF' }}>Track another order</Text>
+                    <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: 14, color: '#FFFFFF' }}>Track another order</Text>
                   </Pressable>
                 ) : null}
                 <View style={{ height: compact ? 32 : 38, paddingHorizontal: compact ? 12 : 14, borderRadius: 999, backgroundColor: 'rgba(20,20,20,0.35)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', flexDirection: 'row', alignItems: 'center', gap: 5 }}>
@@ -1012,56 +1012,81 @@ function PurchaseTrackingResult({
                   Platform.OS === 'web' ? ({ backdropFilter: 'blur(22px) saturate(140%)', WebkitBackdropFilter: 'blur(22px) saturate(140%)' } as object) : null,
                 ]}
               >
-                {/* Steps run edge to edge so Paid lines up with "Got your order?" below
-                    and Delivered with its button; circles are evenly spaced. */}
-                <View pointerEvents="none" style={{ position: 'absolute', left: stepperPadH + circle / 2, right: stepperPadH + circle / 2, top: stepperPadTop + circle / 2 - 1.5, height: 3 }}>
-                  <View style={{ position: 'absolute', left: 0, right: 0, height: 3, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.14)' }} />
-                  <View style={{ position: 'absolute', left: 0, width: `${(orderProgressIndex / 4) * 100}%`, height: 3, borderRadius: 999, backgroundColor: '#D5E057' }} />
-                </View>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingBottom: (compact ? 8 + 14 : 10 + 36) }}>
-                  {progressLabels.map((label, index) => {
-                    const complete = index < orderProgressIndex || (index === 4 && orderProgressIndex === 4);
-                    const active = index === orderProgressIndex && !complete;
-                    const isFirst = index === 0;
-                    const isLast = index === progressLabels.length - 1;
-                    const labelWidth = compact ? 76 : 130;
-                    const textAlign = isFirst ? 'left' : isLast ? 'right' : 'center';
-                    return (
-                      <View key={label} style={{ width: circle, alignItems: 'center' }}>
-                        <View
-                          style={[
-                            {
-                              width: circle,
-                              height: circle,
-                              borderRadius: circle / 2,
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              backgroundColor: complete ? '#D5E057' : active ? '#1E1E1E' : 'rgba(255,255,255,0.06)',
-                              borderWidth: active ? 2 : complete ? 0 : 1,
-                              borderColor: active ? '#D5E057' : 'rgba(255,255,255,0.24)',
-                            },
-                            active && Platform.OS === 'web' ? ({ boxShadow: '0 0 0 6px rgba(213,224,87,0.2), 0 0 20px rgba(213,224,87,0.5)' } as object) : null,
-                          ]}
-                        >
-                          <Check size={compact ? 15 : 18} color={complete ? '#1E1E1E' : active ? '#D5E057' : 'rgba(244,244,239,0.3)'} strokeWidth={3} />
+                {compact ? (
+                  <View>
+                    {progressLabels.map((label, index) => {
+                      const complete = index < orderProgressIndex || (index === 4 && orderProgressIndex === 4);
+                      const active = index === orderProgressIndex && !complete;
+                      const reached = index <= orderProgressIndex;
+                      const isLast = index === progressLabels.length - 1;
+                      return (
+                        <View key={label} style={{ minHeight: isLast ? circle : 58, flexDirection: 'row', alignItems: 'flex-start' }}>
+                          {!isLast ? (
+                            <View
+                              pointerEvents="none"
+                              style={{
+                                position: 'absolute',
+                                left: circle / 2 - 1.5,
+                                top: circle,
+                                width: 3,
+                                height: 58 - circle,
+                                backgroundColor: index < orderProgressIndex ? '#D5E057' : 'rgba(255,255,255,0.16)',
+                              }}
+                            />
+                          ) : null}
+                          <View
+                            style={[
+                              {
+                                width: circle,
+                                height: circle,
+                                borderRadius: circle / 2,
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                backgroundColor: complete ? '#D5E057' : active ? '#1E1E1E' : 'rgba(255,255,255,0.06)',
+                                borderWidth: active ? 2 : complete ? 0 : 1,
+                                borderColor: active ? '#D5E057' : 'rgba(255,255,255,0.26)',
+                              },
+                              active && Platform.OS === 'web' ? ({ boxShadow: '0 0 0 5px rgba(213,224,87,0.16), 0 0 16px rgba(213,224,87,0.38)' } as object) : null,
+                            ]}
+                          >
+                            <Check size={15} color={complete ? '#1E1E1E' : active ? '#D5E057' : 'rgba(244,244,239,0.35)'} strokeWidth={3} />
+                          </View>
+                          <Text style={{ flex: 1, marginLeft: 16, paddingTop: 6, fontFamily: reached ? 'DMSans_600SemiBold' : trackingBodyFont, fontSize: 13, color: reached ? '#FFFFFF' : 'rgba(244,244,239,0.5)' }} numberOfLines={1}>{label}</Text>
+                          <Text style={{ marginLeft: 12, paddingTop: 6, fontFamily: trackingBodyFont, fontSize: 11, color: reached ? 'rgba(244,244,239,0.68)' : 'rgba(244,244,239,0.48)' }} numberOfLines={1}>{stepWhen[index] || '—'}</Text>
                         </View>
-                        <View
-                          style={{
-                            position: 'absolute',
-                            top: circle + (compact ? 8 : 10),
-                            width: labelWidth,
-                            left: isFirst ? 0 : isLast ? undefined : (circle - labelWidth) / 2,
-                            right: isLast ? 0 : undefined,
-                            gap: 2,
-                          }}
-                        >
-                          <Text style={{ fontFamily: active ? 'DMSans_600SemiBold' : trackingBodyFont, fontSize: compact ? 11 : 14, lineHeight: compact ? 14 : 18, textAlign, color: index <= orderProgressIndex ? '#FFFFFF' : 'rgba(244,244,239,0.55)' }} numberOfLines={1}>{label}</Text>
-                          {!compact ? <Text style={{ fontFamily: trackingBodyFont, fontSize: compact ? 10 : 12, lineHeight: 16, color: 'rgba(244,244,239,0.6)', textAlign }} numberOfLines={1}>{stepWhen[index] || ' '}</Text> : null}
-                        </View>
-                      </View>
-                    );
-                  })}
-                </View>
+                      );
+                    })}
+                  </View>
+                ) : (
+                  <>
+                    {/* Desktop retains the wide horizontal timeline. */}
+                    <View pointerEvents="none" style={{ position: 'absolute', left: stepperPadH + circle / 2, right: stepperPadH + circle / 2, top: stepperPadTop + circle / 2 - 1.5, height: 3 }}>
+                      <View style={{ position: 'absolute', left: 0, right: 0, height: 3, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.14)' }} />
+                      <View style={{ position: 'absolute', left: 0, width: `${(orderProgressIndex / 4) * 100}%`, height: 3, borderRadius: 999, backgroundColor: '#D5E057' }} />
+                    </View>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingBottom: 46 }}>
+                      {progressLabels.map((label, index) => {
+                        const complete = index < orderProgressIndex || (index === 4 && orderProgressIndex === 4);
+                        const active = index === orderProgressIndex && !complete;
+                        const isFirst = index === 0;
+                        const isLast = index === progressLabels.length - 1;
+                        const labelWidth = 130;
+                        const textAlign = isFirst ? 'left' : isLast ? 'right' : 'center';
+                        return (
+                          <View key={label} style={{ width: circle, alignItems: 'center' }}>
+                            <View style={[{ width: circle, height: circle, borderRadius: circle / 2, alignItems: 'center', justifyContent: 'center', backgroundColor: complete ? '#D5E057' : active ? '#1E1E1E' : 'rgba(255,255,255,0.06)', borderWidth: active ? 2 : complete ? 0 : 1, borderColor: active ? '#D5E057' : 'rgba(255,255,255,0.24)' }, active && Platform.OS === 'web' ? ({ boxShadow: '0 0 0 6px rgba(213,224,87,0.2), 0 0 20px rgba(213,224,87,0.5)' } as object) : null]}>
+                              <Check size={18} color={complete ? '#1E1E1E' : active ? '#D5E057' : 'rgba(244,244,239,0.3)'} strokeWidth={3} />
+                            </View>
+                            <View style={{ position: 'absolute', top: circle + 10, width: labelWidth, left: isFirst ? 0 : isLast ? undefined : (circle - labelWidth) / 2, right: isLast ? 0 : undefined, gap: 2 }}>
+                              <Text style={{ fontFamily: active ? 'DMSans_600SemiBold' : trackingBodyFont, fontSize: 14, lineHeight: 18, textAlign, color: index <= orderProgressIndex ? '#FFFFFF' : 'rgba(244,244,239,0.55)' }} numberOfLines={1}>{label}</Text>
+                              <Text style={{ fontFamily: trackingBodyFont, fontSize: 12, lineHeight: 16, color: 'rgba(244,244,239,0.6)', textAlign }} numberOfLines={1}>{stepWhen[index] || ' '}</Text>
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  </>
+                )}
                 {showConfirmRow ? (
                   <View style={{ marginTop: compact ? 16 : 20, paddingTop: compact ? 14 : 18, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.12)', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                     {confettiKey > 0 ? <DeliveryConfetti burstKey={confettiKey} /> : null}

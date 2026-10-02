@@ -529,11 +529,14 @@ export function ProductDetailPanel({ productId, onClose }: ProductDetailPanelPro
             No stock movement yet.
           </Text>
         ) : (
-          <ScrollView
-            style={{ maxHeight: 260 }}
-            nestedScrollEnabled
-            showsVerticalScrollIndicator
-          >
+          <View>
+            <View style={{ minHeight: 34, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, backgroundColor: isDark ? '#151515' : '#F2F2EF', borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
+              <View style={{ width: 36 }} />
+              <Text style={{ color: colors.text.muted, width: 112, fontSize: 9, fontWeight: '600', letterSpacing: 0.6 }}>ADJUSTMENT</Text>
+              <Text style={{ color: colors.text.muted, flex: 1, fontSize: 9, fontWeight: '600', letterSpacing: 0.6 }}>VARIANT / DETAILS</Text>
+              <Text style={{ color: colors.text.muted, width: 70, fontSize: 9, fontWeight: '600', letterSpacing: 0.6, textAlign: 'right' }}>DATE</Text>
+            </View>
+            <ScrollView style={{ maxHeight: 260 }} nestedScrollEnabled showsVerticalScrollIndicator>
             {inventoryActivity.map((entry, index) => {
               const date = new Date(entry.at);
               const formattedDate = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -554,16 +557,18 @@ export function ProductDetailPanel({ productId, onClose }: ProductDetailPanelPro
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
-                    paddingVertical: 10,
+                    minHeight: 54,
+                    paddingHorizontal: 8,
+                    paddingVertical: 8,
                     borderTopWidth: index > 0 ? 1 : 0,
                     borderTopColor: colors.border.light,
                   }}
                 >
                   <View
                     style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 18,
+                      width: 26,
+                      height: 26,
+                      borderRadius: 13,
                       backgroundColor: isAuditAdjustment
                         ? (isPositiveDelta ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)')
                         : (isRestock
@@ -571,7 +576,7 @@ export function ProductDetailPanel({ productId, onClose }: ProductDetailPanelPro
                           : 'rgba(239, 68, 68, 0.15)'),
                       alignItems: 'center',
                       justifyContent: 'center',
-                      marginRight: 12,
+                      marginRight: 10,
                     }}
                   >
                     {isAuditAdjustment ? (
@@ -584,27 +589,33 @@ export function ProductDetailPanel({ productId, onClose }: ProductDetailPanelPro
                       <Minus size={16} color="#EF4444" strokeWidth={2.4} />
                     )}
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '500' }}>
+                  <View style={{ width: 112, paddingRight: 10 }}>
+                    <Text style={{ color: accentColor, fontSize: 11, fontWeight: '600' }} numberOfLines={1}>
                       {activityLabel}
                     </Text>
-                    <Text style={{ color: colors.text.muted, fontSize: 12 }}>
-                      {entry.variantName} · {entry.subtitle}
+                  </View>
+                  <View style={{ flex: 1, paddingRight: 8 }}>
+                    <Text style={{ color: colors.text.primary, fontSize: 11, fontWeight: '500' }} numberOfLines={1}>
+                      {entry.variantName}
+                    </Text>
+                    <Text style={{ color: colors.text.muted, fontSize: 10, marginTop: 2 }} numberOfLines={1}>
+                      {entry.subtitle}
                     </Text>
                     {entry.actor ? (
-                      <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 2 }}>
+                      <Text style={{ color: colors.text.muted, fontSize: 9, marginTop: 2 }} numberOfLines={1}>
                         by {entry.actor}
                       </Text>
                     ) : null}
                   </View>
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Clock size={12} color={colors.text.muted} strokeWidth={2} />
-                    <Text style={{ color: colors.text.muted, fontSize: 12, marginLeft: 4 }}>{formattedDate}</Text>
+                  <View style={{ width: 70, alignItems: 'flex-end' }}>
+                    <Text style={{ color: colors.text.secondary, fontSize: 10, fontWeight: '500' }}>{formattedDate}</Text>
+                    <Text style={{ color: colors.text.muted, fontSize: 9, marginTop: 2 }}>{date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</Text>
                   </View>
                 </View>
               );
             })}
-          </ScrollView>
+            </ScrollView>
+          </View>
         )}
       </DetailSection>
       {/* Actions */}
@@ -661,15 +672,12 @@ export function ProductDetailPanel({ productId, onClose }: ProductDetailPanelPro
         </Pressable>
         <Pressable
           onPress={handleDelete}
-          className="rounded-full items-center justify-center mt-3 active:opacity-80"
-          style={{ backgroundColor: 'rgba(239, 68, 68, 0.15)', height: 48 }}
+          accessibilityRole="button"
+          accessibilityLabel="Delete product"
+          className="rounded-full items-center justify-center mt-3 active:opacity-70"
+          style={{ alignSelf: 'flex-end', backgroundColor: 'rgba(239, 68, 68, 0.12)', borderWidth: 1, borderColor: 'rgba(239, 68, 68, 0.22)', width: 48, height: 48 }}
         >
-          <View className="flex-row items-center">
-            <Trash2 size={18} color="#EF4444" strokeWidth={2} />
-            <Text style={{ color: '#EF4444', fontSize: 15, fontWeight: '600', marginLeft: 8 }}>
-              Delete Product
-            </Text>
-          </View>
+          <Trash2 size={18} color="#EF4444" strokeWidth={2} />
         </Pressable>
       </View>
 

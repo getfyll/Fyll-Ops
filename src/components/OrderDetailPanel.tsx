@@ -11,6 +11,7 @@ import {
   TextInput,
   Image,
   Switch,
+  ActivityIndicator,
 } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -42,6 +43,8 @@ import { formatAddressValue, normalizeDeliveryStateValue } from '@/lib/format-ad
 import { formatDeliveryLocation } from '@/lib/format-address';
 import { getTeamThreadChannelById, getTeamThreadDisplayNameFromEntityId, isTeamThreadEntityId } from '@/lib/team-threads';
 import { supabaseData } from '@/lib/supabase/data';
+import { createWooCommerceOrderFromFyll, fetchWooCommerceOrder } from '@/lib/woocommerce';
+import { useBusinessSettings } from '@/hooks/useBusinessSettings';
 
 const STAMP_DUTY_THRESHOLD = 10000;
 
@@ -186,6 +189,7 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
   const teamMembers = useAuthStore((s) => s.teamMembers);
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
   const isOfflineMode = useAuthStore((s) => s.isOfflineMode);
+  const { woocommerceStoreUrl, woocommerceConsumerKey, woocommerceConsumerSecret, hasWooCommerceConnection } = useBusinessSettings();
   const [pendingCancelOrder, setPendingCancelOrder] = useState(false);
   const [pendingDeleteOrder, setPendingDeleteOrder] = useState(false);
   const [showStatusModal, setShowStatusModal] = useState(false);
@@ -228,6 +232,10 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
     [order?.deliveryAddress, order?.deliveryState]
   );
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [isSendingToWoo, setIsSendingToWoo] = useState(false);
+  const [isLinkingWooOrder, setIsLinkingWooOrder] = useState(false);
+  const [notifyWooCustomer, setNotifyWooCustomer] = useState(false);
+  const [wooReferenceDraft, setWooReferenceDraft] = useState('');
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const statusColor = useMemo(() => {
@@ -385,12 +393,74 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
     setDraft({});
   }, [orderId]);
 
+  useEffect(() => {
+    setWooReferenceDraft(order?.websiteOrderReference ?? '');
+  }, [order?.id, order?.websiteOrderReference]);
+
   const showToast = (type: 'success' | 'error', message: string) => {
     setToast({ type, message });
     if (toastTimer.current) {
       clearTimeout(toastTimer.current);
     }
     toastTimer.current = setTimeout(() => setToast(null), 2200);
+  };
+
+  const canSendToWoo = Boolean(order && !order.websiteOrderReference?.trim() && order.items.length > 0 && !isOfflineMode);
+  const handleSendToWoo = async () => {
+    if (!order || !businessId || isSendingToWoo) return;
+    setIsSendingToWoo(true);
+    setShowHeaderActionMenu(false);
+    try {
+      const result = await createWooCommerceOrderFromFyll({ businessId, orderId: order.id, silentImport: !notifyWooCustomer });
+      if (result.reason === 'woocommerce-disabled') {
+        showToast('error', 'Connect WooCommerce before sending this order.');
+        return;
+      }
+      const reference = result.websiteOrderReference;
+      if (!reference) throw new Error('WooCommerce did not return an order number.');
+      useFyllStore.setState((state) => ({
+        orders: state.orders.map((item) => item.id === order.id ? { ...item, websiteOrderReference: reference } : item),
+      }));
+      setDraft((current) => ({ ...current, websiteOrderReference: reference }));
+      showToast('success', `Added to WooCommerce as order ${reference}${notifyWooCustomer ? ' and notified the customer' : ' without emailing the customer'}.`);
+    } catch (error) {
+      showToast('error', error instanceof Error ? error.message : 'Could not send this order to WooCommerce.');
+    } finally {
+      setIsSendingToWoo(false);
+    }
+  };
+
+  const handleLinkWooOrder = async () => {
+    const reference = wooReferenceDraft.trim();
+    if (!order || !businessId || isLinkingWooOrder) return;
+    if (!reference) {
+      showToast('error', 'Enter a WooCommerce order ID first.');
+      return;
+    }
+    if (!hasWooCommerceConnection || !woocommerceStoreUrl || !woocommerceConsumerKey || !woocommerceConsumerSecret) {
+      showToast('error', 'Set up WooCommerce first in Settings.');
+      return;
+    }
+    setIsLinkingWooOrder(true);
+    try {
+      const wooOrder = await fetchWooCommerceOrder({
+        storeUrl: woocommerceStoreUrl,
+        consumerKey: woocommerceConsumerKey,
+        consumerSecret: woocommerceConsumerSecret,
+        reference,
+      });
+      await updateOrder(order.id, {
+        websiteOrderReference: wooOrder.websiteOrderReference,
+        updatedBy: currentUser?.name ?? 'Staff',
+      }, businessId);
+      setWooReferenceDraft(wooOrder.websiteOrderReference);
+      setDraft((current) => ({ ...current, websiteOrderReference: wooOrder.websiteOrderReference }));
+      showToast('success', `Linked WooCommerce order ${wooOrder.websiteOrderReference}.`);
+    } catch (error) {
+      showToast('error', error instanceof Error ? error.message : 'Could not find that WooCommerce order.');
+    } finally {
+      setIsLinkingWooOrder(false);
+    }
   };
 
   useEffect(() => {
@@ -1573,9 +1643,29 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
         </View>
       </DetailSection>
 
-      {order.websiteOrderReference || (order.source ?? '').toLowerCase().includes('woocommerce') ? (
+      {(
         <DetailSection title="WooCommerce Link" titleBottomSpacing={18}>
           <View style={{ paddingTop: 4, paddingBottom: 4 }}>
+            <Text style={{ color: colors.text.secondary, fontSize: 11, fontWeight: '500', marginBottom: 7 }}>Woo order ID or reference</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+              <TextInput
+                value={wooReferenceDraft}
+                onChangeText={setWooReferenceDraft}
+                placeholder="e.g. 49135"
+                placeholderTextColor={colors.text.muted}
+                autoCapitalize="characters"
+                style={{ flex: 1, height: 42, borderRadius: 12, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.secondary, color: colors.text.primary, paddingHorizontal: 12, fontSize: 13 }}
+              />
+              <Pressable
+                onPress={() => void handleLinkWooOrder()}
+                disabled={isLinkingWooOrder}
+                className="active:opacity-80"
+                style={{ height: 42, paddingHorizontal: 15, borderRadius: 12, backgroundColor: colors.text.primary, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', opacity: isLinkingWooOrder ? 0.7 : 1 }}
+              >
+                {isLinkingWooOrder ? <ActivityIndicator size="small" color={colors.bg.primary} /> : null}
+                <Text style={{ color: colors.bg.primary, fontSize: 11, fontWeight: '600', marginLeft: isLinkingWooOrder ? 7 : 0 }}>{isLinkingWooOrder ? 'Linking…' : 'Link to Woo'}</Text>
+              </Pressable>
+            </View>
             <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
               <View
                 style={{
@@ -1592,16 +1682,11 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '600', textTransform: 'uppercase' }}>
-                  Linked WooCommerce Order
+                  {order.websiteOrderReference ? 'Linked WooCommerce Order' : 'Not yet sent to WooCommerce'}
                 </Text>
                 <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '700', marginTop: 4 }}>
-                  {order.websiteOrderReference || 'WooCommerce linked'}
+                  {order.websiteOrderReference || 'Create a matching website order'}
                 </Text>
-                {!order.websiteOrderReference ? (
-                  <Text style={{ color: colors.text.muted, fontSize: 12, marginTop: 4 }}>
-                    This older linked order does not have a saved WooCommerce order reference yet.
-                  </Text>
-                ) : null}
               </View>
             </View>
 
@@ -1622,14 +1707,34 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                 <Text style={{ color: colors.text.secondary, fontSize: 12 }}>Linked Status</Text>
-                <Text style={{ color: '#16A34A', fontSize: 12, fontWeight: '700', marginLeft: 12 }}>
-                  Connected
+                <Text style={{ color: order.websiteOrderReference ? '#16A34A' : colors.text.muted, fontSize: 12, fontWeight: '700', marginLeft: 12 }}>
+                  {order.websiteOrderReference ? 'Connected' : 'Not linked'}
                 </Text>
               </View>
             </View>
+            {!order.websiteOrderReference && canSendToWoo ? (
+              <View style={{ marginTop: 14 }}>
+                <View style={{ minHeight: 44, paddingHorizontal: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <View style={{ flex: 1, paddingRight: 12 }}>
+                    <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '600' }}>Notify customer</Text>
+                    <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 2 }}>Send WooCommerce’s order email</Text>
+                  </View>
+                  <Switch value={notifyWooCustomer} onValueChange={setNotifyWooCustomer} disabled={isSendingToWoo} trackColor={{ false: colors.border.medium, true: '#B8C52F' }} thumbColor={notifyWooCustomer ? '#DCEB45' : colors.text.tertiary} />
+                </View>
+                <Pressable
+                  onPress={() => void handleSendToWoo()}
+                  disabled={isSendingToWoo}
+                  className="active:opacity-80"
+                  style={{ marginTop: 10, height: 44, borderRadius: 999, backgroundColor: '#DCEB45', alignItems: 'center', justifyContent: 'center', flexDirection: 'row', opacity: isSendingToWoo ? 0.65 : 1 }}
+                >
+                  {isSendingToWoo ? <ActivityIndicator size="small" color="#17190B" /> : <Send size={16} color="#17190B" strokeWidth={2.3} />}
+                  <Text style={{ color: '#17190B', fontSize: 13, fontWeight: '600', marginLeft: 8 }}>{isSendingToWoo ? 'Sending…' : 'Send to Woo'}</Text>
+                </Pressable>
+              </View>
+            ) : null}
           </View>
         </DetailSection>
-      ) : null}
+      )}
 
       {/* Payment & Source */}
       <DetailSection title="Payment">

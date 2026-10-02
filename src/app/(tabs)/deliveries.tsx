@@ -2,8 +2,9 @@ import React, { useMemo, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Check, ChevronDown, ChevronRight, Filter, Search, Truck, X } from 'lucide-react-native';
+import { Check, ChevronDown, ChevronRight, Filter, Plus, Search, Truck, X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
+import { useFonts, BricolageGrotesque_700Bold } from '@expo-google-fonts/bricolage-grotesque';
 import useFyllStore, { formatCurrency, type Order } from '@/lib/state/fyll-store';
 import { useThemeColors } from '@/lib/theme';
 import { useBreakpoint } from '@/lib/useBreakpoint';
@@ -14,9 +15,10 @@ import { createOrderStatusColorMap, getOrderStatusChipColors } from '@/lib/order
 import useAuthStore from '@/lib/state/auth-store';
 import { normalizeDeliveryStateValue } from '@/lib/format-address';
 import { SearchClearButton } from '@/components/SearchClearButton';
+import { FYLL_LIME, FYLL_LIME_INK } from '@/components/payments/payments-ui';
 
 type DeliveryState = 'picked-up' | 'in-transit' | 'delivered';
-type DeliveryDateFilter = '7d' | 'month' | '30d' | 'year' | 'all';
+type DeliveryDateFilter = 'all' | 'week' | 'month' | 'year';
 type DeliveryStatusFilter = 'all' | 'active' | DeliveryState;
 type DeliverySort = 'updated-desc' | 'updated-asc' | 'dispatch-desc' | 'dispatch-asc' | 'order-asc';
 
@@ -33,15 +35,14 @@ type ShipmentEntry = {
   dispatchAt: number;
 };
 
-const DELIVERY_DATE_FILTERS: Array<{ key: DeliveryDateFilter; label: string }> = [
-  { key: '7d', label: 'Last 7 days' },
-  { key: 'month', label: 'This Month' },
-  { key: '30d', label: 'Last 30 days' },
-  { key: 'year', label: 'This Year' },
-  { key: 'all', label: 'All Time' },
+const DELIVERY_DATE_FILTERS: { key: DeliveryDateFilter; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'week', label: 'Week' },
+  { key: 'month', label: 'Month' },
+  { key: 'year', label: 'Year' },
 ];
 
-const DELIVERY_STATUS_FILTERS: Array<{ key: DeliveryStatusFilter; label: string }> = [
+const DELIVERY_STATUS_FILTERS: { key: DeliveryStatusFilter; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'active', label: 'Active' },
   { key: 'picked-up', label: 'Picked up' },
@@ -49,7 +50,7 @@ const DELIVERY_STATUS_FILTERS: Array<{ key: DeliveryStatusFilter; label: string 
   { key: 'delivered', label: 'Delivered' },
 ];
 
-const DELIVERY_SORT_OPTIONS: Array<{ key: DeliverySort; label: string }> = [
+const DELIVERY_SORT_OPTIONS: { key: DeliverySort; label: string }[] = [
   { key: 'updated-desc', label: 'Newest first' },
   { key: 'updated-asc', label: 'Oldest first' },
   { key: 'dispatch-desc', label: 'Latest dispatch' },
@@ -75,6 +76,23 @@ const formatDisplayDate = (value?: string) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return 'Not set';
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
+const getDeliveryDayKey = (timestamp: number) => {
+  const date = new Date(timestamp);
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+};
+
+const getDeliveryDayLabel = (timestamp: number) => {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return 'Unknown date';
+  const today = new Date();
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const startOfDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const dayDifference = Math.round((startOfToday.getTime() - startOfDate.getTime()) / 86_400_000);
+  if (dayDifference === 0) return 'Today';
+  if (dayDifference === 1) return `Yesterday · ${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+  return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: date.getFullYear() !== today.getFullYear() ? 'numeric' : undefined });
 };
 
 const toDeliveryState = (order: Order, orderStatuses: ReturnType<typeof useFyllStore.getState>['orderStatuses']): DeliveryState => {
@@ -149,6 +167,7 @@ const toIsoFromInputDate = (value: string) => {
 };
 
 export default function DeliveriesScreen() {
+  const [bricolageLoaded] = useFonts({ BricolageGrotesque_700Bold });
   const router = useRouter();
   const colors = useThemeColors();
   const { isDesktop, isMobile } = useBreakpoint();
@@ -177,9 +196,10 @@ export default function DeliveriesScreen() {
   const [deliveryNotes, setDeliveryNotes] = useState('');
   const [isSavingDelivery, setIsSavingDelivery] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [dateFilter, setDateFilter] = useState<DeliveryDateFilter>('30d');
+  const [dateFilter, setDateFilter] = useState<DeliveryDateFilter>('all');
   const [statusFilter, setStatusFilter] = useState<DeliveryStatusFilter>('all');
-  const [sortBy, setSortBy] = useState<DeliverySort>('updated-desc');
+  const [courierFilter, setCourierFilter] = useState('all');
+  const [sortBy, setSortBy] = useState<DeliverySort>('dispatch-desc');
   const [showFilterMenu, setShowFilterMenu] = useState(false);
 
   const shipments = useMemo<ShipmentEntry[]>(() => {
@@ -236,18 +256,24 @@ export default function DeliveriesScreen() {
   const periodShipments = useMemo(() => {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-    const sevenDaysAgo = now.getTime() - (7 * 24 * 60 * 60 * 1000);
-    const thirtyDaysAgo = now.getTime() - (30 * 24 * 60 * 60 * 1000);
+    const weekStart = new Date(now);
+    const day = now.getDay();
+    weekStart.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
+    weekStart.setHours(0, 0, 0, 0);
     const yearStart = new Date(now.getFullYear(), 0, 1).getTime();
 
     return shipments.filter((entry) => {
-      if (dateFilter === '7d' && entry.dispatchAt < sevenDaysAgo) return false;
+      if (dateFilter === 'week' && entry.dispatchAt < weekStart.getTime()) return false;
       if (dateFilter === 'month' && entry.dispatchAt < monthStart) return false;
-      if (dateFilter === '30d' && entry.dispatchAt < thirtyDaysAgo) return false;
       if (dateFilter === 'year' && entry.dispatchAt < yearStart) return false;
       return true;
     });
   }, [dateFilter, shipments]);
+
+  const courierOptions = useMemo(() => (
+    Array.from(new Set(shipments.map((entry) => entry.carrier).filter((carrier) => carrier && carrier !== 'Unassigned')))
+      .sort((a, b) => a.localeCompare(b))
+  ), [shipments]);
 
   const filteredShipments = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -256,6 +282,7 @@ export default function DeliveriesScreen() {
       .filter((entry) => {
         if (statusFilter === 'active' && entry.state === 'delivered') return false;
         if (statusFilter !== 'all' && statusFilter !== 'active' && entry.state !== statusFilter) return false;
+        if (courierFilter !== 'all' && entry.carrier !== courierFilter) return false;
 
         if (!query) return true;
         const haystack = [
@@ -286,7 +313,7 @@ export default function DeliveriesScreen() {
           return b.updatedAt - a.updatedAt;
         }
       });
-  }, [periodShipments, searchQuery, sortBy, statusFilter]);
+  }, [courierFilter, periodShipments, searchQuery, sortBy, statusFilter]);
 
   const activeShipments = useMemo(
     () => periodShipments.filter((entry) => entry.state !== 'delivered'),
@@ -428,14 +455,15 @@ export default function DeliveriesScreen() {
   const separatorColor = colors.border.light;
   const isDark = colors.bg.primary === '#111111';
   const activeFilterCount =
-    (dateFilter !== '30d' ? 1 : 0)
+    (dateFilter !== 'all' ? 1 : 0)
     + (statusFilter !== 'all' ? 1 : 0)
-    + (sortBy !== 'updated-desc' ? 1 : 0);
+    + (courierFilter !== 'all' ? 1 : 0)
+    + (sortBy !== 'dispatch-desc' ? 1 : 0);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg.primary }}>
       <SafeAreaView className="flex-1" edges={['top']}>
-        <View style={{ borderBottomWidth: 0.5, borderBottomColor: separatorColor }}>
+        <View>
           <View
             style={[
               {
@@ -465,22 +493,22 @@ export default function DeliveriesScreen() {
             >
               <View style={isWebDesktop ? undefined : { flex: 1, paddingRight: 12 }}>
                 <Text style={{ color: colors.text.primary, ...pageHeadingStyle }}>Delivery</Text>
-                <Text style={{ color: colors.text.tertiary, fontSize: isMobile ? 10 : 14, lineHeight: isMobile ? 14 : 20, marginTop: 4 }}>
-                  Follow tagged shipments and monitor courier activity from one place.
-                </Text>
               </View>
               <Pressable
                 onPress={handleOpenCreateModal}
-                className="rounded-full flex-row items-center active:opacity-80"
                 style={{
-                  backgroundColor: colors.accent.primary,
-                  height: 44,
+                  backgroundColor: FYLL_LIME,
+                  height: 40,
                   borderRadius: 999,
-                  paddingHorizontal: 18,
+                  paddingHorizontal: 16,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 6,
                 }}
               >
-                <Text style={{ color: isDark ? '#000000' : '#FFFFFF', fontSize: 13, fontWeight: '600' }}>
-                  New Delivery
+                <Plus size={16} color={FYLL_LIME_INK} strokeWidth={2.6} />
+                <Text style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '600' }}>
+                  {isMobile ? 'New' : 'New delivery'}
                 </Text>
               </Pressable>
             </View>
@@ -501,11 +529,17 @@ export default function DeliveriesScreen() {
             }}
           >
             <View style={{ paddingTop: 16 }}>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={{ marginBottom: 16 }}
-                contentContainerStyle={{ flexGrow: 0, gap: 8, paddingRight: 4 }}
+              <View
+                style={{
+                  flexDirection: 'row',
+                  padding: 4,
+                  borderRadius: 999,
+                  backgroundColor: colors.bg.secondary,
+                  borderWidth: 1,
+                  borderColor: separatorColor,
+                  width: isMobile ? '100%' : 360,
+                  marginBottom: 16,
+                }}
               >
                 {DELIVERY_DATE_FILTERS.map((option) => {
                   const isActive = dateFilter === option.key;
@@ -513,67 +547,53 @@ export default function DeliveriesScreen() {
                     <Pressable
                       key={option.key}
                       onPress={() => setDateFilter(option.key)}
-                      className="rounded-full active:opacity-70"
                       style={{
-                        height: 44,
-                        paddingHorizontal: 16,
+                        flex: 1,
+                        height: 34,
+                        borderRadius: 999,
                         alignItems: 'center',
                         justifyContent: 'center',
-                        backgroundColor: isActive ? colors.accent.primary : colors.bg.card,
-                        borderWidth: isActive ? 0 : 1,
-                        borderColor: separatorColor,
+                        backgroundColor: isActive ? colors.text.primary : 'transparent',
                       }}
                     >
                       <Text
-                        className="text-sm font-semibold"
-                        style={{ color: isActive ? (isDark ? '#000000' : '#FFFFFF') : colors.text.primary }}
+                        style={{ color: isActive ? colors.bg.primary : colors.text.muted, fontSize: 12, fontWeight: '600' }}
                       >
                         {option.label}
                       </Text>
                     </Pressable>
                   );
                 })}
-              </ScrollView>
-
-              <View
-                className="flex-row flex-wrap"
-                style={{ marginHorizontal: -6, marginBottom: 12 }}
-              >
-                {stats.map((item) => {
-                  return (
-                    <View
-                      key={item.key}
-                      style={{
-                        width: isDesktop ? '25%' : isMobile ? '50%' : '50%',
-                        paddingHorizontal: 6,
-                        marginBottom: 12,
-                      }}
-                    >
-                      <View
-                        className="rounded-[24px]"
-                        style={{
-                          backgroundColor: colors.bg.card,
-                          borderWidth: 1,
-                          borderColor: colors.border.light,
-                          padding: isMobile ? 14 : 18,
-                          minHeight: isMobile ? 104 : 138,
-                          justifyContent: 'center',
-                        }}
-                      >
-                        <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 1 }}>
-                          {item.label}
-                        </Text>
-                        <Text style={{ color: colors.text.primary, fontSize: isMobile ? 22 : 26, fontWeight: '700', marginTop: 8 }}>
-                          {item.value}
-                        </Text>
-                        <Text style={{ color: colors.text.muted, fontSize: isMobile ? 10 : 12, fontWeight: '400', lineHeight: isMobile ? 14 : 18, marginTop: isMobile ? 4 : 6 }}>
-                          {item.caption}
-                        </Text>
-                      </View>
-                    </View>
-                  );
-                })}
               </View>
+
+              {isMobile ? (
+                <View style={{ borderRadius: 20, borderWidth: 1, borderColor: separatorColor, backgroundColor: colors.bg.card, padding: 18, gap: 14, marginBottom: 16 }}>
+                  <View style={{ gap: 4 }}>
+                    <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.6 }}>{stats[1].label}</Text>
+                    <Text style={{ color: colors.text.primary, fontSize: 32, lineHeight: 36, fontWeight: bricolageLoaded ? '400' : '700', fontFamily: bricolageLoaded ? 'BricolageGrotesque_700Bold' : undefined, letterSpacing: -1 }}>{stats[1].value} deliveries</Text>
+                    <Text style={{ color: colors.text.muted, fontSize: 13 }}>{stats[1].caption}</Text>
+                  </View>
+                  <View style={{ height: 1, backgroundColor: separatorColor }} />
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    {[stats[0], stats[2], stats[3]].map((item) => (
+                      <View key={item.key} style={{ flex: 1, gap: 3 }}>
+                        <Text style={{ color: colors.text.tertiary, fontSize: 12 }} numberOfLines={1}>{item.label}</Text>
+                        <Text style={{ color: colors.text.primary, fontSize: 18, fontWeight: '600' }} numberOfLines={1}>{item.value}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              ) : (
+                <View style={{ flexDirection: 'row', borderRadius: 20, borderWidth: 1, borderColor: separatorColor, backgroundColor: colors.bg.card, overflow: 'hidden', marginBottom: 16 }}>
+                  {stats.map((item, index) => (
+                    <View key={item.key} style={{ flex: index === 0 ? 1.3 : 1, padding: 18, gap: 4, borderLeftWidth: index ? 1 : 0, borderColor: separatorColor }}>
+                      <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.6 }}>{item.label}</Text>
+                      <Text style={{ color: colors.text.primary, fontSize: index === 0 ? 28 : 22, fontWeight: index === 0 && bricolageLoaded ? '400' : '600', fontFamily: index === 0 && bricolageLoaded ? 'BricolageGrotesque_700Bold' : undefined, letterSpacing: index === 0 ? -0.9 : -0.5 }}>{item.value}</Text>
+                      <Text style={{ color: colors.text.muted, fontSize: 13 }}>{item.caption}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
 
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 }}>
                 <View
@@ -707,6 +727,8 @@ export default function DeliveriesScreen() {
                           style={{
                             color: colors.text.muted,
                             flex: Number(flex),
+                            fontSize: 10,
+                            fontWeight: '600',
                           }}
                         >
                           {label}
@@ -716,14 +738,23 @@ export default function DeliveriesScreen() {
 
                     {filteredShipments.map(({ order, carrier, tracking, labelCode, pickedUpLabel, destination, state, updatedLabel }, index) => {
                       const chip = getDeliveryChipColors(state);
+                      const currentEntry = filteredShipments[index];
+                      const previousEntry = index > 0 ? filteredShipments[index - 1] : null;
+                      const isFirstInGroup = !previousEntry || getDeliveryDayKey(previousEntry.dispatchAt) !== getDeliveryDayKey(currentEntry.dispatchAt);
                       return (
+                        <React.Fragment key={order.id}>
+                        {isFirstInGroup ? (
+                          <View style={{ paddingHorizontal: 20, paddingTop: 10, paddingBottom: 8, backgroundColor: isDark ? '#101010' : '#E9E9E6', borderBottomWidth: 1, borderBottomColor: separatorColor }}>
+                            <Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{getDeliveryDayLabel(currentEntry.dispatchAt)}</Text>
+                          </View>
+                        ) : null}
                         <View
-                          key={order.id}
                           className="flex-row items-center"
                           style={{
                             paddingHorizontal: 20,
-                            paddingVertical: 16,
-                            borderBottomWidth: index === filteredShipments.length - 1 ? 0 : 1,
+                            paddingVertical: 12,
+                            minHeight: 58,
+                            borderBottomWidth: 1,
                             borderBottomColor: colors.border.light,
                           }}
                         >
@@ -778,16 +809,20 @@ export default function DeliveriesScreen() {
                             </Pressable>
                           </View>
                         </View>
+                        </React.Fragment>
                       );
                     })}
                   </View>
                 ) : (
                   <View style={{ paddingBottom: 6, gap: 10 }}>
-                    {filteredShipments.map(({ order, carrier, pickedUpLabel }) => {
+                    {filteredShipments.map(({ order, carrier, pickedUpLabel, dispatchAt }, index) => {
                       const fallbackStatusChip = getOrderStatusChipColors(order.status, statusColorMap, colors.bg.primary === '#111111');
+                      const previousEntry = index > 0 ? filteredShipments[index - 1] : null;
+                      const isFirstInGroup = !previousEntry || getDeliveryDayKey(previousEntry.dispatchAt) !== getDeliveryDayKey(dispatchAt);
                       return (
+                        <View key={order.id} style={{ marginTop: isFirstInGroup && index > 0 ? 8 : 0 }}>
+                        {isFirstInGroup ? <Text style={{ color: colors.text.muted, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', paddingHorizontal: 4, marginBottom: 8 }}>{getDeliveryDayLabel(dispatchAt)}</Text> : null}
                         <Pressable
-                          key={order.id}
                           onPress={() => handleOpenOrder(order.id)}
                           className="rounded-[18px] active:opacity-80"
                           style={{
@@ -806,13 +841,17 @@ export default function DeliveriesScreen() {
                               <Text style={{ color: colors.text.secondary, fontSize: 11, marginTop: 3 }}>
                                 Dispatched {pickedUpLabel}
                               </Text>
+                              <Text style={{ color: colors.text.muted, fontSize: 10, marginTop: 3 }} numberOfLines={1}>
+                                Courier · {carrier}
+                              </Text>
                             </View>
                             <ChevronRight size={18} color={colors.text.muted} strokeWidth={2} />
                           </View>
 
                           <View className="flex-row items-center justify-between" style={{ gap: 10, marginTop: 9 }}>
-                            <View className="rounded-full px-3" style={{ minHeight: 30, justifyContent: 'center', backgroundColor: fallbackStatusChip.bg, borderWidth: 1, borderColor: fallbackStatusChip.border }}>
-                              <Text style={{ color: fallbackStatusChip.text, fontSize: 10, fontWeight: '500' }}>{order.status}</Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: fallbackStatusChip.text }} />
+                              <Text style={{ color: fallbackStatusChip.text, fontSize: 11, fontWeight: '600' }}>{order.status}</Text>
                             </View>
                             <Pressable
                               onPress={(event) => {
@@ -823,15 +862,18 @@ export default function DeliveriesScreen() {
                               style={{
                                 height: 34,
                                 justifyContent: 'center',
-                                backgroundColor: colors.text.primary,
+                                backgroundColor: 'transparent',
+                                borderWidth: 1,
+                                borderColor: colors.border.medium,
                               }}
                             >
-                              <Text style={{ color: colors.bg.primary, fontSize: 11, fontWeight: '500' }}>
+                              <Text style={{ color: colors.text.primary, fontSize: 11, fontWeight: '600' }}>
                                 Print shipping label
                               </Text>
                             </Pressable>
                           </View>
                         </Pressable>
+                        </View>
                       );
                     })}
                   </View>
@@ -916,6 +958,32 @@ export default function DeliveriesScreen() {
                       {isActive ? (
                         <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: colors.accent.primary }}>
                           <Check size={12} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={3} />
+                        </View>
+                      ) : null}
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <View className="px-5 pt-4" style={{ borderTopWidth: 0.5, borderTopColor: separatorColor, marginTop: 8 }}>
+                <Text style={{ color: colors.text.muted }} className="text-xs font-semibold uppercase tracking-wider mb-3">Filter by Courier</Text>
+                {['all', ...courierOptions].map((courier) => {
+                  const isActive = courierFilter === courier;
+                  return (
+                    <Pressable
+                      key={courier}
+                      onPress={() => {
+                        if (Platform.OS !== 'web') void Haptics.selectionAsync();
+                        setCourierFilter(courier);
+                      }}
+                      className="flex-row items-center py-3 active:opacity-70"
+                    >
+                      <View className="flex-1">
+                        <Text style={{ color: colors.text.primary }} className="font-medium text-sm">{courier === 'all' ? 'All Couriers' : courier}</Text>
+                      </View>
+                      {isActive ? (
+                        <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: FYLL_LIME }}>
+                          <Check size={12} color={FYLL_LIME_INK} strokeWidth={3} />
                         </View>
                       ) : null}
                     </Pressable>
@@ -1234,17 +1302,18 @@ export default function DeliveriesScreen() {
                   <Pressable
                     onPress={handleCreateDelivery}
                     disabled={actionDisabled}
-                    className="rounded-[14px] flex-row items-center justify-center active:opacity-80"
+                    className="flex-row items-center justify-center active:opacity-80"
                     style={{
-                      backgroundColor: actionDisabled ? colors.bg.secondary : colors.text.primary,
-                      height: 48,
+                      backgroundColor: actionDisabled ? colors.bg.secondary : FYLL_LIME,
+                      height: 40,
+                      borderRadius: 999,
                       paddingHorizontal: 20,
                     }}
                   >
-                    <Truck size={18} color={actionDisabled ? colors.text.muted : colors.bg.primary} strokeWidth={2} />
+                    <Truck size={16} color={actionDisabled ? colors.text.muted : FYLL_LIME_INK} strokeWidth={2.4} />
                     <Text
                       style={{
-                        color: actionDisabled ? colors.text.muted : colors.bg.primary,
+                        color: actionDisabled ? colors.text.muted : FYLL_LIME_INK,
                         fontSize: 14,
                         fontWeight: '600',
                         marginLeft: 10,
