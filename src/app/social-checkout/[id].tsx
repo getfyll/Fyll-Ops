@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, Image, Modal, ActivityIndicator, Platform, Alert, TextInput, Linking, type PressableStateCallbackType } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { AlertTriangle, Check, ChevronLeft, ChevronRight, Clock, Copy, ExternalLink, FileText, Landmark, Link2, Mail, MapPin, MessageCircle, MoreHorizontal, Package, Pencil, Phone, Power, Save, Trash2, X } from 'lucide-react-native';
+import { AlertTriangle, Check, ChevronRight, Clock, Copy, ExternalLink, FileText, Landmark, Link2, Mail, MapPin, MessageCircle, MoreHorizontal, Package, Pencil, Phone, Power, Save, Trash2, X } from 'lucide-react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
@@ -25,7 +25,7 @@ import { useBusinessSettings } from '@/hooks/useBusinessSettings';
 import { buildSocialCheckoutUrl } from '@/lib/tracking-url';
 import { PaymentDetailSkeleton } from '@/components/SkeletonLoader';
 import { SearchClearButton } from '@/components/SearchClearButton';
-import { FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, InitialsAvatar, MoneyText, SectionLabel, isHovered, usePaymentsPalette, type StatusTone, useMobileFont } from '@/components/payments/payments-ui';
+import { FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, InitialsAvatar, MoneyText, SectionLabel, isHovered, usePaymentsPalette, type StatusTone, useMobileFont, BackButton } from '@/components/payments/payments-ui';
 
 // Payment link detail: amount + status up top, then what to do next (review
 // the receipt, create or link the order), the bill, the link/message to send,
@@ -1069,15 +1069,8 @@ export default function SocialCheckoutDetailScreen() {
     <View className="flex-1 flex-row" style={{ backgroundColor: palette.page }}>
       {isDesktop ? <DesktopSidebar /> : null}
       <SafeAreaView className="flex-1" edges={['top']}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: isDesktop ? 20 : 8, paddingTop: isDesktop ? 18 : 14, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: palette.hairline }}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Back to payments"
-            onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)/payments' as never))}
-            style={(state) => ({ width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: state.pressed || isHovered(state) ? palette.softFill : 'transparent' })}
-          >
-            <ChevronLeft size={21} color={palette.text} strokeWidth={2.2} />
-          </Pressable>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: isDesktop ? 20 : 16, paddingTop: isDesktop ? 18 : 14, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: palette.hairline }}>
+          <BackButton onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)/payments' as never))} palette={palette} label="Back to payments" />
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={{ color: palette.text, fontSize: 18, fontWeight: '600' }}>Payment</Text>
             <Pressable accessibilityRole="button" accessibilityLabel="Copy payment reference" onPress={() => { void Clipboard.setStringAsync(`SC-${draft.id}`); setRefCopied(true); setTimeout(() => setRefCopied(false), 1600); }} style={(state) => ({ flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', maxWidth: '100%', opacity: state.pressed ? 0.6 : 1 })}>

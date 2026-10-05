@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, type PressableStateCallbackType, type TextProps } from 'react-native';
+import { Pressable, View, Text, type PressableStateCallbackType, type TextProps } from 'react-native';
+import { ChevronLeft } from 'lucide-react-native';
 import { useFonts, BricolageGrotesque_700Bold } from '@expo-google-fonts/bricolage-grotesque';
 import { useThemeColors, useResolvedThemeMode } from '@/lib/theme';
 import { useBreakpoint } from '@/lib/useBreakpoint';
@@ -130,4 +131,29 @@ export function useMobileFont() {
     if (!isMobile || size > 16) return size;
     return size >= 13 ? 12 : 10;
   };
+}
+
+// Standard Ops back button: chevron in a thin outlined circle (40px).
+export function BackButton({ onPress, palette, label = 'Back' }: { onPress: () => void; palette: PaymentsPalette; label?: string }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      hitSlop={4}
+      style={(state) => ({
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+        borderWidth: 1,
+        borderColor: palette.border,
+        backgroundColor: state.pressed || isHovered(state) ? palette.softFill : 'transparent',
+      })}
+    >
+      <ChevronLeft size={20} color={palette.text} strokeWidth={2.2} />
+    </Pressable>
+  );
 }

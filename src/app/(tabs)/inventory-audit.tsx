@@ -1,19 +1,17 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal, Platform, Pressable, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Plus } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import useFyllStore, { AuditLogItem, type AuditLog } from '@/lib/state/fyll-store';
 import useAuthStore from '@/lib/state/auth-store';
 import { useResolvedThemeMode, useThemeColors } from '@/lib/theme';
 import { storage } from '@/lib/storage';
-import { AuditHomeView } from '@/components/inventory-audit/AuditHomeView';
+import { AuditOverview } from '@/components/inventory-audit/AuditOverview';
 import { AuditCountView } from '@/components/inventory-audit/AuditCountView';
 import { AuditHistoryView } from '@/components/inventory-audit/AuditHistoryView';
 import { AuditDetailView } from '@/components/inventory-audit/AuditDetailView';
 import { AuditActionModal } from '@/components/inventory-audit/AuditActionModal';
 import { useBreakpoint } from '@/lib/useBreakpoint';
-import { useTabBarHeight } from '@/lib/useTabBarHeight';
 import type { AuditItem, AuditStatusFilter } from '@/components/inventory-audit/types';
 import { buildAuditItems, buildCategorySections, buildWarehouseAuditItems, getAuditProgress, getLiveVarianceBreakdown, isAuditableProduct, parseCount, reconcileAuditItemsWithInventory } from '@/components/inventory-audit/utils';
 
@@ -51,13 +49,13 @@ export default function InventoryAuditScreen() {
   const router = useRouter();
   const colors = useThemeColors();
   const isDark = useResolvedThemeMode() === 'dark';
-  const tabBarHeight = useTabBarHeight();
   const primaryActionBg = isDark ? '#FFFFFF' : '#111111';
   const primaryActionText = isDark ? '#111111' : '#FFFFFF';
 
   const products = useFyllStore((state) => state.products);
   const productCategories = useFyllStore((state) => state.categories);
   const warehouseItems = useFyllStore((state) => state.warehouseItems);
+  const orders = useFyllStore((state) => state.orders);
   const updateProduct = useFyllStore((state) => state.updateProduct);
   const recordWarehouseCount = useFyllStore((state) => state.recordWarehouseCount);
   const addAuditLog = useFyllStore((state) => state.addAuditLog);
@@ -233,9 +231,13 @@ export default function InventoryAuditScreen() {
     await storage.removeItem(AUDIT_DRAFT_STORAGE_KEY);
   };
 
-  const startAudit = (scope: AuditScope = 'products') => {
+  // variantIds limits a product count to those SKUs (today's risk-picked count, recounts).
+  const startAudit = (scope: AuditScope = 'products', variantIds?: string[]) => {
     triggerMediumHaptic();
-    const nextItems = scope === 'warehouse' ? buildWarehouseAuditItems(warehouseItems) : buildAuditItems(products, productCategories);
+    const onlyIds = variantIds ? new Set(variantIds) : null;
+    const nextItems = scope === 'warehouse'
+      ? buildWarehouseAuditItems(warehouseItems)
+      : buildAuditItems(products, productCategories).filter((item) => !onlyIds || onlyIds.has(item.variantId));
     setAuditScope(scope);
     setAuditItems(nextItems);
     setAuditStartedAt(new Date().toISOString());
@@ -458,20 +460,13 @@ export default function InventoryAuditScreen() {
   const content = (
     <View style={{ flex: 1, backgroundColor: isDark || isDesktop ? colors.bg.primary : '#FFFFFF' }}>
       {currentView === 'home' ? (
-        <AuditHomeView
-          colors={colors}
-          isDark={isDark}
-          primaryActionBg={primaryActionBg}
-          primaryActionText={primaryActionText}
-          skuCount={catalogSkuCount}
-          lastCompletedLabel={lastCompletedLabel}
+        <AuditOverview
+          products={products}
+          orders={orders}
+          logs={sortedAuditLogs}
           hasActiveAudit={auditItems.length > 0}
           countedItems={auditProgress.counted}
           totalItems={auditProgress.total}
-          discrepancyCount={auditProgress.discrepancyCount}
-          auditStartedAt={auditStartedAt}
-          performedBy={performedBy}
-          sortedAuditLogs={sortedAuditLogs}
           onBack={() => {
             if (auditItems.length > 0) {
               void pauseAndExitAudit();
@@ -479,19 +474,29 @@ export default function InventoryAuditScreen() {
             }
             router.replace('/(tabs)/inventory');
           }}
-          onStartAudit={handleStartAuditPress}
-          onResumeAudit={resumeAudit}
-          onDiscardAudit={() => setShowDiscardPrompt(true)}
-          onOpenHistory={(logId) => {
-            triggerMediumHaptic();
-            if (logId) {
-              setSelectedAuditId(logId);
-              setDetailReturnView('home');
-              setCurrentView('detail');
+          onStartDaily={(variantIds) => {
+            if (variantIds.length === 0) return;
+            if (auditItems.length > 0) {
+              setShowRestartPrompt(true);
               return;
             }
+            startAudit('products', variantIds);
+            showToast(`Counting ${variantIds.length} SKU${variantIds.length === 1 ? '' : 's'}`);
+          }}
+          onFullCount={handleStartAuditPress}
+          onResume={resumeAudit}
+          onDiscard={() => setShowDiscardPrompt(true)}
+          onOpenLog={(logId) => {
+            triggerMediumHaptic();
+            setSelectedAuditId(logId);
+            setDetailReturnView('home');
+            setCurrentView('detail');
+          }}
+          onOpenHistory={() => {
+            triggerMediumHaptic();
             setCurrentView('history');
           }}
+          onViewOrders={() => router.push('/(tabs)/orders' as never)}
         />
       ) : null}
 
@@ -534,8 +539,7 @@ export default function InventoryAuditScreen() {
 
       {currentView === 'history' ? (
         <AuditHistoryView
-          isDark={isDark}
-          colors={colors}
+          products={products}
           sortedAuditLogs={sortedAuditLogs}
           onBack={() => setCurrentView('home')}
           onSelectAudit={(auditId) => {
@@ -698,29 +702,6 @@ export default function InventoryAuditScreen() {
         </View>
       ) : null}
 
-      {!isDesktop && currentView === 'home' ? (
-        <Pressable
-          onPress={handleStartAuditPress}
-          accessibilityLabel="Start new audit"
-          className="items-center justify-center active:opacity-85"
-          style={{
-            position: 'absolute',
-            right: 20,
-            bottom: Math.max(24, tabBarHeight - 30),
-            width: 56,
-            height: 56,
-            borderRadius: 28,
-            backgroundColor: primaryActionBg,
-            shadowColor: '#000000',
-            shadowOpacity: isDark ? 0.28 : 0.16,
-            shadowRadius: 14,
-            shadowOffset: { width: 0, height: 8 },
-            elevation: 8,
-          }}
-        >
-          <Plus size={24} color={primaryActionText} strokeWidth={2.6} />
-        </Pressable>
-      ) : null}
     </View>
   );
 

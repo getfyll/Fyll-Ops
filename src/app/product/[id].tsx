@@ -1,20 +1,20 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { View, Text, ScrollView, Pressable, TextInput, Alert, Modal, Switch, KeyboardAvoidingView, Platform, Dimensions } from 'react-native';
+import { View, Text, ScrollView, Pressable, TextInput, Alert, Modal, Switch, KeyboardAvoidingView, Platform, Dimensions, type PressableStateCallbackType } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Package, Plus, Minus, Trash2, Edit2, X, ChevronDown, Search, Printer, PackagePlus, Clock, Camera, ImageIcon, Save, DollarSign, TrendingUp, MoreVertical, ClipboardCheck } from 'lucide-react-native';
-import useFyllStore, { type Procurement, ProductVariant, formatCurrency } from '@/lib/state/fyll-store';
+import { Package, Plus, Minus, Trash2, X, ChevronDown, Printer, Camera, ImageIcon, MoreHorizontal, AlertTriangle } from 'lucide-react-native';
+import useFyllStore, { type Procurement, ProductVariant } from '@/lib/state/fyll-store';
 import { useResolvedThemeMode, useThemeColors } from '@/lib/theme';
 import { cn } from '@/lib/cn';
 import * as Haptics from 'expo-haptics';
 import { useImagePicker } from '@/hooks/useImagePicker';
-import { Button } from '@/components/Button';
 import useAuthStore from '@/lib/state/auth-store';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { ResolvedAttachmentImage } from '@/components/ResolvedAttachmentImage';
-import { openAttachmentPath } from '@/lib/storage-attachments';
 import { prepareProductMediaForPersistence, uploadProductMediaIfNeeded } from '@/lib/product-media';
 import { SearchClearButton } from '@/components/SearchClearButton';
+import { FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, MoneyText, isHovered, usePaymentsPalette, BackButton } from '@/components/payments/payments-ui';
+import { StockStatusLabel, formatNaira, getVariantStatus } from '@/components/inventory/inventory-ui';
 
 const buildProcurementVariantImageMap = (procurements: Procurement[]) => {
   const imageByProductVariant = new Map<string, string>();
@@ -61,6 +61,9 @@ export default function ProductDetailScreen() {
   const restockLogs = useFyllStore((s) => s.restockLogs);
   const auditLogs = useFyllStore((s) => s.auditLogs);
   const orders = useFyllStore((s) => s.orders);
+  const useGlobalLowStockThreshold = useFyllStore((s) => s.useGlobalLowStockThreshold);
+  const globalLowStockThreshold = useFyllStore((s) => s.globalLowStockThreshold);
+  const palette = usePaymentsPalette();
   const businessId = useAuthStore((s) => s.businessId);
   const currentUserRole = useAuthStore((s) => s.currentUser?.role ?? null);
 
@@ -102,11 +105,9 @@ export default function ProductDetailScreen() {
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const [editImageUrl, setEditImageUrl] = useState<string | undefined>(product?.imageUrl);
   const [showImagePicker, setShowImagePicker] = useState(false);
-  const [isSavingProduct, setIsSavingProduct] = useState(false);
   const [isStatusSaving, setIsStatusSaving] = useState(false);
   const [isDeletingProduct, setIsDeletingProduct] = useState(false);
   const [pendingDeleteProduct, setPendingDeleteProduct] = useState(false);
-  const [saveNotice, setSaveNotice] = useState('');
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [webCategoryQuery, setWebCategoryQuery] = useState('');
   const [showMobileHeaderMenu, setShowMobileHeaderMenu] = useState(false);
@@ -184,6 +185,14 @@ export default function ProductDetailScreen() {
   const [editVariantStock, setEditVariantStock] = useState('');
   const [editOverrideVariantPrice, setEditOverrideVariantPrice] = useState(false);
   const [editOverrideVariantStock, setEditOverrideVariantStock] = useState(false);
+
+  // Stock steppers stage changes until Save (see the floating save bar).
+  const [pendingStock, setPendingStock] = useState<Record<string, number>>({});
+  const [isSavingStock, setIsSavingStock] = useState<boolean>(false);
+  const [activityTab, setActivityTab] = useState<'all' | 'sale' | 'adj' | 'restock'>('all');
+  const [openVariantMenuId, setOpenVariantMenuId] = useState<string | null>(null);
+  const [isAddingCategory, setIsAddingCategory] = useState<boolean>(false);
+  const [mobileVariantActions, setMobileVariantActions] = useState<ProductVariant | null>(null);
 
   // Use the web-safe image picker hook
   const imagePicker = useImagePicker();
@@ -343,10 +352,6 @@ export default function ProductDetailScreen() {
     );
   }
 
-  const totalStock = product.variants.reduce((sum, v) => sum + v.stock, 0);
-  const retailValue = product.variants.reduce((sum, v) => sum + v.stock * v.sellingPrice, 0);
-  const lowStockCount = product.variants.filter((v) => v.stock <= product.lowStockThreshold).length;
-
   const handleOpenEdit = () => {
     setEditName(product.name);
     setEditDescription(product.description);
@@ -485,19 +490,6 @@ export default function ProductDetailScreen() {
     setIsEditing(false);
   };
 
-  const handleSaveProduct = async () => {
-    if (isSavingProduct) return;
-    setIsSavingProduct(true);
-    const latestProduct = useFyllStore.getState().products.find((p) => p.id === product.id);
-    if (latestProduct) {
-      await updateProduct(product.id, latestProduct, businessId);
-    }
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    setSaveNotice('Saved for all devices.');
-    setTimeout(() => setSaveNotice(''), 2000);
-    setIsSavingProduct(false);
-  };
-
   const showToast = (type: 'success' | 'error', message: string) => {
     setToast({ type, message });
     if (toastTimer.current) {
@@ -547,16 +539,6 @@ export default function ProductDetailScreen() {
     } finally {
       setIsStatusSaving(false);
     }
-  };
-
-  const handleAdjustStock = async (variantId: string, delta: number) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const nextVariants = product.variants.map((variant) => (
-      variant.id === variantId
-        ? { ...variant, stock: Math.max(0, variant.stock + delta) }
-        : variant
-    ));
-    await updateProduct(product.id, { variants: nextVariants }, businessId);
   };
 
   const handleOpenAddVariant = () => {
@@ -718,6 +700,14 @@ export default function ProductDetailScreen() {
       return;
     }
 
+    // Alert.alert is a no-op on web, so confirm with the browser dialog there.
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.confirm(`Delete "${variantName}"?`)) {
+        void updateProduct(product.id, { variants: product.variants.filter((variant) => variant.id !== variantId) }, businessId);
+      }
+      return;
+    }
+
     Alert.alert(
       'Delete Variant',
       `Are you sure you want to delete "${variantName}"?`,
@@ -737,462 +727,6 @@ export default function ProductDetailScreen() {
     );
   };
 
-  const statsSection = (
-    <View className={cn('mt-4 gap-3', !isWebDesktop && 'flex-row mx-5')}>
-      <View className="flex-1 rounded-2xl p-4" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
-        <Text style={{ color: colors.text.tertiary }} className="text-xs font-medium">Total Stock</Text>
-        <Text style={{ color: colors.text.primary }} className="text-2xl font-bold mt-1">{totalStock}</Text>
-        {lowStockCount > 0 && (
-          <View className="px-2 py-0.5 rounded-full self-start mt-1" style={{ backgroundColor: 'rgba(245, 158, 11, 0.15)' }}>
-            <Text className="text-amber-500 text-xs font-semibold">{lowStockCount} low</Text>
-          </View>
-        )}
-      </View>
-      {isOwner && (
-        <View className="flex-1 rounded-2xl p-4" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
-          <Text style={{ color: colors.text.tertiary }} className="text-xs font-medium">Stock Value</Text>
-          <Text style={{ color: colors.text.primary }} className="text-2xl font-bold mt-1">{formatCurrency(retailValue)}</Text>
-          <Text style={{ color: colors.text.muted }} className="text-xs mt-1">at retail price</Text>
-        </View>
-      )}
-    </View>
-  );
-
-  const mobileSoldHighlights = (
-    <View className={cn('mt-3', !isWebDesktop && 'mx-5')}>
-      <View className="rounded-2xl p-4" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
-        <View className="flex-row items-center justify-between">
-          <View className="flex-1 pr-3">
-            <Text style={{ color: colors.text.tertiary }} className="text-xs font-medium">Total Sold</Text>
-            <Text style={{ color: colors.text.primary }} className="text-2xl font-bold mt-1">{soldStats.totalSold}</Text>
-            {soldStats.bestVariantId ? (
-              <Text style={{ color: colors.text.muted }} className="text-xs mt-1" numberOfLines={1}>
-                Best-selling:{' '}
-                <Text style={{ color: colors.text.primary }} className="font-semibold">
-                  {Object.values(product.variants.find((v) => v.id === soldStats.bestVariantId)?.variableValues ?? {}).join(' / ') || '—'}
-                </Text>
-              </Text>
-            ) : (
-              <Text style={{ color: colors.text.muted }} className="text-xs mt-1">No sales yet.</Text>
-            )}
-          </View>
-          <View className="w-10 h-10 rounded-xl items-center justify-center" style={{ backgroundColor: colors.bg.secondary }}>
-            <TrendingUp size={18} color={colors.text.primary} strokeWidth={2} />
-          </View>
-        </View>
-      </View>
-    </View>
-  );
-
-  const descriptionSection = product.description ? (
-    <View className={cn('mt-4 rounded-2xl p-4', !isWebDesktop && 'mx-5')} style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
-      <Text style={{ color: colors.text.tertiary }} className="text-xs font-medium mb-1">Description</Text>
-      <Text style={{ color: colors.text.secondary }} className="text-sm">{product.description}</Text>
-    </View>
-  ) : null;
-
-  const variantsHeaderSection = (
-    <View className={cn('mt-4 flex-row items-center justify-between', !isWebDesktop && 'mx-5')}>
-      <Text style={{ color: colors.text.primary }} className="font-bold text-base">Variants ({product.variants.length})</Text>
-      <View className="flex-row items-center gap-2">
-        <Pressable
-          onPress={() => {
-            if (Platform.OS !== 'web') {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            }
-            router.push({
-              pathname: '/label-print',
-              params: { productId: product.id, bulk: '1' },
-            });
-          }}
-          className="flex-row items-center px-3 py-2 rounded-full active:opacity-80"
-          style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}
-        >
-          <Printer size={14} color={colors.text.primary} strokeWidth={2.2} />
-          <Text style={{ color: colors.text.primary }} className="font-semibold text-xs ml-1">Bulk Print</Text>
-        </Pressable>
-        {canManageVariants ? (
-          <Pressable
-            onPress={handleOpenAddVariant}
-            className="flex-row items-center px-3 py-2 rounded-full active:opacity-80"
-            style={{ backgroundColor: '#111111' }}
-          >
-            <Plus size={16} color="#FFFFFF" strokeWidth={2.5} />
-            <Text className="text-white font-semibold text-sm ml-1">Add Variant</Text>
-          </Pressable>
-        ) : null}
-      </View>
-    </View>
-  );
-
-  const variantsListSection = (
-    <View className={cn('mt-3', !isWebDesktop && 'mx-5')}>
-      {product.variants.map((variant, index) => {
-        const rawVariantValues = Object.entries(variant.variableValues ?? {})
-          .filter(([key, value]) => key.toLowerCase() !== 'source' && value.toLowerCase() !== 'woocommerce')
-          .map(([, value]) => value);
-        const variantName = rawVariantValues.join(' / ');
-        const displayVariantName = (variantName || product.name || variant.sku || 'Variant').toUpperCase();
-        const displaySku = variant.sku.toUpperCase();
-        const isLowStock = variant.stock <= product.lowStockThreshold;
-        // Use variant image if set, otherwise fallback to product image
-        const displayImage = variant.imageUrl ?? product.imageUrl;
-
-        return (
-          <View
-            key={variant.id}
-            className="rounded-xl p-3 mb-2"
-            style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
-          >
-            {/* Main Row - Image, Name, Stock Badge, Actions */}
-            <View className="flex-row items-center">
-              {/* Image thumbnail */}
-              {displayImage && (
-                <Pressable
-                  onPress={() => handleOpenGallery(displayImage)}
-                  className="mr-3 overflow-hidden active:opacity-80"
-                  style={{ borderWidth: 1, borderColor: colors.border.light, borderRadius: 10 }}
-                >
-                  <ResolvedAttachmentImage
-                    imageUrl={displayImage}
-                    style={{ width: 40, height: 40 }}
-                    resizeMode="cover"
-                  />
-                  {variant.imageUrl && (
-                    <View className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 border border-white" />
-                  )}
-                </Pressable>
-              )}
-              <View className="flex-1">
-                <Text style={{ color: colors.text.primary }} className="font-semibold text-sm">{displayVariantName}</Text>
-                <Text style={{ color: colors.text.muted }} className="text-xs">SKU: {displaySku}</Text>
-              </View>
-              {/* Stock Badge */}
-              <View
-                className="px-2 py-1 rounded-full mr-2"
-                style={{
-                  backgroundColor: isLowStock
-                    ? variant.stock === 0
-                      ? 'rgba(239, 68, 68, 0.15)'
-                      : 'rgba(245, 158, 11, 0.15)'
-                    : 'rgba(16, 185, 129, 0.15)'
-                }}
-              >
-                <Text
-                  className="text-xs font-semibold"
-                  style={{
-                    color: isLowStock
-                      ? variant.stock === 0
-                        ? '#EF4444'
-                        : '#F59E0B'
-                      : '#10B981'
-                  }}
-                >
-                  {variant.stock}
-                </Text>
-              </View>
-              {/* Action buttons */}
-              {canManageVariants && (
-                <View className="flex-row items-center">
-                  <Pressable
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      router.push({
-                        pathname: '/label-print',
-                        params: { productId: product.id, variantId: variant.id },
-                      });
-                    }}
-                    className="p-1.5 active:opacity-50"
-                  >
-                    <Printer size={14} color={colors.text.tertiary} strokeWidth={2} />
-                  </Pressable>
-                  <Pressable
-                    onPress={() => handleOpenEditVariant(variant)}
-                    className="p-1.5 active:opacity-50"
-                  >
-                    <Edit2 size={14} color={colors.text.tertiary} strokeWidth={2} />
-                  </Pressable>
-                  <Pressable
-                    onPress={() => handleDeleteVariant(variant.id, variantName)}
-                    className="p-1.5 active:opacity-50"
-                  >
-                    <Trash2 size={14} color="#EF4444" strokeWidth={2} />
-                  </Pressable>
-                </View>
-              )}
-            </View>
-
-            {/* Bottom Row - Price, Restock, Stock Adjustment */}
-            <View className="flex-row items-center justify-between mt-2 pt-2" style={{ borderTopWidth: 1, borderTopColor: colors.border.light }}>
-              {/* Price */}
-              {canManageVariants && (
-                <Text style={{ color: colors.text.primary }} className="font-bold text-sm">{formatCurrency(variant.sellingPrice)}</Text>
-              )}
-
-              {/* Actions Row */}
-              <View className="flex-row items-center gap-2">
-                {/* Restock Button - Compact */}
-                <Pressable
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    router.push({
-                      pathname: '/restock',
-                      params: { productId: product.id, variantId: variant.id },
-                    });
-                  }}
-                  className="flex-row items-center px-3 py-1.5 rounded-full active:opacity-80"
-                  style={{ backgroundColor: 'rgba(16, 185, 129, 0.15)' }}
-                >
-                  <PackagePlus size={14} color="#10B981" strokeWidth={2} />
-                  <Text className="text-emerald-500 font-medium text-xs ml-1">Restock</Text>
-                </Pressable>
-
-                {/* Stock Adjustment */}
-                <View className="flex-row items-center rounded-lg" style={{ backgroundColor: colors.border.light }}>
-                  <Pressable
-                    onPress={() => handleAdjustStock(variant.id, -1)}
-                    disabled={variant.stock === 0}
-                    className="p-2 active:opacity-50"
-                  >
-                    <Minus
-                      size={14}
-                      color={variant.stock === 0 ? colors.text.muted : colors.text.primary}
-                      strokeWidth={2}
-                    />
-                  </Pressable>
-                  <View className="w-8 items-center">
-                    <Text style={{ color: colors.text.primary }} className="font-bold text-sm">{variant.stock}</Text>
-                  </View>
-                  <Pressable
-                    onPress={() => handleAdjustStock(variant.id, 1)}
-                    className="p-2 active:opacity-50"
-                  >
-                    <Plus size={14} color={colors.text.primary} strokeWidth={2} />
-                  </Pressable>
-                </View>
-              </View>
-            </View>
-          </View>
-        );
-      })}
-    </View>
-  );
-
-  const inventoryActivitySection = (
-    <View className={cn('mt-4', !isWebDesktop && 'mx-5')}>
-      <Text style={{ color: colors.text.primary }} className="font-bold text-base mb-3">Inventory Activity</Text>
-      <View className="rounded-2xl overflow-hidden" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
-        {inventoryActivity.length === 0 ? (
-          <View className="p-4">
-            <Text style={{ color: colors.text.muted }} className="text-sm">
-              No stock movement yet.
-            </Text>
-          </View>
-        ) : isWebDesktop ? (
-          <View>
-            <View
-              style={{
-                minHeight: 38,
-                flexDirection: 'row',
-                alignItems: 'center',
-                paddingHorizontal: 16,
-                backgroundColor: isDark ? '#151515' : '#F2F2EF',
-                borderBottomWidth: 1,
-                borderBottomColor: colors.border.light,
-              }}
-            >
-              <View style={{ width: 44 }} />
-              <Text style={{ color: colors.text.muted, width: 150, fontSize: 10, fontWeight: '600', letterSpacing: 0.7 }}>ADJUSTMENT</Text>
-              <Text style={{ color: colors.text.muted, width: 130, fontSize: 10, fontWeight: '600', letterSpacing: 0.7 }}>VARIANT</Text>
-              <Text style={{ color: colors.text.muted, flex: 1, fontSize: 10, fontWeight: '600', letterSpacing: 0.7 }}>DETAILS</Text>
-              <Text style={{ color: colors.text.muted, width: 120, fontSize: 10, fontWeight: '600', letterSpacing: 0.7 }}>BY</Text>
-              <Text style={{ color: colors.text.muted, width: 112, fontSize: 10, fontWeight: '600', letterSpacing: 0.7, textAlign: 'right' }}>DATE</Text>
-            </View>
-            <ScrollView style={{ maxHeight: 320 }} nestedScrollEnabled showsVerticalScrollIndicator>
-              {inventoryActivity.map((entry, index) => {
-                const date = new Date(entry.at);
-                const formattedDate = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-                const formattedTime = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-                const isRestock = entry.type === 'restock';
-                const isAuditAdjustment = entry.type === 'audit_adjustment';
-                const isPositiveDelta = entry.delta >= 0;
-                const isProcurementReceipt = isRestock && 'sourceType' in entry && entry.sourceType === 'procurement_receipt';
-                const accentColor = isPositiveDelta ? '#10B981' : '#EF4444';
-                const activityLabel = isAuditAdjustment
-                  ? `${isPositiveDelta ? '+' : '-'}${entry.quantity} adjusted`
-                  : isRestock
-                    ? `${isPositiveDelta ? '+' : '-'}${entry.quantity} ${isProcurementReceipt && isPositiveDelta ? 'received' : isPositiveDelta ? 'restocked' : 'adjusted'}`
-                    : `-${entry.quantity} sold`;
-
-                return (
-                  <View
-                    key={entry.id}
-                    style={{
-                      minHeight: 56,
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      paddingHorizontal: 16,
-                      borderBottomWidth: index < inventoryActivity.length - 1 ? 1 : 0,
-                      borderBottomColor: colors.border.light,
-                    }}
-                  >
-                    <View style={{ width: 44 }}>
-                      <View style={{ width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: isPositiveDelta ? 'rgba(16, 185, 129, 0.13)' : 'rgba(239, 68, 68, 0.13)' }}>
-                        {isAuditAdjustment ? (
-                          <ClipboardCheck size={14} color={accentColor} strokeWidth={2} />
-                        ) : isRestock && isPositiveDelta ? (
-                          <PackagePlus size={15} color={accentColor} strokeWidth={2} />
-                        ) : (
-                          <Minus size={14} color={accentColor} strokeWidth={2.4} />
-                        )}
-                      </View>
-                    </View>
-                    <Text style={{ color: accentColor, width: 150, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>{activityLabel}</Text>
-                    <Text style={{ color: colors.text.primary, width: 130, paddingRight: 12, fontSize: 12, fontWeight: '500' }} numberOfLines={1}>{entry.variantName}</Text>
-                    <Text style={{ color: colors.text.secondary, flex: 1, paddingRight: 16, fontSize: 12 }} numberOfLines={1}>{entry.subtitle}</Text>
-                    <Text style={{ color: colors.text.secondary, width: 120, paddingRight: 12, fontSize: 12 }} numberOfLines={1}>{entry.actor || 'System'}</Text>
-                    <View style={{ width: 112, alignItems: 'flex-end' }}>
-                      <Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '500' }}>{formattedDate}</Text>
-                      <Text style={{ color: colors.text.muted, fontSize: 10, marginTop: 2 }}>{formattedTime}</Text>
-                    </View>
-                  </View>
-                );
-              })}
-            </ScrollView>
-          </View>
-        ) : (
-          <ScrollView
-            style={{ maxHeight: 260 }}
-            nestedScrollEnabled
-            showsVerticalScrollIndicator
-          >
-            {inventoryActivity.map((entry, index) => {
-              const date = new Date(entry.at);
-              const formattedDate = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-              const formattedTime = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-              const isRestock = entry.type === 'restock';
-              const isAuditAdjustment = entry.type === 'audit_adjustment';
-              const isPositiveDelta = entry.delta >= 0;
-              const isProcurementReceipt = isRestock && 'sourceType' in entry && entry.sourceType === 'procurement_receipt';
-              const accentColor = isAuditAdjustment
-                ? (isPositiveDelta ? '#10B981' : '#EF4444')
-                : (isRestock ? (isPositiveDelta ? '#10B981' : '#EF4444') : '#EF4444');
-              const activityLabel = isAuditAdjustment
-                ? `${isPositiveDelta ? '+' : '-'}${entry.quantity} unit${entry.quantity === 1 ? '' : 's'} adjusted`
-                : isRestock
-                  ? `${isPositiveDelta ? '+' : '-'}${entry.quantity} unit${entry.quantity === 1 ? '' : 's'} ${isProcurementReceipt && isPositiveDelta ? 'received' : isPositiveDelta ? 'restocked' : 'adjusted'}`
-                  : `-${entry.quantity} unit${entry.quantity === 1 ? '' : 's'} sold`;
-
-              return (
-                <View
-                  key={entry.id}
-                  className="flex-row items-center p-4"
-                  style={{ borderBottomWidth: index < inventoryActivity.length - 1 ? 1 : 0, borderBottomColor: colors.border.light }}
-                >
-                  <View
-                    className="w-10 h-10 rounded-full items-center justify-center mr-3"
-                    style={{
-                      backgroundColor: isAuditAdjustment
-                        ? (isPositiveDelta ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)')
-                        : (isRestock
-                          ? (isPositiveDelta ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)')
-                          : 'rgba(239, 68, 68, 0.15)'),
-                    }}
-                  >
-                    {isAuditAdjustment ? (
-                      <ClipboardCheck size={16} color={accentColor} strokeWidth={2} />
-                    ) : isRestock ? (
-                      isPositiveDelta
-                        ? <PackagePlus size={18} color={accentColor} strokeWidth={2} />
-                        : <Minus size={16} color={accentColor} strokeWidth={2.4} />
-                    ) : (
-                      <Minus size={16} color={accentColor} strokeWidth={2.4} />
-                    )}
-                  </View>
-                  <View className="flex-1">
-                    <Text style={{ color: colors.text.primary }} className="font-medium text-sm">
-                      {activityLabel}
-                    </Text>
-                    <Text style={{ color: colors.text.tertiary }} className="text-xs">
-                      {entry.variantName} · {entry.subtitle}
-                    </Text>
-                    {entry.actor ? (
-                      <Text style={{ color: colors.text.muted }} className="text-[11px] mt-0.5">
-                        by {entry.actor}
-                      </Text>
-                    ) : null}
-                  </View>
-                  <View className="items-end">
-                    <View className="flex-row items-center">
-                      <Clock size={12} color={colors.text.muted} strokeWidth={2} />
-                      <Text style={{ color: colors.text.muted }} className="text-xs ml-1">{formattedDate}</Text>
-                    </View>
-                    <Text style={{ color: colors.text.muted }} className="text-xs">{formattedTime}</Text>
-                  </View>
-                </View>
-              );
-            })}
-          </ScrollView>
-        )}
-      </View>
-    </View>
-  );
-
-  const recentRestocksSection = recentRestocks.length > 0 ? (
-    <View className={cn('mt-4', !isWebDesktop && 'mx-5')}>
-      <Text style={{ color: colors.text.primary }} className="font-bold text-base mb-3">Recent Restocks</Text>
-      <View className="rounded-2xl overflow-hidden" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
-        {recentRestocks.map((log, index) => {
-          const variant = product.variants.find((v) => v.id === log.variantId);
-          const variantName = variant ? Object.values(variant.variableValues).join(' / ') : 'Unknown';
-          const date = new Date(log.timestamp);
-          const formattedDate = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-          const formattedTime = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-          const isPositiveRestock = log.quantityAdded >= 0;
-          const restockAccentColor = isPositiveRestock ? '#10B981' : '#EF4444';
-
-          return (
-            <View
-              key={log.id}
-              className="flex-row items-center p-4"
-              style={{ borderBottomWidth: index < recentRestocks.length - 1 ? 1 : 0, borderBottomColor: colors.border.light }}
-            >
-              <View
-                className="w-10 h-10 rounded-full items-center justify-center mr-3"
-                style={{ backgroundColor: isPositiveRestock ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)' }}
-              >
-                {isPositiveRestock ? (
-                  <PackagePlus size={18} color={restockAccentColor} strokeWidth={2} />
-                ) : (
-                  <Minus size={16} color={restockAccentColor} strokeWidth={2.4} />
-                )}
-              </View>
-              <View className="flex-1">
-                <Text style={{ color: colors.text.primary }} className="font-medium text-sm">
-                  {log.quantityAdded >= 0 ? '+' : '-'}{Math.abs(log.quantityAdded)} units
-                </Text>
-                <Text style={{ color: colors.text.tertiary }} className="text-xs">
-                  {variantName} · {log.note?.trim() ? `${log.note.trim()} · ` : ''}{log.previousStock} → {log.newStock}
-                </Text>
-              </View>
-              <View className="items-end">
-                <View className="flex-row items-center">
-                  <Clock size={12} color={colors.text.muted} strokeWidth={2} />
-                  <Text style={{ color: colors.text.muted }} className="text-xs ml-1">{formattedDate}</Text>
-                </View>
-                <Text style={{ color: colors.text.muted }} className="text-xs">{formattedTime}</Text>
-              </View>
-            </View>
-          );
-        })}
-      </View>
-    </View>
-  ) : null;
-
-  const productStatusLabel = product.isDiscontinued ? 'Inactive' : 'Active';
-  const productStatusBg = product.isDiscontinued ? 'rgba(156, 163, 175, 0.18)' : 'rgba(34, 197, 94, 0.15)';
-  const productStatusText = product.isDiscontinued ? '#9CA3AF' : '#22C55E';
-
   const handlePickProductImageInline = async () => {
     const uri = await imagePicker.pickImage();
     if (!uri) return;
@@ -1205,20 +739,6 @@ export default function ProductDetailScreen() {
     setEditImageUrl(nextImageUrl);
     await updateProduct(product.id, { imageUrl: nextImageUrl }, businessId);
   };
-
-  const handleDownloadMedia = () => {
-    const urls = [
-      product.imageUrl,
-      ...product.variants.map((v) => v.imageUrl).filter(Boolean),
-    ].filter(Boolean) as string[];
-
-    if (!urls.length) return;
-    void openAttachmentPath(urls[0]).catch((error) => {
-      console.warn('Media open failed:', error);
-    });
-  };
-
-  const hasMedia = !!primaryDisplayImage || product.variants.some((v) => !!v.imageUrl);
 
   const handleAddCategoryChip = (category: string) => {
     const next = [...new Set([...(product.categories ?? []), category])];
@@ -1243,1098 +763,732 @@ export default function ProductDetailScreen() {
     handleAddCategoryChip(trimmed);
   };
 
-  const webMediaCard = (
+  // ── Redesigned layout (Fyll Ops product page) ───────────────────────────────
+  // Phones: body text snaps to 14 / 12 / 10px; headings stay larger. Desktop unchanged.
+  const mfs = (size: number) => (isWebDesktop ? size : size >= 14 ? 14 : size >= 12 ? 12 : 10);
+  const threshold = useGlobalLowStockThreshold ? globalLowStockThreshold : product.lowStockThreshold;
+  const draftStockFor = (variantId: string, stock: number) => pendingStock[variantId] ?? stock;
+  const draftVariants = product.variants.map((variant) => ({ variant, stock: draftStockFor(variant.id, variant.stock) }));
+  const draftTotal = draftVariants.reduce((sum, entry) => sum + Math.max(0, entry.stock), 0);
+  const draftValue = draftVariants.reduce((sum, entry) => sum + Math.max(0, entry.stock) * (entry.variant.sellingPrice || 0), 0);
+  const changedCount = product.variants.filter((variant) => pendingStock[variant.id] !== undefined && pendingStock[variant.id] !== variant.stock).length;
+  const variantStatuses = draftVariants.map((entry) => getVariantStatus({ ...entry.variant, stock: entry.stock }, threshold));
+  const outCount = variantStatuses.filter((status) => status === 'out').length;
+  const lowCount = variantStatuses.filter((status) => status === 'low').length;
+  const inCount = variantStatuses.length - outCount - lowCount;
+  const variantCount = product.variants.length;
+  const healthText = variantCount > 0 && outCount === variantCount
+    ? 'Every variant is sold out'
+    : outCount + lowCount > 0
+      ? `${[outCount ? `${outCount} out of stock` : '', lowCount ? `${lowCount} low` : ''].filter(Boolean).join(' · ')} of ${variantCount} variants`
+      : 'All variants in stock';
+  const healthInk = outCount ? palette.danger : lowCount ? palette.warn : palette.tones.verified.ink;
+  const variantSummary = outCount + lowCount > 0
+    ? `${inCount} in stock · ${lowCount ? `${lowCount} low · ` : ''}${outCount} out`
+    : 'All in stock';
+  const unitsLabel = `${draftTotal} ${draftTotal === 1 ? 'unit' : 'units'}`;
+  const prices = product.variants.map((variant) => variant.sellingPrice || 0).filter((price) => price > 0);
+  const minPrice = prices.length ? Math.min(...prices) : 0;
+  const maxPrice = prices.length ? Math.max(...prices) : 0;
+  const priceLabel = !prices.length ? 'Set price' : minPrice === maxPrice ? formatNaira(minPrice) : `${formatNaira(minPrice)}–${formatNaira(maxPrice)}`;
+  const priceNote = !prices.length ? 'No price on any variant' : minPrice === maxPrice && prices.length === variantCount ? 'Same for all variants' : 'Varies by variant';
+  const primaryCategory = product.categories?.[0];
+  const headerSub = [primaryCategory, `${variantCount} ${variantCount === 1 ? 'variant' : 'variants'}`, canManageVariants && prices.length ? priceLabel : null].filter(Boolean).join(' · ');
+  const variantDisplayName = (variant: ProductVariant) => {
+    const values = Object.entries(variant.variableValues ?? {})
+      .filter(([key, value]) => key.toLowerCase() !== 'source' && value.toLowerCase() !== 'woocommerce')
+      .map(([, value]) => value);
+    return values.join(' / ') || product.name || variant.sku || 'Variant';
+  };
+  const soldByVariant = new Map(soldStats.variantSales.map((entry) => [entry.id, entry.quantity]));
+  const bestSeller = soldStats.variantSales[0];
+  const maxSold = Math.max(1, ...soldStats.variantSales.map((entry) => entry.quantity));
+
+  // SKU hygiene: duplicate codes, a code naming another variant, mixed prefixes.
+  const skuIssues = (() => {
+    const flagged = new Set<string>();
+    const notes: string[] = [];
+    const names = product.variants.map((variant) => ({ id: variant.id, name: variantDisplayName(variant), tokens: variantDisplayName(variant).toLowerCase().split(/[^a-z0-9]+/).filter((token) => token.length > 2) }));
+    const seen = new Map<string, string>();
+    product.variants.forEach((variant) => {
+      const sku = variant.sku?.trim().toUpperCase();
+      if (!sku) return;
+      const previous = seen.get(sku);
+      if (previous) {
+        flagged.add(variant.id);
+        flagged.add(previous);
+        notes.push(`${variantDisplayName(variant)} shares ${sku} with ${variantDisplayName(product.variants.find((v) => v.id === previous) ?? variant)}`);
+      } else {
+        seen.set(sku, variant.id);
+      }
+      const skuTokens = sku.toLowerCase().split(/[^a-z0-9]+/);
+      const own = names.find((entry) => entry.id === variant.id);
+      const other = names.find((entry) => entry.id !== variant.id && entry.tokens.some((token) => skuTokens.includes(token)) && !own?.tokens.some((token) => skuTokens.includes(token)));
+      if (other && own) {
+        flagged.add(variant.id);
+        notes.push(`${own.name} uses ${sku}`);
+      }
+    });
+    const prefixes = Array.from(new Set(product.variants.map((variant) => variant.sku?.trim().toUpperCase().split('-')[0]).filter((prefix): prefix is string => Boolean(prefix))));
+    if (prefixes.length > 1 && variantCount > 1) {
+      notes.push(`the codes mix ${prefixes.slice(0, 3).map((prefix) => `${prefix}-`).join(' and ')}`);
+    }
+    return { flagged, message: notes.length ? `${notes.slice(0, 3).join(', and ').replace(/^./, (c) => c.toUpperCase())}. Matching codes keep labels and audits clean.` : '' };
+  })();
+
+  const activityKinds = { sold: 'sale', restock: 'restock', audit_adjustment: 'adj' } as const;
+  const activityCounts = {
+    all: inventoryActivity.length,
+    sale: inventoryActivity.filter((entry) => entry.type === 'sold').length,
+    adj: inventoryActivity.filter((entry) => entry.type === 'audit_adjustment').length,
+    restock: inventoryActivity.filter((entry) => entry.type === 'restock').length,
+  };
+  const visibleActivity = inventoryActivity.filter((entry) => activityTab === 'all' || activityKinds[entry.type] === activityTab);
+  const formatShortDate = (value: string, withTime: boolean) => {
+    const date = new Date(value);
+    if (!Number.isFinite(date.getTime())) return '';
+    const day = date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    return withTime ? `${day}, ${date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` : day;
+  };
+
+  // On web the screen being left gets aria-hidden while the tapped button still
+  // has focus, which makes the browser log a warning. Drop focus first.
+  const releaseWebFocus = () => {
+    if (Platform.OS === 'web' && typeof document !== 'undefined') (document.activeElement as HTMLElement | null)?.blur?.();
+  };
+  const goRestock = (variantId?: string) => {
+    releaseWebFocus();
+    if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    router.push({ pathname: '/restock', params: variantId ? { productId: product.id, variantId } : { productId: product.id } });
+  };
+  const goPrintLabels = () => {
+    releaseWebFocus();
+    router.push({ pathname: '/label-print', params: { productId: product.id, bulk: '1' } });
+  };
+  const stepDraft = (variantId: string, stock: number, delta: number) => {
+    if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setPendingStock((previous) => ({ ...previous, [variantId]: Math.max(0, (previous[variantId] ?? stock) + delta) }));
+  };
+  const saveDraftStock = async () => {
+    if (isSavingStock || changedCount === 0) return;
+    setIsSavingStock(true);
+    try {
+      const latest = useFyllStore.getState().products.find((p) => p.id === product.id) ?? product;
+      const nextVariants = latest.variants.map((variant) => (
+        pendingStock[variant.id] !== undefined ? { ...variant, stock: Math.max(0, pendingStock[variant.id]) } : variant
+      ));
+      await updateProduct(product.id, { variants: nextVariants }, businessId);
+      setPendingStock({});
+      if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      showToast('success', changedCount === 1 ? 'Stock updated.' : `${changedCount} stock changes saved.`);
+    } catch (error) {
+      console.warn('Stock save failed:', error);
+      showToast('error', 'Could not save stock changes.');
+    } finally {
+      setIsSavingStock(false);
+    }
+  };
+  const stepThreshold = (delta: number) => {
+    const next = Math.max(0, product.lowStockThreshold + delta);
+    if (next === product.lowStockThreshold) return;
+    void updateProduct(product.id, { lowStockThreshold: next }, businessId);
+  };
+
+  const cardStyle = { borderRadius: 18, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border } as const;
+  const labelStyle = { color: palette.muted, fontSize: mfs(12), fontWeight: '600' as const, letterSpacing: 0.6, textTransform: 'uppercase' as const };
+  const thStyle = { color: palette.faint, fontSize: mfs(11.5), fontWeight: '600' as const, letterSpacing: 0.6, textTransform: 'uppercase' as const };
+  const h2Style = { color: palette.text, fontSize: 16, fontWeight: '600' as const };
+  const ghostButton = (state: PressableStateCallbackType, height = 40) => ({
+    height,
+    paddingHorizontal: 16,
+    borderRadius: 999,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: 7,
+    borderWidth: 1,
+    borderColor: palette.outline,
+    backgroundColor: isHovered(state) ? palette.softFill : 'transparent',
+    opacity: state.pressed ? 0.75 : 1,
+  });
+  const limeButton = (state: PressableStateCallbackType, height = 40) => ({
+    height,
+    paddingHorizontal: 16,
+    borderRadius: 999,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: 7,
+    backgroundColor: isHovered(state) ? FYLL_LIME_HOVER : FYLL_LIME,
+    opacity: state.pressed ? 0.85 : 1,
+  });
+
+  const renderStepper = (value: number, onDown: () => void, onUp: () => void, opts: { dirty?: boolean; height?: number; ink?: string; minWidth?: number; disabled?: boolean } = {}) => (
     <View
       style={{
-        backgroundColor: colors.bg.card,
-        borderRadius: 18,
-        padding: 18,
+        flexDirection: 'row',
+        alignItems: 'center',
+        height: opts.height ?? 36,
+        borderRadius: 10,
         borderWidth: 1,
-        borderColor: colors.border.light,
+        borderColor: opts.dirty ? 'rgba(213,224,87,0.6)' : palette.outline,
+        backgroundColor: opts.dirty ? 'rgba(213,224,87,0.06)' : 'transparent',
+        opacity: opts.disabled ? 0.5 : 1,
       }}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Text style={{ color: colors.text.primary, fontSize: 17, fontWeight: '700' }}>Media</Text>
-        <Pressable
-          onPress={handleDownloadMedia}
-          disabled={!hasMedia}
-          className="active:opacity-80"
-        >
-          <Text
-            style={{
-              color: hasMedia ? '#2563EB' : colors.text.muted,
-              fontSize: 14,
-              fontWeight: '600',
-            }}
-          >
-            Download All
-          </Text>
-        </Pressable>
-      </View>
-
-      <View style={{ flexDirection: 'row', gap: 16, marginTop: 16 }}>
-        <Pressable
-          onPress={handlePickProductImageInline}
-          className="active:opacity-80"
-          style={{
-            width: 156,
-            aspectRatio: 1,
-            borderRadius: 16,
-            borderWidth: 2,
-            borderStyle: 'dashed',
-            borderColor: colors.border.light,
-            backgroundColor: colors.bg.secondary,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <ImageIcon size={26} color={colors.text.muted} strokeWidth={2} />
-          <Text style={{ color: colors.text.muted, fontSize: 13, fontWeight: '600', marginTop: 10 }}>
-            {product.imageUrl ? 'Change Image' : 'Add Image'}
-          </Text>
-        </Pressable>
-
-        <Pressable
-          disabled={!primaryDisplayImage}
-          onPress={() => handleOpenGallery(primaryDisplayImage)}
-          className="active:opacity-80"
-          style={{
-            width: 156,
-            aspectRatio: 1,
-            borderRadius: 16,
-            borderWidth: 1,
-            borderColor: colors.border.light,
-            backgroundColor: colors.bg.secondary,
-            alignItems: 'center',
-            justifyContent: 'center',
-            overflow: 'hidden',
-          }}
-        >
-          {primaryDisplayImage ? (
-            <ResolvedAttachmentImage imageUrl={primaryDisplayImage} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-          ) : (
-            <Package size={34} color={colors.text.muted} strokeWidth={1.8} />
-          )}
-        </Pressable>
-      </View>
+      <Pressable accessibilityRole="button" accessibilityLabel="Remove one" disabled={opts.disabled || value <= 0} onPress={onDown} style={(state) => ({ width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: isHovered(state) ? palette.softFill : 'transparent', opacity: value <= 0 ? 0.4 : 1 })}>
+        <Minus size={14} color={palette.textSoft} strokeWidth={2.2} />
+      </Pressable>
+      <Text style={{ minWidth: opts.minWidth ?? 30, textAlign: 'center', color: opts.ink ?? palette.text, fontSize: mfs(15), fontWeight: '600', fontVariant: ['tabular-nums'] }}>{value}</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel="Add one" disabled={opts.disabled} onPress={onUp} style={(state) => ({ width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: isHovered(state) ? palette.softFill : 'transparent' })}>
+        <Plus size={14} color={palette.textSoft} strokeWidth={2.2} />
+      </Pressable>
     </View>
   );
 
-  const webStockCards = (
-    <View style={{ gap: 14 }}>
-      <View
-        style={{
-          backgroundColor: colors.bg.card,
-          borderRadius: 18,
-          padding: 18,
-          borderWidth: 1,
-          borderColor: colors.border.light,
-        }}
+  const renderActiveToggle = () => {
+    const active = !product.isDiscontinued;
+    return (
+      <Pressable
+        accessibilityRole="switch"
+        accessibilityState={{ checked: active }}
+        accessibilityLabel="Product active"
+        disabled={!canManageStatus || isStatusSaving}
+        onPress={() => handleToggleProductActive(!active)}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 8, height: 28, paddingLeft: 11, paddingRight: 4, borderRadius: 999, borderWidth: 1, borderColor: palette.border, opacity: isStatusSaving ? 0.6 : 1 }}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-          <View style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
-            <Text style={{ color: colors.text.tertiary, fontSize: 13, fontWeight: '600' }}>Total Stock</Text>
-            <Text style={{ color: colors.text.primary, fontSize: 28, fontWeight: '700', marginTop: 6 }}>
-              {totalStock}
-            </Text>
-            {lowStockCount > 0 ? (
-              <Text style={{ color: '#F59E0B', fontSize: 13, fontWeight: '600', marginTop: 6 }}>
-                {lowStockCount} variant{lowStockCount === 1 ? '' : 's'} low
-              </Text>
-            ) : null}
-          </View>
-          <View
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 14,
-              backgroundColor: 'rgba(245, 158, 11, 0.12)',
-              alignItems: 'center',
-              justifyContent: 'center',
+        <Text style={{ color: active ? palette.tones.verified.ink : palette.faint, fontSize: mfs(12.5), fontWeight: '600' }}>{active ? 'Active' : 'Inactive'}</Text>
+        <View style={{ width: 34, height: 20, borderRadius: 999, backgroundColor: active ? palette.tones.verified.dot : palette.outline }}>
+          <View style={{ position: 'absolute', top: 2, left: active ? 16 : 2, width: 16, height: 16, borderRadius: 8, backgroundColor: palette.page }} />
+        </View>
+      </Pressable>
+    );
+  };
+
+  const renderMenu = (items: { key: string; label: string; danger?: boolean; onPress: () => void }[], close: () => void, top: number) => (
+    <>
+      <Pressable onPress={close} style={{ position: 'absolute', top: -3000, left: -3000, width: 8000, height: 8000 }} />
+      <View style={{ position: 'absolute', top, right: 0, minWidth: 200, paddingVertical: 6, borderRadius: 14, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 24, shadowOffset: { width: 0, height: 12 }, elevation: 20 }}>
+        {items.map((item) => (
+          <Pressable
+            key={item.key}
+            onPress={() => {
+              close();
+              item.onPress();
             }}
+            style={(state) => ({ height: 40, paddingHorizontal: 14, justifyContent: 'center', backgroundColor: isHovered(state) ? palette.softFill : 'transparent' })}
           >
-            <Package size={18} color="#F59E0B" strokeWidth={2} />
-          </View>
-        </View>
+            <Text style={{ color: item.danger ? palette.danger : palette.text, fontSize: mfs(14), fontWeight: '500' }}>{item.label}</Text>
+          </Pressable>
+        ))}
       </View>
+    </>
+  );
 
-      {isOwner ? (
-        <View
-          style={{
-            backgroundColor: colors.bg.card,
-            borderRadius: 18,
-            padding: 18,
-            borderWidth: 1,
-            borderColor: colors.border.light,
-          }}
-        >
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-            <View style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
-              <Text style={{ color: colors.text.tertiary, fontSize: 13, fontWeight: '600' }}>Stock Value</Text>
-              <Text style={{ color: colors.text.primary, fontSize: 28, fontWeight: '700', marginTop: 6 }}>
-                {formatCurrency(retailValue)}
-              </Text>
-              <Text style={{ color: colors.text.muted, fontSize: 12, marginTop: 6 }}>At retail price</Text>
-            </View>
-            <View
-              style={{
-                width: 44,
-                height: 44,
-                borderRadius: 14,
-                backgroundColor: colors.bg.secondary,
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <DollarSign size={18} color={colors.text.primary} strokeWidth={2} />
-            </View>
-          </View>
-        </View>
-      ) : null}
+  const productMenuItems = [
+    { key: 'edit', label: 'Edit details', onPress: handleOpenEdit },
+    ...(!isWebDesktop ? [{ key: 'labels', label: 'Print labels', onPress: goPrintLabels }] : []),
+    { key: 'delete', label: 'Move to Recycle Bin', danger: true, onPress: handleDelete },
+  ];
+  const variantMenuItems = (variant: ProductVariant) => [
+    { key: 'restock', label: 'Restock', onPress: () => goRestock(variant.id) },
+    { key: 'label', label: 'Print label', onPress: () => router.push({ pathname: '/label-print', params: { productId: product.id, variantId: variant.id } }) },
+    ...(canManageVariants ? [
+      { key: 'edit', label: 'Edit variant', onPress: () => handleOpenEditVariant(variant) },
+      { key: 'delete', label: 'Delete variant', danger: true, onPress: () => handleDeleteVariant(variant.id, variantDisplayName(variant)) },
+    ] : []),
+  ];
 
-      <View
-        style={{
-          backgroundColor: colors.bg.card,
-          borderRadius: 18,
-          padding: 18,
-          borderWidth: 1,
-          borderColor: colors.border.light,
-        }}
-      >
-        <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-          <View style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
-            <Text style={{ color: colors.text.tertiary, fontSize: 13, fontWeight: '600' }}>Total Sold</Text>
-            <Text style={{ color: colors.text.primary, fontSize: 28, fontWeight: '700', marginTop: 6 }}>
-              {soldStats.totalSold}
-            </Text>
-            {soldStats.bestVariantId ? (
-              <Text style={{ color: colors.text.muted, fontSize: 12, marginTop: 6 }} numberOfLines={2}>
-                Best-selling variant:{' '}
-                <Text style={{ color: colors.text.primary, fontWeight: '600' }}>
-                  {Object.values(product.variants.find((v) => v.id === soldStats.bestVariantId)?.variableValues ?? {}).join(' / ') || '—'}
-                </Text>
-                {soldStats.bestVariantSold ? ` (${soldStats.bestVariantSold} sold)` : ''}
-              </Text>
-            ) : (
-              <Text style={{ color: colors.text.muted, fontSize: 12, marginTop: 6 }}>
-                No sales yet.
-              </Text>
-            )}
-          </View>
-          <View
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 14,
-              backgroundColor: colors.bg.secondary,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <TrendingUp size={18} color={colors.text.primary} strokeWidth={2} />
-          </View>
-        </View>
+  const renderVariantImage = (variant: ProductVariant, size: number) => {
+    const image = variant.imageUrl ?? primaryDisplayImage;
+    return (
+      <Pressable onPress={() => image && handleOpenGallery(image)} disabled={!image} style={{ width: size, height: size, borderRadius: 10, overflow: 'hidden', backgroundColor: image ? '#F4F4EF' : palette.softFill, alignItems: 'center', justifyContent: 'center' }}>
+        {image ? <ResolvedAttachmentImage imageUrl={image} style={{ width: size, height: size }} resizeMode="cover" /> : <Package size={size * 0.42} color={palette.faint} strokeWidth={1.6} />}
+      </Pressable>
+    );
+  };
 
-        <View
-          style={{
-            marginTop: 12,
-            borderTopWidth: 1,
-            borderTopColor: colors.border.light,
-            paddingTop: 12,
-            gap: 8,
-            marginHorizontal: -18,
-            paddingHorizontal: 18,
-          }}
-        >
-          {soldStats.variantSales.map((variant) => (
-            <View key={variant.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Text style={{ color: colors.text.secondary, fontSize: 12 }} numberOfLines={1}>
-                {variant.name}
-              </Text>
-              <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '600' }}>
-                {variant.quantity}
-              </Text>
-            </View>
-          ))}
-        </View>
+  const skuWarning = skuIssues.message ? (
+    <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: isWebDesktop ? 10 : 8, paddingVertical: 10, paddingHorizontal: 12, marginBottom: isWebDesktop ? 6 : 4, borderRadius: 12, backgroundColor: palette.warnBg, borderWidth: 1, borderColor: palette.warnBorder }}>
+      <AlertTriangle size={15} color={palette.warn} strokeWidth={2.2} style={{ marginTop: 1 }} />
+      <Text style={{ flex: 1, color: palette.isDark ? '#E8D3A8' : '#6B4A12', fontSize: isWebDesktop ? 13 : 12.5, lineHeight: 19 }}>
+        <Text style={{ color: palette.text, fontWeight: '600' }}>Check SKUs: </Text>
+        {skuIssues.message}
+      </Text>
+    </View>
+  ) : null;
+
+  const activityTabs = [
+    { key: 'all' as const, label: 'All' },
+    { key: 'sale' as const, label: 'Sales' },
+    { key: 'adj' as const, label: 'Adjustments' },
+    { key: 'restock' as const, label: 'Restocks' },
+  ];
+  // Web: activity rows are 12px and one weight lighter.
+  const isWeb = Platform.OS === 'web';
+  const actFs = (size: number) => (isWeb ? 12 : mfs(size));
+  const activityCard = (
+    <View style={{ ...cardStyle, paddingHorizontal: isWebDesktop ? 20 : 14, paddingTop: 4, paddingBottom: 6 }}>
+      <View style={{ flexDirection: isWebDesktop ? 'row' : 'column', alignItems: isWebDesktop ? 'center' : 'flex-start', justifyContent: 'space-between', gap: 10, paddingTop: isWebDesktop ? 14 : 12, paddingBottom: isWebDesktop ? 12 : 10 }}>
+        <Text style={h2Style}>Activity</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, alignSelf: isWebDesktop ? 'auto' : 'stretch' }} contentContainerStyle={{ gap: 6 }}>
+          {activityTabs.map((tab) => {
+            const on = activityTab === tab.key;
+            return (
+              <Pressable
+                key={tab.key}
+                onPress={() => setActivityTab(tab.key)}
+                style={(state) => ({ height: 32, paddingHorizontal: 12, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderColor: on ? palette.inverseBg : palette.outline, backgroundColor: on ? palette.inverseBg : isHovered(state) ? palette.softFill : 'transparent' })}
+              >
+                <Text style={{ color: on ? palette.inverseText : palette.textSoft, fontSize: mfs(12.5), fontWeight: '600' }}>{tab.label}</Text>
+                <Text style={{ color: on ? palette.inverseText : palette.textSoft, opacity: 0.55, fontSize: mfs(12.5), fontWeight: '600' }}>{activityCounts[tab.key]}</Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
       </View>
-
-      <View
-        style={{
-          backgroundColor: colors.bg.card,
-          borderRadius: 18,
-          padding: 18,
-          borderWidth: 1,
-          borderColor: colors.border.light,
-        }}
-      >
-        <Text style={{ color: colors.text.tertiary, fontSize: 13, fontWeight: '600' }}>Bulk Labels</Text>
-        <Text style={{ color: colors.text.muted, fontSize: 12, marginTop: 6 }}>
-          Print one label for each variant in this product.
-        </Text>
-        <Pressable
-          onPress={() => {
-            if (Platform.OS !== 'web') {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            }
-            router.push({
-              pathname: '/label-print',
-              params: { productId: product.id, bulk: '1' },
-            });
-          }}
-          className="active:opacity-80"
-          style={{
-            marginTop: 12,
-            height: 44,
-            borderRadius: 999,
-            backgroundColor: '#111111',
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 8,
-          }}
-        >
-          <Printer size={16} color="#FFFFFF" strokeWidth={2.5} />
-          <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '700' }}>Bulk Print Labels</Text>
-        </Pressable>
-      </View>
+      {visibleActivity.length === 0 ? (
+        <Text style={{ color: palette.faint, fontSize: mfs(13.5), paddingVertical: 14, borderTopWidth: 1, borderTopColor: palette.hairline }}>No stock movement yet.</Text>
+      ) : (
+        <ScrollView style={{ maxHeight: isWebDesktop ? 420 : 380 }} nestedScrollEnabled showsVerticalScrollIndicator>
+        {visibleActivity.map((entry) => {
+        const isSale = entry.type === 'sold';
+        const isAdj = entry.type === 'audit_adjustment';
+        const positive = entry.delta >= 0;
+        const kind = isSale ? 'Sold' : isAdj ? 'Audit adjustment' : positive ? ('sourceType' in entry && entry.sourceType === 'procurement_receipt' ? 'Received' : 'Restocked') : 'Adjusted';
+        const iconBg = isSale ? palette.softFill : isAdj ? palette.warnBg : positive ? palette.tones.verified.bg : palette.dangerBg;
+        const iconInk = isSale ? palette.textSoft : isAdj ? palette.warn : positive ? palette.tones.verified.ink : palette.danger;
+        const amtInk = isSale ? palette.text : iconInk;
+        const amount = `${positive ? '+' : '−'}${Math.abs(entry.delta)}`;
+        return (
+          <View key={entry.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderTopWidth: 1, borderTopColor: palette.hairline }}>
+            <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: iconBg, alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ color: iconInk, fontSize: actFs(13), fontWeight: isWeb ? '600' : '700' }}>{isSale ? '−' : isAdj ? '±' : positive ? '+' : '−'}</Text>
+            </View>
+            <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+              <Text style={{ color: palette.text, fontSize: actFs(14), fontWeight: isWeb ? '400' : '500' }} numberOfLines={1}>
+                <Text style={{ color: amtInk, fontWeight: isWeb ? '500' : '600' }}>{amount}</Text> {kind} · {entry.variantName}
+              </Text>
+              <Text style={{ color: palette.faint, fontSize: actFs(12.5) }} numberOfLines={1}>{entry.subtitle} · by {entry.actor || 'System'}</Text>
+            </View>
+            <Text style={{ color: palette.faint, fontSize: actFs(12.5) }}>{formatShortDate(entry.at, true)}</Text>
+          </View>
+        );
+      })}
+        </ScrollView>
+      )}
     </View>
   );
 
-  const webMetaCards = (
-    <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
-      <View
-        style={{
-          flex: 1,
-          borderRadius: 14,
-          borderWidth: 1,
-          borderColor: colors.border.light,
-          backgroundColor: colors.bg.card,
-          padding: 12,
-        }}
-      >
-        <Text style={{ color: colors.text.muted, fontSize: 12, fontWeight: '600' }}>
-          Low stock
-        </Text>
-        <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600', marginTop: 8 }}>
-          {product.lowStockThreshold}
-        </Text>
-      </View>
-      <View
-        style={{
-          flex: 1,
-          borderRadius: 14,
-          borderWidth: 1,
-          borderColor: colors.border.light,
-          backgroundColor: colors.bg.card,
-          padding: 12,
-        }}
-      >
-        <Text style={{ color: colors.text.muted, fontSize: 12, fontWeight: '600' }}>
-          Status
-        </Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, gap: 12 }}>
-          <View style={{ alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: productStatusBg }}>
-            <Text style={{ color: productStatusText, fontSize: 12, fontWeight: '700' }}>{productStatusLabel}</Text>
-          </View>
-          {canManageStatus ? (
-            <Switch
-              value={!product.isDiscontinued}
-              onValueChange={handleToggleProductActive}
-              disabled={isStatusSaving}
-            />
+  const categoryChips = (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+      {(product.categories ?? []).map((category) => (
+        <View key={category} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, height: 30, paddingLeft: 12, paddingRight: canManageVariants ? 6 : 12, borderRadius: 999, backgroundColor: palette.softFill }}>
+          <Text style={{ color: palette.text, fontSize: mfs(13), fontWeight: '600' }}>{category}</Text>
+          {canManageVariants ? (
+            <Pressable accessibilityLabel={`Remove ${category}`} hitSlop={6} onPress={() => handleRemoveCategoryChip(category)} style={{ width: 18, height: 18, alignItems: 'center', justifyContent: 'center' }}>
+              <X size={12} color={palette.faint} strokeWidth={2.4} />
+            </Pressable>
           ) : null}
         </View>
-      </View>
-    </View>
-  );
-
-  const webOrganizationCard = (
-    <View
-      style={{
-        backgroundColor: colors.bg.card,
-        borderRadius: 18,
-        padding: 18,
-        borderWidth: 1,
-        borderColor: colors.border.light,
-        marginTop: 14,
-      }}
-    >
-      <View
-        style={{
-          padding: 0,
-        }}
-      >
-        <Text style={{ color: colors.text.tertiary, fontSize: 13, fontWeight: '600' }}>
-          Categories
-        </Text>
-
-        {selectedCategories.length > 0 ? (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
-            {selectedCategories.map((cat) => (
-                <View
-                  key={cat}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    borderRadius: 999,
-                    paddingHorizontal: 10,
-                    paddingVertical: 6,
-                    backgroundColor: colors.bg.secondary,
-                    borderWidth: 1,
-                    borderColor: colors.border.light,
-                    gap: 6,
-                  }}
-                >
-                <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }} numberOfLines={1}>
-                  {cat}
-                </Text>
-                <Pressable onPress={() => handleRemoveCategoryChip(cat)} className="active:opacity-70">
-                  <X size={14} color={colors.text.muted} strokeWidth={2.5} />
-                </Pressable>
+      ))}
+      {canManageVariants ? (
+        isAddingCategory ? (
+          <View style={{ position: 'relative', zIndex: 40 }}>
+            <TextInput
+              autoFocus
+              value={webCategoryQuery}
+              onChangeText={setWebCategoryQuery}
+              onSubmitEditing={() => {
+                handleCreateCategoryChip();
+                setIsAddingCategory(false);
+              }}
+              onBlur={() => setTimeout(() => setIsAddingCategory(false), 180)}
+              placeholder="Category"
+              placeholderTextColor={palette.faint}
+              style={[{ height: 30, minWidth: 130, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1, borderColor: palette.outline, color: palette.text, fontSize: mfs(13) }, Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null]}
+            />
+            {webCategorySuggestions.length > 0 ? (
+              <View style={{ position: 'absolute', top: 36, left: 0, minWidth: 180, paddingVertical: 6, borderRadius: 12, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 18, shadowOffset: { width: 0, height: 10 }, elevation: 16 }}>
+                {webCategorySuggestions.map((category) => (
+                  <Pressable key={category} onPress={() => { handleAddCategoryChip(category); setIsAddingCategory(false); }} style={(state) => ({ height: 36, paddingHorizontal: 12, justifyContent: 'center', backgroundColor: isHovered(state) ? palette.softFill : 'transparent' })}>
+                    <Text style={{ color: palette.text, fontSize: mfs(13.5) }}>{category}</Text>
+                  </Pressable>
+                ))}
               </View>
-            ))}
+            ) : null}
           </View>
         ) : (
-          <Text style={{ color: colors.text.tertiary, fontSize: 13, marginTop: 10 }}>
-            No categories yet.
-          </Text>
-        )}
-
-        <View
-          style={{
-            marginTop: 12,
-            height: 40,
-            borderRadius: 14,
-            borderWidth: 1,
-            borderColor: colors.border.light,
-            backgroundColor: colors.bg.primary,
-            paddingHorizontal: 12,
-            alignItems: 'center',
-            flexDirection: 'row',
-            gap: 10,
-          }}
-        >
-          <Search size={16} color={colors.text.muted} strokeWidth={2.5} />
-          <TextInput
-            value={webCategoryQuery}
-            onChangeText={setWebCategoryQuery}
-            placeholder="Add category..."
-            placeholderTextColor={colors.text.muted}
-            style={{ color: colors.text.primary, fontSize: 14, flex: 1 }}
-            onSubmitEditing={handleCreateCategoryChip}
-            returnKeyType="done"
-          />
-          <Pressable
-            onPress={handleCreateCategoryChip}
-            disabled={!webCategoryQuery.trim()}
-            className="active:opacity-80"
-            style={{ opacity: webCategoryQuery.trim() ? 1 : 0.35 }}
-          >
-            <Plus size={16} color={colors.text.primary} strokeWidth={2.5} />
+          <Pressable onPress={() => setIsAddingCategory(true)} style={{ height: 30, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1, borderStyle: 'dashed', borderColor: palette.outline, justifyContent: 'center' }}>
+            <Text style={{ color: palette.muted, fontSize: mfs(13) }}>+ Add</Text>
           </Pressable>
-        </View>
-
-        {(webCategoryQuery.trim() || webCategorySuggestions.length > 0) ? (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
-            {webCategoryQuery.trim() && !globalCategories.some((c) => c.toLowerCase() === webCategoryQuery.trim().toLowerCase()) ? (
-            <Pressable
-              onPress={handleCreateCategoryChip}
-              className="active:opacity-80"
-              style={{
-                borderRadius: 999,
-                paddingHorizontal: 10,
-                paddingVertical: 6,
-                backgroundColor: colors.bg.secondary,
-                borderWidth: 1,
-                borderColor: colors.border.light,
-              }}
-            >
-                <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }} numberOfLines={1}>
-                  Add “{webCategoryQuery.trim()}”
-                </Text>
-              </Pressable>
-            ) : null}
-
-            {webCategorySuggestions.map((cat) => (
-              <Pressable
-                key={cat}
-                onPress={() => handleAddCategoryChip(cat)}
-                className="active:opacity-80"
-                style={{
-                  borderRadius: 999,
-                  paddingHorizontal: 10,
-                  paddingVertical: 6,
-                  backgroundColor: colors.bg.secondary,
-                  borderWidth: 1,
-                  borderColor: colors.border.light,
-                }}
-              >
-                <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }} numberOfLines={1}>
-                  {cat}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        ) : null}
-      </View>
-
+        )
+      ) : null}
     </View>
   );
 
-  const webVariantsCard = (
-    <View
-      style={{
-        backgroundColor: colors.bg.card,
-        borderRadius: 18,
-        borderWidth: 1,
-        borderColor: colors.border.light,
-        overflow: 'hidden',
-        marginTop: 16,
-      }}
-    >
-      <View style={{ paddingHorizontal: 18, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <View style={{ flex: 1, minWidth: 0, paddingRight: 14 }}>
-          <Text style={{ color: colors.text.primary, fontSize: 17, fontWeight: '700' }}>Variants</Text>
-          <Text style={{ color: colors.text.tertiary, fontSize: 13, marginTop: 4 }}>
-            Manage stock levels and pricing for each option.
-          </Text>
-        </View>
-        {canManageVariants ? (
-          <Pressable
-            onPress={handleOpenAddVariant}
-            className="active:opacity-80"
-            style={{
-              height: 44,
-              paddingHorizontal: 14,
-              borderRadius: 999,
-              borderWidth: 1,
-              borderColor: colors.border.light,
-              backgroundColor: isDark ? '#FFFFFF' : colors.bg.primary,
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 8,
-            }}
-          >
-            <Plus size={16} color={isDark ? '#111111' : colors.text.primary} strokeWidth={2.5} />
-            <Text style={{ color: isDark ? '#111111' : colors.text.primary, fontSize: 14, fontWeight: '700' }}>Add Variant</Text>
-          </Pressable>
-        ) : null}
-      </View>
+  const thresholdControl = useGlobalLowStockThreshold ? (
+    <Text style={{ color: palette.faint, fontSize: mfs(13) }}>{globalLowStockThreshold} or fewer per variant · store-wide setting</Text>
+  ) : (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+      {renderStepper(product.lowStockThreshold, () => stepThreshold(-1), () => stepThreshold(1), { height: isWebDesktop ? 34 : 32, minWidth: 24, disabled: !canManageVariants })}
+      {isWebDesktop ? <Text style={{ color: palette.faint, fontSize: mfs(13) }}>or fewer per variant</Text> : null}
+    </View>
+  );
 
-      <View style={{ borderTopWidth: 1, borderTopColor: colors.border.light }}>
-        {product.variants.map((variant, index) => {
-          const rawVariantValues = Object.entries(variant.variableValues ?? {})
-            .filter(([key, value]) => key.toLowerCase() !== 'source' && value.toLowerCase() !== 'woocommerce')
-            .map(([, value]) => value);
-          const variantName = rawVariantValues.join(' / ');
-          const displayVariantName = (variantName || product.name || variant.sku || 'Variant').toUpperCase();
-          const displaySku = variant.sku.toUpperCase();
-          const displayImage = variant.imageUrl ?? product.imageUrl;
-          const isLowStock = variant.stock <= product.lowStockThreshold;
-          const stockText = isLowStock ? (variant.stock === 0 ? '#EF4444' : '#F59E0B') : colors.text.primary;
-
-          return (
-            <View
-              key={variant.id}
-              style={{
-                paddingHorizontal: 18,
-                paddingVertical: 14,
-                flexDirection: 'row',
-                alignItems: 'center',
-                flexWrap: isCompactWeb ? 'wrap' : 'nowrap',
-                gap: isCompactWeb ? 10 : 16,
-                borderTopWidth: index === 0 ? 0 : 1,
-                borderTopColor: colors.border.light,
-              }}
-            >
-              <View style={{ flex: 1, minWidth: 220, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                <Pressable
-                  disabled={!displayImage}
-                  onPress={() => handleOpenGallery(displayImage)}
-                  className="active:opacity-80"
-                  style={{
-                    width: 52,
-                    height: 52,
-                    borderRadius: 10,
-                    borderWidth: 1,
-                    borderColor: colors.border.light,
-                    backgroundColor: colors.bg.secondary,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    overflow: 'hidden',
-                  }}
-                >
-                  {displayImage ? (
-                    <ResolvedAttachmentImage imageUrl={displayImage} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-                  ) : (
-                    <Package size={20} color={colors.text.muted} strokeWidth={1.8} />
-                  )}
-                </Pressable>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ color: colors.text.primary, fontSize: 15, fontWeight: '700' }} numberOfLines={1}>
-                    {displayVariantName}
-                  </Text>
-                  {canManageVariants ? (
-                    <Text style={{ color: colors.text.tertiary, fontSize: 13, marginTop: 4 }} numberOfLines={1}>
-                      {formatCurrency(variant.sellingPrice)}
-                    </Text>
-                  ) : null}
-                </View>
-              </View>
-
-              {isCompactWeb ? (
-                <>
-                  <View style={{ flex: 1, minWidth: 0, alignItems: 'flex-end' }}>
-                    <View
-                      style={{
-                        borderRadius: 12,
-                        height: 40,
-                        paddingHorizontal: 16,
-                        backgroundColor: colors.bg.primary,
-                        borderWidth: 1,
-                        borderColor: colors.border.light,
-                        justifyContent: 'center',
-                      }}
-                    >
-                      <Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>
-                        {displaySku}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View
-                    style={{
-                      width: '100%',
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                    }}
-                  >
-                    <View
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        borderWidth: 1,
-                        borderColor: colors.border.light,
-                        borderRadius: 14,
-                        backgroundColor: colors.bg.primary,
-                        overflow: 'hidden',
-                        height: 40,
-                      }}
-                    >
-                      <Pressable
-                        onPress={() => handleAdjustStock(variant.id, -1)}
-                        disabled={variant.stock === 0}
-                        className="active:opacity-60"
-                        style={{ width: 38, height: 40, alignItems: 'center', justifyContent: 'center' }}
-                      >
-                        <Minus size={16} color={variant.stock === 0 ? colors.text.muted : colors.text.primary} strokeWidth={2} />
-                      </Pressable>
-                      <View style={{ width: 44, alignItems: 'center' }}>
-                        <Text style={{ color: stockText, fontSize: 14, fontWeight: '700' }}>{variant.stock}</Text>
-                      </View>
-                      <Pressable
-                        onPress={() => handleAdjustStock(variant.id, 1)}
-                        className="active:opacity-60"
-                        style={{ width: 38, height: 40, alignItems: 'center', justifyContent: 'center' }}
-                      >
-                        <Plus size={16} color={colors.text.primary} strokeWidth={2} />
-                      </Pressable>
-                    </View>
-
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <Pressable
-                        onPress={() => {
-                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                          router.push({
-                            pathname: '/restock',
-                            params: { productId: product.id, variantId: variant.id },
-                          });
-                        }}
-                        className="active:opacity-70"
-                        style={{
-                          width: 36,
-                          height: 36,
-                          borderRadius: 14,
-                          borderWidth: 1,
-                          borderColor: colors.border.light,
-                          backgroundColor: colors.bg.primary,
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                      >
-                        <PackagePlus size={16} color="#10B981" strokeWidth={2} />
-                      </Pressable>
-
-                      {canManageVariants ? (
-                        <>
-                          <Pressable
-                            onPress={() => {
-                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                              router.push({
-                                pathname: '/label-print',
-                                params: { productId: product.id, variantId: variant.id },
-                              });
-                            }}
-                            className="active:opacity-70"
-                            style={{
-                              width: 36,
-                              height: 36,
-                              borderRadius: 14,
-                              borderWidth: 1,
-                              borderColor: colors.border.light,
-                              backgroundColor: colors.bg.primary,
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                            }}
-                          >
-                            <Printer size={16} color={colors.text.primary} strokeWidth={2} />
-                          </Pressable>
-                          <Pressable
-                            onPress={() => handleOpenEditVariant(variant)}
-                            className="active:opacity-70"
-                            style={{
-                              width: 36,
-                              height: 36,
-                              borderRadius: 14,
-                              borderWidth: 1,
-                              borderColor: colors.border.light,
-                              backgroundColor: colors.bg.primary,
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                            }}
-                          >
-                            <Edit2 size={16} color={colors.text.primary} strokeWidth={2} />
-                          </Pressable>
-                          <Pressable
-                            onPress={() => handleDeleteVariant(variant.id, variantName)}
-                            className="active:opacity-70"
-                            style={{
-                              width: 36,
-                              height: 36,
-                              borderRadius: 14,
-                              borderWidth: 1,
-                              borderColor: colors.border.light,
-                              backgroundColor: colors.bg.primary,
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                            }}
-                          >
-                            <Trash2 size={16} color="#EF4444" strokeWidth={2} />
-                          </Pressable>
-                        </>
-                      ) : null}
-                    </View>
-                  </View>
-                </>
-              ) : (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                  <View
-                    style={{
-                      borderRadius: 12,
-                      height: 40,
-                      paddingHorizontal: 16,
-                      backgroundColor: colors.bg.primary,
-                      borderWidth: 1,
-                      borderColor: colors.border.light,
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Text style={{ color: colors.text.secondary, fontSize: 11, fontWeight: '600' }} numberOfLines={1}>
-                      {displaySku}
-                    </Text>
-                  </View>
-
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      borderWidth: 1,
-                      borderColor: colors.border.light,
-                      borderRadius: 14,
-                      backgroundColor: colors.bg.primary,
-                      overflow: 'hidden',
-                      height: 40,
-                    }}
-                  >
-                    <Pressable
-                      onPress={() => handleAdjustStock(variant.id, -1)}
-                      disabled={variant.stock === 0}
-                      className="active:opacity-60"
-                      style={{ width: 38, height: 40, alignItems: 'center', justifyContent: 'center' }}
-                    >
-                      <Minus size={16} color={variant.stock === 0 ? colors.text.muted : colors.text.primary} strokeWidth={2} />
-                    </Pressable>
-                    <View style={{ width: 44, alignItems: 'center' }}>
-                      <Text style={{ color: stockText, fontSize: 14, fontWeight: '700' }}>{variant.stock}</Text>
-                    </View>
-                    <Pressable
-                      onPress={() => handleAdjustStock(variant.id, 1)}
-                      className="active:opacity-60"
-                      style={{ width: 38, height: 40, alignItems: 'center', justifyContent: 'center' }}
-                    >
-                      <Plus size={16} color={colors.text.primary} strokeWidth={2} />
-                    </Pressable>
-                  </View>
-
-                  <Pressable
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                      router.push({
-                        pathname: '/restock',
-                        params: { productId: product.id, variantId: variant.id },
-                      });
-                    }}
-                    className="active:opacity-70"
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 14,
-                      borderWidth: 1,
-                      borderColor: colors.border.light,
-                      backgroundColor: colors.bg.primary,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <PackagePlus size={16} color="#10B981" strokeWidth={2} />
-                  </Pressable>
-
-                  {canManageVariants ? (
-                    <>
-                      <Pressable
-                        onPress={() => {
-                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                          router.push({
-                            pathname: '/label-print',
-                            params: { productId: product.id, variantId: variant.id },
-                          });
-                        }}
-                        className="active:opacity-70"
-                        style={{
-                          width: 36,
-                          height: 36,
-                          borderRadius: 14,
-                          borderWidth: 1,
-                          borderColor: colors.border.light,
-                          backgroundColor: colors.bg.primary,
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                      >
-                        <Printer size={16} color={colors.text.primary} strokeWidth={2} />
-                      </Pressable>
-                      <Pressable
-                        onPress={() => handleOpenEditVariant(variant)}
-                        className="active:opacity-70"
-                        style={{
-                          width: 36,
-                          height: 36,
-                          borderRadius: 14,
-                          borderWidth: 1,
-                          borderColor: colors.border.light,
-                          backgroundColor: colors.bg.primary,
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                      >
-                        <Edit2 size={16} color={colors.text.primary} strokeWidth={2} />
-                      </Pressable>
-                      <Pressable
-                        onPress={() => handleDeleteVariant(variant.id, variantName)}
-                        className="active:opacity-70"
-                        style={{
-                          width: 36,
-                          height: 36,
-                          borderRadius: 14,
-                          borderWidth: 1,
-                          borderColor: colors.border.light,
-                          backgroundColor: colors.bg.primary,
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                      >
-                        <Trash2 size={16} color="#EF4444" strokeWidth={2} />
-                      </Pressable>
-                    </>
-                  ) : null}
-                </View>
-              )}
-            </View>
-          );
-        })}
+  const saveBar = changedCount > 0 ? (
+    <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: isWebDesktop ? 32 : 28, alignItems: 'center' }}>
+      <View accessibilityRole="toolbar" style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingRight: 8, paddingLeft: 18, borderRadius: 999, backgroundColor: palette.inverseBg, shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 40, shadowOffset: { width: 0, height: 18 }, elevation: 24 }}>
+        <Text style={{ color: palette.inverseText, fontSize: mfs(14), fontWeight: '600', paddingRight: 6 }}>
+          {changedCount} unsaved stock {changedCount === 1 ? 'change' : 'changes'}
+        </Text>
+        <Pressable onPress={() => setPendingStock({})} disabled={isSavingStock} style={(state) => ({ height: 36, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: palette.isDark ? 'rgba(20,20,20,0.18)' : 'rgba(255,255,255,0.22)', justifyContent: 'center', opacity: state.pressed ? 0.7 : 1 })}>
+          <Text style={{ color: palette.inverseText, fontSize: mfs(13.5), fontWeight: '600' }}>Discard</Text>
+        </Pressable>
+        <Pressable onPress={() => { void saveDraftStock(); }} disabled={isSavingStock} style={(state) => ({ height: 36, paddingHorizontal: 16, borderRadius: 999, backgroundColor: palette.inverseText, justifyContent: 'center', opacity: isSavingStock ? 0.6 : state.pressed ? 0.8 : 1 })}>
+          <Text style={{ color: palette.inverseBg, fontSize: mfs(13.5), fontWeight: '600' }}>{isSavingStock ? 'Saving…' : 'Save'}</Text>
+        </Pressable>
       </View>
     </View>
+  ) : null;
+
+  const toastView = toast ? (
+    <View pointerEvents="none" style={{ position: 'absolute', left: 20, right: 20, bottom: changedCount > 0 ? 100 : 24, alignItems: 'center' }}>
+      <View style={{ backgroundColor: toast.type === 'success' ? '#111111' : '#7F1D1D', borderRadius: 999, paddingHorizontal: 16, paddingVertical: 12, minHeight: 44, justifyContent: 'center' }}>
+        <Text style={{ color: '#FFFFFF', fontSize: mfs(13), fontWeight: '600' }}>{toast.message}</Text>
+      </View>
+    </View>
+  ) : null;
+
+  const desktopLayout = (
+    <ScrollView
+      style={{ flex: 1, backgroundColor: palette.page }}
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={{ width: '100%', maxWidth: webMaxWidth, alignSelf: 'flex-start', paddingHorizontal: 28, paddingTop: 32, paddingBottom: changedCount > 0 ? 120 : 60, gap: 20 }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, zIndex: 50 }}>
+        <BackButton onPress={() => (router.canGoBack() ? router.back() : router.replace('/inventory' as never))} palette={palette} label="Back to inventory" />
+        <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <Text style={{ color: palette.text, fontSize: 30, fontWeight: '700', letterSpacing: -0.6, flexShrink: 1 }} numberOfLines={1}>{product.name}</Text>
+            {renderActiveToggle()}
+          </View>
+          <Text style={{ color: palette.faint, fontSize: 14 }} numberOfLines={1}>{headerSub}</Text>
+        </View>
+        <Pressable onPress={goPrintLabels} style={(state) => ghostButton(state)}>
+          <Printer size={15} color={palette.text} strokeWidth={2} />
+          <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>Print labels</Text>
+        </Pressable>
+        <Pressable onPress={() => goRestock()} style={(state) => limeButton(state)}>
+          <Package size={15} color={FYLL_LIME_INK} strokeWidth={2.2} />
+          <Text style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '600' }}>Restock</Text>
+        </Pressable>
+        <View style={{ position: 'relative', zIndex: 60 }}>
+          <Pressable accessibilityRole="button" accessibilityLabel="More actions" onPress={() => setShowMobileHeaderMenu((previous) => !previous)} style={(state) => ({ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: palette.border, backgroundColor: isHovered(state) ? palette.softFill : 'transparent' })}>
+            <MoreHorizontal size={17} color={palette.faint} strokeWidth={2.4} />
+          </Pressable>
+          {showMobileHeaderMenu ? renderMenu(productMenuItems, () => setShowMobileHeaderMenu(false), 46) : null}
+        </View>
+      </View>
+
+      <View style={{ flexDirection: 'row', gap: 20, alignItems: 'flex-start' }}>
+        <View style={{ flex: 1, minWidth: 0, gap: 20 }}>
+          <View style={{ ...cardStyle, padding: 20, flexDirection: isCompactWeb ? 'column' : 'row', gap: 22, zIndex: 20 }}>
+            <View style={{ width: 220, gap: 8 }}>
+              <Pressable onPress={() => (primaryDisplayImage ? handleOpenGallery(primaryDisplayImage) : canManageVariants ? void handlePickProductImageInline() : undefined)} style={{ width: 220, height: 170, borderRadius: 14, overflow: 'hidden', backgroundColor: primaryDisplayImage ? '#F4F4EF' : palette.softFill, alignItems: 'center', justifyContent: 'center' }}>
+                {primaryDisplayImage ? (
+                  <ResolvedAttachmentImage imageUrl={primaryDisplayImage} style={{ width: 220, height: 170 }} resizeMode="cover" />
+                ) : (
+                  <View style={{ alignItems: 'center', gap: 6 }}>
+                    <Camera size={22} color={palette.faint} strokeWidth={1.8} />
+                    <Text style={{ color: palette.faint, fontSize: 12.5 }}>Add a photo</Text>
+                  </View>
+                )}
+              </Pressable>
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                {galleryImages.filter((url) => url !== primaryDisplayImage).slice(0, 3).map((url) => (
+                  <Pressable key={url} onPress={() => handleOpenGallery(url)} style={{ width: 50.5, height: 50.5, borderRadius: 8, overflow: 'hidden', backgroundColor: '#F4F4EF', opacity: 0.85 }}>
+                    <ResolvedAttachmentImage imageUrl={url} style={{ width: 50.5, height: 50.5 }} resizeMode="cover" />
+                  </Pressable>
+                ))}
+                {canManageVariants ? (
+                  <Pressable accessibilityLabel="Add image" onPress={() => { void handlePickProductImageInline(); }} style={(state) => ({ width: 50.5, height: 50.5, borderRadius: 8, borderWidth: 1, borderStyle: 'dashed', borderColor: palette.outline, alignItems: 'center', justifyContent: 'center', backgroundColor: isHovered(state) ? palette.softFill : 'transparent' })}>
+                    <Plus size={16} color={palette.faint} strokeWidth={2} />
+                  </Pressable>
+                ) : null}
+              </View>
+            </View>
+            <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', flexWrap: 'wrap', rowGap: 18, columnGap: 24, alignContent: 'flex-start' }}>
+              {canManageVariants ? (
+                <View style={{ width: '45%', flexGrow: 1, gap: 5 }}>
+                  <Text style={labelStyle}>Price</Text>
+                  <MoneyText style={{ color: prices.length ? palette.text : palette.warn, fontSize: 22 }} numberOfLines={1}>{priceLabel}</MoneyText>
+                  <Text style={{ color: palette.faint, fontSize: 12.5 }}>{priceNote}</Text>
+                </View>
+              ) : null}
+              <View style={{ width: '45%', flexGrow: 1, gap: 5 }}>
+                <Text style={labelStyle}>{isOwner ? 'Stock value' : 'In stock'}</Text>
+                <MoneyText style={{ color: palette.text, fontSize: 22 }} numberOfLines={1}>{isOwner ? formatNaira(draftValue) : unitsLabel}</MoneyText>
+                <Text style={{ color: palette.faint, fontSize: 12.5 }}>{isOwner ? `${unitsLabel} at retail price` : healthText}</Text>
+              </View>
+              <View style={{ width: '45%', flexGrow: 1, gap: 8, zIndex: 30 }}>
+                <Text style={labelStyle}>Category</Text>
+                {categoryChips}
+              </View>
+              <View style={{ width: '45%', flexGrow: 1, gap: 8 }}>
+                <Text style={labelStyle}>Low stock alert</Text>
+                {thresholdControl}
+              </View>
+              {product.description?.trim() ? (
+                <View style={{ width: '100%', gap: 5 }}>
+                  <Text style={labelStyle}>Description</Text>
+                  <Text style={{ color: palette.textSoft, fontSize: 14, lineHeight: 20 }}>{product.description.trim()}</Text>
+                </View>
+              ) : null}
+            </View>
+          </View>
+
+          <View style={{ ...cardStyle, paddingHorizontal: 20, paddingTop: 6, paddingBottom: 8, zIndex: 10 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 14, paddingBottom: 12 }}>
+              <View style={{ gap: 2 }}>
+                <Text style={h2Style}>Variants</Text>
+                <Text style={{ color: palette.faint, fontSize: 13 }}>{variantSummary}</Text>
+              </View>
+              {canManageVariants ? (
+                <Pressable onPress={handleOpenAddVariant} style={(state) => ghostButton(state, 36)}>
+                  <Plus size={14} color={palette.text} strokeWidth={2.4} />
+                  <Text style={{ color: palette.text, fontSize: 13.5, fontWeight: '600' }}>Add variant</Text>
+                </Pressable>
+              ) : null}
+            </View>
+            {skuWarning}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingTop: 10, paddingBottom: 8 }}>
+              <Text style={[thStyle, { flex: 1.4 }]}>Variant</Text>
+              <Text style={[thStyle, { width: 130 }]}>SKU</Text>
+              <Text style={[thStyle, { width: 90, textAlign: 'right' }]}>Sold</Text>
+              <Text style={[thStyle, { width: 128, textAlign: 'center' }]}>In stock</Text>
+              <Text style={[thStyle, { width: 130 }]}>Status</Text>
+              <View style={{ width: 32 }} />
+            </View>
+            {draftVariants.map(({ variant, stock }, index) => {
+              const dirty = pendingStock[variant.id] !== undefined && pendingStock[variant.id] !== variant.stock;
+              const flagged = skuIssues.flagged.has(variant.id);
+              return (
+                <View key={variant.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 14, height: 64, borderTopWidth: 1, borderTopColor: palette.hairline, zIndex: openVariantMenuId === variant.id ? 30 : 1 }}>
+                  <View style={{ flex: 1.4, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    {renderVariantImage(variant, 44)}
+                    <Text style={{ flex: 1, color: palette.text, fontSize: 15, fontWeight: '500' }} numberOfLines={1}>{variantDisplayName(variant)}</Text>
+                  </View>
+                  <View style={{ width: 130, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={{ color: flagged ? palette.warn : palette.muted, fontSize: 13, letterSpacing: 0.2, flexShrink: 1 }} numberOfLines={1}>{variant.sku?.toUpperCase() || '—'}</Text>
+                    {flagged ? <AlertTriangle size={15} color={palette.warn} strokeWidth={2.2} /> : null}
+                  </View>
+                  <Text style={{ width: 90, textAlign: 'right', color: palette.muted, fontSize: 14, fontVariant: ['tabular-nums'] }}>{soldByVariant.get(variant.id) ?? 0}</Text>
+                  <View style={{ width: 128, alignItems: 'center' }}>
+                    {renderStepper(stock, () => stepDraft(variant.id, variant.stock, -1), () => stepDraft(variant.id, variant.stock, 1), { dirty, ink: stock <= 0 ? palette.danger : palette.text })}
+                  </View>
+                  <View style={{ width: 130 }}>
+                    <StockStatusLabel status={variantStatuses[index]} palette={palette} />
+                  </View>
+                  <View style={{ width: 32, position: 'relative' }}>
+                    <Pressable accessibilityRole="button" accessibilityLabel="Variant actions" onPress={() => setOpenVariantMenuId((previous) => (previous === variant.id ? null : variant.id))} style={(state) => ({ width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: isHovered(state) ? palette.softFill : 'transparent' })}>
+                      <MoreHorizontal size={17} color={palette.faint} strokeWidth={2.4} />
+                    </Pressable>
+                    {openVariantMenuId === variant.id ? renderMenu(variantMenuItems(variant), () => setOpenVariantMenuId(null), 38) : null}
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+
+          {activityCard}
+        </View>
+
+        <View style={{ width: rightColumnWidth ?? 400, gap: 16 }}>
+          <View style={{ ...cardStyle, padding: 20, gap: 14 }}>
+            <View style={{ gap: 4 }}>
+              <Text style={labelStyle}>In stock</Text>
+              <MoneyText style={{ color: palette.text, fontSize: 32, letterSpacing: -0.8 }}>{unitsLabel}</MoneyText>
+              <Text style={{ color: healthInk, fontSize: 13, fontWeight: '600' }}>{healthText}</Text>
+            </View>
+            <View style={{ height: 1, backgroundColor: palette.hairline }} />
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
+              <Text style={labelStyle}>Sold</Text>
+              <Text style={{ color: palette.faint, fontSize: 13 }}>{soldStats.totalSold} all time</Text>
+            </View>
+            {soldStats.variantSales.map((entry, index) => (
+              <View key={entry.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Text style={{ width: 72, color: palette.textSoft, fontSize: 13.5 }} numberOfLines={1}>{entry.name}</Text>
+                <View style={{ flex: 1, height: 6, borderRadius: 3, backgroundColor: palette.softFill, overflow: 'hidden' }}>
+                  <View style={{ width: `${(entry.quantity / maxSold) * 100}%`, height: 6, borderRadius: 3, backgroundColor: index === 0 && entry.quantity > 0 ? palette.text : palette.isDark ? '#6B6C63' : '#BDBDB4' }} />
+                </View>
+                <Text style={{ width: 28, textAlign: 'right', color: palette.text, fontSize: 13.5, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{entry.quantity}</Text>
+              </View>
+            ))}
+            <Text style={{ color: palette.faint, fontSize: 12.5, lineHeight: 19 }}>
+              {bestSeller && bestSeller.quantity > 0 && soldStats.totalSold > 0
+                ? `${bestSeller.name} is your best seller: ${Math.round((bestSeller.quantity / soldStats.totalSold) * 100)}% of all ${product.name} sales.`
+                : 'No sales yet.'}
+            </Text>
+          </View>
+
+          <View style={{ ...cardStyle, padding: 20, gap: 12 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={h2Style}>Restocks</Text>
+              {recentRestocks[0] ? <Text style={{ color: palette.faint, fontSize: 13 }}>Last: {formatShortDate(recentRestocks[0].timestamp, false)}</Text> : null}
+            </View>
+            {recentRestocks.length === 0 ? (
+              <Text style={{ color: palette.faint, fontSize: 13.5 }}>No restocks yet.</Text>
+            ) : recentRestocks.map((log) => {
+              const variant = product.variants.find((v) => v.id === log.variantId);
+              const positive = log.quantityAdded >= 0;
+              return (
+                <View key={log.id} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: palette.hairline }}>
+                  <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                    <Text style={{ color: palette.text, fontSize: 13.5 }} numberOfLines={1}>
+                      <Text style={{ color: positive ? palette.tones.verified.ink : palette.danger, fontWeight: '600' }}>{positive ? '+' : '−'}{Math.abs(log.quantityAdded)}</Text> {variant ? variantDisplayName(variant) : 'Unknown variant'}
+                    </Text>
+                    <Text style={{ color: palette.faint, fontSize: 12 }} numberOfLines={1}>{log.note?.trim() ? `${log.note.trim()} · ` : ''}{log.previousStock} → {log.newStock}</Text>
+                  </View>
+                  <Text style={{ color: palette.faint, fontSize: 12.5 }}>{formatShortDate(log.timestamp, false)}</Text>
+                </View>
+              );
+            })}
+            <Pressable onPress={() => goRestock()} style={(state) => ({ ...ghostButton(state), marginTop: 4 })}>
+              <Package size={15} color={palette.text} strokeWidth={2.2} />
+              <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>Restock variants</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </ScrollView>
+  );
+
+  const mobileLayout = (
+    <>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: palette.hairline, backgroundColor: palette.page, zIndex: 50 }}>
+        <BackButton onPress={() => (router.canGoBack() ? router.back() : router.replace('/inventory' as never))} palette={palette} label="Back" />
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={{ color: palette.text, fontSize: 16, fontWeight: '600' }} numberOfLines={1}>{product.name}</Text>
+          <Text style={{ color: palette.faint, fontSize: mfs(12.5) }} numberOfLines={1}>{[primaryCategory, `${variantCount} ${variantCount === 1 ? 'variant' : 'variants'}`].filter(Boolean).join(' · ')}</Text>
+        </View>
+        <View style={{ position: 'relative', zIndex: 60 }}>
+          <Pressable accessibilityRole="button" accessibilityLabel="More actions" onPress={() => setShowMobileHeaderMenu((previous) => !previous)} style={{ width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' }}>
+            <MoreHorizontal size={18} color={palette.text} strokeWidth={2.4} />
+          </Pressable>
+          {showMobileHeaderMenu ? renderMenu(productMenuItems, () => setShowMobileHeaderMenu(false), 48) : null}
+        </View>
+      </View>
+      <ScrollView
+        style={{ flex: 1, backgroundColor: palette.page }}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 18, paddingBottom: changedCount > 0 ? 130 : 60, gap: 14 }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+          <Pressable onPress={() => (primaryDisplayImage ? handleOpenGallery(primaryDisplayImage) : canManageVariants ? void handlePickProductImageInline() : undefined)} style={{ width: 96, height: 96, borderRadius: 16, overflow: 'hidden', backgroundColor: primaryDisplayImage ? '#F4F4EF' : palette.softFill, alignItems: 'center', justifyContent: 'center' }}>
+            {primaryDisplayImage ? <ResolvedAttachmentImage imageUrl={primaryDisplayImage} style={{ width: 96, height: 96 }} resizeMode="cover" /> : <Camera size={22} color={palette.faint} strokeWidth={1.8} />}
+          </Pressable>
+          <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+            <MoneyText style={{ color: palette.text, fontSize: 30, letterSpacing: -0.6 }} numberOfLines={1}>{unitsLabel}</MoneyText>
+            <Text style={{ color: healthInk, fontSize: mfs(13), fontWeight: '600' }}>{healthText}</Text>
+            <Text style={{ color: palette.faint, fontSize: mfs(13) }} numberOfLines={1}>
+              {[canManageVariants ? priceLabel : null, isOwner ? `${formatNaira(draftValue)} in stock` : null].filter(Boolean).join(' · ')}
+            </Text>
+          </View>
+        </View>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <Pressable onPress={goPrintLabels} style={(state) => ({ ...ghostButton(state, 44), flex: 1 })}>
+            <Printer size={15} color={palette.text} strokeWidth={2} />
+            <Text style={{ color: palette.text, fontSize: mfs(14), fontWeight: '600' }}>Labels</Text>
+          </Pressable>
+          <Pressable onPress={() => goRestock()} style={(state) => ({ ...limeButton(state, 44), flex: 1 })}>
+            <Package size={15} color={FYLL_LIME_INK} strokeWidth={2.2} />
+            <Text style={{ color: FYLL_LIME_INK, fontSize: mfs(14), fontWeight: '600' }}>Restock</Text>
+          </Pressable>
+        </View>
+
+        <View style={{ ...cardStyle, paddingHorizontal: 14, paddingTop: 4, paddingBottom: 6 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 12, paddingBottom: 10 }}>
+            <Text style={h2Style}>Variants</Text>
+            <Text style={{ color: palette.faint, fontSize: mfs(13) }}>{variantSummary}</Text>
+          </View>
+          {skuWarning}
+          {draftVariants.map(({ variant, stock }, index) => {
+            const dirty = pendingStock[variant.id] !== undefined && pendingStock[variant.id] !== variant.stock;
+            const flagged = skuIssues.flagged.has(variant.id);
+            return (
+              <View key={variant.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderTopWidth: 1, borderTopColor: palette.hairline }}>
+                {renderVariantImage(variant, 44)}
+                <Pressable onPress={() => setMobileVariantActions(variant)} style={{ flex: 1, minWidth: 0, gap: 3 }}>
+                  <Text style={{ color: palette.text, fontSize: mfs(12), fontWeight: '500' }} numberOfLines={1}>{variantDisplayName(variant)}</Text>
+                  <Text style={{ color: flagged ? palette.warn : palette.muted, fontSize: mfs(12) }} numberOfLines={1}>{variant.sku?.toUpperCase() || '—'} · {soldByVariant.get(variant.id) ?? 0} sold</Text>
+                  <StockStatusLabel status={variantStatuses[index]} palette={palette} size={12} />
+                </Pressable>
+                {renderStepper(stock, () => stepDraft(variant.id, variant.stock, -1), () => stepDraft(variant.id, variant.stock, 1), { dirty, height: 38, minWidth: 26, ink: stock <= 0 ? palette.danger : palette.text })}
+              </View>
+            );
+          })}
+          {canManageVariants ? (
+            <Pressable onPress={handleOpenAddVariant} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 44, borderTopWidth: 1, borderTopColor: palette.hairline }}>
+              <Plus size={14} color={palette.textSoft} strokeWidth={2.4} />
+              <Text style={{ color: palette.textSoft, fontSize: mfs(14), fontWeight: '600' }}>Add variant</Text>
+            </Pressable>
+          ) : null}
+        </View>
+
+        <View style={{ ...cardStyle, paddingHorizontal: 14, paddingVertical: 16, gap: 12, zIndex: 20 }}>
+          <Text style={h2Style}>Settings</Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={{ color: palette.text, fontSize: mfs(14) }}>Status</Text>
+            {renderActiveToggle()}
+          </View>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+            <Text style={{ color: palette.text, fontSize: mfs(14) }}>Low stock alert</Text>
+            {useGlobalLowStockThreshold ? (
+              <Text style={{ color: palette.faint, fontSize: mfs(13) }}>{globalLowStockThreshold} · store-wide</Text>
+            ) : thresholdControl}
+          </View>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, zIndex: 30 }}>
+            <Text style={{ color: palette.text, fontSize: mfs(14), paddingTop: 6 }}>Category</Text>
+            <View style={{ flex: 1, alignItems: 'flex-end' }}>{categoryChips}</View>
+          </View>
+        </View>
+
+        {activityCard}
+      </ScrollView>
+    </>
   );
 
   return (
-    <View style={{ flex: 1, backgroundColor: isWebDesktop ? colors.bg.primary : colors.bg.secondary }}>
+    <View style={{ flex: 1, backgroundColor: palette.page }}>
       <SafeAreaView className="flex-1" edges={['top']}>
-        {/* Header */}
-        {isWebDesktop ? (
-          <View style={{ backgroundColor: colors.bg.primary }}>
-            <View
-              style={{
-                paddingHorizontal: 28,
-                paddingTop: 32,
-                paddingBottom: 18,
-                width: '100%',
-                maxWidth: webMaxWidth,
-                alignSelf: 'flex-start',
-              }}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 18 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 }}>
-                  <Pressable
-                    onPress={() => router.back()}
-                    className="active:opacity-70"
-                    style={{ width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 14 }}
-                  >
-                    <ArrowLeft size={20} color={colors.text.primary} strokeWidth={2} />
-                  </Pressable>
+        {isWebDesktop ? desktopLayout : mobileLayout}
+        {saveBar}
 
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-                      <Text style={{ color: colors.text.primary, fontSize: 24, fontWeight: '700' }} numberOfLines={1}>
-                        {product.name}
-                      </Text>
-                    </View>
-                    {saveNotice ? (
-                      <Text style={{ color: colors.text.muted, fontSize: 12, marginTop: 6 }}>
-                        {saveNotice}
-                      </Text>
-                    ) : null}
-                  </View>
-                </View>
-
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                  <Pressable
-                    onPress={handleDelete}
-                    accessibilityRole="button"
-                    accessibilityLabel="Delete product"
-                    className="active:opacity-70"
-                    style={{ width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(239, 68, 68, 0.10)', borderWidth: 1, borderColor: 'rgba(239, 68, 68, 0.22)' }}
-                  >
-                    <Trash2 size={18} color="#EF4444" strokeWidth={2} />
-                  </Pressable>
-
-                  <Pressable
-                    onPress={handleOpenEdit}
-                    className="active:opacity-80"
-                    style={{
-                      height: 44,
-                      paddingHorizontal: 16,
-                      borderRadius: 999,
-                      backgroundColor: colors.bg.primary,
-                      borderWidth: 1,
-                      borderColor: colors.border.light,
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 8,
-                    }}
-                  >
-                    <Edit2 size={16} color={colors.text.primary} strokeWidth={2} />
-                    <Text style={{ color: colors.text.primary, fontWeight: '700' }}>Edit</Text>
-                  </Pressable>
-
-                  <Pressable
-                    onPress={handleSaveProduct}
-                    disabled={isSavingProduct}
-                    className="active:opacity-80"
-                    style={{
-                      height: 44,
-                      paddingHorizontal: 16,
-                      borderRadius: 999,
-                      backgroundColor: isDark ? '#FFFFFF' : '#111111',
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 8,
-                      opacity: isSavingProduct ? 0.7 : 1,
-                    }}
-                  >
-                    <Save size={18} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={2.5} />
-                    <Text style={{ color: isDark ? '#000000' : '#FFFFFF', fontSize: 15, fontWeight: '700' }}>
-                      {isSavingProduct ? 'Saving...' : 'Save Changes'}
-                    </Text>
-                  </Pressable>
-                </View>
-              </View>
-            </View>
-          </View>
-        ) : (
-          <View
-            style={{
-              borderBottomWidth: 1,
-              borderBottomColor: colors.border.light,
-              backgroundColor: colors.bg.primary,
-              position: 'relative',
-              zIndex: 80,
-            }}
-          >
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                paddingHorizontal: 20,
-                paddingVertical: 16,
-                position: 'relative',
-                zIndex: 81,
-              }}
-            >
-              <Pressable onPress={() => router.back()} className="mr-4 active:opacity-50">
-                <ArrowLeft size={24} color={colors.text.primary} strokeWidth={2} />
-              </Pressable>
-              <View className="flex-1">
-                <View className="flex-row items-center">
-                  <Text style={{ color: colors.text.primary }} className="font-bold text-lg" numberOfLines={1}>
-                    {product.name}
-                  </Text>
-                  {product.isDiscontinued && (
-                    <View className="ml-2 px-2 py-0.5 rounded" style={{ backgroundColor: 'rgba(156, 163, 175, 0.18)' }}>
-                      <Text style={{ color: '#9CA3AF' }} className="text-[10px] font-bold">INACTIVE</Text>
-                    </View>
-                  )}
-                </View>
-                <Text style={{ color: colors.text.tertiary }} className="text-xs">{product.categories?.join(', ') || 'Uncategorized'}</Text>
-              </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <Pressable
-                  onPress={handleOpenEdit}
-                  className="w-10 h-10 rounded-full items-center justify-center active:opacity-70"
-                  style={{ backgroundColor: colors.bg.secondary }}
-                >
-                  <Edit2 size={18} color={colors.text.primary} strokeWidth={2} />
-                </Pressable>
-                <View style={{ position: 'relative', zIndex: 90 }}>
-                  <Pressable
-                    onPress={() => setShowMobileHeaderMenu((prev) => !prev)}
-                    className="w-10 h-10 rounded-full items-center justify-center active:opacity-70"
-                    style={{ backgroundColor: colors.bg.secondary }}
-                  >
-                    <MoreVertical size={18} color={colors.text.primary} strokeWidth={2} />
-                  </Pressable>
-                  {showMobileHeaderMenu ? (
-                    <>
-                      <Pressable
-                        className="absolute"
-                        style={{ top: -100, right: -20, width: 220, height: 180, zIndex: 59 }}
-                        onPress={() => setShowMobileHeaderMenu(false)}
-                      />
-                      <View
-                        className="absolute rounded-2xl overflow-hidden"
-                        style={{
-                          top: 48,
-                          right: 0,
-                          width: 180,
-                          backgroundColor: colors.bg.card,
-                          borderWidth: 1,
-                          borderColor: colors.border.light,
-                          zIndex: 120,
-                          elevation: 20,
-                          shadowColor: '#000000',
-                          shadowOpacity: 0.2,
-                          shadowRadius: 16,
-                          shadowOffset: { width: 0, height: 8 },
-                        }}
-                      >
-                        <Pressable
-                          onPress={() => {
-                            setShowMobileHeaderMenu(false);
-                            handleDelete();
-                          }}
-                          className="px-4 py-3 flex-row items-center active:opacity-70"
-                        >
-                          <Trash2 size={16} color="#EF4444" strokeWidth={2} />
-                          <Text className="text-red-500 font-semibold ml-2">Delete Product</Text>
-                        </Pressable>
-                      </View>
-                    </>
-                  ) : null}
-                </View>
-              </View>
-            </View>
-          </View>
-        )}
-
-        <ScrollView
-          style={{ flex: 1, backgroundColor: isWebDesktop ? colors.bg.primary : colors.bg.secondary }}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{
-            paddingBottom: 40,
-            width: '100%',
-            maxWidth: isWebDesktop ? webMaxWidth : undefined,
-            alignSelf: isWebDesktop ? 'flex-start' : undefined,
-            paddingHorizontal: isWebDesktop ? 28 : 0,
-          }}
-        >
-          {isWebDesktop ? (
-            <View style={{ flexDirection: 'row', gap: 24, paddingTop: 6 }}>
-              <View style={{ flex: 1, minWidth: 0 }}>
-              {webMediaCard}
-              {descriptionSection}
-              {webVariantsCard}
-              {inventoryActivitySection}
-              </View>
-              <View style={{ width: rightColumnWidth ?? 420 }}>
-                {webMetaCards}
-                {webStockCards}
-                {webOrganizationCard}
-                {recentRestocksSection}
-              </View>
-            </View>
-          ) : (
-            <>
-              {statsSection}
-              {mobileSoldHighlights}
-              {descriptionSection}
-              {variantsHeaderSection}
-              {variantsListSection}
-              {recentRestocksSection}
-              {inventoryActivitySection}
-
-              {canManageStatus ? (
-                <View className="mx-5 mt-4 rounded-2xl p-4" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
-                  <View className="flex-row items-center justify-between">
-                    <View className="flex-1 pr-4">
-                      <Text style={{ color: colors.text.primary }} className="font-semibold text-[15px]">
-                        {product.isDiscontinued ? 'Mark as Active' : 'Mark as Inactive'}
-                      </Text>
-                      <Text style={{ color: colors.text.muted }} className="text-xs mt-1">
-                        {product.isDiscontinued ? 'Restore this product to new order pickers.' : 'Hide this product from new order pickers.'}
-                      </Text>
-                    </View>
-                    <Switch
-                      value={!product.isDiscontinued}
-                      disabled={isStatusSaving}
-                      onValueChange={(nextActive) => handleToggleProductActive(nextActive)}
-                      trackColor={{ false: '#9CA3AF', true: '#D1D5DB' }}
-                      thumbColor={!product.isDiscontinued ? '#374151' : '#FFFFFF'}
-                    />
-                  </View>
-                </View>
+        <Modal visible={mobileVariantActions !== null} animationType="fade" transparent onRequestClose={() => setMobileVariantActions(null)}>
+          <Pressable onPress={() => setMobileVariantActions(null)} style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)', padding: 12 }}>
+            <Pressable onPress={(event) => event.stopPropagation()} style={{ borderRadius: 22, backgroundColor: palette.card, paddingVertical: 8, overflow: 'hidden' }}>
+              {mobileVariantActions ? (
+                <>
+                  <Text style={{ color: palette.faint, fontSize: 13, fontWeight: '600', paddingHorizontal: 18, paddingVertical: 10 }}>{variantDisplayName(mobileVariantActions)}</Text>
+                  {variantMenuItems(mobileVariantActions).map((item) => (
+                    <Pressable
+                      key={item.key}
+                      onPress={() => {
+                        setMobileVariantActions(null);
+                        item.onPress();
+                      }}
+                      style={(state) => ({ height: 50, paddingHorizontal: 18, justifyContent: 'center', borderTopWidth: 1, borderTopColor: palette.hairline, opacity: state.pressed ? 0.6 : 1 })}
+                    >
+                      <Text style={{ color: item.danger ? palette.danger : palette.text, fontSize: 15, fontWeight: '500' }}>{item.label}</Text>
+                    </Pressable>
+                  ))}
+                </>
               ) : null}
-
-              {/* Save Product */}
-              <View className={cn('mt-4', !isWebDesktop && 'mx-5')}>
-                <Button
-                  onPress={handleSaveProduct}
-                  loading={isSavingProduct}
-                  loadingText="Saving..."
-                  variant={isDark ? 'secondary' : 'primary'}
-                >
-                  Save Product
-                </Button>
-                {saveNotice ? (
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mt-2 text-center">
-                    {saveNotice}
-                  </Text>
-                ) : null}
-              </View>
-            </>
-          )}
-        </ScrollView>
+            </Pressable>
+          </Pressable>
+        </Modal>
 
         {/* Edit Product Modal - Centered */}
         <Modal
@@ -3360,33 +2514,7 @@ export default function ProductDetailScreen() {
           </SafeAreaView>
         </Modal>
 
-        {toast ? (
-          <View
-            pointerEvents="none"
-            style={{
-              position: 'absolute',
-              left: 20,
-              right: 20,
-              bottom: 24,
-              alignItems: 'center',
-            }}
-          >
-            <View
-              style={{
-                backgroundColor: toast.type === 'success' ? '#111111' : '#7F1D1D',
-                borderRadius: 999,
-                paddingHorizontal: 16,
-                paddingVertical: 12,
-                minHeight: 44,
-                justifyContent: 'center',
-              }}
-            >
-              <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '600' }}>
-                {toast.message}
-              </Text>
-            </View>
-          </View>
-        ) : null}
+        {toastView}
       </SafeAreaView>
     </View>
   );

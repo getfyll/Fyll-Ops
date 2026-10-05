@@ -5,7 +5,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
-import { AlertTriangle, ArrowLeft, Check, ChevronLeft, ChevronRight, Clock, Copy, CreditCard, ExternalLink, FileText, Landmark, Mail, MapPin, MoreHorizontal, Package, Pencil, Phone, Save, User, X } from 'lucide-react-native';
+import { AlertTriangle, Check, ChevronRight, Clock, Copy, CreditCard, ExternalLink, FileText, Landmark, Mail, MapPin, MoreHorizontal, Package, Pencil, Phone, Save, User, X } from 'lucide-react-native';
 import { DesktopSidebar } from '@/components/DesktopSidebar';
 import { formatDeliveryLocation, normalizeDeliveryStateValue } from '@/lib/format-address';
 import useAuthStore from '@/lib/state/auth-store';
@@ -18,7 +18,7 @@ import { useThemeColors } from '@/lib/theme';
 import { PaymentDetailSkeleton } from '@/components/SkeletonLoader';
 import { SearchClearButton } from '@/components/SearchClearButton';
 import { ResolvedAttachmentImage } from '@/components/ResolvedAttachmentImage';
-import { FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, InitialsAvatar, MoneyText, SectionLabel, isHovered, usePaymentsPalette, type StatusTone, useMobileFont } from '@/components/payments/payments-ui';
+import { FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, InitialsAvatar, MoneyText, SectionLabel, isHovered, usePaymentsPalette, type StatusTone, useMobileFont, BackButton } from '@/components/payments/payments-ui';
 import { syncFyllOrderStatusToWooCommerce } from '@/lib/woocommerce';
 
 const SEPARATOR_LIGHT = '#EEEEEE';
@@ -1927,15 +1927,8 @@ export default function StorefrontPaymentDetailScreen() {
   if (payment && unifiedDetail) {
     const unifiedContent = (
       <SafeAreaView className="flex-1" style={{ backgroundColor: palette.page }} edges={['top']}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: isDesktop ? 20 : 8, paddingTop: isDesktop ? 18 : 14, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: palette.hairline }}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Back to payments"
-            onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)/payments' as never))}
-            style={(state) => ({ width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: state.pressed || isHovered(state) ? palette.softFill : 'transparent' })}
-          >
-            <ChevronLeft size={21} color={palette.text} strokeWidth={2.2} />
-          </Pressable>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: isDesktop ? 20 : 16, paddingTop: isDesktop ? 18 : 14, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: palette.hairline }}>
+          <BackButton onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)/payments' as never))} palette={palette} label="Back to payments" />
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={{ color: palette.text, fontSize: 18, fontWeight: '600' }}>Payment</Text>
             <Pressable accessibilityRole="button" accessibilityLabel="Copy payment reference" onPress={() => { void Clipboard.setStringAsync(paymentReference); setRefCopied(true); setTimeout(() => setRefCopied(false), 1600); }} style={(state) => ({ flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', maxWidth: '100%', opacity: state.pressed ? 0.6 : 1 })}>
@@ -2046,9 +2039,7 @@ export default function StorefrontPaymentDetailScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View className="flex-row items-center gap-2.5 mb-5">
-          <Pressable onPress={() => router.dismissTo('/(tabs)/payments' as never)} className="w-11 h-11 rounded-full items-center justify-center active:opacity-60" style={[{ backgroundColor: palette.softFill }, noWebOutline]}>
-            <ArrowLeft size={19} color={palette.text} strokeWidth={2.2} />
-          </Pressable>
+          <BackButton onPress={() => router.dismissTo('/(tabs)/payments' as never)} palette={palette} />
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={{ color: palette.text, fontSize: 18, fontWeight: '600' }}>Payment</Text>
             <Pressable accessibilityRole="button" accessibilityLabel="Copy payment reference" onPress={() => { void Clipboard.setStringAsync(paymentReference); setRefCopied(true); setTimeout(() => setRefCopied(false), 1600); }} style={(state) => ({ flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', maxWidth: '100%', opacity: state.pressed ? 0.6 : 1 })}>
