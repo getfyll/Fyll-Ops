@@ -493,6 +493,11 @@ const isPaymentDeliveryLineItem = (item: NonNullable<SharedPaymentRecord['items'
   return /\b(delivery|shipping|ship|logistics|dispatch|courier)\b/.test(typeText);
 };
 
+const isPaymentServiceLineItem = (item: NonNullable<SharedPaymentRecord['items']>[number]) => {
+  const typeText = [item.type, item.itemType, item.item_type, item.category].join(' ').toLowerCase();
+  return /\b(addon|add-on|service)\b/.test(typeText);
+};
+
 const sumShippingLines = (lines?: SharedPaymentRecord['shippingLines'] | SharedPaymentRecord['shipping_lines']) => (
   (lines ?? []).reduce((sum, line) => sum + normalizeNumber(line.amount ?? line.total ?? line.price), 0)
 );
@@ -1100,7 +1105,10 @@ export default function StorefrontPaymentDetailScreen() {
 
   const buildOrderFromPayment = (targetPayment: SharedPaymentRecord, status: string, timestamp: string): Order => {
     const sourceItems = targetPayment.items ?? [];
-    const productSourceItems = sourceItems.filter((item, index) => !isPaymentDeliveryLineItem(item, index));
+    const productSourceItems = sourceItems.filter((item, index) => (
+      !isPaymentDeliveryLineItem(item, index) && !isPaymentServiceLineItem(item)
+    ));
+    const serviceSourceItems = sourceItems.filter(isPaymentServiceLineItem);
     const targetExpectedAmount = normalizeNumber(targetPayment.expectedAmount ?? targetPayment.orderTotal);
     const targetOrderTotal = targetExpectedAmount > 0 ? targetExpectedAmount : targetPayment.amount;
     const deliveryFee = Math.min(resolvePaymentDeliveryFee(targetPayment), targetOrderTotal);
@@ -1136,7 +1144,11 @@ export default function StorefrontPaymentDetailScreen() {
       deliveryState,
       deliveryAddress,
       items,
-      services: [],
+      services: serviceSourceItems.map((item, index) => ({
+        serviceId: `payment-addon-${targetPayment.sourceOrderId}-${index + 1}`,
+        name: getPaymentItemTitle(item, index),
+        price: getPaymentItemAmount(item),
+      })),
       additionalCharges: 0,
       additionalChargesNote: '',
       deliveryFee,
@@ -1192,6 +1204,15 @@ export default function StorefrontPaymentDetailScreen() {
     const paymentItems = (payment?.items ?? []).filter((item, index) => !isPaymentDeliveryLineItem(item, index));
     if (payment && paymentItems.length > 0) {
       return paymentItems.map((item, index) => {
+        if (isPaymentServiceLineItem(item)) {
+          return {
+            id: `payment-addon-${index}`,
+            quantity: Math.max(1, Math.floor(normalizeNumber(item.quantity ?? item.qty) || 1)),
+            title: getPaymentItemTitle(item, index),
+            imageUrl: '',
+            total: getPaymentItemAmount(item),
+          };
+        }
         const resolvedItem = resolvePaymentItemToInventory({
           item,
           index,

@@ -103,6 +103,35 @@ describe('Fyll Checkout WooCommerce order references', () => {
     }]);
   });
 
+  test('splits a priced Woo line-item add-on from the base product without changing the total', () => {
+    const rows = buildRows({
+      ...checkoutPayload,
+      amountPaid: 49500,
+      expectedAmount: 49500,
+      shipping: { name: 'Delivery', price: 7500 },
+      items: [{
+        name: 'Jaja Brown',
+        quantity: 1,
+        unitPrice: 42000,
+        lineTotal: 42000,
+        meta_data: [{
+          display_key: 'Non Prescription Lens Add-on',
+          display_value: 'ar+bluelight+phc (₦22,000.00)',
+        }],
+      }],
+    }, []);
+
+    expect(rows.payment.items).toHaveLength(2);
+    expect(rows.payment.items[0]?.lineTotal).toBe(20000);
+    expect(rows.payment.items[1]).toMatchObject({
+      type: 'addon',
+      lineTotal: 22000,
+    });
+    expect(rows.order.items[0]?.unitPrice).toBe(20000);
+    expect(rows.order.services[0]?.price).toBe(22000);
+    expect(rows.order.totalAmount).toBe(49500);
+  });
+
   test('turns a rejected checkout payment into a cancelled order', () => {
     const rows = buildRows({
       ...checkoutPayload,

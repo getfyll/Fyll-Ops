@@ -712,16 +712,30 @@ export default function OrdersScreen() {
 
   const ordersHeaderContent = (
     <View style={{ paddingTop: isWebDesktop ? 28 : 14, paddingBottom: 12, width: '100%', gap: isWebDesktop ? 18 : 14 }}>
-        <View className="flex-row items-end justify-between" style={{ gap: 12 }}>
+        <View className="flex-row items-start justify-between" style={{ gap: 12 }}>
           <View style={{ flex: 1 }}>
             <Text style={{ color: colors.text.primary, fontSize: 30, lineHeight: 36, fontWeight: '700', letterSpacing: -0.6 }}>Orders</Text>
             {isWebDesktop ? <Text style={{ color: colors.text.muted, fontSize: 14, marginTop: 4 }}>Track customer orders, fulfilment and delivery.</Text> : null}
             {isOfflineMode ? <Text style={{ color: isDark ? '#FCA5A5' : '#B91C1C', fontSize: 12, fontWeight: '600', marginTop: 5 }}>Offline · Last synced {lastSyncLabel}</Text> : null}
           </View>
           <View className="flex-row items-center" style={{ gap: 8 }}>
-            <Pressable onPress={openOrderAi} style={({ pressed }) => ({ width: isMobile ? 40 : undefined, height: 40, paddingHorizontal: isMobile ? 0 : 16, borderRadius: 999, borderWidth: 1, borderColor: colors.border.medium, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, opacity: pressed ? 0.72 : 1 })}>
-              <Sparkles size={15} color={colors.text.primary} strokeWidth={2} />
-              {!isMobile ? <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600' }}>Fyll AI</Text> : null}
+            <Pressable
+              onPress={openOrderAi}
+              accessibilityRole="button"
+              accessibilityLabel="Fyll AI Order"
+              style={({ pressed }) => ({
+                width: 40,
+                height: 40,
+                borderRadius: 999,
+                backgroundColor: 'transparent',
+                borderWidth: 1,
+                borderColor: isDark ? 'rgba(255,255,255,0.22)' : 'rgba(17,17,17,0.14)',
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: pressed ? 0.72 : 1,
+              })}
+            >
+              <Sparkles size={15} color={isDark ? '#F2F2EE' : '#686862'} strokeWidth={2.2} />
             </Pressable>
             <Pressable onPress={handleNewOrder} style={({ pressed }) => ({ height: 40, paddingHorizontal: 16, borderRadius: 999, backgroundColor: FYLL_LIME, flexDirection: 'row', alignItems: 'center', gap: 6, opacity: pressed ? 0.78 : 1 })}>
               <Plus size={16} color={FYLL_LIME_INK} strokeWidth={2.6} />

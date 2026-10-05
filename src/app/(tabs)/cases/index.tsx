@@ -395,23 +395,33 @@ export default function CasesScreen() {
                     </Text>
                   </View>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                    <FyllAiButton
-                      label="Fyll AI Case"
+                    <Pressable
                       onPress={openCaseAi}
-                      height={42}
-                      borderRadius={21}
-                      iconSize={18}
-                      textSize={14}
-                    />
+                      accessibilityRole="button"
+                      accessibilityLabel="Open Fyll AI case assistant"
+                      style={({ pressed }) => ({
+                        width: 40,
+                        height: 40,
+                        borderRadius: 20,
+                        backgroundColor: 'transparent',
+                        borderWidth: 1,
+                        borderColor: isDark ? 'rgba(255,255,255,0.22)' : 'rgba(17,17,17,0.14)',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        opacity: pressed ? 0.72 : 1,
+                      })}
+                    >
+                      <Sparkles size={16} color={isDark ? '#F2F2EE' : '#686862'} strokeWidth={2.3} />
+                    </Pressable>
                     <Pressable
                       onPress={handleCreateCase}
-                      className="flex-row items-center px-4 rounded-full active:opacity-80"
-                      style={{ backgroundColor: FYLL_LIME, height: 44 }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Create new case"
+                      className="flex-row items-center justify-center rounded-full active:opacity-80"
+                      style={{ backgroundColor: FYLL_LIME, height: 40, paddingHorizontal: 15 }}
                     >
-                      <Plus size={18} color={FYLL_LIME_INK} strokeWidth={2.5} />
-                      <Text style={{ color: FYLL_LIME_INK }} className="font-semibold ml-1.5 text-sm">
-                        Open Case
-                      </Text>
+                      <Plus size={16} color={FYLL_LIME_INK} strokeWidth={2.6} />
+                      <Text style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '600', marginLeft: 6 }}>New case</Text>
                     </Pressable>
                   </View>
                 </View>
@@ -612,18 +622,18 @@ export default function CasesScreen() {
                   </Text>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Pressable onPress={openCaseAi} accessibilityRole="button" accessibilityLabel="Fyll AI Case" style={({ pressed }) => ({ width: 40, height: 40, borderRadius: 999, borderWidth: 1, borderColor: colors.border.medium, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.72 : 1 })}>
-                    <Sparkles size={15} color={colors.text.primary} strokeWidth={2} />
+                  <Pressable onPress={openCaseAi} accessibilityRole="button" accessibilityLabel="Fyll AI Case" style={({ pressed }) => ({ width: 40, height: 40, borderRadius: 999, backgroundColor: 'transparent', borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.22)' : 'rgba(17,17,17,0.14)', alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.72 : 1 })}>
+                    <Sparkles size={15} color={isDark ? '#F2F2EE' : '#686862'} strokeWidth={2.2} />
                   </Pressable>
                   <Pressable
                     onPress={handleCreateCase}
-                    className="flex-row items-center px-4 rounded-full active:opacity-80"
-                    style={{ backgroundColor: FYLL_LIME, height: 40 }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Create new case"
+                    className="flex-row items-center justify-center rounded-full active:opacity-80"
+                    style={{ backgroundColor: FYLL_LIME, height: 40, paddingHorizontal: 14 }}
                   >
                     <Plus size={16} color={FYLL_LIME_INK} strokeWidth={2.5} />
-                    <Text style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '600', marginLeft: 6 }}>
-                      Open Case
-                    </Text>
+                    <Text style={{ color: FYLL_LIME_INK, fontSize: 13, fontWeight: '600', marginLeft: 6 }}>New case</Text>
                   </Pressable>
                 </View>
               </View>

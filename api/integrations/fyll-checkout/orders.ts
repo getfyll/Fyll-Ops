@@ -44,6 +44,16 @@ type CheckoutItem = {
   lineTotal?: number;
   line_total?: number;
   total?: number;
+  meta_data?: CheckoutItemMetadata[];
+  metadata?: CheckoutItemMetadata[];
+};
+
+type CheckoutItemMetadata = {
+  key?: string;
+  name?: string;
+  display_key?: string;
+  value?: unknown;
+  display_value?: unknown;
 };
 
 type CatalogProductRow = {
@@ -369,6 +379,33 @@ const getCheckoutItemLineTotal = (item: CheckoutItem) => {
   return getCheckoutItemUnitPrice(item) * getCheckoutItemQuantity(item);
 };
 
+const parseWooMoney = (value: unknown) => {
+  const text = normalizeText(value);
+  const match = text.match(/(?:₦|NGN)\s*([\d,]+(?:\.\d+)?)/i);
+  if (!match?.[1]) return 0;
+  return normalizeAmount(match[1].replace(/,/g, ''));
+};
+
+const getCheckoutItemAddOns = (item: CheckoutItem) => (
+  [...(item.meta_data ?? []), ...(item.metadata ?? [])]
+    .map((entry, index) => {
+      const key = firstText(entry.display_key, entry.key, entry.name);
+      const rawValue = firstText(entry.display_value, entry.value);
+      const price = parseWooMoney(rawValue);
+      if (!price || !/add[\s-]?on|lens/i.test(key)) return null;
+      const option = rawValue
+        .replace(/\s*\((?:₦|NGN)\s*[\d,]+(?:\.\d+)?\)\s*/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      return {
+        id: `woo-addon-${index + 1}`,
+        name: [key, option].filter(Boolean).join(' — '),
+        price,
+      };
+    })
+    .filter((addOn): addOn is { id: string; name: string; price: number } => Boolean(addOn))
+);
+
 const normalizeStatus = (value: string) => (
   value
     .trim()
@@ -524,8 +561,13 @@ export const buildRows = (payload: CheckoutPayload, catalogProducts: CatalogProd
 
   const checkoutItems = (payload.items ?? []).map((item, index) => {
     const quantity = getCheckoutItemQuantity(item);
-    const unitPrice = getCheckoutItemUnitPrice(item);
     const lineTotal = getCheckoutItemLineTotal(item);
+    const addOns = getCheckoutItemAddOns(item);
+    const addOnsTotal = addOns.reduce((sum, addOn) => sum + (addOn.price * quantity), 0);
+    const productLineTotal = Math.max(0, lineTotal - addOnsTotal);
+    const unitPrice = productLineTotal > 0
+      ? productLineTotal / quantity
+      : getCheckoutItemUnitPrice(item);
     const productName = getCheckoutItemName(item, index);
     return {
       name: productName,
@@ -548,10 +590,30 @@ export const buildRows = (payload: CheckoutPayload, catalogProducts: CatalogProd
       wooCommerceVariationId: firstText(item.wooCommerceVariationId, item.woo_variation_id),
       quantity,
       unitPrice,
-      lineTotal,
+      lineTotal: productLineTotal,
+      addOns,
     };
   });
-  const itemsSubtotal = checkoutItems.reduce((sum, item) => sum + item.lineTotal, 0);
+  const checkoutAddOns = checkoutItems.flatMap((item, itemIndex) => item.addOns.map((addOn) => ({
+    name: addOn.name,
+    productName: addOn.name,
+    variantName: '',
+    sku: '',
+    imageUrl: '',
+    productId: '',
+    variationId: '',
+    wooCommerceProductId: '',
+    wooCommerceVariationId: '',
+    type: 'addon',
+    category: 'service',
+    quantity: item.quantity,
+    unitPrice: addOn.price,
+    lineTotal: addOn.price * item.quantity,
+    linkedItemIndex: itemIndex,
+  })));
+  const itemsSubtotal = checkoutItems.reduce((sum, item) => (
+    sum + item.lineTotal + item.addOns.reduce((addOnSum, addOn) => addOnSum + (addOn.price * item.quantity), 0)
+  ), 0);
   const explicitExpectedTotal = normalizeAmount(
     payload.expectedAmount
       ?? payload.amountDue
@@ -591,7 +653,12 @@ export const buildRows = (payload: CheckoutPayload, catalogProducts: CatalogProd
     deliveryState: normalizeText(payload.shipping?.name),
     deliveryAddress: normalizeText(payload.shipping?.address),
     items: orderItems,
-    services: [],
+    services: checkoutAddOns.map((addOn, index) => ({
+      serviceId: `woo-addon-${reference}-${index + 1}`,
+      name: addOn.name,
+      price: addOn.lineTotal,
+      linkedItemId: orderItems[addOn.linkedItemIndex]?.productId,
+    })),
     additionalCharges: 0,
     additionalChargesNote: '',
     deliveryFee: shippingPrice,
@@ -662,7 +729,10 @@ export const buildRows = (payload: CheckoutPayload, catalogProducts: CatalogProd
     idempotencyKey: `fyll_checkout:${reference}`,
     merchantId,
     storeUrl,
-    items: checkoutItems,
+    items: [
+      ...checkoutItems.map(({ addOns: _addOns, ...item }) => item),
+      ...checkoutAddOns.map(({ linkedItemIndex: _linkedItemIndex, ...item }) => item),
+    ],
     bankTransfer: {
       ...recordValue(payload.bankTransfer),
       ...proofAliases(proofUrl),

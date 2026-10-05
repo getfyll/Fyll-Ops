@@ -79,8 +79,6 @@ export const isAuditableProduct = (product: Product): boolean => {
   }
   if (product.catalogSource === 'woocommerce-plugin') return false;
   if (product.createdBy === 'WooCommerce Sync') return false;
-  if (product.wooCommerceProductId || product.sourceProductId || product.websiteProductId) return false;
-  if (product.variants.some((variant) => variant.wooCommerceProductId || variant.sourceProductId)) return false;
   const looksLikeService = Boolean(
     product.serviceTags?.length ||
     product.serviceVariables?.length ||
@@ -137,7 +135,7 @@ export const reconcileAuditItemsWithInventory = (
   if (scope === 'warehouse') {
     const warehouseItemById = new Map(warehouseItems.map((item) => [item.id, item]));
 
-    return items
+    const reconciledItems = items
       .map((item) => {
         const warehouseItem = warehouseItemById.get(item.variantId) ?? warehouseItemById.get(item.productId);
         if (!warehouseItem) return null;
@@ -160,11 +158,17 @@ export const reconcileAuditItemsWithInventory = (
         return nextItem;
       })
       .filter((item): item is AuditItem => item !== null);
+
+    const existingIds = new Set(reconciledItems.map((item) => item.variantId));
+    return [
+      ...reconciledItems,
+      ...buildWarehouseAuditItems(warehouseItems).filter((item) => !existingIds.has(item.variantId)),
+    ];
   }
 
   const productById = new Map(products.filter(isAuditableProduct).map((product) => [product.id, product]));
 
-  return items
+  const reconciledItems = items
     .map((item) => {
       const product = productById.get(item.productId);
       if (!product) return null;
@@ -187,6 +191,12 @@ export const reconcileAuditItemsWithInventory = (
       return nextItem;
     })
     .filter((item): item is AuditItem => item !== null);
+
+  const existingKeys = new Set(reconciledItems.map((item) => `${item.productId}:${item.variantId}`));
+  return [
+    ...reconciledItems,
+    ...buildAuditItems(products, configuredCategories).filter((item) => !existingKeys.has(`${item.productId}:${item.variantId}`)),
+  ];
 };
 
 export const buildCategorySections = (items: AuditItem[]): CategoryAuditSection[] => {
