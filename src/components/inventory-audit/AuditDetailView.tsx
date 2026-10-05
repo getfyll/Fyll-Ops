@@ -1,7 +1,17 @@
 import React from 'react';
-import { Platform, View, Text, ScrollView, Pressable, TextInput, useWindowDimensions } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, Check, Pencil, RotateCcw, User, X } from 'lucide-react-native';
+import { Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Check, Pencil, RotateCcw, User, X } from 'lucide-react-native';
+import {
+  BackButton,
+  FYLL_LIME,
+  FYLL_LIME_HOVER,
+  FYLL_LIME_INK,
+  MoneyText,
+  isHovered,
+  usePaymentsPalette,
+} from '@/components/payments/payments-ui';
+import { useBreakpoint } from '@/lib/useBreakpoint';
+import { useTabBarHeight } from '@/lib/useTabBarHeight';
 import type { AuditLog, AuditLogActivity, AuditLogActivityChange, AuditLogItem } from '@/lib/state/fyll-store';
 import type { ThemeColors } from '@/lib/theme';
 import { getAccuracyPercentage, getVarianceBreakdown } from './utils';
@@ -26,45 +36,71 @@ const parseAuditEditCount = (value: string): number | null => {
   return Math.floor(parsed);
 };
 
-export function AuditDetailView({ isDark, colors, log, excludedProductIds, excludedProductNames, performedBy, onBack, onSave, onRestart }: AuditDetailViewProps) {
+export function AuditDetailView({
+  log,
+  excludedProductIds,
+  excludedProductNames,
+  performedBy,
+  onBack,
+  onSave,
+  onRestart,
+}: AuditDetailViewProps) {
   const [isEditing, setIsEditing] = React.useState(false);
   const [draftCounts, setDraftCounts] = React.useState<Record<string, string>>({});
   const [draftExpectedCounts, setDraftExpectedCounts] = React.useState<Record<string, string>>({});
-  const { width } = useWindowDimensions();
-  const isLargeLayout = Platform.OS === 'web' || width >= 768;
-  const isDesktopWeb = Platform.OS === 'web' && width >= 1024;
-  const contentMaxWidth = isDesktopWeb ? 1400 : isLargeLayout ? 920 : undefined;
-  const contentAlign = isDesktopWeb ? 'flex-start' : 'center';
-  const horizontalPadding = isDesktopWeb ? 20 : isLargeLayout ? 16 : 20;
-
-  const pageBg = isDark ? '#0C0C0D' : '#FFFFFF';
-  const surfaceBg = isDark ? '#111113' : '#FFFFFF';
-  const cardBg = isDark ? '#1A1A1E' : colors.bg.card;
-  const cardBorder = isDark ? '#3A3A40' : colors.border.light;
-  const insetBg = isDark ? '#151518' : colors.bg.secondary;
+  const palette = usePaymentsPalette();
+  const tabBarHeight = useTabBarHeight();
+  const { isMobile, width } = useBreakpoint();
+  const isWide = Platform.OS === 'web' && width >= 1100;
+  const fs = (size: number) => (isMobile && size < 16 ? (size >= 13 ? 12 : 10) : size);
 
   const isWarehouseAudit = log?.scope === 'warehouse';
   const items = (log?.items ?? []).filter((item) => {
     if (isWarehouseAudit) return true;
     return !excludedProductIds?.has(item.productId) && !excludedProductNames?.has(item.productName.trim().toLowerCase());
   });
-  const auditTitle = isWarehouseAudit ? 'Warehouse Audit' : 'Audit Details';
   const itemLabel = isWarehouseAudit ? 'items' : 'SKUs';
   const accuracy = log ? getAccuracyPercentage(items) : 0;
   const breakdown = getVarianceBreakdown(items);
+  const unitsOff = items.reduce((sum, item) => sum + Math.abs(item.discrepancy), 0);
   const sortedItems = [...items].sort((a, b) => Math.abs(b.discrepancy) - Math.abs(a.discrepancy));
+  const accuracyTone = accuracy >= 95 ? palette.tones.verified : accuracy < 70 ? palette.tones.rejected : palette.tones.awaiting;
 
   const dateLabel = log
     ? new Date(log.completedAt).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+    : '';
+  const shortDateLabel = log
+    ? new Date(log.completedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
     : '';
   const timeLabel = log
     ? new Date(log.completedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
     : '';
   const activityLog = log?.activityLog ?? [];
   const hasInvalidDraft = isEditing && sortedItems.some((item) => (
-    parseAuditEditCount(draftCounts[item.variantId] ?? String(item.actualStock)) === null ||
-    parseAuditEditCount(draftExpectedCounts[item.variantId] ?? String(item.expectedStock)) === null
+    parseAuditEditCount(draftCounts[item.variantId] ?? String(item.actualStock)) === null
+    || parseAuditEditCount(draftExpectedCounts[item.variantId] ?? String(item.expectedStock)) === null
   ));
+
+  const card = {
+    borderRadius: 18,
+    backgroundColor: palette.card,
+    borderWidth: 1,
+    borderColor: palette.border,
+  } as const;
+  const sectionLabel = {
+    color: palette.muted,
+    fontSize: fs(12),
+    fontWeight: '600' as const,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase' as const,
+  };
+  const tableLabel = {
+    color: palette.faint,
+    fontSize: fs(11.5),
+    fontWeight: '600' as const,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase' as const,
+  };
 
   const startEditing = () => {
     if (!log) return;
@@ -85,20 +121,13 @@ export function AuditDetailView({ isDark, colors, log, excludedProductIds, exclu
     const nextItems: AuditLogItem[] = log.items.map((item) => {
       const nextActualStock = parseAuditEditCount(draftCounts[item.variantId] ?? String(item.actualStock)) ?? item.actualStock;
       const nextExpectedStock = parseAuditEditCount(draftExpectedCounts[item.variantId] ?? String(item.expectedStock)) ?? item.expectedStock;
-      return {
-        ...item,
-        expectedStock: nextExpectedStock,
-        actualStock: nextActualStock,
-        discrepancy: nextActualStock - nextExpectedStock,
-      };
+      return { ...item, expectedStock: nextExpectedStock, actualStock: nextActualStock, discrepancy: nextActualStock - nextExpectedStock };
     });
 
     const changes = nextItems
       .map((nextItem): AuditLogActivityChange | null => {
         const previousItem = log.items.find((item) => item.variantId === nextItem.variantId);
-        if (!previousItem || (previousItem.actualStock === nextItem.actualStock && previousItem.expectedStock === nextItem.expectedStock)) {
-          return null;
-        }
+        if (!previousItem || (previousItem.actualStock === nextItem.actualStock && previousItem.expectedStock === nextItem.expectedStock)) return null;
         return {
           variantId: nextItem.variantId,
           productName: nextItem.productName,
@@ -136,285 +165,313 @@ export function AuditDetailView({ isDark, colors, log, excludedProductIds, exclu
     cancelEditing();
   };
 
-  return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: pageBg }} edges={['top']}>
-      <View style={{ borderBottomWidth: 1, borderBottomColor: cardBorder, backgroundColor: pageBg }}>
-        <View
-          style={{
-            width: '100%',
-            maxWidth: contentMaxWidth,
-            alignSelf: contentAlign,
-            paddingHorizontal: horizontalPadding,
-            paddingTop: 16,
-            paddingBottom: 12,
-          }}
-        >
-          <View className="flex-row items-center justify-between">
-            <View className="flex-row items-center">
-            <Pressable
-              onPress={onBack}
-              className="w-10 h-10 rounded-full items-center justify-center mr-3"
-              style={{ backgroundColor: insetBg, borderWidth: 1, borderColor: cardBorder }}
-            >
-              <ArrowLeft size={20} color={colors.text.primary} strokeWidth={2} />
-            </Pressable>
-            <Text style={{ color: colors.text.primary }} className="text-xl font-bold">{auditTitle}</Text>
-            </View>
-            {log ? (
-              isEditing ? (
-                <View className="flex-row items-center" style={{ gap: 8 }}>
-                  <Pressable
-                    onPress={cancelEditing}
-                    className="w-10 h-10 rounded-full items-center justify-center"
-                    style={{ backgroundColor: insetBg, borderWidth: 1, borderColor: cardBorder }}
-                  >
-                    <X size={17} color={colors.text.secondary} strokeWidth={2.25} />
-                  </Pressable>
-                  <Pressable
-                    onPress={saveEditing}
-                    disabled={hasInvalidDraft}
-                    className="h-10 rounded-full items-center justify-center flex-row px-3.5"
-                    style={{ backgroundColor: hasInvalidDraft ? insetBg : colors.text.primary, opacity: hasInvalidDraft ? 0.55 : 1 }}
-                  >
-                    <Check size={15} color={hasInvalidDraft ? colors.text.muted : pageBg} strokeWidth={2.5} />
-                    <Text className="ml-1.5 text-xs font-bold" style={{ color: hasInvalidDraft ? colors.text.muted : pageBg }}>Save</Text>
-                  </Pressable>
-                </View>
-              ) : (
-                <View className="flex-row items-center" style={{ gap: 8 }}>
-                  <Pressable
-                    onPress={() => onRestart?.(isWarehouseAudit ? 'warehouse' : 'products')}
-                    className="h-10 rounded-full items-center justify-center flex-row px-3.5"
-                    style={{ backgroundColor: insetBg, borderWidth: 1, borderColor: cardBorder }}
-                  >
-                    <RotateCcw size={14} color={colors.text.secondary} strokeWidth={2.25} />
-                    <Text className="ml-1.5 text-xs font-semibold" style={{ color: colors.text.secondary }}>Recount</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={startEditing}
-                    className="h-10 rounded-full items-center justify-center flex-row px-3.5"
-                    style={{ backgroundColor: insetBg, borderWidth: 1, borderColor: cardBorder }}
-                  >
-                    <Pencil size={14} color={colors.text.secondary} strokeWidth={2.25} />
-                    <Text className="ml-1.5 text-xs font-semibold" style={{ color: colors.text.secondary }}>Edit</Text>
-                  </Pressable>
-                </View>
-              )
-            ) : null}
+  const ghostButton = (label: string, icon: React.ReactNode, onPress: () => void) => (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      style={(state) => ({
+        height: 40,
+        paddingHorizontal: isMobile ? 13 : 16,
+        borderRadius: 999,
+        borderWidth: 1,
+        borderColor: palette.outline,
+        backgroundColor: state.pressed || isHovered(state) ? palette.softFill : 'transparent',
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 7,
+      })}
+    >
+      {icon}
+      <Text style={{ color: palette.text, fontSize: fs(14), fontWeight: '600' }}>{label}</Text>
+    </Pressable>
+  );
+
+  const editActions = (fullWidth: boolean) => (
+    <>
+      <View style={fullWidth ? { flex: 1 } : undefined}>
+        {ghostButton('Cancel', <X size={15} color={palette.text} strokeWidth={2.2} />, cancelEditing)}
+      </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Save audit changes"
+        onPress={saveEditing}
+        disabled={hasInvalidDraft}
+        style={(state) => ({
+          height: 40,
+          paddingHorizontal: 16,
+          borderRadius: 999,
+          backgroundColor: hasInvalidDraft ? palette.softFill : state.pressed || isHovered(state) ? FYLL_LIME_HOVER : FYLL_LIME,
+          flex: fullWidth ? 1 : undefined,
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 7,
+          opacity: hasInvalidDraft ? 0.6 : 1,
+        })}
+      >
+        <Check size={15} color={hasInvalidDraft ? palette.faint : FYLL_LIME_INK} strokeWidth={2.4} />
+        <Text style={{ color: hasInvalidDraft ? palette.faint : FYLL_LIME_INK, fontSize: fs(14), fontWeight: '600' }}>Save changes</Text>
+      </Pressable>
+    </>
+  );
+
+  const summaryStats = [
+    { label: 'Accuracy', value: `${accuracy}%`, sub: accuracy >= 95 ? 'Healthy result' : 'Needs review', dot: accuracyTone.dot },
+    { label: 'Counted', value: String(items.length), sub: itemLabel, dot: palette.tones.review.dot },
+    { label: 'Units off', value: String(unitsOff), sub: unitsOff === 0 ? 'No variance' : 'Across this count', dot: unitsOff === 0 ? palette.tones.verified.dot : palette.tones.rejected.dot },
+    { label: 'Exact matches', value: String(breakdown.matched), sub: `of ${items.length} ${itemLabel}`, dot: palette.tones.verified.dot },
+  ];
+
+  const CountDetailsCard = () => (
+    <View style={{ ...card, padding: isMobile ? 16 : 20 }}>
+      <Text style={sectionLabel}>Count details</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 16 }}>
+        <View style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.avatarBg }}>
+          <User size={17} color={palette.avatarText} strokeWidth={2} />
+        </View>
+        <View style={{ flex: 1, marginLeft: 11 }}>
+          <Text style={{ color: palette.text, fontSize: fs(14), fontWeight: '600' }}>{log?.performedBy ?? 'Team'}</Text>
+          <Text style={{ color: palette.muted, fontSize: fs(12), marginTop: 2 }}>{dateLabel}</Text>
+        </View>
+        <Text style={{ color: palette.faint, fontSize: fs(12), fontVariant: ['tabular-nums'] }}>{timeLabel}</Text>
+      </View>
+    </View>
+  );
+
+  const BreakdownCard = () => (
+    <View style={card}>
+      <View style={{ paddingHorizontal: isMobile ? 16 : 20, paddingTop: isMobile ? 16 : 20, paddingBottom: 10 }}>
+        <Text style={sectionLabel}>Result breakdown</Text>
+      </View>
+      {[
+        { label: 'Short', description: 'Fewer on shelf', count: breakdown.short, dot: palette.tones.rejected.dot },
+        { label: 'Over', description: 'More on shelf', count: breakdown.over, dot: palette.tones.awaiting.dot },
+        { label: 'Matched', description: 'Exact stock count', count: breakdown.matched, dot: palette.tones.verified.dot },
+      ].map((row, index) => (
+        <View key={row.label} style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: isMobile ? 16 : 20, paddingVertical: 13, borderTopWidth: index === 0 ? 0 : 1, borderTopColor: palette.hairline }}>
+          <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: row.dot, marginRight: 10 }} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: palette.textSoft, fontSize: fs(13), fontWeight: '600' }}>{row.label}</Text>
+            <Text style={{ color: palette.faint, fontSize: fs(11.5), marginTop: 1 }}>{row.description}</Text>
+          </View>
+          <Text style={{ color: palette.text, fontSize: fs(14), fontWeight: '600', fontVariant: ['tabular-nums'] }}>{row.count}</Text>
+        </View>
+      ))}
+    </View>
+  );
+
+  const ActivityCard = () => (
+    <View style={card}>
+      <View style={{ paddingHorizontal: isMobile ? 16 : 20, paddingTop: isMobile ? 16 : 20, paddingBottom: 12 }}>
+        <Text style={sectionLabel}>Activity</Text>
+        <Text style={{ color: palette.faint, fontSize: fs(12), marginTop: 4 }}>Changes made after the count was completed</Text>
+      </View>
+      {activityLog.length === 0 ? (
+        <View style={{ paddingHorizontal: isMobile ? 16 : 20, paddingVertical: 18, borderTopWidth: 1, borderTopColor: palette.hairline }}>
+          <Text style={{ color: palette.muted, fontSize: fs(13) }}>No edits recorded.</Text>
+        </View>
+      ) : [...activityLog].reverse().map((activity) => (
+        <View key={activity.id} style={{ paddingHorizontal: isMobile ? 16 : 20, paddingVertical: 15, borderTopWidth: 1, borderTopColor: palette.hairline }}>
+          <Text style={{ color: palette.text, fontSize: fs(13), fontWeight: '600' }}>{activity.action}</Text>
+          <Text style={{ color: palette.faint, fontSize: fs(11.5), marginTop: 3 }}>
+            {activity.performedBy ?? 'Team'} · {new Date(activity.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+          </Text>
+          <View style={{ marginTop: 8, gap: 5 }}>
+            {activity.changes.slice(0, 4).map((change) => (
+              <Text key={`${activity.id}-${change.variantId}`} style={{ color: palette.textSoft, fontSize: fs(11.5), lineHeight: fs(17) }} numberOfLines={2}>
+                {change.productName} · {change.variantName}: counted {change.previousActualStock} to {change.nextActualStock}
+                {change.previousExpectedStock !== undefined && change.nextExpectedStock !== undefined && change.previousExpectedStock !== change.nextExpectedStock
+                  ? `, expected ${change.previousExpectedStock} to ${change.nextExpectedStock}` : ''}
+              </Text>
+            ))}
+            {activity.changes.length > 4 ? <Text style={{ color: palette.faint, fontSize: fs(11.5) }}>+{activity.changes.length - 4} more changes</Text> : null}
           </View>
         </View>
+      ))}
+    </View>
+  );
+
+  const VarianceCard = () => (
+    <View style={card}>
+      <View style={{ flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', paddingHorizontal: isMobile ? 16 : 20, paddingTop: isMobile ? 16 : 20, paddingBottom: 14, gap: 4 }}>
+        <View>
+          <Text style={{ color: palette.text, fontSize: 16, fontWeight: '600' }}>Variance report</Text>
+          <Text style={{ color: palette.faint, fontSize: fs(12), marginTop: 4 }}>Largest differences are shown first</Text>
+        </View>
+        <Text style={{ color: palette.muted, fontSize: fs(12), alignSelf: isMobile ? 'flex-start' : 'center' }}>{items.length} {itemLabel}</Text>
       </View>
 
+      {!isMobile && sortedItems.length > 0 ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 38, paddingHorizontal: 20, backgroundColor: palette.inset, borderTopWidth: 1, borderBottomWidth: 1, borderColor: palette.hairline }}>
+          <Text style={[tableLabel, { flex: 1 }]}>Product</Text>
+          <Text style={[tableLabel, { width: 100, textAlign: 'center' }]}>Counted</Text>
+          <Text style={[tableLabel, { width: 100, textAlign: 'center' }]}>Expected</Text>
+          <Text style={[tableLabel, { width: 92, textAlign: 'right' }]}>Variance</Text>
+        </View>
+      ) : null}
+
+      {sortedItems.length === 0 ? (
+        <View style={{ padding: isMobile ? 16 : 20, borderTopWidth: 1, borderTopColor: palette.hairline }}>
+          <Text style={{ color: palette.muted, fontSize: fs(13) }}>No item-level details recorded.</Text>
+        </View>
+      ) : sortedItems.map((item, index) => {
+        const draftValue = draftCounts[item.variantId] ?? String(item.actualStock);
+        const draftExpectedValue = draftExpectedCounts[item.variantId] ?? String(item.expectedStock);
+        const draftActual = parseAuditEditCount(draftValue);
+        const draftExpected = parseAuditEditCount(draftExpectedValue);
+        const displayActual = isEditing && draftActual !== null ? draftActual : item.actualStock;
+        const displayExpected = isEditing && draftExpected !== null ? draftExpected : item.expectedStock;
+        const displayDiscrepancy = displayActual - displayExpected;
+        const varianceTone = displayDiscrepancy === 0 ? palette.tones.verified : displayDiscrepancy > 0 ? palette.tones.awaiting : palette.tones.rejected;
+        const countInput = (value: string, parsedValue: number | null, update: React.Dispatch<React.SetStateAction<Record<string, string>>>) => (
+          <TextInput
+            value={value}
+            onChangeText={(nextValue) => update((current) => ({ ...current, [item.variantId]: nextValue.replace(/[^\d]/g, '') }))}
+            keyboardType="number-pad"
+            inputMode="numeric"
+            selectTextOnFocus
+            style={{ width: isMobile ? 62 : 72, height: 38, borderRadius: 10, borderWidth: 1, borderColor: parsedValue === null ? palette.danger : palette.outline, backgroundColor: palette.inset, color: palette.text, textAlign: 'center', fontSize: fs(14), fontWeight: '600', fontVariant: ['tabular-nums'] }}
+          />
+        );
+
+        return (
+          <Pressable key={item.variantId} style={(state) => ({ paddingHorizontal: isMobile ? 16 : 20, paddingVertical: isMobile ? 14 : 13, borderTopWidth: isMobile || index > 0 ? 1 : 0, borderTopColor: palette.hairline, backgroundColor: isHovered(state) ? palette.cardHover : 'transparent' })}>
+            {isMobile ? (
+              <>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: palette.text, fontSize: fs(13), fontWeight: '600' }} numberOfLines={1}>{item.productName}</Text>
+                    <Text style={{ color: palette.faint, fontSize: fs(11.5), marginTop: 3 }} numberOfLines={1}>{item.variantName} · SKU {item.sku}</Text>
+                  </View>
+                  <View style={{ minWidth: 48, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999, backgroundColor: varianceTone.bg }}>
+                    <Text style={{ color: varianceTone.ink, fontSize: fs(11.5), fontWeight: '600', textAlign: 'center', fontVariant: ['tabular-nums'] }}>
+                      {displayDiscrepancy === 0 ? 'Match' : `${displayDiscrepancy > 0 ? '+' : ''}${displayDiscrepancy}`}
+                    </Text>
+                  </View>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'flex-end', marginTop: 12, gap: 22 }}>
+                  <View>
+                    <Text style={tableLabel}>Counted</Text>
+                    <View style={{ marginTop: 5 }}>{isEditing ? countInput(draftValue, draftActual, setDraftCounts) : <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{item.actualStock}</Text>}</View>
+                  </View>
+                  <View>
+                    <Text style={tableLabel}>Expected</Text>
+                    <View style={{ marginTop: 5 }}>{isEditing ? countInput(draftExpectedValue, draftExpected, setDraftExpectedCounts) : <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{item.expectedStock}</Text>}</View>
+                  </View>
+                </View>
+              </>
+            ) : (
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View style={{ flex: 1, paddingRight: 18 }}>
+                  <Text style={{ color: palette.text, fontSize: 13, fontWeight: '600' }} numberOfLines={1}>{item.productName}</Text>
+                  <Text style={{ color: palette.faint, fontSize: 11.5, marginTop: 3 }} numberOfLines={1}>{item.variantName} · SKU {item.sku}</Text>
+                </View>
+                <View style={{ width: 100, alignItems: 'center' }}>{isEditing ? countInput(draftValue, draftActual, setDraftCounts) : <Text style={{ color: palette.text, fontSize: 13.5, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{item.actualStock}</Text>}</View>
+                <View style={{ width: 100, alignItems: 'center' }}>{isEditing ? countInput(draftExpectedValue, draftExpected, setDraftExpectedCounts) : <Text style={{ color: palette.text, fontSize: 13.5, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{item.expectedStock}</Text>}</View>
+                <View style={{ width: 92, alignItems: 'flex-end' }}>
+                  <View style={{ minWidth: 52, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999, backgroundColor: varianceTone.bg }}>
+                    <Text style={{ color: varianceTone.ink, fontSize: 11.5, fontWeight: '600', textAlign: 'center', fontVariant: ['tabular-nums'] }}>{displayDiscrepancy === 0 ? 'Match' : `${displayDiscrepancy > 0 ? '+' : ''}${displayDiscrepancy}`}</Text>
+                  </View>
+                </View>
+              </View>
+            )}
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+
+  return (
+    <View style={{ flex: 1, backgroundColor: palette.page }}>
       <ScrollView
-        style={{ flex: 1, backgroundColor: surfaceBg }}
-        contentContainerStyle={{
-          width: '100%',
-          maxWidth: contentMaxWidth,
-          alignSelf: contentAlign,
-          paddingHorizontal: horizontalPadding,
-          paddingTop: 16,
-          paddingBottom: 36,
-        }}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ width: '100%', maxWidth: isWide ? 1456 : 820, alignSelf: isWide ? 'flex-start' : 'center', paddingHorizontal: isMobile ? 16 : 28, paddingTop: isMobile ? 10 : 36, paddingBottom: isMobile ? (isEditing ? 104 : 32) + tabBarHeight : 60, gap: 18 }}
         showsVerticalScrollIndicator={false}
       >
+        <View style={{ flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'stretch' : 'center', justifyContent: 'space-between', gap: 16 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 }}>
+            <BackButton onPress={onBack} palette={palette} label="Back to audit" />
+            <View style={{ marginLeft: 12, flex: 1 }}>
+              <Text style={{ color: palette.text, fontSize: isMobile ? 26 : 30, lineHeight: isMobile ? 31 : 36, fontWeight: '700', letterSpacing: -0.6 }}>{isWarehouseAudit ? 'Warehouse count' : 'Count details'}</Text>
+              <Text style={{ color: palette.muted, fontSize: fs(13), marginTop: 3 }} numberOfLines={1}>
+                {log ? `${shortDateLabel} · ${log.performedBy ?? 'Team'} · ${items.length} ${itemLabel}` : 'Review a completed stock count'}
+              </Text>
+            </View>
+          </View>
+
+          {log && (!isEditing || !isMobile) ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: isMobile ? 'flex-end' : 'flex-start', flexWrap: 'wrap', gap: 8 }}>
+              {isEditing ? (
+                editActions(false)
+              ) : (
+                <>
+                  {onRestart ? ghostButton('Recount', <RotateCcw size={15} color={palette.text} strokeWidth={2.2} />, () => onRestart(isWarehouseAudit ? 'warehouse' : 'products')) : null}
+                  {ghostButton('Edit count', <Pencil size={15} color={palette.text} strokeWidth={2.2} />, startEditing)}
+                </>
+              )}
+            </View>
+          ) : null}
+        </View>
+
         {!log ? (
-          <View className="rounded-3xl p-6 items-center" style={{ backgroundColor: cardBg, borderWidth: 1, borderColor: cardBorder }}>
-            <Text style={{ color: colors.text.primary }} className="font-bold">Audit not found</Text>
+          <View style={{ ...card, padding: 28, alignItems: 'center' }}>
+            <Text style={{ color: palette.text, fontSize: 16, fontWeight: '600' }}>Audit not found</Text>
+            <Text style={{ color: palette.muted, fontSize: fs(13), marginTop: 6, textAlign: 'center' }}>This count may have been removed or is no longer available.</Text>
           </View>
         ) : (
           <>
-            <View
-              className="rounded-3xl p-5 mb-4"
-              style={{ backgroundColor: cardBg, borderWidth: 1, borderColor: cardBorder }}
-            >
-              <View className="flex-row items-center justify-between">
-                <Text style={{ color: colors.text.primary }} className="text-4xl font-bold">{accuracy}%</Text>
-                {log.discrepancies > 0 ? (
-                  <View className="rounded-full px-3 py-1.5" style={{ backgroundColor: 'rgba(239,68,68,0.12)' }}>
-                    <Text className="text-xs font-bold" style={{ color: '#DC2626' }}>{log.discrepancies} units off</Text>
-                  </View>
-                ) : (
-                  <View className="rounded-full px-3 py-1.5" style={{ backgroundColor: 'rgba(34,197,94,0.12)' }}>
-                    <Text className="text-xs font-bold" style={{ color: '#15803D' }}>No variance</Text>
-                  </View>
-                )}
-              </View>
-              <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1">accuracy · {items.length} {itemLabel}</Text>
-
-              <View
-                className="flex-row items-center rounded-2xl px-4 py-3 mt-4"
-                style={{ backgroundColor: insetBg, borderWidth: 1, borderColor: cardBorder }}
-              >
-                <View className="w-9 h-9 rounded-full items-center justify-center mr-3" style={{ backgroundColor: cardBg }}>
-                  <User size={16} color={colors.text.secondary} strokeWidth={2} />
-                </View>
-                <View className="flex-1">
-                  <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">
-                    Counted by {log.performedBy ?? 'Team'}
-                  </Text>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mt-0.5">{dateLabel} · {timeLabel}</Text>
-                </View>
-              </View>
-
-              <View className="mt-4 pt-4" style={{ borderTopWidth: 1, borderTopColor: cardBorder }}>
-                {[
-                  { label: 'Short — fewer on shelf', count: breakdown.short, dot: '#EF4444' },
-                  { label: 'Over — more on shelf', count: breakdown.over, dot: '#F59E0B' },
-                  { label: 'Matched exactly', count: breakdown.matched, dot: '#22C55E' },
-                ].map((row, index) => (
-                  <View
-                    key={row.label}
-                    className="flex-row items-center justify-between py-2.5"
-                    style={index > 0 ? { borderTopWidth: 1, borderTopColor: cardBorder } : undefined}
-                  >
-                    <View className="flex-row items-center">
-                      <View className="w-2 h-2 rounded-full mr-2.5" style={{ backgroundColor: row.dot }} />
-                      <Text style={{ color: colors.text.secondary }} className="text-sm">{row.label}</Text>
+            <View style={{ ...card, flexDirection: 'row', flexWrap: 'wrap', overflow: 'hidden' }}>
+              {summaryStats.map((stat, index) => {
+                const mobileColumn = index % 2;
+                const mobileRow = Math.floor(index / 2);
+                return (
+                  <View key={stat.label} style={{ width: isMobile ? '50%' : '25%', minHeight: isMobile ? 116 : 126, paddingHorizontal: isMobile ? 15 : 20, paddingVertical: isMobile ? 16 : 20, borderLeftWidth: isMobile ? (mobileColumn === 1 ? 1 : 0) : (index > 0 ? 1 : 0), borderTopWidth: isMobile && mobileRow > 0 ? 1 : 0, borderColor: palette.hairline }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: stat.dot }} />
+                      <Text style={sectionLabel}>{stat.label}</Text>
                     </View>
-                    <Text style={{ color: colors.text.primary }} className="text-sm font-bold">{row.count} {itemLabel}</Text>
+                    <MoneyText style={{ color: palette.text, fontSize: isMobile ? 25 : 29, lineHeight: isMobile ? 31 : 36, marginTop: 10 }}>{stat.value}</MoneyText>
+                    <Text style={{ color: palette.faint, fontSize: fs(11.5), marginTop: 3 }}>{stat.sub}</Text>
                   </View>
-                ))}
-              </View>
+                );
+              })}
             </View>
 
-            <Text style={{ color: colors.text.primary }} className="text-base font-bold mb-3">Item variance</Text>
-
-            {sortedItems.length === 0 ? (
-              <View className="rounded-2xl p-4" style={{ backgroundColor: cardBg, borderWidth: 1, borderColor: cardBorder }}>
-                <Text style={{ color: colors.text.tertiary }} className="text-sm">No item-level details recorded.</Text>
+            {isWide ? (
+              <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 18 }}>
+                <View style={{ flex: 1, minWidth: 0 }}>{VarianceCard()}</View>
+                <View style={{ width: 360, gap: 18 }}>{CountDetailsCard()}{BreakdownCard()}{ActivityCard()}</View>
               </View>
             ) : (
-              sortedItems.map((item) => {
-                const draftValue = draftCounts[item.variantId] ?? String(item.actualStock);
-                const draftExpectedValue = draftExpectedCounts[item.variantId] ?? String(item.expectedStock);
-                const draftActual = parseAuditEditCount(draftValue);
-                const draftExpected = parseAuditEditCount(draftExpectedValue);
-                const displayActual = isEditing && draftActual !== null ? draftActual : item.actualStock;
-                const displayExpected = isEditing && draftExpected !== null ? draftExpected : item.expectedStock;
-                const displayDiscrepancy = displayActual - displayExpected;
-                return (
-                <View
-                  key={item.variantId}
-                  className="rounded-2xl px-4 py-3 mb-2.5 flex-row items-center justify-between"
-                  style={{ backgroundColor: cardBg, borderWidth: 1, borderColor: cardBorder }}
-                >
-                  <View className="flex-1 pr-3">
-                    <Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '400' }} numberOfLines={1}>
-                      {item.productName}
-                    </Text>
-                    <Text style={{ color: colors.text.muted }} className="text-xs mt-0.5" numberOfLines={1}>
-                      {item.variantName} · SKU {item.sku}
-                    </Text>
-                  </View>
-                  <View className="items-end">
-                    {isEditing ? (
-                      <View className="flex-row items-center" style={{ gap: 8 }}>
-                        <View className="items-center">
-                          <Text style={{ color: colors.text.tertiary }} className="text-[10px] font-semibold mb-1">Counted</Text>
-                          <TextInput
-                            value={draftValue}
-                            onChangeText={(value) => setDraftCounts((current) => ({ ...current, [item.variantId]: value.replace(/[^\d]/g, '') }))}
-                            keyboardType="number-pad"
-                            inputMode="numeric"
-                            selectTextOnFocus
-                            style={{
-                              width: 72,
-                              height: 38,
-                              borderRadius: 12,
-                              borderWidth: 1,
-                              borderColor: draftActual === null ? '#DC2626' : cardBorder,
-                              backgroundColor: insetBg,
-                              color: colors.text.primary,
-                              textAlign: 'center',
-                              fontSize: 14,
-                              fontWeight: '700',
-                            }}
-                          />
-                        </View>
-                        <View className="items-center">
-                          <Text style={{ color: colors.text.tertiary }} className="text-[10px] font-semibold mb-1">Expected</Text>
-                          <TextInput
-                            value={draftExpectedValue}
-                            onChangeText={(value) => setDraftExpectedCounts((current) => ({ ...current, [item.variantId]: value.replace(/[^\d]/g, '') }))}
-                            keyboardType="number-pad"
-                            inputMode="numeric"
-                            selectTextOnFocus
-                            style={{
-                              width: 72,
-                              height: 38,
-                              borderRadius: 12,
-                              borderWidth: 1,
-                              borderColor: draftExpected === null ? '#DC2626' : cardBorder,
-                              backgroundColor: insetBg,
-                              color: colors.text.primary,
-                              textAlign: 'center',
-                              fontSize: 14,
-                              fontWeight: '700',
-                            }}
-                          />
-                        </View>
-                      </View>
-                    ) : (
-                      <View className="flex-row items-center" style={{ gap: 8 }}>
-                        <View className="items-center">
-                          <Text style={{ color: colors.text.tertiary }} className="text-[10px] font-semibold mb-1">Counted</Text>
-                          <Text style={{ color: colors.text.primary }} className="text-sm font-bold">{item.actualStock}</Text>
-                        </View>
-                        <View className="items-center">
-                          <Text style={{ color: colors.text.tertiary }} className="text-[10px] font-semibold mb-1">Expected</Text>
-                          <Text style={{ color: colors.text.primary }} className="text-sm font-bold">{item.expectedStock}</Text>
-                        </View>
-                      </View>
-                    )}
-                    <Text
-                      className="text-xs font-semibold mt-1"
-                      style={{ color: displayDiscrepancy === 0 ? '#15803D' : displayDiscrepancy > 0 ? '#B45309' : '#B91C1C' }}
-                    >
-                      {displayDiscrepancy === 0 ? 'Match' : `${displayDiscrepancy >= 0 ? '+' : ''}${displayDiscrepancy}`}
-                    </Text>
-                  </View>
-                </View>
-              );
-              })
-            )}
-
-            <Text style={{ color: colors.text.primary }} className="text-base font-bold mt-5 mb-3">Activity log</Text>
-            {activityLog.length === 0 ? (
-              <View className="rounded-2xl p-4" style={{ backgroundColor: cardBg, borderWidth: 1, borderColor: cardBorder }}>
-                <Text style={{ color: colors.text.tertiary }} className="text-sm">No edits recorded.</Text>
-              </View>
-            ) : (
-              [...activityLog].reverse().map((activity) => (
-                <View
-                  key={activity.id}
-                  className="rounded-2xl px-4 py-3 mb-2.5"
-                  style={{ backgroundColor: cardBg, borderWidth: 1, borderColor: cardBorder }}
-                >
-                  <Text style={{ color: colors.text.primary }} className="text-sm font-bold">{activity.action}</Text>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mt-0.5">
-                    {activity.performedBy ?? 'Team'} · {new Date(activity.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
-                  </Text>
-                  <View className="mt-2">
-                    {activity.changes.slice(0, 4).map((change) => (
-                      <Text key={`${activity.id}-${change.variantId}`} style={{ color: colors.text.secondary }} className="text-xs mt-1" numberOfLines={1}>
-                        {change.productName} · {change.variantName}: counted {change.previousActualStock} to {change.nextActualStock}
-                        {change.previousExpectedStock !== undefined && change.nextExpectedStock !== undefined && change.previousExpectedStock !== change.nextExpectedStock
-                          ? `, expected ${change.previousExpectedStock} to ${change.nextExpectedStock}`
-                          : ''}
-                      </Text>
-                    ))}
-                    {activity.changes.length > 4 ? (
-                      <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1">
-                        +{activity.changes.length - 4} more changes
-                      </Text>
-                    ) : null}
-                  </View>
-                </View>
-              ))
+              <>{CountDetailsCard()}{BreakdownCard()}{VarianceCard()}{ActivityCard()}</>
             )}
           </>
         )}
       </ScrollView>
-    </SafeAreaView>
+      {log && isEditing && isMobile ? (
+        <View
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 20,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 8,
+            paddingHorizontal: 16,
+            paddingTop: 12,
+            paddingBottom: 12,
+            backgroundColor: palette.card,
+            borderTopWidth: 1,
+            borderTopColor: palette.outline,
+          }}
+        >
+          {editActions(true)}
+        </View>
+      ) : null}
+    </View>
   );
 }

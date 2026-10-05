@@ -14,12 +14,16 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Haptics from 'expo-haptics';
-import { AtSign, Bell, Bookmark, CheckCircle2, ChevronDown, ChevronRight, CornerUpLeft, Copy, FileText, Image as ImageIcon, Info, Package, Paperclip, Pencil, Pin, Plus, Search, Send, ThumbsUp, Trash2, X } from 'lucide-react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { BlurView } from 'expo-blur';
+import { GlassView } from 'expo-glass-effect';
+import { AtSign, Bell, Bookmark, Camera, Check, CheckCheck, CheckCircle2, ChevronDown, ChevronRight, CornerUpLeft, Copy, FileText, Image as ImageIcon, Info, Package, Paperclip, Pencil, Pin, Plus, Search, Send, ShoppingBag, ThumbsUp, Trash2, X } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
+import Svg, { Path } from 'react-native-svg';
 import { supabase } from '@/lib/supabase';
 import useAuthStore from '@/lib/state/auth-store';
-import useFyllStore from '@/lib/state/fyll-store';
+import useFyllStore, { formatCurrency, type Product } from '@/lib/state/fyll-store';
 import { useResolvedThemeMode, useThemeColors } from '@/lib/theme';
 import { compressImage } from '@/lib/image-compression';
 import { getTeamThreadDisplayNameFromEntityId, isTeamThreadEntityId } from '@/lib/team-threads';
@@ -29,6 +33,8 @@ import { ThreadInfoIdentityHeader } from '@/components/thread-info/ThreadInfoIde
 import { ThreadInfoMediaSection } from '@/components/thread-info/ThreadInfoMediaSection';
 import { ThreadInfoSettingsSection } from '@/components/thread-info/ThreadInfoSettingsSection';
 import { SearchClearButton } from '@/components/SearchClearButton';
+import { ResolvedAttachmentImage } from '@/components/ResolvedAttachmentImage';
+import { FYLL_LIME, FYLL_LIME_INK } from '@/components/payments/payments-ui';
 import {
   type CollaborationAttachment,
   collaborationData,
@@ -299,7 +305,12 @@ const buildOptimisticComment = ({
   };
 };
 
-type MessageSegment = { type: 'text' | 'mention' | 'url' | 'order'; value: string; orderId?: string };
+type MessageSegment = {
+  type: 'text' | 'mention' | 'url' | 'order' | 'product';
+  value: string;
+  orderId?: string;
+  productId?: string;
+};
 
 const parseMessageSegments = (text: string, orderMap?: Map<string, string>): MessageSegment[] => {
   const segments: MessageSegment[] = [];
@@ -307,7 +318,7 @@ const parseMessageSegments = (text: string, orderMap?: Map<string, string>): Mes
   // The @mention branch requires whitespace (or string start) right before
   // the "@" so it doesn't match mid-word, e.g. the "@gmail.com" half of an
   // email address like "name@gmail.com".
-  const tokenRegex = /(📦\s*#(\S+)[^\n]*|https?:\/\/[^\s]+|(?<!\S)@\S+)/g;
+  const tokenRegex = /(📦\s*#(\S+)[^\n]*|🛍️\s*\[product:([^\]]+)\][^\n]*|https?:\/\/[^\s]+|(?<!\S)@\S+)/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
    
@@ -320,6 +331,8 @@ const parseMessageSegments = (text: string, orderMap?: Map<string, string>): Mes
       const orderNum = match[2] ?? '';
       const orderId = orderMap?.get(orderNum) ?? undefined;
       segments.push({ type: 'order', value: token, orderId });
+    } else if (token.startsWith('🛍️')) {
+      segments.push({ type: 'product', value: token, productId: match[3] ?? undefined });
     } else {
       segments.push({ type: token.startsWith('http') ? 'url' : 'mention', value: token });
     }
@@ -333,6 +346,39 @@ const parseMessageSegments = (text: string, orderMap?: Map<string, string>): Mes
 
 const chatWallpaperLight = require('../../assets/fylls threads bg-lm.png');
 const chatWallpaperDark = require('../../assets/fylls threads dm.png');
+
+function ChatBubbleTail({
+  isOwnMessage,
+  fill,
+  stroke,
+}: {
+  isOwnMessage: boolean;
+  fill: string;
+  stroke?: string;
+}) {
+  return (
+    <Svg
+      pointerEvents="none"
+      width={13}
+      height={18}
+      viewBox="0 0 13 18"
+      style={{
+        position: 'absolute',
+        bottom: 0,
+        left: isOwnMessage ? undefined : -7,
+        right: isOwnMessage ? -7 : undefined,
+        transform: [{ scaleX: isOwnMessage ? 1 : -1 }],
+      }}
+    >
+      <Path
+        d="M0 0 C1 8 4.5 14 13 17 C8 18 3 17 0 14 Z"
+        fill={fill}
+        stroke={stroke ?? fill}
+        strokeWidth={stroke ? 1 : 0}
+      />
+    </Svg>
+  );
+}
 
 // Native swipe-to-reply keeps vertical scroll reliable by only activating on deliberate horizontal pans.
 function SwipeableMessage({
@@ -419,7 +465,7 @@ function SwipeableMessage({
   }
 
   const replyIconColor = isOwnMessage
-    ? 'rgba(255,255,255,0.88)'
+    ? FYLL_LIME_INK
     : colors.text.muted;
 
   return (
@@ -535,8 +581,12 @@ export function CollaborationThreadPanel({
   const [showAttachmentMenu, setShowAttachmentMenu] = useState<boolean>(false);
   const [showOrderPicker, setShowOrderPicker] = useState<boolean>(false);
   const [orderSearch, setOrderSearch] = useState<string>('');
+  const [showProductPicker, setShowProductPicker] = useState<boolean>(false);
+  const [productSearch, setProductSearch] = useState<string>('');
   const storeOrders = useFyllStore((s) => s.orders);
+  const storeProducts = useFyllStore((s) => s.products);
   const orderByNumber = useMemo(() => new Map(storeOrders.map((o) => [o.orderNumber, o.id])), [storeOrders]);
+  const productById = useMemo(() => new Map(storeProducts.map((product) => [product.id, product])), [storeProducts]);
   const [likes, setLikes] = useState<Record<string, boolean>>({});
   const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
   // pinnedMessages and starredMessages (saved) are derived from DB queries below
@@ -553,6 +603,7 @@ export function CollaborationThreadPanel({
   const [pendingIncomingCount, setPendingIncomingCount] = useState<number>(0);
   const [attachmentPreviewUrls, setAttachmentPreviewUrls] = useState<Record<string, string>>({});
   const [loadedAttachmentImages, setLoadedAttachmentImages] = useState<Record<string, boolean>>({});
+  const [singleLineMessages, setSingleLineMessages] = useState<Record<string, boolean>>({});
   const [activeImagePreview, setActiveImagePreview] = useState<{ uri: string; fileName: string } | null>(null);
   const [optimisticComments, setOptimisticComments] = useState<CollaborationComment[]>([]);
   const lastMarkedNotificationKeyRef = useRef<string>('');
@@ -563,6 +614,14 @@ export function CollaborationThreadPanel({
     setOptimisticComments((previous) => {
       if (previous.some((existingComment) => existingComment.id === comment.id)) return previous;
       return [...previous, comment];
+    });
+  }, []);
+
+  const handleMessageTextLayout = useCallback((commentId: string, lineCount: number) => {
+    const isSingleLine = lineCount === 1;
+    setSingleLineMessages((previous) => {
+      if (previous[commentId] === isSingleLine) return previous;
+      return { ...previous, [commentId]: isSingleLine };
     });
   }, []);
 
@@ -1637,6 +1696,44 @@ export function CollaborationThreadPanel({
     insertComposerToken('@everyone ');
   };
 
+  const preparePendingAttachment = async (attachment: PendingAttachment) => {
+    const maxFileSize = 15 * 1024 * 1024;
+    let nextAttachment = attachment;
+
+    if (isImageAttachment(nextAttachment.name, nextAttachment.mimeType)) {
+      try {
+        const compressedUri = await compressImage(nextAttachment.uri, {
+          maxDimension: 1600,
+          quality: 0.72,
+        });
+        const compressedResponse = await fetch(compressedUri);
+        if (compressedResponse.ok) {
+          const compressedBlob = await compressedResponse.blob();
+          if (compressedBlob.size > 0) {
+            const originalSize = typeof nextAttachment.size === 'number' ? nextAttachment.size : null;
+            if (!originalSize || compressedBlob.size <= originalSize) {
+              nextAttachment = {
+                uri: compressedUri,
+                name: toJpegFileName(nextAttachment.name),
+                mimeType: 'image/jpeg',
+                size: compressedBlob.size,
+              };
+            }
+          }
+        }
+      } catch (compressionError) {
+        console.warn('Collaboration attachment compression failed:', compressionError);
+      }
+    }
+
+    if (typeof nextAttachment.size === 'number' && nextAttachment.size > maxFileSize) {
+      setComposerError('Attachment too large after compression. Max size is 15 MB.');
+      return;
+    }
+
+    setPendingAttachment(nextAttachment);
+  };
+
   const handlePickAttachment = async (mode: 'image' | 'document' = 'document') => {
     try {
       setComposerError('');
@@ -1649,49 +1746,45 @@ export function CollaborationThreadPanel({
       if (result.canceled || !result.assets[0]) return;
 
       const asset = result.assets[0];
-      const maxFileSize = 15 * 1024 * 1024;
-      let nextAttachment: PendingAttachment = {
+      const nextAttachment: PendingAttachment = {
         uri: asset.uri,
         name: asset.name ?? 'attachment',
         mimeType: asset.mimeType ?? null,
         size: asset.size ?? null,
       };
-
-      if (isImageAttachment(nextAttachment.name, nextAttachment.mimeType)) {
-        try {
-          const compressedUri = await compressImage(nextAttachment.uri, {
-            maxDimension: 1600,
-            quality: 0.72,
-          });
-          const compressedResponse = await fetch(compressedUri);
-          if (compressedResponse.ok) {
-            const compressedBlob = await compressedResponse.blob();
-            if (compressedBlob.size > 0) {
-              const originalSize = typeof nextAttachment.size === 'number' ? nextAttachment.size : null;
-              if (!originalSize || compressedBlob.size <= originalSize) {
-                nextAttachment = {
-                  uri: compressedUri,
-                  name: toJpegFileName(nextAttachment.name),
-                  mimeType: 'image/jpeg',
-                  size: compressedBlob.size,
-                };
-              }
-            }
-          }
-        } catch (compressionError) {
-          console.warn('Collaboration attachment compression failed:', compressionError);
-        }
-      }
-
-      if (typeof nextAttachment.size === 'number' && nextAttachment.size > maxFileSize) {
-        setComposerError('Attachment too large after compression. Max size is 15 MB.');
-        return;
-      }
-
-      setPendingAttachment(nextAttachment);
+      await preparePendingAttachment(nextAttachment);
     } catch (error) {
       console.warn('Attachment picker failed:', error);
       setComposerError('Could not pick attachment.');
+    }
+  };
+
+  const handleTakePhoto = async () => {
+    try {
+      setComposerError('');
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) {
+        setComposerError('Camera access is needed to take a photo.');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        cameraType: ImagePicker.CameraType.back,
+        quality: 0.82,
+      });
+      if (result.canceled || !result.assets[0]) return;
+
+      const asset = result.assets[0];
+      await preparePendingAttachment({
+        uri: asset.uri,
+        name: asset.fileName ?? `camera-${Date.now()}.jpg`,
+        mimeType: asset.mimeType ?? 'image/jpeg',
+        size: asset.fileSize ?? null,
+      });
+    } catch (error) {
+      console.warn('Camera attachment failed:', error);
+      setComposerError('Could not take a photo.');
     }
   };
 
@@ -1743,7 +1836,7 @@ export function CollaborationThreadPanel({
     const trimmed = composerText.trim();
     if ((!trimmed && !pendingAttachment) || !threadId) return;
     const rawComposerText = composerText;
-    const optimisticBody = trimmed || `Shared an attachment: ${pendingAttachment?.name ?? ''}`;
+    const optimisticBody = trimmed || 'Attachment';
     const sendFingerprint = [
       threadId,
       rawComposerText.trim(),
@@ -1811,6 +1904,39 @@ export function CollaborationThreadPanel({
     });
   };
 
+  const handleShareProduct = (product: Product) => {
+    if (!businessId || !threadId || !currentUserId || createCommentMutation.isPending) return;
+
+    const body = `🛍️ [product:${product.id}] ${product.name}`;
+    const optimisticId = `optimistic-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const parentCommentId = replyTarget?.commentId ?? null;
+    const mentionUserIds = replyTarget?.authorUserId && replyTarget.authorUserId !== currentUserId
+      ? [replyTarget.authorUserId]
+      : [];
+
+    pendingOwnMessageScrollRef.current = true;
+    shouldScrollToBottomOnContentChangeRef.current = true;
+    addOptimisticComment(buildOptimisticComment({
+      businessId,
+      threadId,
+      authorUserId: currentUserId,
+      body,
+      parentCommentId,
+      optimisticId,
+    }));
+
+    createCommentMutation.mutate({
+      body,
+      parentCommentId,
+      mentionUserIds,
+      optimisticId,
+      rawComposerText: composerText,
+      replyTargetSnapshot: replyTarget,
+      selectedMentionIdsSnapshot: selectedMentionIds,
+      pendingAttachmentSnapshot: pendingAttachment,
+    });
+  };
+
   const handleComposerTextChange = (value: string) => {
     setComposerText(value);
     if (!threadId || isClosed) {
@@ -1867,6 +1993,8 @@ export function CollaborationThreadPanel({
   const canSend = editTarget
     ? (composerText.trim().length > 0 && !updateCommentMutation.isPending)
     : (Boolean(threadId) && (composerText.trim().length > 0 || Boolean(pendingAttachment)));
+  const isComposerEmpty = composerText.length === 0;
+  const attachmentMenuColumnWidth = Platform.OS === 'web' ? '33.333%' : '25%';
   const typingStatusLabel = useMemo(() => {
     if (typingUserNames.length === 0) return '';
     if (typingUserNames.length === 1) return `${typingUserNames[0]} is typing`;
@@ -1904,27 +2032,41 @@ export function CollaborationThreadPanel({
       const parentComment = comment.parent_comment_id ? commentsById.get(comment.parent_comment_id) ?? null : null;
       const parentAuthorName = parentComment ? (authorMap.get(parentComment.author_user_id) ?? 'Team member') : null;
       const avatarColor = isOwnComment ? (isDark ? '#FFFFFF' : '#000000') : getAvatarColor(authorName);
-      const ownBubbleColor = '#182A66';
-      const ownBubblePrimaryTextColor = '#FFFFFF';
-      const ownBubbleSecondaryTextColor = 'rgba(255,255,255,0.9)';
-      const ownBubbleMutedTextColor = 'rgba(255,255,255,0.74)';
-      const ownBubbleSubtleTextColor = 'rgba(255,255,255,0.62)';
-      const bubbleNameFontSize = Platform.OS === 'web' ? 16 : 14;
-      const bubbleNameLineHeight = Platform.OS === 'web' ? 23 : 20;
-      const bubbleMessageFontSize = Platform.OS === 'web' ? 16 : 14;
-      const bubbleMessageLineHeight = Platform.OS === 'web' ? 23 : 20;
+      const ownBubbleColor = FYLL_LIME;
+      const ownBubblePrimaryTextColor = FYLL_LIME_INK;
+      const ownBubbleSecondaryTextColor = 'rgba(30,30,30,0.9)';
+      const ownBubbleMutedTextColor = 'rgba(30,30,30,0.72)';
+      const ownBubbleSubtleTextColor = 'rgba(30,30,30,0.6)';
+      const incomingBubbleTimestampColor = isDark ? 'rgba(255,255,255,0.58)' : '#777777';
+      const useMobileBubbleTypography = Platform.OS !== 'web' || isNarrowWebViewport;
+      const bubbleNameFontSize = useMobileBubbleTypography ? 12 : 16;
+      const bubbleNameLineHeight = useMobileBubbleTypography ? 17 : 23;
+      const bubbleMessageFontSize = useMobileBubbleTypography ? 12 : 16;
+      const bubbleMessageLineHeight = useMobileBubbleTypography ? 17 : 23;
+      const bubbleTimestampFontSize = useMobileBubbleTypography ? 8 : 9;
+      const bubbleTimestampLineHeight = useMobileBubbleTypography ? 10 : 11;
       const headerNameColor = isOwnComment ? ownBubbleSecondaryTextColor : avatarColor;
-      const parentAuthorColor = parentComment
-        ? (parentComment.author_user_id === currentUserId
-          ? ownBubbleSecondaryTextColor
-          : getAvatarColor(parentAuthorName ?? 'Team member'))
-        : colors.text.primary;
       const attachments = comment.attachments ?? [];
       const hasOnlyImageAttachments = attachments.length > 0
         && attachments.every((attachment) => isImageAttachment(attachment.file_name, attachment.mime_type));
-      const hasMessageBody = comment.body.trim().length > 0;
+      const isGeneratedAttachmentCaption = /^(?:shared an attachment(?::.*)?|attachment)$/i.test(comment.body.trim());
+      const visibleMessageBody = isGeneratedAttachmentCaption ? '' : comment.body;
+      const hasMessageBody = visibleMessageBody.trim().length > 0;
+      const messageSegments = parseMessageSegments(visibleMessageBody, orderByNumber);
+      const orderSegs = messageSegments.filter((segment) => segment.type === 'order');
+      const productSegs = messageSegments.filter((segment) => segment.type === 'product');
+      const inlineSegs = messageSegments.filter((segment) => segment.type !== 'order' && segment.type !== 'product');
+      const hasInlineText = inlineSegs.some((segment) => segment.value.trim().length > 0);
+      const hasEveryonePing = /(?:^|\s)@everyone\b/i.test(comment.body);
+      const isCompactTextCandidate = attachments.length === 0
+        && !parentComment
+        && orderSegs.length === 0
+        && productSegs.length === 0
+        && !hasEveryonePing
+        && hasInlineText
+        && !visibleMessageBody.includes('\n');
       const useAttachmentSizedBubble = hasOnlyImageAttachments;
-      const attachmentSizedBubbleWidth = Math.min(bubbleMaxWidth, attachmentPreviewWidth + 28);
+      const attachmentSizedBubbleWidth = Math.min(bubbleMaxWidth, attachmentPreviewWidth);
       const previousComment = index > 0 ? displayedComments[index - 1] : null;
       const nextComment = index < displayedComments.length - 1 ? displayedComments[index + 1] : null;
       const showDayDivider = !previousComment || !isSameCalendarDay(previousComment.created_at, comment.created_at);
@@ -1934,13 +2076,31 @@ export function CollaborationThreadPanel({
       const showAvatar = !nextComment
         || nextComment.author_user_id !== comment.author_user_id
         || !isSameCalendarDay(nextComment.created_at, comment.created_at);
+      const isLastInAuthorRun = showAvatar;
       const showThreadAvatar = !isOwnComment;
       const showBubbleAuthorHeader = showAuthorHeader && !parentComment && !isOwnComment;
+      const measuredSingleLine = singleLineMessages[comment.id];
+      // react-native-web does not consistently emit onTextLayout after a responsive
+      // width change. Keep its fallback deliberately conservative so wrapped text
+      // never retains the pill silhouette on mobile-sized web views.
+      const likelySingleLine = visibleMessageBody.trim().length <= (Platform.OS === 'web' ? 28 : 22);
+      const isActuallySingleLine = Platform.OS === 'web'
+        ? likelySingleLine
+        : (measuredSingleLine ?? likelySingleLine);
+      const isCompactTextBubble = isCompactTextCandidate
+        && !showBubbleAuthorHeader
+        && isActuallySingleLine;
       const isStackedWithPrevious = previousComment?.author_user_id === comment.author_user_id
         && Boolean(previousComment?.created_at)
         && isSameCalendarDay(previousComment.created_at, comment.created_at);
       const rowSpacingTop = isStackedWithPrevious ? 8 : 12;
       const isLatestDisplayedComment = index === displayedComments.length - 1;
+      const isDelivered = !comment.id.startsWith('optimistic-');
+      const bubbleFillColor = isOwnComment
+        ? ownBubbleColor
+        : (isDark ? '#3A3A3C' : '#FFFFFF');
+      const bubbleStrokeColor = isOwnComment || isDark ? undefined : colors.border.light;
+      const bubbleContentRightPadding = productSegs.length > 0 ? 14 : defaultBubbleRightPadding;
 
       return (
         <View key={comment.id} style={{ marginTop: index === 0 ? 0 : rowSpacingTop }}>
@@ -1957,8 +2117,8 @@ export function CollaborationThreadPanel({
                 <Text
                   style={{
                     color: isDark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.52)',
-                    fontSize: 10,
-                    fontWeight: '700',
+                    fontSize: useMobileBubbleTypography ? 9 : 10,
+                    fontWeight: '500',
                     textTransform: 'uppercase',
                     letterSpacing: 0.6,
                   }}
@@ -2015,35 +2175,49 @@ export function CollaborationThreadPanel({
                   composerInputRef.current?.focus();
                 }}
               >
-                <Pressable
-                  onPress={() => handleBubbleTap(comment)}
-                  onLongPress={(event) => {
-                    actionModalSnapRef.current = comment;
-                    setMessageActionTarget(comment);
-                    setMessageActionY(event.nativeEvent.pageY);
-                    setMessageActionX(event.nativeEvent.pageX);
-                  }}
-                  delayLongPress={350}
+                <View
                   style={{
-                    borderRadius: 14,
-                    borderTopLeftRadius: 5,
-                    borderTopRightRadius: 14,
-                    paddingLeft: parentComment ? 0 : 14,
-                    paddingRight: parentComment ? 0 : (useAttachmentSizedBubble ? 14 : defaultBubbleRightPadding),
-                    paddingTop: parentComment ? 0 : 12,
-                    paddingBottom: 12,
-                    width: useAttachmentSizedBubble ? attachmentSizedBubbleWidth : undefined,
-                    maxWidth: bubbleMaxWidth,
-                    minWidth: 0,
-                    backgroundColor: isOwnComment
-                      ? ownBubbleColor
-                      : (isDark ? '#3A3A3C' : '#FFFFFF'),
-                    borderWidth: isOwnComment ? 0 : (isDark ? 0 : 1),
-                    borderColor: isOwnComment ? 'transparent' : colors.border.light,
+                    position: 'relative',
                     alignSelf: isOwnComment ? 'flex-end' : 'flex-start',
-                    overflow: 'hidden',
                   }}
                 >
+                  {isLastInAuthorRun ? (
+                    <ChatBubbleTail
+                      isOwnMessage={isOwnComment}
+                      fill={bubbleFillColor}
+                      stroke={bubbleStrokeColor}
+                    />
+                  ) : null}
+                  <Pressable
+                    onPress={() => handleBubbleTap(comment)}
+                    onLongPress={(event) => {
+                      actionModalSnapRef.current = comment;
+                      setMessageActionTarget(comment);
+                      setMessageActionY(event.nativeEvent.pageY);
+                      setMessageActionX(event.nativeEvent.pageX);
+                    }}
+                    delayLongPress={350}
+                    style={{
+                      borderRadius: isCompactTextBubble ? 999 : 18,
+                      borderBottomLeftRadius: isLastInAuthorRun && !isOwnComment ? 5 : (isCompactTextBubble ? 999 : 18),
+                      borderBottomRightRadius: isLastInAuthorRun && isOwnComment ? 5 : (isCompactTextBubble ? 999 : 18),
+                      paddingLeft: parentComment ? 0 : (useAttachmentSizedBubble ? 5 : 14),
+                      paddingRight: parentComment
+                        ? 0
+                        : (useAttachmentSizedBubble ? 5 : bubbleContentRightPadding),
+                      paddingTop: parentComment ? 0 : (useAttachmentSizedBubble ? 5 : (isCompactTextBubble ? 8 : 12)),
+                      paddingBottom: useAttachmentSizedBubble ? (hasMessageBody ? 10 : 5) : (isCompactTextBubble ? 8 : 12),
+                      width: useAttachmentSizedBubble ? attachmentSizedBubbleWidth : undefined,
+                      maxWidth: bubbleMaxWidth,
+                      minWidth: 0,
+                      backgroundColor: bubbleFillColor,
+                      borderWidth: isOwnComment ? 0 : (isDark ? 0 : 1),
+                      borderColor: isOwnComment ? 'transparent' : colors.border.light,
+                      alignSelf: isOwnComment ? 'flex-end' : 'flex-start',
+                      overflow: 'hidden',
+                      zIndex: 1,
+                    }}
+                  >
                   {showBubbleAuthorHeader ? (
                     <View
                       style={{
@@ -2106,9 +2280,7 @@ export function CollaborationThreadPanel({
                         >
                           <Text
                             style={{
-                              color: isOwnComment
-                                ? ownBubbleSecondaryTextColor
-                                : parentAuthorColor,
+                              color: 'rgba(255,255,255,0.92)',
                               fontSize: 12,
                               fontWeight: '600',
                               marginBottom: 4,
@@ -2154,9 +2326,9 @@ export function CollaborationThreadPanel({
                             const isImageLoaded = Boolean(loadedAttachmentImages[attachment.id]);
                             const showImageLoader = !imagePreviewUrl || !isImageLoaded;
                             const imageBoxWidth = useAttachmentSizedBubble
-                              ? attachmentSizedBubbleWidth - 28
+                              ? attachmentSizedBubbleWidth - 10
                               : attachmentPreviewWidth;
-                            const imageBoxHeight = Math.floor(imageBoxWidth * (170 / 220));
+                            const imageBoxHeight = Math.floor(imageBoxWidth * 1.25);
 
                             if (canRenderImage) {
                               return (
@@ -2164,16 +2336,16 @@ export function CollaborationThreadPanel({
                                   key={attachment.id}
                                   onPress={() => { void handleAttachmentPress(attachment, imagePreviewUrl); }}
                                   style={{
-                                    borderRadius: 12,
+                                    borderRadius: useAttachmentSizedBubble ? 13 : 12,
                                     overflow: 'hidden',
                                     width: imageBoxWidth,
                                     height: imageBoxHeight,
-                                    borderWidth: 1,
+                                    borderWidth: useAttachmentSizedBubble ? 0 : 1,
                                     borderColor: isOwnComment
-                                      ? 'rgba(255,255,255,0.16)'
+                                      ? 'rgba(30,30,30,0.16)'
                                       : colors.border.light,
                                     backgroundColor: isOwnComment
-                                      ? 'rgba(255,255,255,0.06)'
+                                      ? 'rgba(30,30,30,0.06)'
                                       : colors.bg.secondary,
                                   }}
                                 >
@@ -2187,7 +2359,7 @@ export function CollaborationThreadPanel({
                                       alignItems: 'center',
                                       justifyContent: 'center',
                                       backgroundColor: isOwnComment
-                                        ? 'rgba(255,255,255,0.08)'
+                                        ? 'rgba(30,30,30,0.08)'
                                         : colors.bg.secondary,
                                     }}
                                   >
@@ -2252,10 +2424,10 @@ export function CollaborationThreadPanel({
                                 style={{
                                   borderWidth: 1,
                                   borderColor: isOwnComment
-                                    ? 'rgba(255,255,255,0.16)'
+                                    ? 'rgba(30,30,30,0.16)'
                                     : colors.border.light,
                                   backgroundColor: isOwnComment
-                                    ? 'rgba(255,255,255,0.06)'
+                                    ? 'rgba(30,30,30,0.06)'
                                     : colors.bg.secondary,
                                   borderRadius: 10,
                                   paddingHorizontal: 10,
@@ -2297,11 +2469,6 @@ export function CollaborationThreadPanel({
                     )}
 
                     {(() => {
-                      const allSegs = parseMessageSegments(comment.body, orderByNumber);
-                      const orderSegs = allSegs.filter(s => s.type === 'order');
-                      const inlineSegs = allSegs.filter(s => s.type !== 'order');
-                      const hasInlineText = inlineSegs.some(s => s.value.trim().length > 0);
-                      const hasEveryonePing = /(?:^|\s)@everyone\b/i.test(comment.body);
                       return (
                         <>
                           {hasEveryonePing && (
@@ -2382,9 +2549,93 @@ export function CollaborationThreadPanel({
                             );
                           })}
 
+                          {productSegs.map((segment, segIndex) => {
+                            const product = segment.productId ? productById.get(segment.productId) : undefined;
+                            const productThumbnail = product?.imageUrl?.trim()
+                              || product?.variants.find((variant) => variant.imageUrl?.trim())?.imageUrl?.trim();
+                            const fallbackName = segment.value.replace(/^🛍️\s*\[product:[^\]]+\]\s*/i, '').trim() || 'Product';
+                            const prices = (product?.variants ?? [])
+                              .map((variant) => variant.sellingPrice)
+                              .filter((price) => Number.isFinite(price) && price >= 0);
+                            const startingPrice = prices.length > 0 ? Math.min(...prices) : null;
+                            const stock = product
+                              ? (product.useGlobalStock
+                                ? (product.globalStock ?? 0)
+                                : product.variants.reduce((total, variant) => total + (variant.stock ?? 0), 0))
+                              : null;
+
+                            return (
+                              <Pressable
+                                key={`${comment.id}-product-${segIndex}`}
+                                onPress={() => {
+                                  if (product) router.push(`/product/${product.id}`);
+                                }}
+                                disabled={!product}
+                                style={{
+                                  width: Math.min(400, bubbleMaxWidth - 28),
+                                  marginBottom: hasInlineText ? 8 : 0,
+                                  borderRadius: 14,
+                                  backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
+                                  borderWidth: 1,
+                                  borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
+                                  padding: 9,
+                                  flexDirection: 'row',
+                                  alignItems: 'center',
+                                  gap: 11,
+                                  shadowColor: '#000',
+                                  shadowOffset: { width: 0, height: 1 },
+                                  shadowOpacity: isDark ? 0.3 : 0.06,
+                                  shadowRadius: 4,
+                                  elevation: 2,
+                                }}
+                              >
+                                {productThumbnail ? (
+                                  <ResolvedAttachmentImage
+                                    imageUrl={productThumbnail}
+                                    resizeMode="cover"
+                                    style={{ width: 54, height: 66, borderRadius: 10, backgroundColor: isDark ? '#2C2C2E' : '#F3F4F6' }}
+                                  />
+                                ) : (
+                                  <View style={{ width: 54, height: 66, borderRadius: 10, backgroundColor: 'rgba(213,224,87,0.18)', alignItems: 'center', justifyContent: 'center' }}>
+                                    <ShoppingBag size={21} color={isDark ? FYLL_LIME : '#6A760C'} strokeWidth={2} />
+                                  </View>
+                                )}
+                                <View style={{ flex: 1, minWidth: 0 }}>
+                                  <Text numberOfLines={2} style={{ color: isDark ? '#FFFFFF' : '#0B0B0B', fontSize: 14, lineHeight: 18, fontWeight: '400' }}>
+                                    {product?.name ?? fallbackName}
+                                  </Text>
+                                  {product?.categories?.[0] ? (
+                                    <Text numberOfLines={1} style={{ color: isDark ? 'rgba(255,255,255,0.52)' : 'rgba(0,0,0,0.48)', fontSize: 11, marginTop: 3 }}>
+                                      {product.categories[0]}
+                                    </Text>
+                                  ) : null}
+                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 7 }}>
+                                    {startingPrice !== null ? (
+                                      <Text style={{ color: isDark ? FYLL_LIME : '#6A760C', fontSize: 13, fontWeight: '400' }}>
+                                        {formatCurrency(startingPrice)}
+                                      </Text>
+                                    ) : null}
+                                    {stock !== null ? (
+                                      <Text style={{ color: stock > 0 ? '#16A34A' : '#DC2626', fontSize: 10, fontWeight: '400' }}>
+                                        {stock > 0 ? `${stock} in stock` : 'Out of stock'}
+                                      </Text>
+                                    ) : null}
+                                  </View>
+                                </View>
+                                {product ? <ChevronRight size={15} color={isDark ? 'rgba(255,255,255,0.32)' : 'rgba(0,0,0,0.25)'} strokeWidth={2.5} /> : null}
+                              </Pressable>
+                            );
+                          })}
+
                           {hasInlineText && (
-                            <View>
+                            <View
+                              style={{
+                                position: 'relative',
+                                paddingHorizontal: useAttachmentSizedBubble ? 14 : 0,
+                              }}
+                            >
                               <Text
+                                onTextLayout={(event) => handleMessageTextLayout(comment.id, event.nativeEvent.lines.length)}
                                 style={{
                                   color: isOwnComment ? ownBubblePrimaryTextColor : colors.text.secondary,
                                   fontSize: bubbleMessageFontSize,
@@ -2402,7 +2653,7 @@ export function CollaborationThreadPanel({
                                           fontWeight: '600',
                                           color: isOwnComment ? ownBubblePrimaryTextColor : colors.text.secondary,
                                           backgroundColor: isOwnComment
-                                            ? 'rgba(255,255,255,0.14)'
+                                            ? 'rgba(30,30,30,0.12)'
                                             : (isDark ? 'rgba(59,130,246,0.2)' : '#EFF6FF'),
                                         }}
                                       >
@@ -2433,28 +2684,99 @@ export function CollaborationThreadPanel({
                                     {' '}(edited)
                                   </Text>
                                 ) : null}
+                                <Text style={{ color: 'transparent', fontSize: bubbleTimestampFontSize, lineHeight: bubbleTimestampLineHeight }}>
+                                  {'\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0'}
+                                  {formatMessageTime(comment.created_at)}
+                                  {isOwnComment ? ' ✓✓' : ''}
+                                </Text>
                               </Text>
+                              <View
+                                style={{
+                                  position: 'absolute',
+                                  right: useAttachmentSizedBubble
+                                    ? 14
+                                    : (parentComment ? 0 : 8 - bubbleContentRightPadding),
+                                  bottom: 0,
+                                  flexDirection: 'row',
+                                  alignItems: 'flex-end',
+                                  gap: 2,
+                                }}
+                              >
+                                <Text
+                                  style={{
+                                    color: isOwnComment ? ownBubbleSubtleTextColor : incomingBubbleTimestampColor,
+                                    fontSize: bubbleTimestampFontSize,
+                                    fontWeight: '500',
+                                    lineHeight: bubbleTimestampLineHeight,
+                                  }}
+                                >
+                                  {formatMessageTime(comment.created_at)}
+                                </Text>
+                                {isOwnComment ? (
+                                  isDelivered
+                                    ? <CheckCheck size={12} color={ownBubbleMutedTextColor} strokeWidth={2.2} />
+                                    : <Check size={12} color={ownBubbleMutedTextColor} strokeWidth={2.2} />
+                                ) : null}
+                              </View>
                             </View>
                           )}
                         </>
                       );
                     })()}
 
-                    <Text
-                      style={{
-                        width: '100%',
-                        textAlign: 'right',
-                        color: isOwnComment
-                          ? ownBubbleSubtleTextColor
-                          : colors.text.muted,
-                        fontSize: 9,
-                        fontWeight: '700',
-                        marginTop: 5,
-                        lineHeight: 11,
-                      }}
-                    >
-                      {formatMessageTime(comment.created_at)}
-                    </Text>
+                    {!hasInlineText && useAttachmentSizedBubble ? (
+                      <View
+                        style={{
+                          position: 'absolute',
+                          right: 7,
+                          bottom: 6,
+                          flexDirection: 'row',
+                          alignItems: 'flex-end',
+                          gap: 2,
+                          paddingHorizontal: 6,
+                          paddingVertical: 3,
+                          borderRadius: 999,
+                          backgroundColor: 'rgba(0,0,0,0.52)',
+                        }}
+                      >
+                        <Text style={{ color: '#FFFFFF', fontSize: bubbleTimestampFontSize, fontWeight: '500', lineHeight: bubbleTimestampLineHeight }}>
+                          {formatMessageTime(comment.created_at)}
+                        </Text>
+                        {isOwnComment ? (
+                          isDelivered
+                            ? <CheckCheck size={12} color="#FFFFFF" strokeWidth={2.2} />
+                            : <Check size={12} color="#FFFFFF" strokeWidth={2.2} />
+                        ) : null}
+                      </View>
+                    ) : !hasInlineText ? (
+                      <View
+                        style={{
+                          width: '100%',
+                          flexDirection: 'row',
+                          alignItems: 'flex-end',
+                          justifyContent: 'flex-end',
+                          gap: 2,
+                          marginTop: 5,
+                          transform: [{ translateX: parentComment ? 0 : bubbleContentRightPadding - 8 }],
+                        }}
+                      >
+                        <Text
+                          style={{
+                            color: isOwnComment ? ownBubbleSubtleTextColor : incomingBubbleTimestampColor,
+                            fontSize: bubbleTimestampFontSize,
+                            fontWeight: '500',
+                            lineHeight: bubbleTimestampLineHeight,
+                          }}
+                        >
+                          {formatMessageTime(comment.created_at)}
+                        </Text>
+                        {isOwnComment ? (
+                          isDelivered
+                            ? <CheckCheck size={12} color={ownBubbleMutedTextColor} strokeWidth={2.2} />
+                            : <Check size={12} color={ownBubbleMutedTextColor} strokeWidth={2.2} />
+                        ) : null}
+                      </View>
+                    ) : null}
                   </View>
 
                   {(Platform.OS !== 'web' || hoveredCommentId === comment.id) && (
@@ -2472,7 +2794,8 @@ export function CollaborationThreadPanel({
                       />
                     </Pressable>
                   )}
-                </Pressable>
+                  </Pressable>
+                </View>
               </SwipeableMessage>
 
               {(likeCounts[comment.id] ?? 0) > 0 && (
@@ -2523,6 +2846,7 @@ export function CollaborationThreadPanel({
     currentUserId,
     commentsById,
     isDark,
+    isNarrowWebViewport,
     bubbleMaxWidth,
     attachmentPreviewWidth,
     defaultBubbleRightPadding,
@@ -2533,7 +2857,10 @@ export function CollaborationThreadPanel({
     pinnedMessages,
     likeCounts,
     hoveredCommentId,
+    singleLineMessages,
+    handleMessageTextLayout,
     orderByNumber,
+    productById,
     storeOrders,
     router,
   ]);
@@ -2831,11 +3158,21 @@ export function CollaborationThreadPanel({
           paddingTop: 12,
           paddingHorizontal: 12,
           paddingBottom: (Platform.OS === 'web' ? 18 : 16) + (isPaneVariant ? insets.bottom : 0),
-          backgroundColor: colors.bg.card,
-          borderTopWidth: 1,
-          borderTopColor: colors.border.light,
+          backgroundColor: 'rgba(34,34,38,0.76)',
+          borderTopWidth: 0.5,
+          borderTopColor: 'rgba(255,255,255,0.06)',
+          position: 'relative',
+          ...(Platform.OS === 'web' ? ({ backdropFilter: 'blur(24px)' } as any) : null),
         }}
       >
+        {Platform.OS !== 'web' ? (
+          <BlurView
+            pointerEvents="none"
+            intensity={44}
+            tint="dark"
+            style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
+          />
+        ) : null}
         {isClosed && (
           <View
             style={{
@@ -3061,70 +3398,93 @@ export function CollaborationThreadPanel({
                 position: 'absolute',
                 bottom: '100%',
                 left: 0,
-                marginBottom: 8,
+                right: 0,
+                marginBottom: 18,
                 zIndex: 10,
               }}
             >
-              <View
+              <GlassView
+                glassEffectStyle="regular"
+                tintColor="rgba(40,40,44,0.98)"
                 style={{
-                  backgroundColor: isDark ? '#2C2C2E' : '#FFFFFF',
-                  borderRadius: 14,
+                  width: Platform.OS === 'web' ? Math.min(300, viewportWidth - 24) : '100%',
+                  backgroundColor: 'rgba(40,40,44,0.98)',
+                  borderRadius: 20,
                   overflow: 'hidden',
+                  borderWidth: 1,
+                  borderColor: 'rgba(255,255,255,0.14)',
+                  paddingHorizontal: 8,
+                  paddingVertical: 10,
+                  flexDirection: 'row',
+                  flexWrap: 'wrap',
                   shadowColor: '#000',
                   shadowOffset: { width: 0, height: 4 },
-                  shadowOpacity: isDark ? 0.45 : 0.14,
-                  shadowRadius: 12,
+                  shadowOpacity: 0.32,
+                  shadowRadius: 18,
                   elevation: 10,
-                  minWidth: 220,
+                  ...(Platform.OS === 'web' ? ({ backdropFilter: 'blur(24px)' } as any) : null),
                 }}
               >
                 <Pressable
                   onPress={() => { setShowAttachmentMenu(false); void handlePickAttachment('image'); }}
-                  style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12, gap: 11 }}
+                  style={{ width: attachmentMenuColumnWidth, alignItems: 'center', paddingVertical: 8, gap: 7 }}
                 >
-                  <View style={{ width: 28, height: 28, borderRadius: 7, backgroundColor: '#3B82F6', alignItems: 'center', justifyContent: 'center' }}>
-                    <ImageIcon size={15} color="#FFFFFF" strokeWidth={2} />
+                  <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: 'rgba(59,130,246,0.9)', alignItems: 'center', justifyContent: 'center' }}>
+                    <ImageIcon size={20} color="#FFFFFF" strokeWidth={2} />
                   </View>
-                  <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600' }}>Photos & Videos</Text>
+                  <Text style={{ color: '#F5F5F5', fontSize: 10, fontWeight: '600' }}>Photos</Text>
                 </Pressable>
-                <View style={{ height: 0.5, backgroundColor: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)' }} />
+                <Pressable
+                  onPress={() => { setShowAttachmentMenu(false); void handleTakePhoto(); }}
+                  style={{ width: attachmentMenuColumnWidth, alignItems: 'center', paddingVertical: 8, gap: 7 }}
+                >
+                  <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: 'rgba(236,72,153,0.9)', alignItems: 'center', justifyContent: 'center' }}>
+                    <Camera size={20} color="#FFFFFF" strokeWidth={2} />
+                  </View>
+                  <Text style={{ color: '#F5F5F5', fontSize: 10, fontWeight: '600' }}>Camera</Text>
+                </Pressable>
                 <Pressable
                   onPress={() => { setShowAttachmentMenu(false); void handlePickAttachment('document'); }}
-                  style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12, gap: 11 }}
+                  style={{ width: attachmentMenuColumnWidth, alignItems: 'center', paddingVertical: 8, gap: 7 }}
                 >
-                  <View style={{ width: 28, height: 28, borderRadius: 7, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center' }}>
-                    <FileText size={15} color="#FFFFFF" strokeWidth={2} />
+                  <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: 'rgba(139,92,246,0.9)', alignItems: 'center', justifyContent: 'center' }}>
+                    <FileText size={20} color="#FFFFFF" strokeWidth={2} />
                   </View>
-                  <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600' }}>Document</Text>
+                  <Text style={{ color: '#F5F5F5', fontSize: 10, fontWeight: '600' }}>File</Text>
                 </Pressable>
-                <View style={{ height: 0.5, backgroundColor: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)' }} />
+                <Pressable
+                  onPress={() => { setShowAttachmentMenu(false); setProductSearch(''); setShowProductPicker(true); }}
+                  style={{ width: attachmentMenuColumnWidth, alignItems: 'center', paddingVertical: 8, gap: 7 }}
+                >
+                  <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: FYLL_LIME, alignItems: 'center', justifyContent: 'center' }}>
+                    <ShoppingBag size={20} color={FYLL_LIME_INK} strokeWidth={2.2} />
+                  </View>
+                  <Text style={{ color: '#F5F5F5', fontSize: 10, fontWeight: '600' }}>Product</Text>
+                </Pressable>
                 <Pressable
                   onPress={() => { setShowAttachmentMenu(false); setOrderSearch(''); setShowOrderPicker(true); }}
-                  style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12, gap: 11 }}
+                  style={{ width: attachmentMenuColumnWidth, alignItems: 'center', paddingVertical: 8, gap: 7 }}
                 >
-                  <View style={{ width: 28, height: 28, borderRadius: 7, backgroundColor: '#10B981', alignItems: 'center', justifyContent: 'center' }}>
-                    <Package size={13} color="#FFFFFF" strokeWidth={2.2} />
+                  <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: 'rgba(16,185,129,0.9)', alignItems: 'center', justifyContent: 'center' }}>
+                    <Package size={20} color="#FFFFFF" strokeWidth={2.2} />
                   </View>
-                  <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600' }}>Order</Text>
+                  <Text style={{ color: '#F5F5F5', fontSize: 10, fontWeight: '600' }}>Order</Text>
                 </Pressable>
                 {mentionableMembers.length > 0 && !isClosed ? (
-                  <>
-                    <View style={{ height: 0.5, backgroundColor: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)' }} />
-                    <Pressable
-                      onPress={() => {
-                        setShowAttachmentMenu(false);
-                        handlePingEveryonePress();
-                      }}
-                      style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12, gap: 11 }}
-                    >
-                      <View style={{ width: 28, height: 28, borderRadius: 7, backgroundColor: '#3B82F6', alignItems: 'center', justifyContent: 'center' }}>
-                        <Bell size={14} color="#FFFFFF" strokeWidth={2.2} />
-                      </View>
-                      <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600' }}>Ping Everyone</Text>
-                    </Pressable>
-                  </>
+                  <Pressable
+                    onPress={() => {
+                      setShowAttachmentMenu(false);
+                      handlePingEveryonePress();
+                    }}
+                    style={{ width: attachmentMenuColumnWidth, alignItems: 'center', paddingVertical: 8, gap: 7 }}
+                  >
+                    <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: 'rgba(14,165,233,0.9)', alignItems: 'center', justifyContent: 'center' }}>
+                      <Bell size={20} color="#FFFFFF" strokeWidth={2.2} />
+                    </View>
+                    <Text style={{ color: '#F5F5F5', fontSize: 10, fontWeight: '600' }}>Ping all</Text>
+                  </Pressable>
                 ) : null}
-              </View>
+              </GlassView>
             </View>
           )}
 
@@ -3136,27 +3496,38 @@ export function CollaborationThreadPanel({
               borderRadius: 18,
               alignItems: 'center',
               justifyContent: 'center',
-              backgroundColor: showAttachmentMenu
-                ? colors.accent.primary
-                : (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.07)'),
+              backgroundColor: showAttachmentMenu ? FYLL_LIME : 'rgba(255,255,255,0.1)',
             }}
           >
-            <Plus size={17} color={showAttachmentMenu ? (isDark ? '#000' : '#fff') : colors.text.secondary} strokeWidth={2.5} />
+            <Plus size={17} color={showAttachmentMenu ? FYLL_LIME_INK : 'rgba(255,255,255,0.78)'} strokeWidth={2.5} />
           </Pressable>
 
           <View style={{ flex: 1, position: 'relative' }}>
             <View
               style={{
-                borderRadius: 20,
+                height: isComposerEmpty ? 36 : undefined,
+                minHeight: isComposerEmpty ? 36 : 44,
+                borderRadius: isComposerEmpty ? 999 : 22,
                 borderWidth: 1,
-                borderColor: colors.border.light,
-                backgroundColor: colors.bg.secondary,
+                borderColor: 'rgba(255,255,255,0.16)',
+                backgroundColor: 'rgba(48,48,52,0.72)',
                 paddingLeft: 14,
                 paddingRight: 40,
-                paddingTop: 9,
-                paddingBottom: 13,
+                paddingTop: isComposerEmpty ? 0 : 10,
+                paddingBottom: isComposerEmpty ? 0 : 10,
+                justifyContent: 'center',
+                overflow: 'hidden',
+                ...(Platform.OS === 'web' ? ({ backdropFilter: 'blur(18px)' } as any) : null),
               }}
             >
+              {Platform.OS !== 'web' ? (
+                <BlurView
+                  pointerEvents="none"
+                  intensity={38}
+                  tint="dark"
+                  style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
+                />
+              ) : null}
               <TextInput
                 ref={composerInputRef}
                 placeholder={
@@ -3164,9 +3535,9 @@ export function CollaborationThreadPanel({
                     ? 'Edit message...'
                     : replyTarget
                       ? `Reply to ${replyTarget.authorName}...`
-                      : 'Write a note or @mention...'
+                      : 'Start typing...'
                 }
-                placeholderTextColor={colors.text.muted}
+                placeholderTextColor="rgba(255,255,255,0.52)"
                 value={composerText}
                 selection={controlledSelection}
                 onChangeText={handleComposerTextChange}
@@ -3192,12 +3563,15 @@ export function CollaborationThreadPanel({
                 returnKeyType="default"
                 blurOnSubmit={false}
                 style={{
-                  color: colors.text.secondary,
+                  color: '#F5F5F5',
                   fontSize: 16,
                   lineHeight: 24,
                   fontWeight: 'normal',
-                  height: Platform.OS === 'ios' ? composerInputHeight : undefined,
+                  height: isComposerEmpty ? 34 : (Platform.OS === 'ios' ? composerInputHeight : undefined),
                   maxHeight: 120,
+                  paddingVertical: isComposerEmpty ? 5 : 0,
+                  textAlignVertical: isComposerEmpty ? 'center' : 'top',
+                  zIndex: 1,
                 }}
               />
             </View>
@@ -3215,7 +3589,7 @@ export function CollaborationThreadPanel({
                   justifyContent: 'center',
                 }}
               >
-                <AtSign size={16} color={showMentionPicker ? colors.status.blue : colors.text.muted} strokeWidth={2} />
+                <AtSign size={16} color={showMentionPicker ? FYLL_LIME : 'rgba(255,255,255,0.55)'} strokeWidth={2} />
               </Pressable>
             )}
           </View>
@@ -3234,11 +3608,11 @@ export function CollaborationThreadPanel({
               borderRadius: 18,
               alignItems: 'center',
               justifyContent: 'center',
-              backgroundColor: canSend ? colors.accent.primary : (isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.1)'),
+              backgroundColor: canSend ? FYLL_LIME : 'rgba(255,255,255,0.1)',
               opacity: canSend ? 1 : 0.6,
             }}
           >
-            <Send size={15} color={canSend ? (isDark ? '#000000' : '#FFFFFF') : colors.text.muted} strokeWidth={2.25} />
+            <Send size={15} color={canSend ? FYLL_LIME_INK : 'rgba(255,255,255,0.52)'} strokeWidth={2.25} />
           </Pressable>
         </View>
 
@@ -3490,6 +3864,114 @@ export function CollaborationThreadPanel({
               {activeImagePreview.fileName}
             </Text>
           ) : null}
+        </View>
+      </Modal>
+
+      {/* ── Product Picker Modal ── */}
+      <Modal
+        visible={showProductPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowProductPicker(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+          <Pressable style={{ flex: 1 }} onPress={() => setShowProductPicker(false)} />
+          <View style={{ backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '76%' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 0.5, borderBottomColor: colors.border.light }}>
+              <Text style={{ color: colors.text.primary, fontSize: 16, fontWeight: '700', flex: 1 }}>Share Product</Text>
+              <Pressable onPress={() => setShowProductPicker(false)} style={{ padding: 4 }}>
+                <X size={18} color={colors.text.muted} strokeWidth={2} />
+              </Pressable>
+            </View>
+            <View style={{ paddingHorizontal: 14, paddingVertical: 10 }}>
+              <View style={{ backgroundColor: isDark ? '#2C2C2E' : '#F3F4F6', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Search size={14} color={colors.text.muted} strokeWidth={2} />
+                <TextInput
+                  value={productSearch}
+                  onChangeText={setProductSearch}
+                  placeholder="Search products..."
+                  placeholderTextColor={colors.text.muted}
+                  style={{ flex: 1, color: colors.text.primary, fontSize: 14 }}
+                />
+                <SearchClearButton visible={Boolean(productSearch.trim())} onPress={() => setProductSearch('')} />
+              </View>
+            </View>
+            <ScrollView keyboardShouldPersistTaps="handled" style={{ paddingHorizontal: 14 }}>
+              {storeProducts
+                .filter((product) => {
+                  if (product.productType !== 'product' || product.isArchived || product.isDiscontinued) return false;
+                  if (!productSearch.trim()) return true;
+                  const query = productSearch.trim().toLowerCase();
+                  return product.name.toLowerCase().includes(query)
+                    || product.description?.toLowerCase().includes(query)
+                    || product.categories?.some((category) => category.toLowerCase().includes(query))
+                    || product.variants?.some((variant) => variant.sku?.toLowerCase().includes(query));
+                })
+                .slice(0, 40)
+                .map((product) => {
+                  const productThumbnail = product.imageUrl?.trim()
+                    || product.variants.find((variant) => variant.imageUrl?.trim())?.imageUrl?.trim();
+                  const prices = product.variants
+                    .map((variant) => variant.sellingPrice)
+                    .filter((price) => Number.isFinite(price) && price >= 0);
+                  const startingPrice = prices.length > 0 ? Math.min(...prices) : null;
+                  const stock = product.useGlobalStock
+                    ? (product.globalStock ?? 0)
+                    : product.variants.reduce((total, variant) => total + (variant.stock ?? 0), 0);
+
+                  return (
+                    <Pressable
+                      key={product.id}
+                      onPress={() => {
+                        setShowProductPicker(false);
+                        handleShareProduct(product);
+                      }}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        paddingVertical: 10,
+                        borderBottomWidth: 0.5,
+                        borderBottomColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+                        gap: 12,
+                      }}
+                    >
+                      {productThumbnail ? (
+                        <ResolvedAttachmentImage
+                          imageUrl={productThumbnail}
+                          resizeMode="cover"
+                          style={{ width: 48, height: 58, borderRadius: 10, backgroundColor: isDark ? '#2C2C2E' : '#F3F4F6' }}
+                        />
+                      ) : (
+                        <View style={{ width: 48, height: 58, borderRadius: 10, backgroundColor: 'rgba(213,224,87,0.18)', alignItems: 'center', justifyContent: 'center' }}>
+                          <ShoppingBag size={19} color={isDark ? FYLL_LIME : '#6A760C'} strokeWidth={2} />
+                        </View>
+                      )}
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text numberOfLines={1} style={{ color: colors.text.primary, fontSize: 14, fontWeight: '700' }}>
+                          {product.name}
+                        </Text>
+                        <Text numberOfLines={1} style={{ color: colors.text.muted, fontSize: 11, marginTop: 3 }}>
+                          {product.categories?.[0] ?? 'Uncategorised'} · {stock > 0 ? `${stock} in stock` : 'Out of stock'}
+                        </Text>
+                        {startingPrice !== null ? (
+                          <Text style={{ color: isDark ? FYLL_LIME : '#6A760C', fontSize: 12, fontWeight: '800', marginTop: 4 }}>
+                            {formatCurrency(startingPrice)}
+                          </Text>
+                        ) : null}
+                      </View>
+                      <ChevronRight size={14} color={colors.text.muted} strokeWidth={2} />
+                    </Pressable>
+                  );
+                })}
+              {storeProducts.filter((product) => product.productType === 'product' && !product.isArchived && !product.isDiscontinued).length === 0 ? (
+                <View style={{ alignItems: 'center', paddingVertical: 36 }}>
+                  <ShoppingBag size={28} color={colors.text.muted} strokeWidth={1.6} />
+                  <Text style={{ color: colors.text.muted, fontSize: 13, fontWeight: '600', marginTop: 10 }}>No products available to share.</Text>
+                </View>
+              ) : null}
+              <View style={{ height: Math.max(24, insets.bottom + 12) }} />
+            </ScrollView>
+          </View>
         </View>
       </Modal>
 
