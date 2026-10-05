@@ -61,7 +61,7 @@ export default function InventoryAuditScreen() {
   const addAuditLog = useFyllStore((state) => state.addAuditLog);
   const updateAuditLog = useFyllStore((state) => state.updateAuditLog);
   const storeAuditLogs = useFyllStore((state) => state.auditLogs);
-  const businessId = useAuthStore((state) => state.businessId);
+  const businessId = useAuthStore((state) => state.businessId ?? state.currentUser?.businessId ?? null);
   const performedBy = useAuthStore((state) => state.currentUser?.name ?? state.currentUser?.email ?? 'Team');
 
   const [currentView, setCurrentView] = useState<AuditView>('home');

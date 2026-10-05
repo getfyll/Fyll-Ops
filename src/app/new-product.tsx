@@ -14,6 +14,7 @@ import { useBreakpoint } from '@/lib/useBreakpoint';
 import { ResolvedAttachmentImage } from '@/components/ResolvedAttachmentImage';
 import { BackButton, FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, isHovered, usePaymentsPalette } from '@/components/payments/payments-ui';
 import { formatCompactNaira, formatNaira, swatchForName } from '@/components/inventory/inventory-ui';
+import { formatCurrencyInput, parseCurrencyInput } from '@/lib/money-input';
 
 const DRAFT_KEY = 'new-product-draft-v1';
 
@@ -39,11 +40,6 @@ const COLOUR_CODES: Record<string, string> = {
 };
 const newId = () => Math.random().toString(36).slice(2, 10);
 const digitsOnly = (value: string) => value.replace(/[^0-9]/g, '');
-const parseMoney = (value: string) => Number(digitsOnly(value)) || 0;
-const formatMoneyInput = (value: string) => {
-  const digits = digitsOnly(value);
-  return digits ? Number(digits).toLocaleString('en-NG') : '';
-};
 const skuBase = (name: string) => (name.trim().split(/\s+/)[0] ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
 const valueCode = (value: string) => {
   const key = value.trim().toLowerCase();
@@ -85,7 +81,7 @@ export default function NewProductScreen() {
   const updateProductVariable = useFyllStore((s) => s.updateProductVariable);
   const addProduct = useFyllStore((s) => s.addProduct);
   const currentUser = useAuthStore((s) => s.currentUser);
-  const businessId = useAuthStore((s) => s.businessId);
+  const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
 
   const [name, setName] = useState<string>('');
   const [price, setPrice] = useState<string>('');
@@ -175,7 +171,7 @@ export default function NewProductScreen() {
   };
 
   // ── Derived ────────────────────────────────────────────────────────────────
-  const basePrice = parseMoney(price);
+  const basePrice = parseCurrencyInput(price);
   const base = skuBase(name) || 'SKU';
   const combos = useMemo(() => (hasOptions ? buildCombos(options) : []), [hasOptions, options]);
   const rows = useMemo(() => {
@@ -189,7 +185,7 @@ export default function NewProductScreen() {
       const sku = override.sku ?? auto;
       const stock = override.stock ?? '';
       const ownPrice = override.price ?? '';
-      return { ...combo, sku, stock, ownPrice, effectivePrice: parseMoney(ownPrice) || basePrice, imageUrl: override.imageUrl };
+      return { ...combo, sku, stock, ownPrice, effectivePrice: parseCurrencyInput(ownPrice) || basePrice, imageUrl: override.imageUrl };
     });
   }, [combos, overrides, base, basePrice]);
 
@@ -248,7 +244,7 @@ export default function NewProductScreen() {
     setOverrides((prev) => {
       const next = { ...prev };
       rows.forEach((row) => {
-        next[row.key] = { ...next[row.key], [field]: field === 'stock' ? digitsOnly(value) : formatMoneyInput(value) };
+        next[row.key] = { ...next[row.key], [field]: field === 'stock' ? digitsOnly(value) : formatCurrencyInput(value) };
       });
       return next;
     });
@@ -296,6 +292,10 @@ export default function NewProductScreen() {
 
   const handleCreate = async () => {
     if (!canCreate) return;
+    if (!businessId) {
+      setNotice({ type: 'error', message: 'Your workspace is still loading. Please wait a moment and try again.' });
+      return;
+    }
     setIsSubmitting(true);
     try {
       const productId = generateProductId();
@@ -423,7 +423,7 @@ export default function NewProductScreen() {
           <Text style={lab}>Price</Text>
           <View style={{ maxWidth: isMobile ? undefined : 260, justifyContent: 'center' }}>
             <Text style={{ position: 'absolute', left: 14, color: palette.faint, fontSize: isMobile ? 14 : 15, zIndex: 1 }}>₦</Text>
-            <TextInput value={price} onChangeText={(value) => setPrice(formatMoneyInput(value))} keyboardType="number-pad" placeholder="0" placeholderTextColor={palette.faint} style={[field, { paddingLeft: 32 }, webNoOutline]} />
+            <TextInput value={price} onChangeText={(value) => setPrice(formatCurrencyInput(value))} keyboardType="number-pad" placeholder="0" placeholderTextColor={palette.faint} style={[field, { paddingLeft: 32 }, webNoOutline]} />
           </View>
         </View>
         <View style={{ gap: 8 }}>
@@ -621,7 +621,7 @@ export default function NewProductScreen() {
                 </View>
                 <TextInput value={row.sku} onChangeText={(value) => setOverride(row.key, { sku: value.toUpperCase() })} autoCapitalize="characters" style={[cell, { width: 170, color: duplicate ? palette.warn : palette.muted, fontSize: 13, letterSpacing: 0.3, borderColor: duplicate ? palette.warnBorder : palette.border }, webNoOutline]} />
                 <TextInput value={row.stock} onChangeText={(value) => setOverride(row.key, { stock: digitsOnly(value) })} keyboardType="number-pad" placeholder="0" placeholderTextColor={palette.faint} style={[cell, { width: 120, fontWeight: '600' }, webNoOutline]} />
-                <TextInput value={row.ownPrice} onChangeText={(value) => setOverride(row.key, { price: formatMoneyInput(value) })} keyboardType="number-pad" placeholder={basePrice ? formatNaira(basePrice) : '₦ Price'} placeholderTextColor={palette.faint} style={[cell, { width: 150 }, webNoOutline]} />
+                <TextInput value={row.ownPrice} onChangeText={(value) => setOverride(row.key, { price: formatCurrencyInput(value) })} keyboardType="number-pad" placeholder={basePrice ? formatNaira(basePrice) : '₦ Price'} placeholderTextColor={palette.faint} style={[cell, { width: 150 }, webNoOutline]} />
               </View>
             );
           })}
@@ -762,7 +762,7 @@ export default function NewProductScreen() {
                   </View>
                   <View style={{ gap: 8 }}>
                     <Text style={lab}>Price</Text>
-                    <TextInput value={editingRow.ownPrice} onChangeText={(value) => setOverride(editingRow.key, { price: formatMoneyInput(value) })} keyboardType="number-pad" placeholder={basePrice ? `${formatNaira(basePrice)} (same as product)` : '₦ Price'} placeholderTextColor={palette.faint} style={[field, webNoOutline]} />
+                    <TextInput value={editingRow.ownPrice} onChangeText={(value) => setOverride(editingRow.key, { price: formatCurrencyInput(value) })} keyboardType="number-pad" placeholder={basePrice ? `${formatNaira(basePrice)} (same as product)` : '₦ Price'} placeholderTextColor={palette.faint} style={[field, webNoOutline]} />
                   </View>
                   <Pressable onPress={() => setEditingKey(null)} style={{ height: 48, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.inverseBg }}>
                     <Text style={{ color: palette.inverseText, fontSize: 15, fontWeight: '600' }}>Done</Text>

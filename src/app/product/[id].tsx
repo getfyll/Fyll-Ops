@@ -15,6 +15,7 @@ import { prepareProductMediaForPersistence, uploadProductMediaIfNeeded } from '@
 import { SearchClearButton } from '@/components/SearchClearButton';
 import { FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, MoneyText, isHovered, usePaymentsPalette, BackButton } from '@/components/payments/payments-ui';
 import { StockStatusLabel, formatNaira, getVariantStatus } from '@/components/inventory/inventory-ui';
+import { parseCurrencyInput } from '@/lib/money-input';
 
 const buildProcurementVariantImageMap = (procurements: Procurement[]) => {
   const imageByProductVariant = new Map<string, string>();
@@ -64,7 +65,7 @@ export default function ProductDetailScreen() {
   const useGlobalLowStockThreshold = useFyllStore((s) => s.useGlobalLowStockThreshold);
   const globalLowStockThreshold = useFyllStore((s) => s.globalLowStockThreshold);
   const palette = usePaymentsPalette();
-  const businessId = useAuthStore((s) => s.businessId);
+  const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
   const currentUserRole = useAuthStore((s) => s.currentUser?.role ?? null);
 
   const product = useMemo(() => products.find((p) => p.id === id), [products, id]);
@@ -327,7 +328,7 @@ export default function ProductDetailScreen() {
 
   const effectiveGlobalPrice = useMemo(() => {
     if (globalPrice.trim() !== '') {
-      return parseFloat(globalPrice) || 0;
+      return parseCurrencyInput(globalPrice);
     }
     const fallback = product?.variants[0]?.sellingPrice ?? 0;
     return Number.isFinite(fallback) ? fallback : 0;
@@ -415,6 +416,10 @@ export default function ProductDetailScreen() {
 
   const handleSaveEdit = async () => {
     if (!editName.trim()) return;
+    if (!businessId) {
+      showToast('error', 'Your workspace is still loading. Please try again.');
+      return;
+    }
 
     // Determine if this is the first time marking as new design
     const wasNewDesign = product.isNewDesign || false;
@@ -428,7 +433,7 @@ export default function ProductDetailScreen() {
 
     let nextVariants = product.variants;
     if (useGlobalPrice && globalPrice) {
-      const newPrice = parseFloat(globalPrice) || 0;
+      const newPrice = parseCurrencyInput(globalPrice);
       nextVariants = product.variants.map((variant) => ({
         ...variant,
         sellingPrice: newPrice,
@@ -463,27 +468,33 @@ export default function ProductDetailScreen() {
       };
     });
 
-    await updateProduct(product.id, {
-      name: nextProductName,
-      description: editDescription.trim(),
-      lowStockThreshold: parseInt(editThreshold, 10) || 5,
-      categories: editCategories,
-      imageUrl: preparedMedia.imageUrl,
-      variants: renamedVariants,
-      useGlobalStock: useGlobalStock,
-      globalStock: useGlobalStock ? (parseInt(globalStock, 10) || 0) : undefined,
-      // New Design fields
-      isNewDesign: editIsNewDesign,
-      designYear: editIsNewDesign ? parseInt(editDesignYear, 10) || new Date().getFullYear() : undefined,
-      designLaunchedAt: firstTimeNewDesign
-        ? new Date().toISOString()
-        : (editIsNewDesign ? product.designLaunchedAt : undefined),
-      // Discontinued fields
-      isDiscontinued: editIsDiscontinued,
-      discontinuedAt: firstTimeDiscontinued
-        ? new Date().toISOString()
-        : (editIsDiscontinued ? product.discontinuedAt : undefined),
-    }, businessId);
+    try {
+      await updateProduct(product.id, {
+        name: nextProductName,
+        description: editDescription.trim(),
+        lowStockThreshold: parseInt(editThreshold, 10) || 5,
+        categories: editCategories,
+        imageUrl: preparedMedia.imageUrl,
+        variants: renamedVariants,
+        useGlobalStock: useGlobalStock,
+        globalStock: useGlobalStock ? (parseInt(globalStock, 10) || 0) : undefined,
+        // New Design fields
+        isNewDesign: editIsNewDesign,
+        designYear: editIsNewDesign ? parseInt(editDesignYear, 10) || new Date().getFullYear() : undefined,
+        designLaunchedAt: firstTimeNewDesign
+          ? new Date().toISOString()
+          : (editIsNewDesign ? product.designLaunchedAt : undefined),
+        // Discontinued fields
+        isDiscontinued: editIsDiscontinued,
+        discontinuedAt: firstTimeDiscontinued
+          ? new Date().toISOString()
+          : (editIsDiscontinued ? product.discontinuedAt : undefined),
+      }, businessId);
+    } catch (error) {
+      console.warn('Product update failed:', error);
+      showToast('error', 'Could not save this product. Please try again.');
+      return;
+    }
 
     setEditImageUrl(preparedMedia.imageUrl);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -573,6 +584,10 @@ export default function ProductDetailScreen() {
   };
 
   const handleAddVariant = async () => {
+    if (!businessId) {
+      showToast('error', 'Your workspace is still loading. Please try again.');
+      return;
+    }
     const selectedVariable = productVariables.find(v => v.id === selectedVariableId);
 
     if (!selectedVariable) {
@@ -620,14 +635,19 @@ export default function ProductDetailScreen() {
         : (parseInt(newVariantStock, 10) || 0),
       sellingPrice: (useGlobalPrice && !overrideVariantPrice)
         ? effectiveGlobalPrice
-        : (parseFloat(newVariantPrice) || 0),
+        : parseCurrencyInput(newVariantPrice),
     };
 
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    await updateProduct(product.id, {
-      variants: [...product.variants, newVariant],
-    }, businessId);
-    setShowAddVariant(false);
+    try {
+      await updateProduct(product.id, {
+        variants: [...product.variants, newVariant],
+      }, businessId);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setShowAddVariant(false);
+    } catch (error) {
+      console.warn('Product variant create failed:', error);
+      showToast('error', 'Could not save the variant. Please try again.');
+    }
   };
 
   const handleOpenEditVariant = (variant: ProductVariant) => {
@@ -645,6 +665,10 @@ export default function ProductDetailScreen() {
 
   const handleSaveVariant = async () => {
     if (!editingVariant) return;
+    if (!businessId) {
+      showToast('error', 'Your workspace is still loading. Please try again.');
+      return;
+    }
 
     if (useGlobalPrice && editOverrideVariantPrice && !editVariantPrice) {
       Alert.alert('Missing Price', 'Please enter a selling price.');
@@ -676,8 +700,8 @@ export default function ProductDetailScreen() {
           ...variant,
           sku: nextSku,
           sellingPrice: useGlobalPrice
-            ? (editOverrideVariantPrice ? (parseFloat(editVariantPrice) || editingVariant.sellingPrice) : effectiveGlobalPrice)
-            : (parseFloat(editVariantPrice) || editingVariant.sellingPrice),
+            ? (editOverrideVariantPrice ? (parseCurrencyInput(editVariantPrice) || editingVariant.sellingPrice) : effectiveGlobalPrice)
+            : (parseCurrencyInput(editVariantPrice) || editingVariant.sellingPrice),
           stock: useGlobalStock
             ? (editOverrideVariantStock ? (parseInt(editVariantStock, 10) || editingVariant.stock) : effectiveGlobalStock)
             : (parseInt(editVariantStock, 10) || editingVariant.stock),
@@ -687,11 +711,15 @@ export default function ProductDetailScreen() {
         : variant
     ));
 
-    await updateProduct(product.id, { variants: nextVariants }, businessId);
-
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    setEditVariantImageUrl(nextVariantImageUrl);
-    setEditingVariant(null);
+    try {
+      await updateProduct(product.id, { variants: nextVariants }, businessId);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setEditVariantImageUrl(nextVariantImageUrl);
+      setEditingVariant(null);
+    } catch (error) {
+      console.warn('Product variant update failed:', error);
+      showToast('error', 'Could not save the variant price. Please try again.');
+    }
   };
 
   const handleDeleteVariant = (variantId: string, variantName: string) => {
