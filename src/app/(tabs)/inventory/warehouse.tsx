@@ -2,20 +2,21 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Modal, Platform, Image, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Boxes, Plus, Search, ClipboardCheck, ClipboardList, AlertTriangle, Pencil, Trash2, X, Check, Filter, ArrowDownAZ, ArrowUpAZ, Clock, TrendingDown, TrendingUp, ChevronDown, MoreVertical, Camera, ImageIcon, Package } from 'lucide-react-native';
+import { Boxes, Plus, Search, ClipboardCheck, AlertTriangle, Trash2, X, Check, ArrowDownAZ, ArrowUpAZ, Clock, TrendingDown, TrendingUp, ChevronDown, MoreVertical, Camera, ImageIcon, Package } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import useAuthStore from '@/lib/state/auth-store';
 import useFyllStore, { type WarehouseItem } from '@/lib/state/fyll-store';
 import { useThemeColors } from '@/lib/theme';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
-import { DESKTOP_PAGE_HEADER_MIN_HEIGHT, getStandardPageHeadingStyle } from '@/lib/page-heading';
 import { useImagePicker } from '@/hooks/useImagePicker';
 import { uploadWarehouseMediaIfNeeded } from '@/lib/warehouse-media';
 import { ResolvedAttachmentImage } from '@/components/ResolvedAttachmentImage';
 import { InventoryMobileFab } from '@/components/InventoryMobileFab';
 import { capitalizeDisplayLabel } from '@/lib/display-format';
 import { SearchClearButton } from '@/components/SearchClearButton';
+import { FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, isHovered, usePaymentsPalette } from '@/components/payments/payments-ui';
+import { FilterPill, MenuPill } from '@/components/inventory/inventory-ui';
 
 type WarehouseFormState = {
   name: string;
@@ -51,6 +52,16 @@ const formatDate = (isoDate?: string) => {
   return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 };
 
+type WarehouseStockFilter = 'all' | 'low-stock' | 'in-stock' | 'out-of-stock' | 'overdue';
+type WarehouseFrequencyFilter = 'all' | 'monthly' | 'bi-monthly';
+type WarehouseSort = 'name-asc' | 'name-desc' | 'stock-low' | 'stock-high' | 'count-newest' | 'count-oldest';
+
+const getWarehouseStockState = (item: WarehouseItem) => {
+  if (item.currentStock === 0) return 'out-of-stock' as const;
+  if (typeof item.reorderLevel === 'number' && item.currentStock <= item.reorderLevel) return 'low-stock' as const;
+  return 'in-stock' as const;
+};
+
 export default function WarehouseScreen() {
   const router = useRouter();
   const colors = useThemeColors();
@@ -59,9 +70,7 @@ export default function WarehouseScreen() {
   const isWebDesktop = isDesktop && isWeb;
   const tabBarHeight = useTabBarHeight();
   const isDark = colors.bg.primary === '#111111';
-  const mobileWarehouseHeadingStyle = isMobile
-    ? { ...getStandardPageHeadingStyle(isMobile), fontWeight: '600' as const }
-    : getStandardPageHeadingStyle(isMobile);
+  const palette = usePaymentsPalette();
 
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
   const currentUser = useAuthStore((s) => s.currentUser);
@@ -78,9 +87,10 @@ export default function WarehouseScreen() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [showFilterMenu, setShowFilterMenu] = useState(false);
-  const [stockFilter, setStockFilter] = useState<'all' | 'low-stock' | 'in-stock' | 'out-of-stock' | 'overdue'>('all');
-  const [frequencyFilter, setFrequencyFilter] = useState<'all' | 'monthly' | 'bi-monthly'>('all');
-  const [sortBy, setSortBy] = useState<'name-asc' | 'name-desc' | 'stock-low' | 'stock-high' | 'count-newest' | 'count-oldest'>('name-asc');
+  const [stockFilter, setStockFilter] = useState<WarehouseStockFilter>('all');
+  const [frequencyFilter, setFrequencyFilter] = useState<WarehouseFrequencyFilter>('all');
+  const [sortBy, setSortBy] = useState<WarehouseSort>('name-asc');
+  const [categoryFilter, setCategoryFilter] = useState('all');
   const [itemModalOpen, setItemModalOpen] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [form, setForm] = useState<WarehouseFormState>(defaultFormState);
@@ -94,7 +104,7 @@ export default function WarehouseScreen() {
 
   const separatorColor = isDark ? '#2F2F2F' : '#E5E7EB';
 
-  const activeFilterCount = (stockFilter !== 'all' ? 1 : 0) + (frequencyFilter !== 'all' ? 1 : 0) + (sortBy !== 'name-asc' ? 1 : 0);
+  const activeFilterCount = (stockFilter !== 'all' ? 1 : 0) + (frequencyFilter !== 'all' ? 1 : 0) + (sortBy !== 'name-asc' ? 1 : 0) + (categoryFilter !== 'all' ? 1 : 0);
   const filteredWarehouseCategories = useMemo(() => {
     const query = form.category.trim().toLowerCase();
     if (!query) return warehouseCategories;
@@ -114,14 +124,18 @@ export default function WarehouseScreen() {
       || item.unit.toLowerCase().includes(query)
     ));
 
+    if (categoryFilter !== 'all') {
+      result = result.filter((item) => item.category === categoryFilter);
+    }
+
     if (stockFilter !== 'all') {
       result = result.filter((item) => {
         const nextDue = addMonths(item.lastCountedAt ?? item.createdAt, item.countFrequency === 'Bi-Monthly' ? 2 : 1);
         const overdue = nextDue.getTime() < Date.now();
-        const lowStock = typeof item.reorderLevel === 'number' && item.currentStock <= item.reorderLevel;
-        if (stockFilter === 'low-stock') return lowStock;
-        if (stockFilter === 'in-stock') return item.currentStock > 0;
-        if (stockFilter === 'out-of-stock') return item.currentStock === 0;
+        const stockState = getWarehouseStockState(item);
+        if (stockFilter === 'low-stock') return stockState === 'low-stock';
+        if (stockFilter === 'in-stock') return stockState === 'in-stock';
+        if (stockFilter === 'out-of-stock') return stockState === 'out-of-stock';
         if (stockFilter === 'overdue') return overdue;
         return true;
       });
@@ -145,17 +159,22 @@ export default function WarehouseScreen() {
     });
 
     return result;
-  }, [searchQuery, warehouseItems, stockFilter, frequencyFilter, sortBy]);
+  }, [searchQuery, warehouseItems, stockFilter, frequencyFilter, sortBy, categoryFilter]);
 
   const itemStatus = useMemo(() => {
     const now = new Date();
     let lowStock = 0;
+    let outOfStock = 0;
     let overdue = 0;
+    let units = 0;
 
     warehouseItems.forEach((item) => {
-      if (typeof item.reorderLevel === 'number' && item.currentStock <= item.reorderLevel) {
+      units += item.currentStock;
+      const stockState = getWarehouseStockState(item);
+      if (stockState === 'low-stock') {
         lowStock += 1;
       }
+      if (stockState === 'out-of-stock') outOfStock += 1;
       const baseDate = item.lastCountedAt ?? item.createdAt;
       const nextDue = addMonths(baseDate, item.countFrequency === 'Bi-Monthly' ? 2 : 1);
       if (nextDue.getTime() < now.getTime()) {
@@ -165,10 +184,48 @@ export default function WarehouseScreen() {
 
     return {
       total: warehouseItems.length,
+      units,
       lowStock,
+      outOfStock,
       overdue,
     };
   }, [warehouseItems]);
+
+  const stockFilterCounts = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    const counts: Record<WarehouseStockFilter, number> = { all: 0, 'low-stock': 0, 'in-stock': 0, 'out-of-stock': 0, overdue: 0 };
+    warehouseItems.forEach((item) => {
+      if (query && !item.name.toLowerCase().includes(query) && !item.category.toLowerCase().includes(query) && !item.unit.toLowerCase().includes(query)) return;
+      if (categoryFilter !== 'all' && item.category !== categoryFilter) return;
+      counts.all += 1;
+      counts[getWarehouseStockState(item)] += 1;
+      const nextDue = addMonths(item.lastCountedAt ?? item.createdAt, item.countFrequency === 'Bi-Monthly' ? 2 : 1);
+      if (nextDue.getTime() < Date.now()) counts.overdue += 1;
+    });
+    return counts;
+  }, [categoryFilter, searchQuery, warehouseItems]);
+
+  const categoryOptions = useMemo(() => [
+    { key: 'all', label: 'All' },
+    ...Array.from(new Set(warehouseItems.map((item) => item.category).filter(Boolean)))
+      .sort((a, b) => a.localeCompare(b))
+      .map((category) => ({ key: category, label: category })),
+  ], [warehouseItems]);
+
+  const frequencyOptions = [
+    { key: 'all', label: 'All cycles' },
+    { key: 'monthly', label: 'Monthly' },
+    { key: 'bi-monthly', label: 'Bi-monthly' },
+  ];
+
+  const sortOptions = [
+    { key: 'name-asc', label: 'Name A–Z' },
+    { key: 'name-desc', label: 'Name Z–A' },
+    { key: 'stock-low', label: 'Lowest stock' },
+    { key: 'stock-high', label: 'Highest stock' },
+    { key: 'count-newest', label: 'Recently counted' },
+    { key: 'count-oldest', label: 'Oldest count' },
+  ];
 
   const openCreateModal = () => {
     if (Platform.OS !== 'web') {
@@ -326,34 +383,27 @@ export default function WarehouseScreen() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg.primary }}>
-      <View
-        style={{
-          borderBottomWidth: 1,
-          borderBottomColor: colors.border.light,
-          paddingHorizontal: isWebDesktop ? 0 : 20,
-          paddingTop: isWebDesktop ? 0 : 16,
-          paddingBottom: isWebDesktop ? 0 : 8,
-        }}
-      >
-        <View style={isWebDesktop ? {
+    <SafeAreaView style={{ flex: 1, backgroundColor: palette.page }} edges={isWebDesktop ? [] : ['top']}>
+      <ScrollView
+        style={{ flex: 1, backgroundColor: palette.page }}
+        stickyHeaderIndices={!isWebDesktop ? [2] : undefined}
+        contentContainerStyle={{
           width: '100%',
-          maxWidth: 1400,
-          alignSelf: 'flex-start',
-          minHeight: DESKTOP_PAGE_HEADER_MIN_HEIGHT,
-          paddingLeft: 20,
-          paddingRight: 20,
-          paddingTop: 20,
-          paddingBottom: 16,
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        } : { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <View style={{ flex: 1, paddingRight: 12 }}>
-            <Text style={{ color: colors.text.primary, ...mobileWarehouseHeadingStyle }}>Warehouse</Text>
-            <Text style={{ color: colors.text.muted, fontSize: 13, marginTop: 2 }}>Inventory</Text>
+          maxWidth: isWebDesktop ? 1456 : 760,
+          alignSelf: isWebDesktop ? 'flex-start' : 'center',
+          paddingHorizontal: isWebDesktop ? 28 : 16,
+          paddingBottom: tabBarHeight + 32,
+          gap: isWebDesktop ? 18 : 14,
+        }}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={{ paddingTop: isWebDesktop ? 36 : 14, paddingBottom: isWebDesktop ? 6 : 0, flexDirection: 'row', alignItems: isWebDesktop ? 'flex-end' : 'center', justifyContent: 'space-between', gap: 12 }}>
+          <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+            <Text style={{ color: palette.text, fontSize: 30, fontWeight: '700', letterSpacing: -0.6 }} numberOfLines={1}>Warehouse</Text>
+            {isWebDesktop ? <Text style={{ color: palette.faint, fontSize: 14 }}>Supplies, materials and physical stock counts.</Text> : null}
           </View>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={{ flexDirection: 'row', gap: isWebDesktop ? 10 : 8, alignItems: 'center' }}>
             <Pressable
               onPress={() => {
                 if (Platform.OS !== 'web') {
@@ -361,125 +411,117 @@ export default function WarehouseScreen() {
                 }
                 router.replace('/inventory-audit');
               }}
-              style={{
-                paddingHorizontal: 14,
-                height: 44,
+              style={(state) => ({
+                paddingHorizontal: isWebDesktop ? 16 : 0,
+                width: isWebDesktop ? undefined : 40,
+                height: 40,
                 flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'center',
-                backgroundColor: isMobile ? colors.bg.card : 'rgba(168, 85, 247, 0.08)',
-                borderWidth: isMobile ? 1 : 0,
-                borderColor: colors.border.light,
+                gap: 7,
+                backgroundColor: isHovered(state) ? palette.softFill : 'transparent',
+                borderWidth: 1,
+                borderColor: palette.outline,
                 borderRadius: 999,
-              }}
+              })}
             >
-              <ClipboardList size={16} color="#A856F6" strokeWidth={2} />
-              <Text style={{ color: '#A856F6', marginLeft: 6, fontWeight: '600', fontSize: 12 }}>Audit</Text>
+              <ClipboardCheck size={15} color={palette.text} strokeWidth={2} />
+              {isWebDesktop ? <Text style={{ color: palette.text, fontWeight: '600', fontSize: 14 }}>Stock audit</Text> : null}
             </Pressable>
             <Pressable
               onPress={openCreateModal}
-              style={{
-                backgroundColor: colors.accent.primary,
+              style={(state) => ({
+                backgroundColor: isHovered(state) ? FYLL_LIME_HOVER : FYLL_LIME,
                 borderRadius: 999,
                 paddingHorizontal: 16,
-                height: 44,
+                height: 40,
                 alignItems: 'center',
                 justifyContent: 'center',
                 flexDirection: 'row',
-              }}
+                gap: 6,
+                opacity: state.pressed ? 0.85 : 1,
+              })}
             >
-              <Plus size={16} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={2.4} />
-              <Text style={{ color: isDark ? '#000000' : '#FFFFFF', marginLeft: 8, fontWeight: '600', fontSize: 12 }}>Add Item</Text>
+              <Plus size={15} color={FYLL_LIME_INK} strokeWidth={2.6} />
+              <Text style={{ color: FYLL_LIME_INK, fontWeight: '600', fontSize: 14 }}>{isWebDesktop ? 'Add item' : 'Add'}</Text>
             </Pressable>
           </View>
         </View>
-      </View>
-
-      <ScrollView
-        style={{ flex: 1, paddingHorizontal: isWebDesktop ? 0 : 20, paddingTop: isWebDesktop ? 0 : 16 }}
-        contentContainerStyle={{
-          maxWidth: isWebDesktop ? 1400 : undefined,
-          alignSelf: isWebDesktop ? 'flex-start' : undefined,
-          width: '100%',
-          paddingLeft: isWebDesktop ? 20 : 0,
-          paddingRight: isWebDesktop ? 20 : 0,
-          paddingTop: isWebDesktop ? 24 : 0,
-          paddingBottom: tabBarHeight + 20,
-        }}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={{ flexDirection: isDesktop ? 'row' : 'row', gap: 10 }}>
-          <View
-            style={{
-              flex: 1,
-              borderWidth: 1,
-              borderColor: colors.border.light,
-              borderRadius: 16,
-              paddingHorizontal: isDesktop ? 14 : 12,
-              paddingVertical: isDesktop ? 14 : 13,
-              backgroundColor: colors.bg.card,
-            }}
-          >
-            <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', letterSpacing: 0.3 }}>ITEMS</Text>
-            <Text style={{ color: colors.text.primary, fontSize: isDesktop ? 28 : 22, fontWeight: isDesktop ? '700' : '600', marginTop: isDesktop ? 2 : 4 }}>
-              {itemStatus.total}
-            </Text>
+        {isWebDesktop ? (
+          <View style={{ flexDirection: 'row', borderRadius: 20, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, overflow: 'hidden' }}>
+            {[
+              { label: 'Warehouse items', value: itemStatus.total, sub: `${itemStatus.units.toLocaleString()} units recorded` },
+              { label: 'Low stock', value: itemStatus.lowStock, sub: 'At or below reorder level', dot: palette.tones.awaiting.dot, filter: 'low-stock' as WarehouseStockFilter },
+              { label: 'Out of stock', value: itemStatus.outOfStock, sub: 'Needs replenishing', dot: palette.danger, filter: 'out-of-stock' as WarehouseStockFilter },
+              { label: 'Count overdue', value: itemStatus.overdue, sub: 'Physical count due', dot: palette.faint, filter: 'overdue' as WarehouseStockFilter },
+            ].map((tile, index) => (
+              <Pressable
+                key={tile.label}
+                disabled={!tile.filter}
+                onPress={() => tile.filter && setStockFilter(tile.filter)}
+                style={(state) => ({ flex: index === 0 ? 1.3 : 1, minWidth: 0, gap: 4, paddingVertical: 18, paddingHorizontal: 22, borderLeftWidth: index === 0 ? 0 : 1, borderLeftColor: palette.hairline, justifyContent: 'center', backgroundColor: tile.filter && isHovered(state) ? palette.cardHover : 'transparent' })}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  {tile.dot ? <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: tile.dot }} /> : null}
+                  <Text style={{ color: palette.muted, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{tile.label}</Text>
+                </View>
+                <Text style={{ color: palette.text, fontSize: index === 0 ? 28 : 22, fontWeight: '600', letterSpacing: -0.5, fontVariant: ['tabular-nums'] }}>{tile.value}</Text>
+                <Text style={{ color: palette.faint, fontSize: 13 }} numberOfLines={1}>{tile.sub}</Text>
+              </Pressable>
+            ))}
           </View>
-          <View
-            style={{
-              flex: 1,
-              borderWidth: 1,
-              borderColor: colors.border.light,
-              borderRadius: 16,
-              paddingHorizontal: isDesktop ? 14 : 12,
-              paddingVertical: isDesktop ? 14 : 13,
-              backgroundColor: colors.bg.card,
-            }}
-          >
-            <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', letterSpacing: 0.3 }}>LOW STOCK</Text>
-            <Text style={{ color: '#F59E0B', fontSize: isDesktop ? 28 : 22, fontWeight: isDesktop ? '700' : '600', marginTop: isDesktop ? 2 : 4 }}>
-              {itemStatus.lowStock}
-            </Text>
-          </View>
-          {isDesktop ? (
-            <View
-              style={{
-                flex: 1,
-                borderWidth: 1,
-                borderColor: colors.border.light,
-                borderRadius: 16,
-                padding: 14,
-                backgroundColor: colors.bg.card,
-              }}
-            >
-              <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', letterSpacing: 0.3 }}>COUNT OVERDUE</Text>
-              <Text style={{ color: '#EF4444', fontSize: 28, fontWeight: '700', marginTop: 2 }}>{itemStatus.overdue}</Text>
+        ) : (
+          <View style={{ borderRadius: 20, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, paddingHorizontal: 18, paddingTop: 18, paddingBottom: 16, gap: 14 }}>
+            <View style={{ gap: 4 }}>
+              <Text style={{ color: palette.muted, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>Warehouse stock</Text>
+              <Text style={{ color: palette.text, fontSize: 32, fontWeight: '600', letterSpacing: -0.8, fontVariant: ['tabular-nums'] }}>{itemStatus.units.toLocaleString()}</Text>
+              <Text style={{ color: palette.faint, fontSize: 13 }}>Units across {itemStatus.total} items</Text>
             </View>
-          ) : null}
-        </View>
+            <View style={{ height: 1, backgroundColor: palette.hairline }} />
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              {[
+                { label: 'Low stock', value: itemStatus.lowStock, dot: palette.tones.awaiting.dot, filter: 'low-stock' as WarehouseStockFilter },
+                { label: 'Out', value: itemStatus.outOfStock, dot: palette.danger, filter: 'out-of-stock' as WarehouseStockFilter },
+                { label: 'Overdue', value: itemStatus.overdue, dot: palette.faint, filter: 'overdue' as WarehouseStockFilter },
+              ].map((tile) => (
+                <Pressable key={tile.label} onPress={() => setStockFilter(tile.filter)} style={{ flex: 1, gap: 3 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: tile.dot }} />
+                    <Text style={{ color: palette.muted, fontSize: 12 }}>{tile.label}</Text>
+                  </View>
+                  <Text style={{ color: palette.text, fontSize: 18, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{tile.value}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        )}
 
         {isWebDesktop ? (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 14 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, zIndex: 30 }}>
             <View
-              className="flex-row items-center rounded-full px-4"
               style={{
                 height: 44,
-                width: '30%',
-                maxWidth: 420,
-                minWidth: 320,
-                backgroundColor: colors.input.bg,
+                width: 340,
+                flexShrink: 0,
+                paddingLeft: 16,
+                paddingRight: 8,
+                borderRadius: 999,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 10,
+                backgroundColor: palette.inputBg,
                 borderWidth: 1,
-                borderColor: colors.border.light,
+                borderColor: palette.border,
               }}
             >
-              <Search size={18} color={colors.text.muted} strokeWidth={2} />
+              <Search size={17} color={palette.faint} strokeWidth={2} />
               <TextInput
                 placeholder="Search warehouse items..."
                 placeholderTextColor={colors.input.placeholder}
                 value={searchQuery}
                 onChangeText={setSearchQuery}
-                style={{ flex: 1, marginLeft: 8, color: colors.input.text, fontSize: 14 }}
-                selectionColor={colors.text.primary}
+                style={[{ flex: 1, height: '100%', paddingVertical: 0, color: palette.text, fontSize: 14.5 }, Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null]}
+                selectionColor={palette.text}
               />
               <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
             </View>
@@ -487,140 +529,105 @@ export default function WarehouseScreen() {
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              style={{ flex: 1 }}
-              contentContainerStyle={{ flexGrow: 0, gap: 8, paddingRight: 4 }}
+              style={{ flex: 1, flexGrow: 0 }}
+              contentContainerStyle={{ gap: 8, alignItems: 'center' }}
             >
               {[
                 { key: 'all', label: 'All' },
-                { key: 'low-stock', label: 'Low Stock' },
-                { key: 'in-stock', label: 'In Stock' },
-                { key: 'out-of-stock', label: 'Out of Stock' },
+                { key: 'low-stock', label: 'Low stock' },
+                { key: 'out-of-stock', label: 'Out of stock' },
+                { key: 'in-stock', label: 'In stock' },
               ].map((option) => (
-                <Pressable
+                <FilterPill
                   key={option.key}
+                  label={option.label}
+                  count={stockFilterCounts[option.key as WarehouseStockFilter]}
+                  active={stockFilter === option.key}
                   onPress={() => setStockFilter(option.key as typeof stockFilter)}
-                  className="rounded-full active:opacity-70"
-                  style={{
-                    height: 44,
-                    paddingHorizontal: 16,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: stockFilter === option.key ? colors.accent.primary : colors.bg.card,
-                    borderWidth: stockFilter === option.key ? 0 : 1,
-                    borderColor: separatorColor,
-                  }}
-                >
-                  <Text
-                    className="text-sm font-semibold"
-                    style={{
-                      color: stockFilter === option.key ? (isDark ? '#000000' : '#FFFFFF') : colors.text.primary,
-                    }}
-                  >
-                    {option.label}
-                  </Text>
-                </Pressable>
+                  palette={palette}
+                />
               ))}
             </ScrollView>
-
-            <Pressable
-              onPress={() => {
-                if (Platform.OS !== 'web') {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                }
-                setShowFilterMenu(true);
-              }}
-              className="rounded-full items-center justify-center active:opacity-70 flex-row px-4"
-              style={{
-                height: 44,
-                backgroundColor: activeFilterCount > 0 ? colors.accent.primary : colors.bg.card,
-                borderWidth: activeFilterCount > 0 ? 0 : 1,
-                borderColor: separatorColor,
-              }}
-            >
-              <Filter
-                size={18}
-                color={activeFilterCount > 0 ? (isDark ? '#000000' : '#FFFFFF') : colors.text.tertiary}
-                strokeWidth={2}
-              />
-              {activeFilterCount > 0 && (
-                <Text style={{ color: isDark ? '#000000' : '#FFFFFF' }} className="font-semibold text-sm ml-1.5">
-                  {activeFilterCount}
-                </Text>
-              )}
-            </Pressable>
+            <MenuPill prefix="Category" value={categoryFilter} options={categoryOptions} onSelect={setCategoryFilter} palette={palette} />
+            <MenuPill prefix="Cycle" value={frequencyFilter} options={frequencyOptions} onSelect={(value) => setFrequencyFilter(value as WarehouseFrequencyFilter)} palette={palette} />
+            <MenuPill prefix="Sort" value={sortBy} options={sortOptions} onSelect={(value) => setSortBy(value as WarehouseSort)} palette={palette} />
           </View>
         ) : (
-          <View className="flex-row gap-2" style={{ marginTop: 14 }}>
-            <View
-              className="flex-1 flex-row items-center rounded-full px-4"
-              style={{ height: 52, backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light }}
-            >
-              <Search size={18} color={colors.text.muted} strokeWidth={2} />
-              <TextInput
-                placeholder="Search warehouse items..."
-                placeholderTextColor={colors.input.placeholder}
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                style={{ flex: 1, marginLeft: 8, color: colors.input.text, fontSize: 14 }}
-                selectionColor={colors.text.primary}
-              />
-              <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
+          <View style={{ gap: 10, backgroundColor: palette.page, paddingTop: 12, paddingBottom: 14, zIndex: 30 }}>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <View style={{ flex: 1, height: 48, paddingLeft: 16, paddingRight: 8, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: palette.inputBg, borderWidth: 1, borderColor: palette.border }}>
+                <Search size={17} color={palette.faint} strokeWidth={2} />
+                <TextInput
+                  placeholder="Search items or categories"
+                  placeholderTextColor={palette.faint}
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  style={{ flex: 1, height: '100%', paddingVertical: 0, color: palette.text, fontSize: 14.5 }}
+                  selectionColor={palette.text}
+                />
+                <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Sort and count cycle"
+                onPress={() => {
+                  if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setShowFilterMenu(true);
+                }}
+                style={(state) => ({ height: 48, paddingHorizontal: 14, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: activeFilterCount > 0 ? palette.inverseBg : palette.outline, opacity: state.pressed ? 0.7 : 1 })}
+              >
+                <ArrowDownAZ size={14} color={palette.textSoft} strokeWidth={2.2} />
+                <Text style={{ color: palette.textSoft, fontSize: 13, fontWeight: '600' }}>Sort</Text>
+              </Pressable>
             </View>
-            <Pressable
-              onPress={() => {
-                if (Platform.OS !== 'web') {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                }
-                setShowFilterMenu(true);
-              }}
-              className="rounded-full items-center justify-center active:opacity-70 flex-row px-4"
-              style={{
-                height: 52,
-                backgroundColor: activeFilterCount > 0 ? colors.accent.primary : colors.bg.secondary,
-                borderWidth: activeFilterCount > 0 ? 0 : 0.5,
-                borderColor: separatorColor,
-              }}
-            >
-              <Filter
-                size={18}
-                color={activeFilterCount > 0 ? (isDark ? '#000000' : '#FFFFFF') : colors.text.tertiary}
-                strokeWidth={2}
-              />
-              {activeFilterCount > 0 && (
-                <Text style={{ color: isDark ? '#000000' : '#FFFFFF' }} className="font-semibold text-sm ml-1.5">
-                  {activeFilterCount}
-                </Text>
-              )}
-            </Pressable>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, marginRight: -16 }} contentContainerStyle={{ gap: 8, paddingRight: 16, alignItems: 'center' }}>
+              {[
+                { key: 'all', label: 'All' },
+                { key: 'low-stock', label: 'Low stock' },
+                { key: 'out-of-stock', label: 'Out of stock' },
+                { key: 'in-stock', label: 'In stock' },
+                { key: 'overdue', label: 'Count overdue' },
+              ].map((option) => (
+                <FilterPill key={option.key} label={option.label} count={stockFilterCounts[option.key as WarehouseStockFilter]} active={stockFilter === option.key} onPress={() => setStockFilter(option.key as WarehouseStockFilter)} palette={palette} textSize={12} />
+              ))}
+            </ScrollView>
           </View>
         )}
 
-        <View style={{ marginTop: 14 }}>
+        <View>
           {filteredItems.length === 0 ? (
             <View
               style={{
                 borderWidth: 1,
-                borderColor: colors.border.light,
+                borderColor: palette.border,
                 borderRadius: 18,
                 paddingVertical: 46,
                 paddingHorizontal: 16,
                 alignItems: 'center',
-                backgroundColor: colors.bg.card,
+                backgroundColor: palette.card,
               }}
             >
-              <Boxes size={34} color={colors.text.muted} strokeWidth={1.8} />
-              <Text style={{ color: colors.text.primary, fontWeight: '700', fontSize: 17, marginTop: 12 }}>No warehouse items yet</Text>
-              <Text style={{ color: colors.text.muted, marginTop: 4 }}>Add your first item to start monthly stock counting.</Text>
+              <View style={{ width: 64, height: 64, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.softFill }}>
+                <Boxes size={28} color={palette.faint} strokeWidth={1.6} />
+              </View>
+              <Text style={{ color: palette.text, fontWeight: '600', fontSize: 16, marginTop: 14 }}>{warehouseItems.length === 0 ? 'No warehouse items yet' : 'No items match'}</Text>
+              <Text style={{ color: palette.muted, fontSize: 14, marginTop: 4, textAlign: 'center' }}>{warehouseItems.length === 0 ? 'Add your first item to start physical stock counting.' : 'Try another search or filter.'}</Text>
+              {warehouseItems.length === 0 ? (
+                <Pressable onPress={openCreateModal} style={(state) => ({ height: 40, paddingHorizontal: 18, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 16, backgroundColor: isHovered(state) ? FYLL_LIME_HOVER : FYLL_LIME })}>
+                  <Plus size={15} color={FYLL_LIME_INK} strokeWidth={2.6} />
+                  <Text style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '600' }}>Add item</Text>
+                </Pressable>
+              ) : null}
             </View>
           ) : (
             <View
               style={{
                 position: 'relative',
-                borderWidth: isWebDesktop ? 1 : 0,
-                borderColor: colors.border.light,
-                borderRadius: isWebDesktop ? 18 : 0,
+                borderWidth: 1,
+                borderColor: palette.border,
+                borderRadius: 18,
                 overflow: 'visible',
-                backgroundColor: isWebDesktop ? colors.bg.card : 'transparent',
+                backgroundColor: palette.card,
                 zIndex: rowActionsItemId ? 40 : 1,
               }}
             >
@@ -633,13 +640,14 @@ export default function WarehouseScreen() {
 
               {isWebDesktop ? (
                 <>
-                  <View style={{ paddingHorizontal: 8, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: separatorColor }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <Text style={{ color: colors.text.muted, flex: 2.7 }} className="text-xs font-semibold">PRODUCT</Text>
-                      <Text style={{ color: colors.text.muted, width: 70, textAlign: 'center' }} className="text-xs font-semibold">STOCK</Text>
-                      <Text style={{ color: colors.text.muted, width: 64, textAlign: 'center' }} className="text-xs font-semibold">UNIT</Text>
-                      <Text style={{ color: colors.text.muted, flex: 1.4 }} className="text-xs font-semibold">CATEGORY</Text>
-                      <Text style={{ color: colors.text.muted, width: 88, textAlign: 'right' }} className="text-xs font-semibold">ACTIONS</Text>
+                  <View style={{ paddingHorizontal: 22, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: palette.hairline }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+                      <Text style={{ color: palette.faint, flex: 2.4, fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>ITEM</Text>
+                      <Text style={{ color: palette.faint, flex: 1.1, fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>CATEGORY</Text>
+                      <Text style={{ color: palette.faint, width: 110, textAlign: 'right', fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>STOCK</Text>
+                      <Text style={{ color: palette.faint, width: 110, fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>COUNT CYCLE</Text>
+                      <Text style={{ color: palette.faint, width: 120, fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>LAST COUNTED</Text>
+                      <View style={{ width: 36 }} />
                     </View>
                   </View>
 
@@ -651,45 +659,49 @@ export default function WarehouseScreen() {
                           position: 'relative',
                           borderBottomWidth: index === filteredItems.length - 1 ? 0 : 1,
                           borderBottomColor: separatorColor,
-                          paddingHorizontal: 8,
-                          paddingVertical: 12,
+                          paddingHorizontal: 22,
+                          paddingVertical: 13,
                           zIndex: rowActionsItemId === item.id ? 30 : 1,
                         }}
                       >
-                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
                           <Pressable
                             onPress={() => openWarehouseItem(item.id)}
                             className="active:opacity-70"
-                            style={{ flex: 2.7, paddingRight: 10, flexDirection: 'row', alignItems: 'center' }}
+                            style={{ flex: 2.4, minWidth: 0, flexDirection: 'row', alignItems: 'center' }}
                           >
                             {item.imageUrl ? (
-                              <View style={{ width: 34, height: 34, borderRadius: 10, overflow: 'hidden', borderWidth: 1, borderColor: colors.border.light, marginRight: 10 }}>
-                                <ResolvedAttachmentImage imageUrl={item.imageUrl} style={{ width: 34, height: 34 }} resizeMode="cover" />
+                              <View style={{ width: 40, height: 40, borderRadius: 11, overflow: 'hidden', borderWidth: 1, borderColor: palette.border, marginRight: 11 }}>
+                                <ResolvedAttachmentImage imageUrl={item.imageUrl} style={{ width: 40, height: 40 }} resizeMode="cover" />
                               </View>
                             ) : (
                               <View
                                 style={{
-                                  width: 34,
-                                  height: 34,
-                                  borderRadius: 10,
+                                  width: 40,
+                                  height: 40,
+                                  borderRadius: 11,
                                   alignItems: 'center',
                                   justifyContent: 'center',
-                                  backgroundColor: colors.bg.secondary,
+                                  backgroundColor: palette.softFill,
                                   borderWidth: 1,
-                                  borderColor: colors.border.light,
-                                  marginRight: 10,
+                                  borderColor: palette.border,
+                                  marginRight: 11,
                                 }}
                               >
-                                <Package size={16} color={colors.text.muted} strokeWidth={1.8} />
+                                <Package size={18} color={palette.faint} strokeWidth={1.8} />
                               </View>
                             )}
-                            <Text style={{ color: colors.text.primary }} className="text-sm font-semibold" numberOfLines={1}>{capitalizeDisplayLabel(item.name)}</Text>
+                            <View style={{ flex: 1, minWidth: 0 }}>
+                              <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }} numberOfLines={1}>{capitalizeDisplayLabel(item.name)}</Text>
+                              <Text style={{ color: palette.faint, fontSize: 12, marginTop: 2 }} numberOfLines={1}>{item.notes || `${item.currentStock} ${item.unit} on hand`}</Text>
+                            </View>
                           </Pressable>
 
-                          <Text style={{ color: colors.text.primary, width: 70, textAlign: 'center' }} className="text-sm font-semibold">{item.currentStock}</Text>
-                          <Text style={{ color: colors.text.secondary, width: 64, textAlign: 'center' }} className="text-sm">{item.unit}</Text>
-                          <Text style={{ color: colors.text.secondary, flex: 1.4 }} className="text-sm" numberOfLines={1}>{item.category}</Text>
-                          <View style={{ width: 88, flexDirection: 'row', justifyContent: 'flex-end' }}>
+                          <Text style={{ color: palette.textSoft, flex: 1.1, fontSize: 13 }} numberOfLines={1}>{item.category}</Text>
+                          <Text style={{ color: palette.text, width: 110, textAlign: 'right', fontSize: 14, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{item.currentStock} <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '400' }}>{item.unit}</Text></Text>
+                          <Text style={{ color: palette.textSoft, width: 110, fontSize: 13 }}>{item.countFrequency}</Text>
+                          <Text style={{ color: palette.textSoft, width: 120, fontSize: 13 }}>{formatDate(item.lastCountedAt)}</Text>
+                          <View style={{ width: 36, flexDirection: 'row', justifyContent: 'flex-end' }}>
                             <Pressable
                               onPress={() => {
                                 if (Platform.OS !== 'web') {
@@ -705,11 +717,11 @@ export default function WarehouseScreen() {
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 borderWidth: 1,
-                                borderColor: colors.border.light,
-                                backgroundColor: colors.bg.secondary,
+                                borderColor: palette.outline,
+                                backgroundColor: palette.softFill,
                               }}
                             >
-                              <MoreVertical size={14} color={colors.text.primary} strokeWidth={2.2} />
+                              <MoreVertical size={14} color={palette.text} strokeWidth={2.2} />
                             </Pressable>
                           </View>
                         </View>
@@ -722,9 +734,9 @@ export default function WarehouseScreen() {
                               right: -6,
                               width: 188,
                               borderRadius: 12,
-                              backgroundColor: colors.bg.primary,
+                              backgroundColor: palette.card,
                               borderWidth: 1,
-                              borderColor: colors.border.light,
+                              borderColor: palette.border,
                               padding: 8,
                               shadowColor: '#000000',
                               shadowOpacity: 0.16,
@@ -740,7 +752,7 @@ export default function WarehouseScreen() {
                               }}
                               style={{ height: 36, borderRadius: 8, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, marginBottom: 6 }}
                             >
-                              <Text style={{ color: colors.text.primary, fontWeight: '500', fontSize: 12 }}>Record Count</Text>
+                              <Text style={{ color: palette.text, fontWeight: '500', fontSize: 12 }}>Record count</Text>
                             </Pressable>
 
                             <Pressable
@@ -750,7 +762,7 @@ export default function WarehouseScreen() {
                               }}
                               style={{ height: 36, borderRadius: 8, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, marginBottom: 6 }}
                             >
-                              <Text style={{ color: colors.text.primary, fontWeight: '500', fontSize: 12 }}>Edit Item</Text>
+                              <Text style={{ color: palette.text, fontWeight: '500', fontSize: 12 }}>Edit item</Text>
                             </Pressable>
 
                             <Pressable
@@ -760,7 +772,7 @@ export default function WarehouseScreen() {
                               }}
                               style={{ height: 36, borderRadius: 8, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10 }}
                             >
-                              <Text style={{ color: '#EF4444', fontWeight: '500', fontSize: 12 }}>Delete Item</Text>
+                              <Text style={{ color: palette.danger, fontWeight: '500', fontSize: 12 }}>Delete item</Text>
                             </Pressable>
                           </View>
                         ) : null}
@@ -770,21 +782,17 @@ export default function WarehouseScreen() {
                 </>
               ) : (
                 filteredItems.map((item, index) => {
-                  const lowStock = typeof item.reorderLevel === 'number' && item.currentStock <= item.reorderLevel;
-                  const stockLabel = lowStock ? 'Low stock' : item.currentStock === 0 ? 'Out of stock' : 'In stock';
-                  const stockColor = item.currentStock === 0 ? '#EF4444' : lowStock ? '#F59E0B' : '#10B981';
+                  const stockState = getWarehouseStockState(item);
+                  const stockLabel = stockState === 'out-of-stock' ? 'Out of stock' : stockState === 'low-stock' ? 'Low stock' : 'In stock';
+                  const stockColor = stockState === 'out-of-stock' ? palette.danger : stockState === 'low-stock' ? palette.tones.awaiting.dot : palette.tones.verified.dot;
                   return (
                     <View
                       key={item.id}
                       style={{
                         position: 'relative',
-                        backgroundColor: colors.bg.card,
-                        borderRadius: 16,
-                        marginBottom: index === filteredItems.length - 1 ? 0 : 12,
-                        borderWidth: 0.5,
-                        borderColor: separatorColor,
-                        borderLeftWidth: 0.5,
-                        borderLeftColor: separatorColor,
+                        backgroundColor: palette.card,
+                        borderBottomWidth: index === filteredItems.length - 1 ? 0 : 1,
+                        borderBottomColor: palette.hairline,
                         zIndex: rowActionsItemId === item.id ? 50 : 1,
                       }}
                     >
@@ -794,7 +802,7 @@ export default function WarehouseScreen() {
                           className="flex-row items-center flex-1 active:opacity-70"
                         >
                           {item.imageUrl ? (
-                            <View className="w-12 h-12 rounded-lg overflow-hidden" style={{ borderWidth: 0.5, borderColor: separatorColor }}>
+                            <View className="w-12 h-12 rounded-xl overflow-hidden" style={{ borderWidth: 1, borderColor: palette.border }}>
                               <ResolvedAttachmentImage
                                 imageUrl={item.imageUrl}
                                 style={{ width: 48, height: 48 }}
@@ -804,16 +812,16 @@ export default function WarehouseScreen() {
                           ) : (
                             <View
                               className="w-12 h-12 rounded-xl items-center justify-center"
-                              style={{ backgroundColor: 'rgba(16, 185, 129, 0.15)' }}
+                              style={{ backgroundColor: palette.softFill, borderWidth: 1, borderColor: palette.border }}
                             >
-                              <Package size={22} color="#10B981" strokeWidth={1.6} />
+                              <Package size={22} color={palette.faint} strokeWidth={1.6} />
                             </View>
                           )}
                           <View className="ml-3 flex-1">
-                            <Text style={{ color: colors.text.primary, fontWeight: '500' }} className="text-base">
+                            <Text style={{ color: palette.text, fontWeight: '600' }} className="text-base">
                               {capitalizeDisplayLabel(item.name)}
                             </Text>
-                            <Text style={{ color: colors.text.muted }} className="text-xs mt-0.5">
+                            <Text style={{ color: palette.faint }} className="text-xs mt-0.5">
                               {item.category} · {item.currentStock} {item.unit}
                             </Text>
                           </View>
@@ -821,7 +829,7 @@ export default function WarehouseScreen() {
                         <View className="flex-row items-center">
                           <View
                             className="rounded-full px-3 py-1 flex-row items-center mr-2"
-                            style={{ backgroundColor: `${stockColor}20` }}
+                            style={{ backgroundColor: `${stockColor}18` }}
                           >
                             <Text style={{ color: stockColor }} className="text-xs font-semibold">
                               {stockLabel}
@@ -834,7 +842,7 @@ export default function WarehouseScreen() {
                             className="active:opacity-70"
                             style={{ width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' }}
                           >
-                            <MoreVertical size={18} color={colors.text.tertiary} strokeWidth={2} />
+                            <MoreVertical size={18} color={palette.faint} strokeWidth={2} />
                           </Pressable>
                         </View>
                       </View>
@@ -847,9 +855,9 @@ export default function WarehouseScreen() {
                             right: 10,
                             width: 168,
                             borderRadius: 12,
-                            backgroundColor: colors.bg.primary,
+                            backgroundColor: palette.card,
                             borderWidth: 1,
-                            borderColor: colors.border.light,
+                            borderColor: palette.border,
                             padding: 8,
                             shadowColor: '#000000',
                             shadowOpacity: 0.18,
@@ -865,7 +873,7 @@ export default function WarehouseScreen() {
                             }}
                             style={{ height: 34, borderRadius: 8, justifyContent: 'center', paddingHorizontal: 10, marginBottom: 6 }}
                           >
-                            <Text style={{ color: colors.text.primary, fontWeight: '500', fontSize: 12 }}>Record Count</Text>
+                            <Text style={{ color: palette.text, fontWeight: '500', fontSize: 12 }}>Record count</Text>
                           </Pressable>
 
                           <Pressable
@@ -875,7 +883,7 @@ export default function WarehouseScreen() {
                             }}
                             style={{ height: 34, borderRadius: 8, justifyContent: 'center', paddingHorizontal: 10, marginBottom: 6 }}
                           >
-                            <Text style={{ color: colors.text.primary, fontWeight: '500', fontSize: 12 }}>Edit Item</Text>
+                            <Text style={{ color: palette.text, fontWeight: '500', fontSize: 12 }}>Edit item</Text>
                           </Pressable>
 
                           <Pressable
@@ -885,7 +893,7 @@ export default function WarehouseScreen() {
                             }}
                             style={{ height: 34, borderRadius: 8, justifyContent: 'center', paddingHorizontal: 10 }}
                           >
-                            <Text style={{ color: '#EF4444', fontWeight: '500', fontSize: 12 }}>Delete Item</Text>
+                            <Text style={{ color: palette.danger, fontWeight: '500', fontSize: 12 }}>Delete item</Text>
                           </Pressable>
                         </View>
                       ) : null}
@@ -919,38 +927,38 @@ export default function WarehouseScreen() {
             style={
               isWebDesktop
                 ? {
-                    backgroundColor: colors.bg.primary,
+                    backgroundColor: palette.card,
                     width: 400,
                     maxWidth: '100%',
                     borderTopLeftRadius: 24,
                     borderBottomLeftRadius: 24,
                     overflow: 'hidden',
-                    borderWidth: isDark ? 1 : 0,
-                    borderColor: isDark ? 'rgba(255, 255, 255, 0.14)' : 'transparent',
+                    borderWidth: 1,
+                    borderColor: palette.border,
                   }
-                : { backgroundColor: colors.bg.primary, maxHeight: '72%' }
+                : { backgroundColor: palette.card, maxHeight: '76%', borderWidth: 1, borderColor: palette.border }
             }
           >
             {!isWebDesktop && (
               <View className="items-center py-3">
-                <View className="w-10 h-1 rounded-full" style={{ backgroundColor: colors.border.light }} />
+                <View className="w-10 h-1 rounded-full" style={{ backgroundColor: palette.outline }} />
               </View>
             )}
 
             <View className="flex-row items-center justify-between px-5 pb-4" style={{ borderBottomWidth: 0.5, borderBottomColor: separatorColor, paddingTop: isWebDesktop ? 20 : 0 }}>
-              <Text style={{ color: colors.text.primary }} className="font-bold text-lg">Filter & Sort</Text>
+              <Text style={{ color: palette.text }} className="font-semibold text-lg">Filter & sort</Text>
               <Pressable
                 onPress={() => setShowFilterMenu(false)}
                 className="w-8 h-8 rounded-full items-center justify-center active:opacity-50"
-                style={{ backgroundColor: colors.bg.secondary }}
+                style={{ backgroundColor: palette.softFill }}
               >
-                <X size={18} color={colors.text.tertiary} strokeWidth={2} />
+                <X size={18} color={palette.muted} strokeWidth={2} />
               </Pressable>
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false} style={isWebDesktop ? { flex: 1 } : undefined}>
               <View className="px-5 pt-4">
-                <Text style={{ color: colors.text.muted }} className="text-xs font-semibold uppercase tracking-wider mb-3">Stock Status</Text>
+                <Text style={{ color: palette.faint }} className="text-xs font-semibold uppercase tracking-wider mb-3">Stock status</Text>
 
                 {[
                   { key: 'all', label: 'All items', description: 'Every warehouse item', icon: Boxes, helperColor: '#10B981' },
@@ -969,14 +977,14 @@ export default function WarehouseScreen() {
                       }}
                       className="flex-row items-center py-3 active:opacity-70"
                     >
-                      <Icon size={18} color={stockFilter === option.key ? option.helperColor : colors.text.muted} strokeWidth={2} />
+                      <Icon size={18} color={stockFilter === option.key ? option.helperColor : palette.faint} strokeWidth={2} />
                       <View className="flex-1 ml-3">
-                        <Text style={{ color: colors.text.primary }} className="font-medium text-sm">{option.label}</Text>
-                        <Text style={{ color: colors.text.muted }} className="text-xs mt-0.5">{option.description}</Text>
+                        <Text style={{ color: palette.text }} className="font-medium text-sm">{option.label}</Text>
+                        <Text style={{ color: palette.faint }} className="text-xs mt-0.5">{option.description}</Text>
                       </View>
                       {stockFilter === option.key && (
-                        <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: colors.accent.primary }}>
-                          <Check size={12} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={3} />
+                        <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: FYLL_LIME }}>
+                          <Check size={12} color={FYLL_LIME_INK} strokeWidth={3} />
                         </View>
                       )}
                     </Pressable>
@@ -985,7 +993,7 @@ export default function WarehouseScreen() {
               </View>
 
               <View className="px-5 pt-4" style={{ borderTopWidth: 0.5, borderTopColor: separatorColor, marginTop: 8 }}>
-                <Text style={{ color: colors.text.muted }} className="text-xs font-semibold uppercase tracking-wider mb-3">Count Frequency</Text>
+                <Text style={{ color: palette.faint }} className="text-xs font-semibold uppercase tracking-wider mb-3">Count frequency</Text>
                 {[
                   { key: 'all', label: 'All frequencies', description: 'Monthly and bi-monthly', icon: Boxes },
                   { key: 'monthly', label: 'Monthly', description: 'Count due every month', icon: Clock },
@@ -1001,14 +1009,14 @@ export default function WarehouseScreen() {
                       }}
                       className="flex-row items-center py-3 active:opacity-70"
                     >
-                      <Icon size={18} color={frequencyFilter === option.key ? colors.accent.primary : colors.text.muted} strokeWidth={2} />
+                      <Icon size={18} color={frequencyFilter === option.key ? palette.limeOnSurface : palette.faint} strokeWidth={2} />
                       <View className="flex-1 ml-3">
-                        <Text style={{ color: colors.text.primary }} className="font-medium text-sm">{option.label}</Text>
-                        <Text style={{ color: colors.text.muted }} className="text-xs mt-0.5">{option.description}</Text>
+                        <Text style={{ color: palette.text }} className="font-medium text-sm">{option.label}</Text>
+                        <Text style={{ color: palette.faint }} className="text-xs mt-0.5">{option.description}</Text>
                       </View>
                       {frequencyFilter === option.key && (
-                        <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: colors.accent.primary }}>
-                          <Check size={12} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={3} />
+                        <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: FYLL_LIME }}>
+                          <Check size={12} color={FYLL_LIME_INK} strokeWidth={3} />
                         </View>
                       )}
                     </Pressable>
@@ -1017,7 +1025,7 @@ export default function WarehouseScreen() {
               </View>
 
               <View className="px-5 pt-4 pb-2" style={{ borderTopWidth: 0.5, borderTopColor: separatorColor, marginTop: 8 }}>
-                <Text style={{ color: colors.text.muted }} className="text-xs font-semibold uppercase tracking-wider mb-3">Sort By</Text>
+                <Text style={{ color: palette.faint }} className="text-xs font-semibold uppercase tracking-wider mb-3">Sort by</Text>
 
                 {[
                   { key: 'name-asc', label: 'Name (A-Z)', description: 'Alphabetical ascending', icon: ArrowDownAZ },
@@ -1037,14 +1045,14 @@ export default function WarehouseScreen() {
                       }}
                       className="flex-row items-center py-3 active:opacity-70"
                     >
-                      <Icon size={18} color={sortBy === option.key ? colors.accent.primary : colors.text.muted} strokeWidth={2} />
+                      <Icon size={18} color={sortBy === option.key ? palette.limeOnSurface : palette.faint} strokeWidth={2} />
                       <View className="flex-1 ml-3">
-                        <Text style={{ color: colors.text.primary }} className="font-medium text-sm">{option.label}</Text>
-                        <Text style={{ color: colors.text.muted }} className="text-xs mt-0.5">{option.description}</Text>
+                        <Text style={{ color: palette.text }} className="font-medium text-sm">{option.label}</Text>
+                        <Text style={{ color: palette.faint }} className="text-xs mt-0.5">{option.description}</Text>
                       </View>
                       {sortBy === option.key && (
-                        <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: colors.accent.primary }}>
-                          <Check size={12} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={3} />
+                        <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: FYLL_LIME }}>
+                          <Check size={12} color={FYLL_LIME_INK} strokeWidth={3} />
                         </View>
                       )}
                     </Pressable>
@@ -1059,9 +1067,9 @@ export default function WarehouseScreen() {
                     setSortBy('name-asc');
                   }}
                   className="mt-3 mb-4 rounded-xl items-center justify-center"
-                  style={{ height: 42, backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}
+                  style={{ height: 42, backgroundColor: palette.softFill, borderWidth: 1, borderColor: palette.outline }}
                 >
-                  <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">Clear filters</Text>
+                  <Text style={{ color: palette.text }} className="text-sm font-semibold">Clear filters</Text>
                 </Pressable>
               </View>
             </ScrollView>
@@ -1503,7 +1511,7 @@ export default function WarehouseScreen() {
         </View>
       </Modal>
       {!isWebDesktop ? (
-        <InventoryMobileFab currentSection="warehouse" />
+        <InventoryMobileFab currentSection="warehouse" lowerBy={44} />
       ) : null}
     </SafeAreaView>
   );

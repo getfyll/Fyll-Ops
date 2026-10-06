@@ -12,6 +12,7 @@ type InventoryMenuOption = InventorySection | 'audit';
 type InventoryMobileFabProps = {
   currentSection: InventorySection;
   visible?: boolean;
+  lowerBy?: number;
   onSelectProducts?: () => void;
   onSelectServices?: () => void;
   onSelectWarehouse?: () => void;
@@ -20,6 +21,7 @@ type InventoryMobileFabProps = {
 export function InventoryMobileFab({
   currentSection,
   visible = true,
+  lowerBy = 0,
   onSelectProducts,
   onSelectServices,
   onSelectWarehouse,
@@ -28,6 +30,8 @@ export function InventoryMobileFab({
   const colors = useThemeColors();
   const tabBarHeight = useTabBarHeight();
   const [open, setOpen] = useState(false);
+  const menuBottom = Math.max(12, tabBarHeight - 4 - lowerBy);
+  const fabBottom = Math.max(12, tabBarHeight - 30 - lowerBy);
 
   const options = useMemo(
     () => [
@@ -97,7 +101,7 @@ export function InventoryMobileFab({
             style={{
               position: 'absolute',
               right: 16,
-              bottom: Math.max(12, tabBarHeight - 4),
+              bottom: menuBottom,
               width: 268,
               maxHeight: '78%',
               borderRadius: 22,
@@ -173,7 +177,7 @@ export function InventoryMobileFab({
         style={{
           position: 'absolute',
           right: 18,
-          bottom: Math.max(12, tabBarHeight - 30),
+          bottom: fabBottom,
           width: 58,
           height: 58,
           borderRadius: 29,

@@ -6,10 +6,16 @@ const MOBILE_TAB_BAR_HIDDEN_ROUTES = new Set([
   '/settings-panel',
 ]);
 
+// These nested routes are primary workspaces, not drill-down detail screens.
+const MOBILE_TAB_BAR_VISIBLE_ROUTES = new Set([
+  '/inventory/warehouse',
+]);
+
 // Primary destinations remain one tap away. Once a user drills into content,
 // the page's back button owns navigation and the floating bar should recede.
 export const shouldHideMobileTabBar = (pathname: string): boolean => {
   const normalizedPath = `/${pathname.split('?')[0]?.split('#')[0]?.split('/').filter(Boolean).join('/') ?? ''}`;
+  if (MOBILE_TAB_BAR_VISIBLE_ROUTES.has(normalizedPath)) return false;
   if (MOBILE_TAB_BAR_HIDDEN_ROUTES.has(normalizedPath)) return true;
   return normalizedPath.split('/').filter(Boolean).length > 1;
 };

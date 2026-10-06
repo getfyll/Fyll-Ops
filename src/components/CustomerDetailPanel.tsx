@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, Pressable, Platform, Linking, Modal, Alert, KeyboardAvoidingView, ScrollView, TextInput } from 'react-native';
-import { ArrowLeft, User as UserIcon, Phone, Mail, MapPin, Edit2, Trash2, ShoppingCart, Calendar, X, ChevronDown, Check, FileText, AlertTriangle } from 'lucide-react-native';
+import { ArrowLeft, User as UserIcon, Phone, Mail, MapPin, Edit2, Trash2, ShoppingCart, Calendar, X, ChevronDown, Check, FileText, AlertTriangle, ChevronRight } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
 import useFyllStore, { Customer, formatCurrency, NIGERIA_STATES, CASE_STATUS_COLORS, CASE_PRIORITY_COLORS } from '@/lib/state/fyll-store';
 import useAuthStore from '@/lib/state/auth-store';
 import { useThemeColors } from '@/lib/theme';
@@ -8,6 +9,7 @@ import { DetailSection, DetailActionButton } from './SplitViewLayout';
 import { getOrderStatusColor } from '@/lib/order-status-colors';
 import * as Haptics from 'expo-haptics';
 import { useBreakpoint } from '@/lib/useBreakpoint';
+import { FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, MoneyText, isHovered, usePaymentsPalette } from '@/components/payments/payments-ui';
 
 interface CustomerDetailPanelProps {
   customerId: string;
@@ -16,11 +18,12 @@ interface CustomerDetailPanelProps {
 }
 
 export function CustomerDetailPanel({ customerId, onEdit, onClose }: CustomerDetailPanelProps) {
+  const router = useRouter();
   const colors = useThemeColors();
-  const isDark = colors.bg.primary === '#111111';
+  const palette = usePaymentsPalette();
   const { isMobile, isDesktop } = useBreakpoint();
   const isWebDesktop = Platform.OS === 'web' && isDesktop;
-  const webNarrowMaxWidth = 1136; // 1080 content + 28px gutters
+  const webNarrowMaxWidth = 1456;
 
   const customers = useFyllStore((s) => s.customers);
   const orders = useFyllStore((s) => s.orders);
@@ -69,6 +72,9 @@ export function CustomerDetailPanel({ customerId, onEdit, onClose }: CustomerDet
     );
   }, [customerOrders]);
 
+  const averageOrderValue = customerOrders.length > 0 ? totalSpent / customerOrders.length : 0;
+  const lastOrder = customerOrders[0];
+
   // Get cases for this customer
   const customerCases = useMemo(() => {
     if (!customer) return [];
@@ -77,6 +83,7 @@ export function CustomerDetailPanel({ customerId, onEdit, onClose }: CustomerDet
       c.customerId === customer.id
     ).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [cases, customer]);
+  const openCases = customerCases.filter((caseItem) => !['resolved', 'closed'].includes((caseItem.status ?? '').toLowerCase())).length;
 
   const statusColorByName = useMemo(() => {
     const map = new Map<string, string>();
@@ -200,12 +207,12 @@ export function CustomerDetailPanel({ customerId, onEdit, onClose }: CustomerDet
   };
 
   return (
-    <View style={{ flex: 1 }}>
+    <View style={{ flex: 1, backgroundColor: palette.page }}>
       {isWebDesktop ? (
         <View
           style={{
             paddingHorizontal: 28,
-            paddingTop: 32,
+            paddingTop: 36,
             paddingBottom: 18,
             width: '100%',
             maxWidth: webNarrowMaxWidth,
@@ -222,13 +229,15 @@ export function CustomerDetailPanel({ customerId, onEdit, onClose }: CustomerDet
                   style={{
                     width: 40,
                     height: 40,
-                    borderRadius: 12,
+                    borderRadius: 999,
                     alignItems: 'center',
                     justifyContent: 'center',
                     marginRight: 12,
+                    borderWidth: 1,
+                    borderColor: palette.outline,
                   }}
                 >
-                  <ArrowLeft size={20} color={colors.text.primary} strokeWidth={2} />
+                  <ArrowLeft size={20} color={palette.text} strokeWidth={2} />
                 </Pressable>
               )}
               <View
@@ -236,58 +245,68 @@ export function CustomerDetailPanel({ customerId, onEdit, onClose }: CustomerDet
                   width: 44,
                   height: 44,
                   borderRadius: 22,
-                  backgroundColor: isDark ? '#FFFFFF' : '#111111',
+                  backgroundColor: palette.avatarBg,
                   alignItems: 'center',
                   justifyContent: 'center',
                   marginRight: 12,
                 }}
               >
-                <Text style={{ color: isDark ? '#111111' : '#FFFFFF', fontSize: 16, fontWeight: '700' }}>
+                <Text style={{ color: palette.avatarText, fontSize: 16, fontWeight: '700' }}>
                   {getInitials(customer.fullName)}
                 </Text>
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ color: colors.text.primary, fontSize: 24, fontWeight: '700' }} numberOfLines={1}>
+                <Text style={{ color: palette.text, fontSize: 30, fontWeight: '600', letterSpacing: -0.6 }} numberOfLines={1}>
                   {customer.fullName}
                 </Text>
-                <Text style={{ color: colors.text.muted, fontSize: 14, marginTop: 6 }} numberOfLines={1}>
-                  Joined {memberSince}
+                <Text style={{ color: palette.faint, fontSize: 14, marginTop: 4 }} numberOfLines={1}>
+                  Customer since {memberSince}{customer.defaultState ? ` · ${customer.defaultState}` : ''}
                 </Text>
               </View>
             </View>
 
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               <Pressable
                 onPress={handleDelete}
-                className="active:opacity-80"
-                style={{
-                  paddingHorizontal: 8,
-                  height: 44,
-                  justifyContent: 'center',
-                }}
+                style={(state) => ({ height: 40, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: palette.dangerBorder, justifyContent: 'center', backgroundColor: state.pressed ? palette.dangerBg : 'transparent' })}
               >
-                <Text style={{ color: '#EF4444', fontSize: 16, fontWeight: '700' }}>Delete</Text>
+                <Text style={{ color: palette.danger, fontSize: 14, fontWeight: '600' }}>Delete</Text>
               </Pressable>
 
               <Pressable
                 onPress={handleEditPress}
-                className="active:opacity-80"
-                style={{
-                  height: 44,
+                style={(state) => ({
+                  height: 40,
                   paddingHorizontal: 16,
                   borderRadius: 999,
-                  backgroundColor: colors.bg.primary,
-                  borderWidth: 1,
-                  borderColor: colors.border.light,
+                  backgroundColor: isHovered(state) ? FYLL_LIME_HOVER : FYLL_LIME,
                   flexDirection: 'row',
                   alignItems: 'center',
                   gap: 8,
-                }}
+                })}
               >
-                <Edit2 size={16} color={colors.text.primary} strokeWidth={2} />
-                <Text style={{ color: colors.text.primary, fontWeight: '700' }}>Edit</Text>
+                <Edit2 size={15} color={FYLL_LIME_INK} strokeWidth={2.2} />
+                <Text style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '600' }}>Edit customer</Text>
               </Pressable>
             </View>
+          </View>
+
+          <View style={{ flexDirection: 'row', borderRadius: 20, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, overflow: 'hidden', marginTop: 24 }}>
+            {[
+              { label: 'Lifetime value', value: formatCurrency(totalSpent), sub: `${customerOrders.length} total ${customerOrders.length === 1 ? 'order' : 'orders'}`, money: true },
+              { label: 'Average order', value: formatCurrency(averageOrderValue), sub: lastOrder ? `Last ordered ${new Date(lastOrder.orderDate ?? lastOrder.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : 'No orders yet', money: true },
+              { label: 'Refunds', value: String(refundedOrders.length), sub: refundedOrders.length > 0 ? 'Orders with refunds' : 'No refunds recorded', danger: refundedOrders.length > 0 },
+              { label: 'Open cases', value: String(openCases), sub: `${customerCases.length} total ${customerCases.length === 1 ? 'case' : 'cases'}` },
+            ].map((tile, index) => (
+              <View key={tile.label} style={{ flex: 1, minWidth: 0, gap: 4, paddingVertical: 18, paddingHorizontal: 22, borderLeftWidth: index === 0 ? 0 : 1, borderLeftColor: palette.hairline }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  {tile.danger ? <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: palette.danger }} /> : null}
+                  <Text style={{ color: palette.muted, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{tile.label}</Text>
+                </View>
+                {tile.money ? <MoneyText style={{ color: palette.text, fontSize: 24, letterSpacing: -0.5 }} numberOfLines={1}>{tile.value}</MoneyText> : <Text style={{ color: tile.danger ? palette.danger : palette.text, fontSize: 22, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{tile.value}</Text>}
+                <Text style={{ color: palette.faint, fontSize: 13 }} numberOfLines={1}>{tile.sub}</Text>
+              </View>
+            ))}
           </View>
 
           {/* Contact + Summary */}
@@ -295,14 +314,14 @@ export function CustomerDetailPanel({ customerId, onEdit, onClose }: CustomerDet
             <View
               style={{
                 flex: 1,
-                backgroundColor: colors.bg.card,
+                backgroundColor: palette.card,
                 borderRadius: 18,
                 padding: 18,
                 borderWidth: 1,
-                borderColor: colors.border.light,
+                borderColor: palette.border,
               }}
             >
-              <Text style={{ color: colors.text.primary, fontWeight: '700', letterSpacing: 0.6, fontSize: 12 }}>
+              <Text style={{ color: palette.muted, fontWeight: '600', letterSpacing: 0.6, fontSize: 12 }}>
                 CONTACT
               </Text>
 
@@ -310,37 +329,37 @@ export function CustomerDetailPanel({ customerId, onEdit, onClose }: CustomerDet
                 {customer.email ? (
                   <Pressable onPress={() => Linking.openURL(`mailto:${customer.email}`)} className="active:opacity-80">
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-                      <Text style={{ color: colors.text.tertiary, fontSize: 14 }}>Email</Text>
-                      <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600', flex: 1, textAlign: 'right' }} numberOfLines={1}>
+                      <Text style={{ color: palette.muted, fontSize: 14 }}>Email</Text>
+                      <Text style={{ color: palette.text, fontSize: 14, fontWeight: '500', flex: 1, textAlign: 'right' }} numberOfLines={1}>
                         {customer.email}
                       </Text>
                     </View>
                   </Pressable>
                 ) : (
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-                    <Text style={{ color: colors.text.tertiary, fontSize: 14 }}>Email</Text>
-                    <Text style={{ color: colors.text.muted, fontSize: 14 }}>—</Text>
+                    <Text style={{ color: palette.muted, fontSize: 14 }}>Email</Text>
+                    <Text style={{ color: palette.faint, fontSize: 14 }}>—</Text>
                   </View>
                 )}
 
                 {customer.phone ? (
                   <Pressable onPress={() => Linking.openURL(`tel:${customer.phone}`)} className="active:opacity-80">
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-                      <Text style={{ color: colors.text.tertiary, fontSize: 14 }}>Phone</Text>
-                      <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600' }}>{customer.phone}</Text>
+                      <Text style={{ color: palette.muted, fontSize: 14 }}>Phone</Text>
+                      <Text style={{ color: palette.text, fontSize: 14, fontWeight: '500' }}>{customer.phone}</Text>
                     </View>
                   </Pressable>
                 ) : (
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-                    <Text style={{ color: colors.text.tertiary, fontSize: 14 }}>Phone</Text>
-                    <Text style={{ color: colors.text.muted, fontSize: 14 }}>—</Text>
+                    <Text style={{ color: palette.muted, fontSize: 14 }}>Phone</Text>
+                    <Text style={{ color: palette.faint, fontSize: 14 }}>—</Text>
                   </View>
                 )}
 
                 <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
-                  <Text style={{ color: colors.text.tertiary, fontSize: 14 }}>Address</Text>
+                  <Text style={{ color: palette.muted, fontSize: 14 }}>Address</Text>
                   <Text
-                    style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600', flex: 1, textAlign: 'right', lineHeight: 18 }}
+                    style={{ color: palette.text, fontSize: 14, fontWeight: '500', flex: 1, textAlign: 'right', lineHeight: 18 }}
                     numberOfLines={2}
                   >
                     {customer.defaultAddress || customer.defaultState
@@ -354,29 +373,29 @@ export function CustomerDetailPanel({ customerId, onEdit, onClose }: CustomerDet
             <View
               style={{
                 flex: 1,
-                backgroundColor: colors.bg.card,
+                backgroundColor: palette.card,
                 borderRadius: 18,
                 padding: 18,
                 borderWidth: 1,
-                borderColor: colors.border.light,
+                borderColor: palette.border,
               }}
             >
-              <Text style={{ color: colors.text.primary, fontWeight: '700', letterSpacing: 0.6, fontSize: 12 }}>
-                SUMMARY
+              <Text style={{ color: palette.muted, fontWeight: '600', letterSpacing: 0.6, fontSize: 12 }}>
+                ACTIVITY
               </Text>
 
               <View style={{ marginTop: 14, gap: 12 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-                  <Text style={{ color: colors.text.tertiary, fontSize: 14 }}>Total Orders</Text>
-                  <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '700' }}>{customerOrders.length}</Text>
+                  <Text style={{ color: palette.muted, fontSize: 14 }}>Last order</Text>
+                  <Text style={{ color: palette.text, fontSize: 14, fontWeight: '500' }}>{lastOrder ? new Date(lastOrder.orderDate ?? lastOrder.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</Text>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-                  <Text style={{ color: colors.text.tertiary, fontSize: 14 }}>Total Spent</Text>
-                  <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '700' }}>{formatCurrency(totalSpent)}</Text>
+                  <Text style={{ color: palette.muted, fontSize: 14 }}>Refunded orders</Text>
+                  <Text style={{ color: refundedOrders.length > 0 ? palette.danger : palette.text, fontSize: 14, fontWeight: '500' }}>{refundedOrders.length}</Text>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-                  <Text style={{ color: colors.text.tertiary, fontSize: 14 }}>Member Since</Text>
-                  <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '700' }}>{memberSince}</Text>
+                  <Text style={{ color: palette.muted, fontSize: 14 }}>Member since</Text>
+                  <Text style={{ color: palette.text, fontSize: 14, fontWeight: '500' }}>{memberSince}</Text>
                 </View>
               </View>
             </View>
@@ -385,20 +404,20 @@ export function CustomerDetailPanel({ customerId, onEdit, onClose }: CustomerDet
           {/* Order History */}
           <View
             style={{
-              backgroundColor: colors.bg.card,
+              backgroundColor: palette.card,
               borderRadius: 18,
               padding: 18,
               borderWidth: 1,
-              borderColor: colors.border.light,
+              borderColor: palette.border,
               marginTop: 20,
             }}
           >
-            <Text style={{ color: colors.text.primary, fontWeight: '700', letterSpacing: 0.6, fontSize: 12 }}>
+            <Text style={{ color: palette.muted, fontWeight: '600', letterSpacing: 0.6, fontSize: 12 }}>
               ORDER HISTORY
             </Text>
 
             {customerOrders.length === 0 ? (
-              <Text style={{ color: colors.text.muted, fontSize: 14, marginTop: 12 }}>
+              <Text style={{ color: palette.faint, fontSize: 14, marginTop: 12 }}>
                 No orders yet.
               </Text>
             ) : (
@@ -411,38 +430,44 @@ export function CustomerDetailPanel({ customerId, onEdit, onClose }: CustomerDet
                   });
                   const chip = getStatusChipColors(order.status);
                   return (
-                    <View
+                    <Pressable
                       key={order.id}
-                      style={{
+                      onPress={() => router.push((isWebDesktop ? `/orders/${order.id}` : `/order/${order.id}`) as never)}
+                      style={(state) => ({
                         flexDirection: 'row',
                         alignItems: 'center',
                         justifyContent: 'space-between',
                         paddingVertical: 14,
+                        paddingHorizontal: 10,
+                        marginHorizontal: -10,
+                        borderRadius: 12,
                         borderTopWidth: index === 0 ? 0 : 1,
-                        borderTopColor: colors.border.light,
+                        borderTopColor: palette.hairline,
                         gap: 16,
-                      }}
+                        backgroundColor: isHovered(state) ? palette.cardHover : 'transparent',
+                      })}
                     >
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 18, flex: 1, minWidth: 0 }}>
-                        <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '700' }} numberOfLines={1}>
+                        <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }} numberOfLines={1}>
                           {order.orderNumber}
                         </Text>
-                        <Text style={{ color: colors.text.muted, fontSize: 13 }} numberOfLines={1}>
+                        <Text style={{ color: palette.faint, fontSize: 13 }} numberOfLines={1}>
                           {orderDate}
                         </Text>
                       </View>
 
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-                        <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '700' }}>
+                        <MoneyText style={{ color: palette.text, fontSize: 14 }}>
                           {formatCurrency(order.totalAmount)}
-                        </Text>
+                        </MoneyText>
                         <View style={{ backgroundColor: chip.bg, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
-                          <Text style={{ color: chip.text, fontSize: 12, fontWeight: '700' }} numberOfLines={1}>
+                          <Text style={{ color: chip.text, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>
                             {order.status}
                           </Text>
                         </View>
                       </View>
-                    </View>
+                      <ChevronRight size={15} color={palette.faint} strokeWidth={2} />
+                    </Pressable>
                   );
                 })}
               </View>
@@ -452,23 +477,23 @@ export function CustomerDetailPanel({ customerId, onEdit, onClose }: CustomerDet
           {/* Cases History */}
           <View
             style={{
-              backgroundColor: colors.bg.card,
+              backgroundColor: palette.card,
               borderRadius: 18,
               padding: 18,
               borderWidth: 1,
-              borderColor: colors.border.light,
+              borderColor: palette.border,
               marginTop: 20,
             }}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <FileText size={14} color={colors.text.muted} strokeWidth={2} />
-              <Text style={{ color: colors.text.primary, fontWeight: '700', letterSpacing: 0.6, fontSize: 12 }}>
+              <FileText size={14} color={palette.faint} strokeWidth={2} />
+              <Text style={{ color: palette.muted, fontWeight: '600', letterSpacing: 0.6, fontSize: 12 }}>
                 CASES ({customerCases.length})
               </Text>
             </View>
 
             {customerCases.length === 0 ? (
-              <Text style={{ color: colors.text.muted, fontSize: 14, marginTop: 12 }}>
+              <Text style={{ color: palette.faint, fontSize: 14, marginTop: 12 }}>
                 No cases for this customer.
               </Text>
             ) : (
@@ -484,16 +509,21 @@ export function CustomerDetailPanel({ customerId, onEdit, onClose }: CustomerDet
                   const priorityHex = CASE_PRIORITY_COLORS[caseItem.priority ?? 'Low'] || '#6B7280';
                   const priorityColor = { bg: priorityHex, text: priorityHex };
                   return (
-                    <View
+                    <Pressable
                       key={caseItem.id}
-                      style={{
+                      onPress={() => router.push((isWebDesktop ? `/cases/${caseItem.id}` : `/case/${caseItem.id}`) as never)}
+                      style={(state) => ({
                         paddingVertical: 14,
+                        paddingHorizontal: 10,
+                        marginHorizontal: -10,
+                        borderRadius: 12,
                         borderTopWidth: index === 0 ? 0 : 1,
-                        borderTopColor: colors.border.light,
-                      }}
+                        borderTopColor: palette.hairline,
+                        backgroundColor: isHovered(state) ? palette.cardHover : 'transparent',
+                      })}
                     >
                       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                        <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '700' }} numberOfLines={1}>
+                        <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }} numberOfLines={1}>
                           {caseItem.caseNumber}
                         </Text>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -509,13 +539,13 @@ export function CustomerDetailPanel({ customerId, onEdit, onClose }: CustomerDet
                           </View>
                         </View>
                       </View>
-                      <Text style={{ color: colors.text.secondary, fontSize: 13 }} numberOfLines={2}>
+                      <Text style={{ color: palette.textSoft, fontSize: 13 }} numberOfLines={2}>
                         {caseItem.issueSummary || 'No summary'}
                       </Text>
-                      <Text style={{ color: colors.text.muted, fontSize: 12, marginTop: 4 }}>
+                      <Text style={{ color: palette.faint, fontSize: 12, marginTop: 4 }}>
                         {caseItem.type} • {caseDate}
                       </Text>
-                    </View>
+                    </Pressable>
                   );
                 })}
               </View>
@@ -526,17 +556,17 @@ export function CustomerDetailPanel({ customerId, onEdit, onClose }: CustomerDet
           {refundedOrders.length > 0 && (
             <View
               style={{
-                backgroundColor: colors.bg.card,
+                backgroundColor: palette.card,
                 borderRadius: 18,
                 padding: 18,
                 borderWidth: 1,
-                borderColor: colors.border.light,
+                borderColor: palette.dangerBorder,
                 marginTop: 20,
               }}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <AlertTriangle size={14} color="#EF4444" strokeWidth={2} />
-                <Text style={{ color: colors.text.primary, fontWeight: '700', letterSpacing: 0.6, fontSize: 12 }}>
+                <Text style={{ color: palette.danger, fontWeight: '600', letterSpacing: 0.6, fontSize: 12 }}>
                   REFUNDS ({refundedOrders.length})
                 </Text>
               </View>
@@ -588,26 +618,27 @@ export function CustomerDetailPanel({ customerId, onEdit, onClose }: CustomerDet
       ) : null}
 
       {isMobile && onClose && (
-        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 12 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 12 }}>
           <Pressable
             onPress={onClose}
             style={{
-              width: 36,
-              height: 36,
-              borderRadius: 10,
-              backgroundColor: colors.bg.secondary,
+              width: 40,
+              height: 40,
+              borderRadius: 999,
               alignItems: 'center',
               justifyContent: 'center',
               marginRight: 12,
+              borderWidth: 1,
+              borderColor: palette.outline,
             }}
           >
-            <ArrowLeft size={18} color={colors.text.primary} strokeWidth={2} />
+            <ArrowLeft size={18} color={palette.text} strokeWidth={2} />
           </Pressable>
           <Text
-            style={{ color: colors.text.primary, fontSize: 16, fontWeight: '700', flex: 1 }}
+            style={{ color: palette.text, fontSize: 16, fontWeight: '600', flex: 1 }}
             numberOfLines={1}
           >
-            {customer.fullName}
+            Customer details
           </Text>
         </View>
       )}
@@ -615,64 +646,54 @@ export function CustomerDetailPanel({ customerId, onEdit, onClose }: CustomerDet
       {!isWebDesktop && (
         <>
           {/* Customer Header */}
-          <View style={{ paddingHorizontal: 20, paddingTop: 16, alignItems: 'center' }}>
+          <View style={{ paddingHorizontal: 16, paddingTop: 20, alignItems: 'center' }}>
             <View
               style={{
-                width: 80,
-                height: 80,
-                borderRadius: 40,
-                backgroundColor: isDark ? '#FFFFFF' : '#111111',
+                width: 72,
+                height: 72,
+                borderRadius: 36,
+                backgroundColor: palette.avatarBg,
                 alignItems: 'center',
                 justifyContent: 'center',
                 marginBottom: 16,
               }}
             >
-              <Text style={{ color: isDark ? '#111111' : '#FFFFFF', fontSize: 28, fontWeight: '700', letterSpacing: 1 }}>
+              <Text style={{ color: palette.avatarText, fontSize: 24, fontWeight: '700', letterSpacing: 0.5 }}>
                 {customer.fullName.trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('')}
               </Text>
             </View>
-            <Text style={{ color: colors.text.primary, fontSize: 24, fontWeight: '700', textAlign: 'center' }}>
+            <Text style={{ color: palette.text, fontSize: 26, fontWeight: '600', letterSpacing: -0.4, textAlign: 'center' }}>
               {customer.fullName}
             </Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-              <Calendar size={12} color={colors.text.muted} strokeWidth={2} />
-              <Text style={{ color: colors.text.muted, fontSize: 13, marginLeft: 4 }}>
+              <Calendar size={12} color={palette.faint} strokeWidth={2} />
+              <Text style={{ color: palette.faint, fontSize: 13, marginLeft: 4 }}>
                 Customer since {createdDate}
               </Text>
             </View>
           </View>
 
           {/* Stats */}
-          <View style={{ flexDirection: 'row', paddingHorizontal: 20, paddingTop: 20, gap: 12 }}>
-            <View
-              style={{
-                flex: 1,
-                backgroundColor: colors.bg.card,
-                borderRadius: 16,
-                padding: 14,
-                borderWidth: 1,
-                borderColor: colors.border.light,
-              }}
-            >
-              <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '500' }}>Total Orders</Text>
-              <Text style={{ color: colors.text.primary, fontSize: 24, fontWeight: '700', marginTop: 4 }}>
-                {customerOrders.length}
-              </Text>
-            </View>
-            <View
-              style={{
-                flex: 1,
-                backgroundColor: colors.bg.card,
-                borderRadius: 16,
-                padding: 14,
-                borderWidth: 1,
-                borderColor: colors.border.light,
-              }}
-            >
-              <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '500' }}>Total Spent</Text>
-              <Text style={{ color: colors.text.primary, fontSize: 24, fontWeight: '700', marginTop: 4 }}>
-                {formatCurrency(totalSpent)}
-              </Text>
+          <View style={{ paddingHorizontal: 16, paddingTop: 20 }}>
+            <View style={{ borderRadius: 20, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, paddingHorizontal: 18, paddingTop: 18, paddingBottom: 16, gap: 14 }}>
+              <View style={{ gap: 4 }}>
+                <Text style={{ color: palette.muted, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>Lifetime value</Text>
+                <MoneyText style={{ color: palette.text, fontSize: 32, letterSpacing: -0.8 }} numberOfLines={1}>{formatCurrency(totalSpent)}</MoneyText>
+                <Text style={{ color: palette.faint, fontSize: 13 }}>Average order {formatCurrency(averageOrderValue)}</Text>
+              </View>
+              <View style={{ height: 1, backgroundColor: palette.hairline }} />
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                {[
+                  { label: 'Orders', value: customerOrders.length, color: palette.text },
+                  { label: 'Refunds', value: refundedOrders.length, color: refundedOrders.length > 0 ? palette.danger : palette.text },
+                  { label: 'Open cases', value: openCases, color: palette.text },
+                ].map((tile) => (
+                  <View key={tile.label} style={{ flex: 1, gap: 3 }}>
+                    <Text style={{ color: palette.muted, fontSize: 12 }}>{tile.label}</Text>
+                    <Text style={{ color: tile.color, fontSize: 18, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{tile.value}</Text>
+                  </View>
+                ))}
+              </View>
             </View>
           </View>
 
@@ -758,8 +779,9 @@ export function CustomerDetailPanel({ customerId, onEdit, onClose }: CustomerDet
                   day: 'numeric',
                 });
                 return (
-                  <View
+                  <Pressable
                     key={order.id}
+                    onPress={() => router.push(`/order/${order.id}` as never)}
                     style={{
                       flexDirection: 'row',
                       alignItems: 'center',
@@ -783,24 +805,22 @@ export function CustomerDetailPanel({ customerId, onEdit, onClose }: CustomerDet
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600' }}>{order.orderNumber}</Text>
-                      <Text style={{ color: colors.text.muted, fontSize: 12 }}>{orderDate} · {order.status}</Text>
+                      <Text style={{ color: (order.status || '').toLowerCase().includes('refund') ? palette.danger : palette.faint, fontSize: 12 }}>{orderDate} · {order.status}</Text>
                     </View>
-                    <Text style={{ color: colors.text.primary, fontSize: 15, fontWeight: '700' }}>
-                      {formatCurrency(order.totalAmount)}
-                    </Text>
-                  </View>
+                    <MoneyText style={{ color: palette.text, fontSize: 15 }}>{formatCurrency(order.totalAmount)}</MoneyText>
+                    <ChevronRight size={15} color={palette.faint} strokeWidth={2} style={{ marginLeft: 8 }} />
+                  </Pressable>
                 );
               })}
             </DetailSection>
           )}
 
           {/* Actions */}
-          <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 24, gap: 12 }}>
-            <DetailActionButton
-              label="Edit Customer"
-              icon={<Edit2 size={18} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={2} />}
-              onPress={handleEditPress}
-            />
+          <View style={{ paddingHorizontal: 16, paddingTop: 20, paddingBottom: 24, gap: 12 }}>
+            <Pressable onPress={handleEditPress} style={(state) => ({ height: 48, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: isHovered(state) ? FYLL_LIME_HOVER : FYLL_LIME })}>
+              <Edit2 size={17} color={FYLL_LIME_INK} strokeWidth={2.2} />
+              <Text style={{ color: FYLL_LIME_INK, fontSize: 15, fontWeight: '600' }}>Edit customer</Text>
+            </Pressable>
             <DetailActionButton
               label="Delete Customer"
               icon={<Trash2 size={18} color="#EF4444" strokeWidth={2} />}
@@ -1015,9 +1035,9 @@ export function CustomerDetailPanel({ customerId, onEdit, onClose }: CustomerDet
                     onPress={handleSaveInlineEdit}
                     disabled={!formFullName.trim()}
                     className="flex-1 rounded-full items-center flex-row justify-center"
-                    style={{ backgroundColor: isDark ? '#FFFFFF' : '#111111', height: 50, opacity: formFullName.trim() ? 1 : 0.5 }}
+                    style={{ backgroundColor: FYLL_LIME, height: 50, opacity: formFullName.trim() ? 1 : 0.5 }}
                   >
-                    <Text style={{ color: isDark ? '#000000' : '#FFFFFF' }} className="font-semibold">Save</Text>
+                    <Text style={{ color: FYLL_LIME_INK }} className="font-semibold">Save</Text>
                   </Pressable>
                 </View>
               </ScrollView>

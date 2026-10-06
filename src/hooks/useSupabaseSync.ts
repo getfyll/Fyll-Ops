@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase';
 import { supabaseData } from '@/lib/supabase/data';
 import { supabaseSettings } from '@/lib/supabase/settings';
 import { normalizeProductType } from '@/lib/product-utils';
+import { normalizeOrderAddressFields } from '@/lib/format-address';
 import {
   readVerifiedCoreCollections,
   writeVerifiedCoreCollections,
@@ -784,11 +785,12 @@ export function useSupabaseSync() {
         );
         return looksLikeService ? { ...product, productType: 'service' as const } : product;
       });
+      const normalizedOrders = next.orders.map((order) => normalizeOrderAddressFields(order));
       applyingRemote.current = true;
       if (next.settings) {
         useFyllStore.setState({
           products: normalizedProducts,
-          orders: next.orders,
+          orders: normalizedOrders,
           customers: next.customers,
           restockLogs: next.restockLogs,
           procurements: next.procurements,
@@ -839,7 +841,7 @@ export function useSupabaseSync() {
       } else {
         useFyllStore.setState({
           products: normalizedProducts,
-          orders: next.orders,
+          orders: normalizedOrders,
           customers: next.customers,
           restockLogs: next.restockLogs,
           procurements: next.procurements,
@@ -857,7 +859,7 @@ export function useSupabaseSync() {
         });
       }
       prevProductIds.current = toIdSet(normalizedProducts);
-      prevOrderIds.current = toIdSet(next.orders);
+      prevOrderIds.current = toIdSet(normalizedOrders);
       prevCustomerIds.current = toIdSet(next.customers);
       prevRestockIds.current = toIdSet(next.restockLogs);
       prevProcurementIds.current = toIdSet(next.procurements);
@@ -893,17 +895,20 @@ export function useSupabaseSync() {
     ) => {
       if (!isCurrentWorkspace()) return;
       const items = rows.map((row) => row.data);
+      const normalizedItems = key === 'orders'
+        ? items.map((item) => normalizeOrderAddressFields(item))
+        : items;
       const storeState = useFyllStore.getState();
       const nextItems = (
         key === 'products'
-          ? preferExistingOnEmpty(items, storeState.products as unknown as T[], 'products')
+          ? preferExistingOnEmpty(normalizedItems, storeState.products as unknown as T[], 'products')
           : key === 'orders'
-            ? preferExistingOnEmpty(items, storeState.orders as unknown as T[], 'orders')
+            ? preferExistingOnEmpty(normalizedItems, storeState.orders as unknown as T[], 'orders')
             : key === 'customers'
-              ? preferExistingOnEmpty(items, storeState.customers as unknown as T[], 'customers')
+              ? preferExistingOnEmpty(normalizedItems, storeState.customers as unknown as T[], 'customers')
               : key === 'cases'
-                ? preferExistingOnEmpty(items, storeState.cases as unknown as T[], 'cases')
-                : items
+                ? preferExistingOnEmpty(normalizedItems, storeState.cases as unknown as T[], 'cases')
+                : normalizedItems
       );
       useFyllStore.setState({ [key]: nextItems } as Partial<ReturnType<typeof useFyllStore.getState>>);
       if (key === 'products') prevProductIds.current = toIdSet(nextItems);
@@ -930,7 +935,8 @@ export function useSupabaseSync() {
       reason: string,
     ): Promise<Order[]> => {
       if (!isCurrentWorkspace()) return ordersToCheck;
-      const { orders: automatedOrders, changedOrders } = autoCompleteEligibleOrders(ordersToCheck, config);
+      const normalizedOrders = ordersToCheck.map((order) => normalizeOrderAddressFields(order));
+      const { orders: automatedOrders, changedOrders } = autoCompleteEligibleOrders(normalizedOrders, config);
       if (changedOrders.length === 0) return automatedOrders;
 
       // Auto-complete only updates the order's status. It intentionally does
@@ -1317,9 +1323,10 @@ export function useSupabaseSync() {
         const verifiedCoreCache = await readVerifiedCoreCollections(businessId);
         if (!isCurrentWorkspace()) return;
         if (verifiedCoreCache) {
+          const normalizedCachedOrders = verifiedCoreCache.orders.map((order) => normalizeOrderAddressFields(order));
           useFyllStore.setState({
             products: verifiedCoreCache.products,
-            orders: verifiedCoreCache.orders,
+            orders: normalizedCachedOrders,
             hasVerifiedProductsData: true,
             hasVerifiedOrdersData: true,
             verifiedCollectionsBusinessId: businessId,

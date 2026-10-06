@@ -9,7 +9,7 @@ import { capitalizeDisplayLabel } from "@/lib/display-format";
 import { findOrderTrackingStageByName, sanitizeOrderStatus, sanitizeOrderStatuses, type OrderTrackingStage } from "@/lib/order-status";
 import { buildCancelledOrderInventoryUpdate } from '@/lib/order-cancellation';
 import { syncFyllOrderStatusToWooCommerce } from "@/lib/woocommerce";
-import { formatAddressValue, normalizeDeliveryStateValue } from "@/lib/format-address";
+import { normalizeOrderAddressFields } from "@/lib/format-address";
 import type { DashboardSnapshot } from '@/lib/dashboard-snapshot';
 import {
   buildOrderQcRequirement,
@@ -464,23 +464,6 @@ export interface Order {
   qcChecklist?: string[]; // Completed QC requirement keys
   qcNote?: string; // QC note/remarks
 }
-
-const normalizeOrderAddressFields = <T extends Partial<Order>>(order: T): T => {
-  const nextOrder = { ...order };
-
-  if ('deliveryAddress' in nextOrder) {
-    nextOrder.deliveryAddress = formatAddressValue((nextOrder as Record<string, unknown>).deliveryAddress);
-  }
-
-  if ('deliveryState' in nextOrder) {
-    nextOrder.deliveryState = normalizeDeliveryStateValue(
-      (nextOrder as Record<string, unknown>).deliveryState,
-      (nextOrder as Record<string, unknown>).deliveryAddress
-    );
-  }
-
-  return nextOrder;
-};
 
 const mapTrackingStageToFulfillmentStage = (
   trackingStage: OrderTrackingStage

@@ -2,18 +2,19 @@ import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { View, Text, ScrollView, Pressable, TextInput, Modal, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGlobalSearchParams, useLocalSearchParams, useRouter } from 'expo-router';
-import { Plus, Search, X, Check, ChevronDown, ChevronRight, ChevronLeft, Filter, ArrowDownAZ, ArrowUpAZ, Clock, MapPin } from 'lucide-react-native';
+import { Plus, Search, X, Check, ChevronDown, ChevronRight, ChevronLeft, ArrowDownAZ, ArrowUpAZ, Clock, MapPin, Users } from 'lucide-react-native';
 import useFyllStore, { Customer, formatCurrency, NIGERIA_STATES, Order } from '@/lib/state/fyll-store';
 import useAuthStore from '@/lib/state/auth-store';
 import { useThemeColors } from '@/lib/theme';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { getActiveSplitCardStyle } from '@/lib/selection-style';
-import { DESKTOP_PAGE_HEADER_MIN_HEIGHT, getStandardPageHeadingStyle } from '@/lib/page-heading';
 import { SplitViewLayout } from '@/components/SplitViewLayout';
 import { CustomerDetailPanel } from '@/components/CustomerDetailPanel';
 import * as Haptics from 'expo-haptics';
 import { getSettingsWebPanelStyles } from '@/lib/settings-web-panel';
 import { SearchClearButton } from '@/components/SearchClearButton';
+import { FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, MoneyText, isHovered, usePaymentsPalette } from '@/components/payments/payments-ui';
+import { FilterPill, MenuPill } from '@/components/inventory/inventory-ui';
 
 type CustomerFilterTab = 'all' | 'new' | 'repeat';
 const CUSTOMERS_PAGE_SIZE = 24;
@@ -26,12 +27,10 @@ export default function CustomersScreen() {
   const { isMobile, isDesktop } = useBreakpoint();
   const isWebDesktop = Platform.OS === 'web' && isDesktop;
   const showSplitView = !isMobile && !isWebDesktop;
-  const pageHeadingStyle = getStandardPageHeadingStyle(isMobile);
-  const desktopHeaderMinHeight = DESKTOP_PAGE_HEADER_MIN_HEIGHT;
+  const palette = usePaymentsPalette();
   const fromParam = localFrom ?? globalFrom;
   const openedFromSettings = Array.isArray(fromParam) ? fromParam[0] === 'settings' : fromParam === 'settings';
   const panelStyles = getSettingsWebPanelStyles(openedFromSettings, colors.bg.primary, colors.border.light);
-  const settingsHeaderTopPadding = openedFromSettings ? 28 : 24;
 
   const customers = useFyllStore((s) => s.customers);
   const orders = useFyllStore((s) => s.orders);
@@ -63,7 +62,7 @@ export default function CustomersScreen() {
         hour: '2-digit',
         minute: '2-digit',
       });
-    } catch (error) {
+    } catch {
       return 'Recently';
     }
   }, [lastDataSyncAt]);
@@ -198,6 +197,31 @@ export default function CustomersScreen() {
       repeat: repeatCount,
     };
   }, [customers, customerStatsById]);
+
+  const customerOverview = useMemo(() => {
+    let totalSpent = 0;
+    let customersWithOrders = 0;
+    const states = new Set<string>();
+    customers.forEach((customer) => {
+      const stats = customerStatsById.get(customer.id);
+      totalSpent += stats?.totalSpent ?? 0;
+      if ((stats?.ordersCount ?? 0) > 0) customersWithOrders += 1;
+      if (customer.defaultState?.trim()) states.add(customer.defaultState.trim());
+    });
+    return {
+      totalSpent,
+      customersWithOrders,
+      states: states.size,
+    };
+  }, [customerStatsById, customers]);
+
+  const sortOptions = [
+    { key: 'name-asc', label: 'Name A–Z' },
+    { key: 'name-desc', label: 'Name Z–A' },
+    { key: 'newest', label: 'Newest' },
+    { key: 'oldest', label: 'Oldest' },
+    { key: 'state', label: 'State' },
+  ];
 
   const filteredCustomers = useMemo(() => {
     let result = [...customers];
@@ -382,34 +406,18 @@ export default function CustomersScreen() {
 
   // Master pane content
   const masterContent = (
-    <>
-      {/* Header + Search */}
-      <View style={{
-        backgroundColor: isDark ? 'transparent' : (isWebDesktop ? colors.bg.card : colors.bg.primary),
-        borderBottomWidth: isWebDesktop ? 1 : (isDark ? 0 : 0.5),
-        borderBottomColor: colors.border.light,
-      }}>
-        <View
-          style={[
-            { paddingHorizontal: isWebDesktop ? 0 : 20, paddingTop: isWebDesktop ? 0 : settingsHeaderTopPadding, paddingBottom: isWebDesktop ? 0 : 12 },
-            isWebDesktop ? { width: '100%' } : undefined,
-          ]}
-        >
-          <View
-            className={isWebDesktop ? 'flex-row items-start' : 'flex-row items-start mb-4'}
-            style={isWebDesktop ? {
-              gap: 12,
-              width: '100%',
-              maxWidth: 1400,
-              alignSelf: 'flex-start',
-              minHeight: desktopHeaderMinHeight,
-              alignItems: 'center',
-              paddingLeft: 20,
-              paddingRight: 20,
-              paddingTop: 20,
-              paddingBottom: 16,
-            } : { gap: 12 }}
-          >
+    <ScrollView
+      style={{ flex: 1, backgroundColor: palette.page }}
+      contentContainerStyle={{ paddingBottom: 32 }}
+      showsVerticalScrollIndicator={false}
+      onScroll={handleCustomersScroll}
+      scrollEventThrottle={16}
+      keyboardShouldPersistTaps="handled"
+      stickyHeaderIndices={!isWebDesktop ? [2] : undefined}
+    >
+      <View style={{ backgroundColor: palette.page }}>
+        <View style={{ width: '100%', maxWidth: isWebDesktop ? 1456 : 760, alignSelf: isWebDesktop ? 'flex-start' : 'center', paddingHorizontal: isWebDesktop ? 28 : 16, paddingTop: isWebDesktop ? 36 : 14, paddingBottom: isWebDesktop ? 6 : 0 }}>
+          <View style={{ flexDirection: 'row', alignItems: isWebDesktop ? 'flex-end' : 'center', gap: 12 }}>
             {openedFromSettings ? (
               <Pressable
                 onPress={handleBackToSettings}
@@ -417,20 +425,21 @@ export default function CustomersScreen() {
                 style={{
                   width: 40,
                   height: 40,
-                  borderRadius: 12,
+                  borderRadius: 999,
                   alignItems: 'center',
                   justifyContent: 'center',
-                  backgroundColor: colors.bg.secondary,
+                  borderWidth: 1,
+                  borderColor: palette.outline,
                 }}
               >
-                <ChevronLeft size={20} color={colors.text.primary} strokeWidth={2} />
+                <ChevronLeft size={20} color={palette.text} strokeWidth={2} />
               </Pressable>
             ) : null}
 
-              <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <View>
-                  <Text style={{ color: colors.text.primary, ...pageHeadingStyle }}>Customers</Text>
-                  <Text style={{ color: colors.text.tertiary }} className="text-sm mt-1">Manage your customer database.</Text>
+              <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+                  <Text style={{ color: palette.text, fontSize: 30, fontWeight: '700', letterSpacing: -0.6 }} numberOfLines={1}>Customers</Text>
+                  {isWebDesktop ? <Text style={{ color: palette.faint, fontSize: 14 }}>Customer relationships, order history and lifetime value.</Text> : null}
                   {isOfflineMode ? (
                     <View
                       style={{
@@ -439,18 +448,17 @@ export default function CustomersScreen() {
                         paddingHorizontal: 10,
                         paddingVertical: 4,
                         borderRadius: 999,
-                        backgroundColor: isDark ? 'rgba(248,113,113,0.16)' : 'rgba(239,68,68,0.12)',
+                        backgroundColor: palette.dangerBg,
                         borderWidth: 1,
-                        borderColor: isDark ? 'rgba(248,113,113,0.35)' : 'rgba(239,68,68,0.28)',
+                        borderColor: palette.dangerBorder,
                       }}
                     >
-                      <Text style={{ color: isDark ? '#FCA5A5' : '#B91C1C', fontSize: 12, fontWeight: '600' }}>
+                      <Text style={{ color: palette.danger, fontSize: 12, fontWeight: '600' }}>
                         Offline · Last synced {lastSyncLabel}
                       </Text>
                     </View>
                   ) : null}
                 </View>
-              <View className="flex-row gap-2">
                 <Pressable
                   onPress={() => {
                     if (Platform.OS !== 'web') {
@@ -459,51 +467,98 @@ export default function CustomersScreen() {
                     resetForm();
                     setShowAddModal(true);
                   }}
-                  className="rounded-full items-center justify-center active:opacity-80"
-                  style={{ paddingHorizontal: 14, height: 44, flexDirection: 'row', backgroundColor: colors.accent.primary }}
+                  style={(state) => ({ paddingHorizontal: 16, height: 40, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: isHovered(state) ? FYLL_LIME_HOVER : FYLL_LIME, opacity: state.pressed ? 0.85 : 1 })}
                 >
-                  <Plus size={18} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={2.5} />
-                  <Text style={{ color: isDark ? '#000000' : '#FFFFFF' }} className="font-semibold ml-1.5 text-sm">Add</Text>
+                  <Plus size={15} color={FYLL_LIME_INK} strokeWidth={2.6} />
+                  <Text style={{ color: FYLL_LIME_INK, fontWeight: '600', fontSize: 14 }}>{isWebDesktop ? 'Add customer' : 'Add'}</Text>
                 </Pressable>
-              </View>
             </View>
           </View>
         </View>
       </View>
 
       <View
-        style={[
-          {
-            paddingHorizontal: isWebDesktop ? 0 : 20,
-            paddingTop: isWebDesktop ? 12 : 0,
-            paddingBottom: 12,
-          },
-          isWebDesktop ? { width: '100%' } : undefined,
-        ]}
+        style={{ width: '100%', maxWidth: isWebDesktop ? 1456 : 760, alignSelf: isWebDesktop ? 'flex-start' : 'center', paddingHorizontal: isWebDesktop ? 28 : 16, paddingTop: isWebDesktop ? 18 : 14, paddingBottom: 0, gap: isWebDesktop ? 18 : 14, backgroundColor: palette.page }}
       >
           {isWebDesktop ? (
-            <View style={{ width: '100%', maxWidth: 1400, alignSelf: 'flex-start', paddingLeft: 20, paddingRight: 20 }}>
+            <View style={{ flexDirection: 'row', borderRadius: 20, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, overflow: 'hidden' }}>
+              {[
+                { label: 'Total customers', value: String(customers.length), sub: `${customerOverview.customersWithOrders} have placed orders` },
+                { label: 'New customers', value: String(filterTabCounts.new), sub: 'Joined in the last 30 days', dot: palette.tones.review.dot, filter: 'new' as CustomerFilterTab },
+                { label: 'Repeat customers', value: String(filterTabCounts.repeat), sub: 'Two or more orders', dot: palette.tones.verified.dot, filter: 'repeat' as CustomerFilterTab },
+                { label: 'Customer value', value: formatCurrency(customerOverview.totalSpent), sub: `Across ${customerOverview.states} delivery states` },
+              ].map((tile, index) => (
+                <Pressable key={tile.label} disabled={!tile.filter} onPress={() => tile.filter && setActiveFilterTab(tile.filter)} style={(state) => ({ flex: index === 0 || index === 3 ? 1.3 : 1, minWidth: 0, gap: 4, paddingVertical: 18, paddingHorizontal: 22, borderLeftWidth: index === 0 ? 0 : 1, borderLeftColor: palette.hairline, justifyContent: 'center', backgroundColor: tile.filter && isHovered(state) ? palette.cardHover : 'transparent' })}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    {tile.dot ? <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: tile.dot }} /> : null}
+                    <Text style={{ color: palette.muted, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{tile.label}</Text>
+                  </View>
+                  {index === 3 ? <MoneyText style={{ color: palette.text, fontSize: 24, letterSpacing: -0.5 }} numberOfLines={1}>{tile.value}</MoneyText> : <Text style={{ color: palette.text, fontSize: index === 0 ? 28 : 22, fontWeight: '600', letterSpacing: -0.5, fontVariant: ['tabular-nums'] }}>{tile.value}</Text>}
+                  <Text style={{ color: palette.faint, fontSize: 13 }} numberOfLines={1}>{tile.sub}</Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : (
+            <View style={{ borderRadius: 20, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, paddingHorizontal: 18, paddingTop: 18, paddingBottom: 16, gap: 14 }}>
+              <View style={{ gap: 4 }}>
+                <Text style={{ color: palette.muted, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>Customer value</Text>
+                <MoneyText style={{ color: palette.text, fontSize: 32, letterSpacing: -0.8 }} numberOfLines={1}>{formatCurrency(customerOverview.totalSpent)}</MoneyText>
+                <Text style={{ color: palette.faint, fontSize: 13 }}>Across {customers.length} customers</Text>
+              </View>
+              <View style={{ height: 1, backgroundColor: palette.hairline }} />
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                {[
+                  { label: 'New this month', value: filterTabCounts.new, dot: palette.tones.review.dot, filter: 'new' as CustomerFilterTab },
+                  { label: 'Repeat', value: filterTabCounts.repeat, dot: palette.tones.verified.dot, filter: 'repeat' as CustomerFilterTab },
+                ].map((tile) => (
+                  <Pressable key={tile.label} onPress={() => setActiveFilterTab(tile.filter)} style={{ flex: 1, gap: 3 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: tile.dot }} /><Text style={{ color: palette.muted, fontSize: 12 }}>{tile.label}</Text></View>
+                    <Text style={{ color: palette.text, fontSize: 18, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{tile.value}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          )}
+      </View>
+
+      <View
+        style={{
+          width: '100%',
+          maxWidth: isWebDesktop ? 1456 : 760,
+          alignSelf: isWebDesktop ? 'flex-start' : 'center',
+          paddingHorizontal: isWebDesktop ? 28 : 16,
+          paddingTop: isWebDesktop ? 18 : 12,
+          paddingBottom: isWebDesktop ? 18 : 14,
+          backgroundColor: palette.page,
+          zIndex: 30,
+        }}
+      >
+          {isWebDesktop ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <View
-                className="flex-row items-center rounded-full px-4"
                 style={{
                   height: 44,
-                  width: '30%',
-                  maxWidth: 420,
-                  minWidth: 320,
-                  backgroundColor: colors.input.bg,
+                  width: 340,
+                  flexShrink: 0,
+                  paddingLeft: 16,
+                  paddingRight: 8,
+                  borderRadius: 999,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 10,
+                  backgroundColor: palette.inputBg,
                   borderWidth: 1,
-                  borderColor: colors.border.light,
+                  borderColor: palette.border,
                 }}
               >
-                <Search size={18} color={colors.text.muted} strokeWidth={2} />
+                <Search size={17} color={palette.faint} strokeWidth={2} />
                 <TextInput
                   placeholder="Search customers..."
                   placeholderTextColor={colors.input.placeholder}
                   value={searchQuery}
                   onChangeText={setSearchQuery}
-                  style={{ flex: 1, marginLeft: 8, color: colors.input.text, fontSize: 14 }}
-                  selectionColor={colors.text.primary}
+                  style={[{ flex: 1, height: '100%', paddingVertical: 0, color: palette.text, fontSize: 14.5 }, Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null]}
+                  selectionColor={palette.text}
                 />
                 <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
               </View>
@@ -514,149 +569,83 @@ export default function CustomersScreen() {
                   { key: 'new' as const, label: 'New', count: filterTabCounts.new },
                   { key: 'repeat' as const, label: 'Repeat', count: filterTabCounts.repeat },
                 ]).map((tab) => (
-                  <Pressable
+                  <FilterPill
                     key={tab.key}
+                    label={tab.label}
+                    count={tab.count}
+                    active={activeFilterTab === tab.key}
                     onPress={() => setActiveFilterTab(tab.key)}
-                    className="rounded-full active:opacity-70"
-                    style={{
-                      height: 44,
-                      paddingHorizontal: 16,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      backgroundColor: activeFilterTab === tab.key ? colors.accent.primary : colors.bg.card,
-                      borderWidth: activeFilterTab === tab.key ? 0 : 1,
-                      borderColor: colors.border.light,
-                    }}
-                  >
-                    <Text
-                      className="text-sm font-semibold"
-                      style={{
-                        color: activeFilterTab === tab.key ? (isDark ? '#000000' : '#FFFFFF') : colors.text.primary,
-                      }}
-                    >
-                      {tab.label}
-                      <Text style={{ color: activeFilterTab === tab.key ? (isDark ? '#000000' : '#FFFFFF') : colors.text.tertiary }}>
-                        {`  ${tab.count}`}
-                      </Text>
-                    </Text>
-                  </Pressable>
+                    palette={palette}
+                  />
                 ))}
               </View>
-
-              <Pressable
-                onPress={() => {
-                  if (Platform.OS !== 'web') {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  }
-                  setShowFilterMenu(true);
-                }}
-                className="rounded-full items-center justify-center active:opacity-70 flex-row px-4"
-                style={{
-                  height: 44,
-                  backgroundColor: sortBy !== 'name-asc' ? colors.accent.primary : colors.bg.card,
-                  borderWidth: sortBy !== 'name-asc' ? 0 : 1,
-                  borderColor: colors.border.light,
-                }}
-              >
-                <Filter size={18} color={sortBy !== 'name-asc' ? (isDark ? '#000000' : '#FFFFFF') : colors.text.tertiary} strokeWidth={2} />
-                {sortBy !== 'name-asc' && (
-                  <Text style={{ color: isDark ? '#000000' : '#FFFFFF' }} className="font-semibold text-sm ml-1.5">1</Text>
-                )}
-              </Pressable>
-            </View>
+              <MenuPill prefix="Sort" value={sortBy} options={sortOptions} onSelect={(value) => setSortBy(value as typeof sortBy)} palette={palette} />
             </View>
           ) : (
-            <View className="flex-row items-center gap-2">
-              <View
-                className="flex-1 flex-row items-center rounded-full px-4"
-                style={{ height: 52, backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light }}
-              >
-                <Search size={18} color={colors.text.muted} strokeWidth={2} />
-                <TextInput
-                  placeholder="Search customers..."
-                  placeholderTextColor={colors.input.placeholder}
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                  style={{ flex: 1, marginLeft: 8, color: colors.input.text, fontSize: 14 }}
-                  selectionColor={colors.text.primary}
-                />
-                <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
+            <View style={{ gap: 10 }}>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <View style={{ flex: 1, height: 48, paddingLeft: 16, paddingRight: 8, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: palette.inputBg, borderWidth: 1, borderColor: palette.border }}>
+                  <Search size={17} color={palette.faint} strokeWidth={2} />
+                  <TextInput placeholder="Search name, email or phone" placeholderTextColor={palette.faint} value={searchQuery} onChangeText={setSearchQuery} style={{ flex: 1, height: '100%', paddingVertical: 0, color: palette.text, fontSize: 14.5 }} selectionColor={palette.text} />
+                  <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
+                </View>
+                <Pressable accessibilityRole="button" accessibilityLabel="Sort customers" onPress={() => { if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowFilterMenu(true); }} style={(state) => ({ height: 48, paddingHorizontal: 14, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: sortBy !== 'name-asc' ? palette.inverseBg : palette.outline, opacity: state.pressed ? 0.7 : 1 })}>
+                  <ArrowDownAZ size={14} color={palette.textSoft} strokeWidth={2.2} />
+                  <Text style={{ color: palette.textSoft, fontSize: 13, fontWeight: '600' }}>Sort</Text>
+                </Pressable>
               </View>
-              <Pressable
-                onPress={() => {
-                  if (Platform.OS !== 'web') {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  }
-                  setShowFilterMenu(true);
-                }}
-                className="rounded-full items-center justify-center active:opacity-70 flex-row px-4"
-                style={{
-                  height: 52,
-                  backgroundColor: sortBy !== 'name-asc' ? colors.accent.primary : colors.bg.secondary,
-                  borderWidth: sortBy !== 'name-asc' ? 0 : 0.5,
-                  borderColor: colors.border.light,
-                }}
-              >
-                <Filter size={18} color={sortBy !== 'name-asc' ? (isDark ? '#000000' : '#FFFFFF') : colors.text.tertiary} strokeWidth={2} />
-                {sortBy !== 'name-asc' && (
-                  <Text style={{ color: isDark ? '#000000' : '#FFFFFF' }} className="font-semibold text-sm ml-1.5">1</Text>
-                )}
-              </Pressable>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, marginRight: -16 }} contentContainerStyle={{ gap: 8, paddingRight: 16, alignItems: 'center' }}>
+                {([
+                  { key: 'all' as const, label: 'All', count: filterTabCounts.all },
+                  { key: 'new' as const, label: 'New', count: filterTabCounts.new },
+                  { key: 'repeat' as const, label: 'Repeat', count: filterTabCounts.repeat },
+                ]).map((tab) => <FilterPill key={tab.key} label={tab.label} count={tab.count} active={activeFilterTab === tab.key} onPress={() => setActiveFilterTab(tab.key)} palette={palette} />)}
+              </ScrollView>
             </View>
           )}
       </View>
 
-      <ScrollView
+      <View
         style={{
-          flex: 1,
-          paddingHorizontal: isWebDesktop ? 0 : 20,
-          paddingTop: isWebDesktop ? 0 : 16,
-          backgroundColor: showSplitView ? colors.bg.primary : (isWebDesktop ? colors.bg.primary : colors.bg.secondary),
-        }}
-        contentContainerStyle={{
-          maxWidth: isWebDesktop ? 1400 : isDesktop ? 600 : undefined,
-          alignSelf: isWebDesktop ? 'flex-start' : isDesktop && !selectedCustomerId ? 'center' : undefined,
+          maxWidth: isWebDesktop ? 1456 : 760,
+          alignSelf: isWebDesktop ? 'flex-start' : 'center',
           width: '100%',
-          paddingLeft: isWebDesktop ? 20 : 0,
-          paddingRight: isWebDesktop ? 20 : 0,
-          paddingTop: isWebDesktop ? 16 : 0,
+          paddingHorizontal: isWebDesktop ? 28 : 16,
+          paddingTop: 0,
         }}
-        showsVerticalScrollIndicator={false}
-        onScroll={handleCustomersScroll}
-        scrollEventThrottle={16}
       >
         {isWebDesktop ? (
           <View
             style={{
               width: '100%',
               borderWidth: 1,
-              borderColor: colors.border.light,
-              borderRadius: 16,
+              borderColor: palette.border,
+              borderRadius: 18,
               overflow: 'hidden',
-              backgroundColor: colors.bg.card,
+              backgroundColor: palette.card,
             }}
           >
-            <View style={{ backgroundColor: colors.bg.card, borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
-              <View style={{ flexDirection: 'row', paddingHorizontal: 8, paddingVertical: 12 }}>
-                <Text style={{ color: colors.text.muted, flex: 1.9 }} className="text-xs font-semibold">
+            <View style={{ backgroundColor: palette.card, borderBottomWidth: 1, borderBottomColor: palette.hairline }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 22, paddingVertical: 14 }}>
+                <Text style={{ color: palette.faint, flex: 1.9, fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>
                   CUSTOMER
                 </Text>
-                <Text style={{ color: colors.text.muted, flex: 1.8 }} className="text-xs font-semibold">
+                <Text style={{ color: palette.faint, flex: 1.8, fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>
                   EMAIL
                 </Text>
-                <Text style={{ color: colors.text.muted, width: 150 }} className="text-xs font-semibold">
+                <Text style={{ color: palette.faint, width: 150, fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>
                   PHONE
                 </Text>
-                <Text style={{ color: colors.text.muted, flex: 1 }} className="text-xs font-semibold">
+                <Text style={{ color: palette.faint, flex: 1, fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>
                   STATE
                 </Text>
-                <Text style={{ color: colors.text.muted, width: 90, textAlign: 'center' }} className="text-xs font-semibold">
+                <Text style={{ color: palette.faint, width: 90, textAlign: 'center', fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>
                   ORDERS
                 </Text>
-                <Text style={{ color: colors.text.muted, width: 150, textAlign: 'right' }} className="text-xs font-semibold">
+                <Text style={{ color: palette.faint, width: 150, textAlign: 'right', fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>
                   TOTAL SPENT
                 </Text>
-                <Text style={{ color: colors.text.muted, width: 120, textAlign: 'right' }} className="text-xs font-semibold">
+                <Text style={{ color: palette.faint, width: 120, textAlign: 'right', fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>
                   JOINED
                 </Text>
                 <View style={{ width: 24 }} />
@@ -665,17 +654,17 @@ export default function CustomersScreen() {
 
             {filteredCustomers.length === 0 ? (
               <View style={{ padding: 40, alignItems: 'center' }}>
-                <View style={{ width: 80, height: 80, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginBottom: 16, backgroundColor: colors.border.light }}>
-                  <Plus size={36} color={colors.text.muted} strokeWidth={1.5} />
+                <View style={{ width: 64, height: 64, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginBottom: 14, backgroundColor: palette.softFill }}>
+                  <Users size={28} color={palette.faint} strokeWidth={1.6} />
                 </View>
-                <Text style={{ color: colors.text.tertiary, fontSize: 16, marginBottom: 4 }}>No customers found</Text>
-                <Text style={{ color: colors.text.muted, fontSize: 14, marginBottom: 16 }}>Add your first customer to get started</Text>
+                <Text style={{ color: palette.text, fontSize: 16, fontWeight: '600', marginBottom: 4 }}>{customers.length === 0 ? 'No customers yet' : 'No customers match'}</Text>
+                <Text style={{ color: palette.muted, fontSize: 14, marginBottom: 16 }}>{customers.length === 0 ? 'Add your first customer to get started.' : 'Try another search or filter.'}</Text>
                 <Pressable
                   onPress={() => { resetForm(); setShowAddModal(true); }}
-                  style={{ backgroundColor: colors.accent.primary, borderRadius: 999, paddingHorizontal: 24, paddingVertical: 12, flexDirection: 'row', alignItems: 'center' }}
+                  style={(state) => ({ backgroundColor: isHovered(state) ? FYLL_LIME_HOVER : FYLL_LIME, borderRadius: 999, paddingHorizontal: 18, height: 40, flexDirection: 'row', alignItems: 'center', gap: 6 })}
                 >
-                  <Plus size={16} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={2.5} />
-                  <Text style={{ color: isDark ? '#000000' : '#FFFFFF', fontWeight: '600', marginLeft: 6 }}>Add First Customer</Text>
+                  <Plus size={15} color={FYLL_LIME_INK} strokeWidth={2.6} />
+                  <Text style={{ color: FYLL_LIME_INK, fontWeight: '600' }}>Add customer</Text>
                 </Pressable>
               </View>
             ) : visibleCustomers.map((customer, index) => (
@@ -692,51 +681,51 @@ export default function CustomersScreen() {
                 onPress={() => handleCustomerSelect(customer.id)}
                 className="active:opacity-70"
                 style={{
-                  backgroundColor: colors.bg.card,
+                  backgroundColor: palette.card,
                   borderBottomWidth: index === visibleCustomers.length - 1 ? 0 : 1,
-                  borderBottomColor: colors.border.light,
+                  borderBottomColor: palette.hairline,
                 }}
               >
-                <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 14 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 22, paddingVertical: 13 }}>
                   <View style={{ flex: 1.9, flexDirection: 'row', alignItems: 'center', gap: 12, minWidth: 0 }}>
                     <View
                       style={{
-                        width: 32,
-                        height: 32,
+                        width: 40,
+                        height: 40,
                         borderRadius: 999,
                         alignItems: 'center',
                         justifyContent: 'center',
-                        backgroundColor: colors.text.primary,
+                        backgroundColor: palette.avatarBg,
                       }}
                     >
-                      <Text style={{ color: colors.bg.primary }} className="text-xs font-bold">
+                      <Text style={{ color: palette.avatarText, fontSize: 12, fontWeight: '700' }}>
                         {initials}
                       </Text>
                     </View>
-                    <Text style={{ color: colors.text.primary, flex: 1 }} className="text-sm font-semibold" numberOfLines={1}>
+                    <Text style={{ color: palette.text, flex: 1, fontSize: 14, fontWeight: '500' }} numberOfLines={1}>
                       {customer.fullName}
                     </Text>
                   </View>
-                  <Text style={{ color: colors.text.secondary, flex: 1.8 }} className="text-sm" numberOfLines={1}>
+                  <Text style={{ color: palette.textSoft, flex: 1.8, fontSize: 13 }} numberOfLines={1}>
                     {customer.email || '—'}
                   </Text>
-                  <Text style={{ color: colors.text.secondary, width: 150 }} className="text-sm" numberOfLines={1}>
+                  <Text style={{ color: palette.textSoft, width: 150, fontSize: 13 }} numberOfLines={1}>
                     {customer.phone || '—'}
                   </Text>
-                  <Text style={{ color: colors.text.secondary, flex: 1 }} className="text-sm" numberOfLines={1}>
+                  <Text style={{ color: palette.textSoft, flex: 1, fontSize: 13 }} numberOfLines={1}>
                     {customer.defaultState || '—'}
                   </Text>
-                  <Text style={{ color: colors.text.secondary, width: 90, textAlign: 'center' }} className="text-sm font-semibold" numberOfLines={1}>
+                  <Text style={{ color: palette.textSoft, width: 90, textAlign: 'center', fontSize: 13, fontWeight: '600' }} numberOfLines={1}>
                     {ordersCount}
                   </Text>
-                  <Text style={{ color: isFullyRefunded ? colors.text.muted : colors.text.primary, width: 150, textAlign: 'right' }} className="text-sm font-semibold" numberOfLines={1}>
+                  <Text style={{ color: isFullyRefunded ? palette.danger : palette.text, width: 150, textAlign: 'right', fontSize: 13, fontWeight: '600' }} numberOfLines={1}>
                     {isFullyRefunded ? 'Refunded' : formatCurrency(totalSpent)}
                   </Text>
-                  <Text style={{ color: colors.text.tertiary, width: 120, textAlign: 'right' }} className="text-sm" numberOfLines={1}>
+                  <Text style={{ color: palette.faint, width: 120, textAlign: 'right', fontSize: 13 }} numberOfLines={1}>
                     {formatMonthYear(customer.createdAt)}
                   </Text>
                   <View style={{ width: 24, alignItems: 'flex-end' }}>
-                    <ChevronRight size={16} color={colors.text.muted} strokeWidth={2} />
+                    <ChevronRight size={16} color={palette.faint} strokeWidth={2} />
                   </View>
                 </View>
               </Pressable>
@@ -745,63 +734,49 @@ export default function CustomersScreen() {
             ))}
           </View>
         ) : filteredCustomers.length === 0 ? (
-          <View className="items-center justify-center py-20">
-            <View className="w-20 h-20 rounded-2xl items-center justify-center mb-4" style={{ backgroundColor: colors.border.light }}>
-              <Plus size={36} color={colors.text.muted} strokeWidth={1.5} />
+          <View className="items-center justify-center py-16">
+            <View style={{ width: 64, height: 64, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginBottom: 14, backgroundColor: palette.softFill }}>
+              <Users size={28} color={palette.faint} strokeWidth={1.6} />
             </View>
-            <Text style={{ color: colors.text.tertiary }} className="text-base mb-1">No customers found</Text>
-            <Text style={{ color: colors.text.muted }} className="text-sm mb-4">Add your first customer to get started</Text>
+            <Text style={{ color: palette.text, fontSize: 16, fontWeight: '600', marginBottom: 4 }}>{customers.length === 0 ? 'No customers yet' : 'No customers match'}</Text>
+            <Text style={{ color: palette.muted, fontSize: 14, marginBottom: 16 }}>{customers.length === 0 ? 'Add your first customer to get started.' : 'Try another search or filter.'}</Text>
             <Pressable
               onPress={() => { resetForm(); setShowAddModal(true); }}
-              className="rounded-full active:opacity-80 px-6 py-3 flex-row items-center"
-              style={{ backgroundColor: colors.accent.primary }}
+              style={(state) => ({ height: 40, paddingHorizontal: 18, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: isHovered(state) ? FYLL_LIME_HOVER : FYLL_LIME })}
             >
-              <Plus size={16} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={2.5} />
-              <Text style={{ color: isDark ? '#000000' : '#FFFFFF' }} className="font-semibold ml-1.5">Add First Customer</Text>
+              <Plus size={15} color={FYLL_LIME_INK} strokeWidth={2.6} />
+              <Text style={{ color: FYLL_LIME_INK, fontWeight: '600' }}>Add customer</Text>
             </Pressable>
           </View>
         ) : (
-          visibleCustomers.map((customer) => (
-            <View
-              key={customer.id}
-              className="mb-3"
-            >
-              <Pressable
-                onPress={() => handleCustomerSelect(customer.id)}
-                className="active:opacity-80"
-              >
-                <View
-                  className="rounded-xl p-4"
-                  style={{
-                    backgroundColor: colors.bg.card,
-                    borderWidth: 0.5,
-                    borderColor: colors.border.light,
-                    borderLeftWidth: 0.5,
-                    borderLeftColor: colors.border.light,
-                    ...getActiveSplitCardStyle({
-                      isSelected: selectedCustomerId === customer.id,
-                      showSplitView,
-                      isDark,
-                      colors,
-                    }),
-                  }}
+          <View style={{ borderRadius: 18, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, overflow: 'hidden' }}>
+            {visibleCustomers.map((customer, index) => {
+              const stats = customerStatsById.get(customer.id);
+              const ordersCount = stats?.ordersCount ?? 0;
+              const totalSpent = stats?.totalSpent ?? 0;
+              const isFullyRefunded = stats?.isFullyRefunded ?? false;
+              return (
+                <Pressable
+                  key={customer.id}
+                  onPress={() => handleCustomerSelect(customer.id)}
+                  style={(state) => ({ flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 76, paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: index === visibleCustomers.length - 1 ? 0 : 1, borderBottomColor: palette.hairline, backgroundColor: state.pressed ? palette.cardHover : palette.card, ...getActiveSplitCardStyle({ isSelected: selectedCustomerId === customer.id, showSplitView, isDark, colors }) })}
                 >
-                  <View className="flex-row items-start">
-                    <View className="flex-1">
-                      <Text style={{ color: colors.text.primary }} className="font-bold text-base">{customer.fullName}</Text>
-                      {customer.email && (
-                        <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1">{customer.email}</Text>
-                      )}
-                      {customer.defaultState && (
-                        <Text style={{ color: colors.text.tertiary }} className="text-xs mt-0.5">{customer.defaultState}</Text>
-                      )}
-                    </View>
-                    <ChevronRight size={18} color={colors.text.tertiary} strokeWidth={2} />
+                  <View style={{ width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.avatarBg }}>
+                    <Text style={{ color: palette.avatarText, fontSize: 13, fontWeight: '700' }}>{getCustomerInitials(customer.fullName)}</Text>
                   </View>
-                </View>
-              </Pressable>
-            </View>
-          ))
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ color: palette.text, fontSize: 15, fontWeight: '500' }} numberOfLines={1}>{customer.fullName}</Text>
+                    <Text style={{ color: palette.faint, fontSize: 12.5, marginTop: 3 }} numberOfLines={1}>{customer.email || customer.phone || 'No contact details'}</Text>
+                    <Text style={{ color: palette.muted, fontSize: 12, marginTop: 2 }} numberOfLines={1}>{customer.defaultState || 'No state'} · {ordersCount} {ordersCount === 1 ? 'order' : 'orders'}</Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end', gap: 5 }}>
+                    {isFullyRefunded ? <Text style={{ color: palette.danger, fontSize: 12, fontWeight: '600' }}>Refunded</Text> : totalSpent > 0 ? <MoneyText style={{ color: palette.text, fontSize: 13 }} numberOfLines={1}>{formatCurrency(totalSpent)}</MoneyText> : <Text style={{ color: palette.faint, fontSize: 12 }}>No spend</Text>}
+                    <ChevronRight size={16} color={palette.faint} strokeWidth={2} />
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
         )}
           <View className="items-center py-2">
             {hasMoreCustomers ? (
@@ -811,24 +786,24 @@ export default function CustomersScreen() {
                 style={{
                   height: 38,
                   justifyContent: 'center',
-                  backgroundColor: colors.bg.card,
+                  backgroundColor: palette.card,
                   borderWidth: 1,
-                  borderColor: colors.border.light,
+                  borderColor: palette.outline,
                 }}
               >
-                <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">
+                <Text style={{ color: palette.textSoft }} className="text-sm font-semibold">
                   Load more customers
                 </Text>
               </Pressable>
             ) : (
-              <Text style={{ color: colors.text.muted }} className="text-xs">
+              <Text style={{ color: palette.faint }} className="text-xs">
                 Showing {visibleCustomers.length} of {filteredCustomers.length}
               </Text>
             )}
           </View>
           <View className="h-24" />
-        </ScrollView>
-      </>
+        </View>
+      </ScrollView>
     );
 
   return (
@@ -1044,13 +1019,13 @@ export default function CustomersScreen() {
                     onPress={handleSave}
                     disabled={!fullName.trim()}
                     className="flex-1 rounded-full items-center flex-row justify-center"
-                    style={{ backgroundColor: isDark ? '#FFFFFF' : '#111111', height: 50, opacity: fullName.trim() ? 1 : 0.5 }}
+                    style={{ backgroundColor: FYLL_LIME, height: 50, opacity: fullName.trim() ? 1 : 0.5 }}
                   >
                     {!editingCustomer ? (
-                      <Plus size={16} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={2.5} />
+                      <Plus size={16} color={FYLL_LIME_INK} strokeWidth={2.5} />
                     ) : null}
                     <Text
-                      style={{ color: isDark ? '#000000' : '#FFFFFF' }}
+                      style={{ color: FYLL_LIME_INK }}
                       className={editingCustomer ? 'font-semibold' : 'font-semibold ml-1.5'}
                     >
                       {editingCustomer ? 'Save' : 'Add Customer'}
@@ -1151,9 +1126,9 @@ export default function CustomersScreen() {
                     setShowFilterMenu(false);
                   }}
                   className="rounded-full items-center justify-center active:opacity-80"
-                  style={{ height: 50, backgroundColor: isDark ? '#FFFFFF' : '#111111' }}
+                  style={{ height: 50, backgroundColor: FYLL_LIME }}
                 >
-                  <Text style={{ color: isDark ? '#111111' : '#FFFFFF' }} className="font-semibold">Done</Text>
+                  <Text style={{ color: FYLL_LIME_INK }} className="font-semibold">Done</Text>
                 </Pressable>
               </View>
               <View className="h-8" />

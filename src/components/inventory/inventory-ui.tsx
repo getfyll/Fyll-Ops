@@ -126,7 +126,7 @@ export function ProductThumb({ product, size, radius, palette }: { product: Prod
   );
 }
 
-export function FilterPill({ label, count, active, onPress, palette }: { label: string; count?: number; active: boolean; onPress: () => void; palette: PaymentsPalette }) {
+export function FilterPill({ label, count, active, onPress, palette, textSize = 13 }: { label: string; count?: number; active: boolean; onPress: () => void; palette: PaymentsPalette; textSize?: number }) {
   return (
     <Pressable
       accessibilityRole="button"
@@ -146,9 +146,9 @@ export function FilterPill({ label, count, active, onPress, palette }: { label: 
         opacity: state.pressed ? 0.8 : 1,
       })}
     >
-      <Text style={{ color: active ? palette.inverseText : palette.textSoft, fontSize: 13, fontWeight: '600' }}>{label}</Text>
+      <Text style={{ color: active ? palette.inverseText : palette.textSoft, fontSize: textSize, fontWeight: '600' }}>{label}</Text>
       {count !== undefined ? (
-        <Text style={{ color: active ? palette.inverseText : palette.textSoft, opacity: 0.55, fontSize: 13, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{count}</Text>
+        <Text style={{ color: active ? palette.inverseText : palette.textSoft, opacity: 0.55, fontSize: textSize, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{count}</Text>
       ) : null}
     </Pressable>
   );
