@@ -45,6 +45,7 @@ import { getTeamThreadChannelById, getTeamThreadDisplayNameFromEntityId, isTeamT
 import { supabaseData } from '@/lib/supabase/data';
 import { createWooCommerceOrderFromFyll, fetchWooCommerceOrder } from '@/lib/woocommerce';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
+import { FYLL_LIME } from '@/components/payments/payments-ui';
 
 const STAMP_DUTY_THRESHOLD = 10000;
 
@@ -1646,7 +1647,9 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
       {(
         <DetailSection title="WooCommerce Link" titleBottomSpacing={18}>
           <View style={{ paddingTop: 4, paddingBottom: 4 }}>
-            <Text style={{ color: colors.text.secondary, fontSize: 11, fontWeight: '500', marginBottom: 7 }}>Woo order ID or reference</Text>
+            {!order.websiteOrderReference ? (
+<>
+<Text style={{ color: colors.text.secondary, fontSize: 11, fontWeight: '500', marginBottom: 7 }}>Woo order ID or reference</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 }}>
               <TextInput
                 value={wooReferenceDraft}
@@ -1654,18 +1657,20 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
                 placeholder="e.g. 49135"
                 placeholderTextColor={colors.text.muted}
                 autoCapitalize="characters"
-                style={{ flex: 1, height: 42, borderRadius: 12, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.secondary, color: colors.text.primary, paddingHorizontal: 12, fontSize: 13 }}
+                style={{ flex: 1, minWidth: 0, height: 42, borderRadius: 12, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.secondary, color: colors.text.primary, paddingHorizontal: 12, fontSize: 13 }}
               />
               <Pressable
                 onPress={() => void handleLinkWooOrder()}
                 disabled={isLinkingWooOrder}
                 className="active:opacity-80"
-                style={{ height: 42, paddingHorizontal: 15, borderRadius: 12, backgroundColor: colors.text.primary, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', opacity: isLinkingWooOrder ? 0.7 : 1 }}
+                style={{ height: 42, flexShrink: 0, paddingHorizontal: 15, borderRadius: 12, backgroundColor: colors.text.primary, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', opacity: isLinkingWooOrder ? 0.7 : 1 }}
               >
                 {isLinkingWooOrder ? <ActivityIndicator size="small" color={colors.bg.primary} /> : null}
                 <Text style={{ color: colors.bg.primary, fontSize: 11, fontWeight: '600', marginLeft: isLinkingWooOrder ? 7 : 0 }}>{isLinkingWooOrder ? 'Linking…' : 'Link to Woo'}</Text>
               </Pressable>
             </View>
+</>
+) : null}
             <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
               <View
                 style={{
@@ -1707,8 +1712,8 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                 <Text style={{ color: colors.text.secondary, fontSize: 12 }}>Linked Status</Text>
-                <Text style={{ color: order.websiteOrderReference ? '#16A34A' : colors.text.muted, fontSize: 12, fontWeight: '700', marginLeft: 12 }}>
-                  {order.websiteOrderReference ? 'Connected' : 'Not linked'}
+                <Text style={{ color: order.websiteOrderReference ? FYLL_LIME : colors.text.muted, fontSize: 12, fontWeight: '700', marginLeft: 12 }}>
+                  {order.websiteOrderReference ? 'Linked' : 'Not linked'}
                 </Text>
               </View>
             </View>

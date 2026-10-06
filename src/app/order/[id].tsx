@@ -35,6 +35,7 @@ import { formatAddressValue, normalizeDeliveryStateValue } from '@/lib/format-ad
 import { SearchClearButton } from '@/components/SearchClearButton';
 import { createWooCommerceOrderFromFyll, fetchWooCommerceOrder } from '@/lib/woocommerce';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
+import { FYLL_LIME } from '@/components/payments/payments-ui';
 
 const STAMP_DUTY_THRESHOLD = 10000;
 const DESKTOP_HEADER_ACTION_MENU_WIDTH = 238;
@@ -1863,7 +1864,9 @@ export default function OrderDetailScreen() {
     <View className={cn('mt-4 rounded-2xl p-4', !isWebDesktop && 'mx-5')} style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
       <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '500', letterSpacing: 1.2, marginBottom: 18, textTransform: 'uppercase' }}>WooCommerce Link</Text>
 
-      <Text style={{ color: colors.text.secondary, fontSize: 11, fontWeight: '500', marginBottom: 7 }}>Woo order ID or reference</Text>
+      {!order.websiteOrderReference ? (
+<>
+<Text style={{ color: colors.text.secondary, fontSize: 11, fontWeight: '500', marginBottom: 7 }}>Woo order ID or reference</Text>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 }}>
         <TextInput
           value={wooReferenceDraft}
@@ -1871,18 +1874,20 @@ export default function OrderDetailScreen() {
           placeholder="e.g. 49135"
           placeholderTextColor={colors.text.muted}
           autoCapitalize="characters"
-          style={{ flex: 1, height: 42, borderRadius: 12, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.secondary, color: colors.text.primary, paddingHorizontal: 12, fontSize: 13 }}
+          style={{ flex: 1, minWidth: 0, height: 42, borderRadius: 12, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.secondary, color: colors.text.primary, paddingHorizontal: 12, fontSize: 13 }}
         />
         <Pressable
           onPress={() => void handleLinkWooOrder()}
           disabled={isLinkingWooOrder}
           className="active:opacity-80"
-          style={{ height: 42, paddingHorizontal: 16, borderRadius: 12, backgroundColor: colors.text.primary, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', opacity: isLinkingWooOrder ? 0.7 : 1 }}
+          style={{ height: 42, flexShrink: 0, paddingHorizontal: 16, borderRadius: 12, backgroundColor: colors.text.primary, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', opacity: isLinkingWooOrder ? 0.7 : 1 }}
         >
           {isLinkingWooOrder ? <ActivityIndicator size="small" color={colors.bg.primary} /> : null}
           <Text style={{ color: colors.bg.primary, fontSize: 12, fontWeight: '600', marginLeft: isLinkingWooOrder ? 7 : 0 }}>{isLinkingWooOrder ? 'Linking…' : 'Link to Woo'}</Text>
         </Pressable>
       </View>
+</>
+) : null}
 
       <View>
         <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
@@ -1926,8 +1931,8 @@ export default function OrderDetailScreen() {
           </View>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
             <Text style={{ color: colors.text.secondary, fontSize: 12 }}>Linked Status</Text>
-            <Text style={{ color: order.websiteOrderReference ? '#16A34A' : colors.text.muted, fontSize: 12, fontWeight: '600', marginLeft: 12 }}>
-              {order.websiteOrderReference ? 'Connected' : 'Not linked'}
+            <Text style={{ color: order.websiteOrderReference ? FYLL_LIME : colors.text.muted, fontSize: 12, fontWeight: '600', marginLeft: 12 }}>
+              {order.websiteOrderReference ? 'Linked' : 'Not linked'}
             </Text>
           </View>
         </View>

@@ -544,7 +544,7 @@ export default function InventoryScreen() {
   // Master pane content
   const horizontalPadding = isMobile ? 16 : isWebDesktop ? 28 : 20;
   const webNoOutline = Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null;
-  const tableHeadStyle = { color: palette.faint, fontSize: 11.5, fontWeight: '600' as const, letterSpacing: 0.6, textTransform: 'uppercase' as const };
+  const tableHeadStyle = { color: palette.faint, fontSize: 10, fontWeight: '600' as const, letterSpacing: 0.6, textTransform: 'uppercase' as const };
   const filterPills: { key: InventoryFilter; label: string }[] = [
     { key: 'all', label: 'All' },
     { key: 'low-stock', label: 'Low stock' },
@@ -749,16 +749,16 @@ export default function InventoryScreen() {
     >
       <View
         style={{
-          paddingTop: isWebDesktop ? 36 : 14,
+          paddingTop: isWebDesktop ? 28 : 14,
           paddingBottom: isWebDesktop ? 6 : 0,
           flexDirection: 'row',
-          alignItems: isWebDesktop ? 'flex-end' : 'center',
+          alignItems: 'flex-start',
           justifyContent: 'space-between',
           gap: 12,
         }}
       >
         <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
-          <Text style={{ color: palette.text, fontSize: 30, fontWeight: '700', letterSpacing: -0.6 }} numberOfLines={1}>
+          <Text style={{ color: palette.text, fontSize: 30, lineHeight: 36, fontWeight: '700', letterSpacing: -0.6 }} numberOfLines={1}>
             {inventoryTab === 'services' ? 'Services' : 'Inventory'}
           </Text>
           {isWebDesktop ? (
