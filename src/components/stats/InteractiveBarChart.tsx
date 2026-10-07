@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, type LayoutChangeEvent } from 'react-native';
+import { Pressable, View, type LayoutChangeEvent } from 'react-native';
 import Svg, { Line, Rect, Text as SvgText } from 'react-native-svg';
 
 export type BarChartDatum = {
@@ -27,6 +27,9 @@ export function InteractiveBarChart({
   selectedIndex,
   onSelectIndex,
   formatYLabel,
+  formatValueLabel,
+  tooltipBackgroundColor = '#111111',
+  tooltipTextColor = '#FFFFFF',
 }: {
   data: BarChartDatum[];
   height?: number;
@@ -36,6 +39,9 @@ export function InteractiveBarChart({
   selectedIndex?: number | null;
   onSelectIndex?: (index: number | null) => void;
   formatYLabel?: (value: number) => string;
+  formatValueLabel?: (value: number) => string;
+  tooltipBackgroundColor?: string;
+  tooltipTextColor?: string;
 }) {
   const [width, setWidth] = useState<number>(0);
 
@@ -81,7 +87,7 @@ export function InteractiveBarChart({
   if (data.length === 0) return null;
 
   return (
-    <View style={{ width: '100%', height }} onLayout={onLayout}>
+    <View style={{ width: '100%', height, position: 'relative' }} onLayout={onLayout}>
       {chart ? (
         <Svg width={width} height={height}>
           {/* Gridlines + Y labels */}
@@ -136,14 +142,6 @@ export function InteractiveBarChart({
                   rx={8}
                   ry={8}
                 />
-                <Rect
-                  x={x - 6}
-                  y={chart.paddingTop}
-                  width={chart.barWidth + 12}
-                  height={chart.chartHeight}
-                  fill="transparent"
-                  onPress={() => onSelectIndex?.(selected ? null : idx)}
-                />
                 <SvgText
                   x={x + chart.barWidth / 2}
                   y={height - 10}
@@ -157,9 +155,41 @@ export function InteractiveBarChart({
               </React.Fragment>
             );
           })}
+
+          {/* Exact value tooltip for hover and touch selection */}
+          {typeof selectedIndex === 'number' && data[selectedIndex] ? (() => {
+            const datum = data[selectedIndex];
+            const x = chart.paddingLeft + chart.spacing + selectedIndex * (chart.barWidth + chart.spacing);
+            const barHeight = (datum.value / chart.niceMax) * chart.chartHeight;
+            const y = chart.paddingTop + chart.chartHeight - barHeight;
+            const valueLabel = formatValueLabel ? formatValueLabel(datum.value) : String(datum.value);
+            const tooltipWidth = Math.min(116, Math.max(48, valueLabel.length * 7 + 18));
+            const tooltipX = Math.max(4, Math.min(width - tooltipWidth - 4, x + chart.barWidth / 2 - tooltipWidth / 2));
+            const tooltipY = Math.max(2, y - 34);
+            return (
+              <React.Fragment>
+                <Rect x={tooltipX} y={tooltipY} width={tooltipWidth} height={26} rx={8} ry={8} fill={tooltipBackgroundColor} />
+                <SvgText x={tooltipX + tooltipWidth / 2} y={tooltipY + 17} fill={tooltipTextColor} fontSize={11} fontWeight="600" textAnchor="middle">{valueLabel}</SvgText>
+              </React.Fragment>
+            );
+          })() : null}
         </Svg>
       ) : null}
+      {chart ? data.map((datum, idx) => {
+        const x = chart.paddingLeft + idx * (chart.barWidth + chart.spacing);
+        const hitWidth = chart.barWidth + chart.spacing;
+        return (
+          <Pressable
+            key={`hit-${datum.key}`}
+            accessibilityRole="button"
+            accessibilityLabel={`${datum.label}: ${formatValueLabel ? formatValueLabel(datum.value) : datum.value}`}
+            onHoverIn={() => onSelectIndex?.(idx)}
+            onHoverOut={() => onSelectIndex?.(null)}
+            onPress={() => onSelectIndex?.(selectedIndex === idx ? null : idx)}
+            style={{ position: 'absolute', left: x, top: chart.paddingTop, width: hitWidth, height: chart.chartHeight }}
+          />
+        );
+      }) : null}
     </View>
   );
 }
-

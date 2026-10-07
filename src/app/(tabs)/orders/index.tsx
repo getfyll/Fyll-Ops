@@ -769,8 +769,8 @@ export default function OrdersScreen() {
 
         {isWebDesktop && firstUnlinkedPayment ? (
           <Pressable onPress={() => router.push(`/storefront-payment/${firstUnlinkedPayment.id}`)} style={({ pressed }) => ({ minHeight: 54, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 11, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: isDark ? 'rgba(213,224,87,0.10)' : 'rgba(133,145,26,0.08)', borderWidth: 1, borderColor: isDark ? 'rgba(213,224,87,0.28)' : 'rgba(133,145,26,0.25)', opacity: pressed ? 0.75 : 1 })}>
-            <View style={{ width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accent.primary }}><Check size={15} color={isDark ? '#1E1E1E' : '#FFFFFF'} strokeWidth={2.4} /></View>
-            <Text style={{ color: colors.text.primary, flex: 1, fontSize: 14, fontWeight: '600' }}>{unlinkedVerifiedPayments.length} verified payment{unlinkedVerifiedPayments.length === 1 ? '' : 's'} {unlinkedVerifiedPayments.length === 1 ? 'has' : 'have'} no order yet <Text style={{ color: colors.text.muted, fontWeight: '400' }}>· {firstUnlinkedPayment.customerName || 'Customer'} · {formatCurrency(firstUnlinkedPayment.amount ?? 0)} · create it from the payment</Text></Text>
+            <View style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: FYLL_LIME }}><Check size={15} color={FYLL_LIME_INK} strokeWidth={2.6} /></View>
+            <Text style={{ color: isDark ? '#F4F4EF' : '#293000', flex: 1, fontSize: 14, fontWeight: '600' }}>{unlinkedVerifiedPayments.length} verified payment{unlinkedVerifiedPayments.length === 1 ? '' : 's'} {unlinkedVerifiedPayments.length === 1 ? 'has' : 'have'} no order yet <Text style={{ color: isDark ? '#D5D6CC' : '#4E551E', fontWeight: '400' }}>· {firstUnlinkedPayment.customerName || 'Customer'} · {formatCurrency(firstUnlinkedPayment.amount ?? 0)} · create it from the payment</Text></Text>
             <ChevronRight size={16} color={colors.accent.primary} strokeWidth={2.2} />
           </Pressable>
         ) : null}

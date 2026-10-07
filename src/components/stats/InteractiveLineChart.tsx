@@ -1,11 +1,12 @@
 import React, { useMemo, useState } from 'react';
-import { View, type LayoutChangeEvent } from 'react-native';
+import { Pressable, View, type LayoutChangeEvent } from 'react-native';
 import Svg, {
   Circle,
   Defs,
   LinearGradient,
   Line,
   Path,
+  Rect,
   Stop,
   Text as SvgText,
 } from 'react-native-svg';
@@ -35,6 +36,9 @@ export function InteractiveLineChart({
   selectedIndex,
   onSelectIndex,
   formatYLabel,
+  formatValueLabel,
+  tooltipBackgroundColor = '#111111',
+  tooltipTextColor = '#FFFFFF',
   maxXLabels = 8,
   paddingLeft = 52,
 }: {
@@ -46,6 +50,9 @@ export function InteractiveLineChart({
   selectedIndex?: number | null;
   onSelectIndex?: (index: number | null) => void;
   formatYLabel?: (value: number) => string;
+  formatValueLabel?: (value: number) => string;
+  tooltipBackgroundColor?: string;
+  tooltipTextColor?: string;
   maxXLabels?: number;
   paddingLeft?: number;
 }) {
@@ -106,7 +113,7 @@ export function InteractiveLineChart({
   if (data.length < 2) return null;
 
   return (
-    <View style={{ width: '100%', height }} onLayout={onLayout}>
+    <View style={{ width: '100%', height, position: 'relative' }} onLayout={onLayout}>
       {chart ? (
         <Svg width={width} height={height}>
           <Defs>
@@ -177,13 +184,6 @@ export function InteractiveLineChart({
                 <Circle
                   cx={point.x}
                   cy={point.y}
-                  r={10}
-                  fill="transparent"
-                  onPress={() => onSelectIndex?.(selected ? null : idx)}
-                />
-                <Circle
-                  cx={point.x}
-                  cy={point.y}
                   r={selected ? 4.5 : 3}
                   fill={lineColor}
                   stroke="#FFFFFF"
@@ -192,6 +192,21 @@ export function InteractiveLineChart({
               </React.Fragment>
             );
           })}
+
+          {/* Exact value tooltip for hover and touch selection */}
+          {typeof selectedIndex === 'number' && chart.points[selectedIndex] ? (() => {
+            const point = chart.points[selectedIndex];
+            const valueLabel = formatValueLabel ? formatValueLabel(data[selectedIndex].value) : String(data[selectedIndex].value);
+            const tooltipWidth = Math.min(116, Math.max(48, valueLabel.length * 7 + 18));
+            const tooltipX = Math.max(4, Math.min(width - tooltipWidth - 4, point.x - tooltipWidth / 2));
+            const tooltipY = Math.max(2, point.y - 34);
+            return (
+              <React.Fragment>
+                <Rect x={tooltipX} y={tooltipY} width={tooltipWidth} height={26} rx={8} ry={8} fill={tooltipBackgroundColor} />
+                <SvgText x={tooltipX + tooltipWidth / 2} y={tooltipY + 17} fill={tooltipTextColor} fontSize={11} fontWeight="600" textAnchor="middle">{valueLabel}</SvgText>
+              </React.Fragment>
+            );
+          })() : null}
 
           {/* X labels */}
           {data.map((d, idx) => {
@@ -216,6 +231,23 @@ export function InteractiveLineChart({
           })}
         </Svg>
       ) : null}
+      {chart ? chart.points.map((point, idx) => {
+        const previousPoint = chart.points[idx - 1];
+        const nextPoint = chart.points[idx + 1];
+        const hitLeft = previousPoint ? (previousPoint.x + point.x) / 2 : chart.paddingLeft;
+        const hitRight = nextPoint ? (point.x + nextPoint.x) / 2 : chart.paddingLeft + chart.chartWidth;
+        return (
+          <Pressable
+            key={`hit-${data[idx].key}`}
+            accessibilityRole="button"
+            accessibilityLabel={`${data[idx].label}: ${formatValueLabel ? formatValueLabel(data[idx].value) : data[idx].value}`}
+            onHoverIn={() => onSelectIndex?.(idx)}
+            onHoverOut={() => onSelectIndex?.(null)}
+            onPress={() => onSelectIndex?.(selectedIndex === idx ? null : idx)}
+            style={{ position: 'absolute', left: hitLeft, top: chart.paddingTop, width: Math.max(1, hitRight - hitLeft), height: chart.chartHeight }}
+          />
+        );
+      }) : null}
     </View>
   );
 }

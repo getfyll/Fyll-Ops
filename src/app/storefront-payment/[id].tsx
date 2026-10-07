@@ -1805,7 +1805,7 @@ export default function StorefrontPaymentDetailScreen() {
     const orderSection = linkedOrder ? (
       <View style={{ ...cardStyle, overflow: 'hidden' }}>
         <Pressable onPress={handleViewLinkedOrder} style={(state) => ({ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 16, backgroundColor: isHovered(state) ? palette.cardHover : 'transparent' })}>
-          <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: palette.inverseBg, alignItems: 'center', justifyContent: 'center' }}><Check size={17} color={palette.inverseText} strokeWidth={2.8} /></View>
+          <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: FYLL_LIME, alignItems: 'center', justifyContent: 'center' }}><Check size={17} color={FYLL_LIME_INK} strokeWidth={2.8} /></View>
           <View style={{ flex: 1, gap: 2 }}><Text style={{ color: palette.text, fontSize: fs(15), fontWeight: '600' }}>Order {linkedOrder.orderNumber} linked</Text><Text style={{ color: palette.muted, fontSize: fs(13) }}>Fulfil this order — don&apos;t create another one.</Text></View>
           <ChevronRight size={16} color={palette.faint} strokeWidth={2.2} />
         </Pressable>

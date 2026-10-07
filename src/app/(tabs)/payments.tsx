@@ -526,7 +526,7 @@ function PaymentActionSheet({ record, palette, onClose }: { record: PaymentRecor
           </View>
           {record.confirmAction ? (
             <Pressable onPress={() => run(record.confirmAction?.onConfirm)} style={optionStyle}>
-              <View style={{ width: 28, height: 28, borderRadius: 9, backgroundColor: FYLL_LIME, alignItems: 'center', justifyContent: 'center' }}>
+              <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: FYLL_LIME, alignItems: 'center', justifyContent: 'center' }}>
                 <Check size={15} color={FYLL_LIME_INK} strokeWidth={2.6} />
               </View>
               <Text style={{ color: palette.text, fontSize: fs(15), fontWeight: '600' }}>Confirm payment</Text>
@@ -1324,7 +1324,7 @@ export default function PaymentsScreen() {
                     opacity: state.pressed ? 0.85 : 1,
                   })}
                 >
-                  <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: FYLL_LIME, alignItems: 'center', justifyContent: 'center' }}>
+                  <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: FYLL_LIME, alignItems: 'center', justifyContent: 'center' }}>
                     <AlertTriangle size={16} color={FYLL_LIME_INK} strokeWidth={2.4} />
                   </View>
                   <View style={{ flex: 1, gap: 1, flexDirection: isDesktop ? 'row' : 'column', alignItems: isDesktop ? 'center' : undefined, columnGap: 10 }}>

@@ -1,17 +1,19 @@
 import React from 'react';
-import { View, Text, type ViewProps } from 'react-native';
+import { View, Text, type StyleProp, type TextStyle, type ViewProps } from 'react-native';
 import { useThemeColors } from '@/lib/theme';
 
 export function WebPageHeader({
   title,
   subtitle,
   actions,
+  titleTextStyle,
   style,
   ...props
 }: ViewProps & {
   title: string;
   subtitle?: string;
   actions?: React.ReactNode;
+  titleTextStyle?: StyleProp<TextStyle>;
 }) {
   const colors = useThemeColors();
 
@@ -33,7 +35,7 @@ export function WebPageHeader({
     >
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text
-          style={{ color: colors.text.primary }}
+          style={[{ color: colors.text.primary }, titleTextStyle]}
           className="text-3xl font-bold tracking-tight"
           numberOfLines={1}
         >
