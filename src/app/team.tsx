@@ -11,6 +11,9 @@ import * as Linking from 'expo-linking';
 import { useSettingsBack } from '@/lib/useSettingsBack';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { buildTeamInviteLink } from '@/lib/fyll-app-url';
+import { useQuery } from '@tanstack/react-query';
+import { fetchBusinessPrimaryLink } from '@/lib/primary-account';
+import { PasswordEyeToggle } from '@/components/PasswordEyeToggle';
 
 const roleLabels: Record<TeamRole, string> = {
   admin: 'Admin',
@@ -58,6 +61,14 @@ export default function TeamManagementScreen() {
   const createInvite = useAuthStore((s) => s.createInvite);
   const cancelInvite = useAuthStore((s) => s.cancelInvite);
   const refreshTeamData = useAuthStore((s) => s.refreshTeamData);
+  const businessId = useAuthStore((s) => s.businessId);
+  // The owner's primary email shows up here as an admin; it must not be removed from this list.
+  const primaryLinkQuery = useQuery({
+    queryKey: ['primary-link', businessId],
+    enabled: Boolean(businessId) && currentUser?.role === 'admin',
+    queryFn: () => fetchBusinessPrimaryLink(businessId!),
+  });
+  const primaryEmail = primaryLinkQuery.data?.primaryEmail.trim().toLowerCase() ?? '';
 
   const [showEditModal, setShowEditModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -69,6 +80,7 @@ export default function TeamManagementScreen() {
   const [formEmail, setFormEmail] = useState('');
   const [formRole, setFormRole] = useState<TeamRole>('staff');
   const [formPassword, setFormPassword] = useState('');
+  const [showFormPassword, setShowFormPassword] = useState(false);
   const [formError, setFormError] = useState('');
 
   // Invite form state
@@ -238,6 +250,12 @@ export default function TeamManagementScreen() {
   const handleDelete = (member: TeamMember) => {
     if (member.id === currentUser?.id) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      return;
+    }
+
+    if (primaryEmail && member.email.trim().toLowerCase() === primaryEmail) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert('Primary email', "This is the owner's primary email, so it can't be removed from the team.");
       return;
     }
 
@@ -811,17 +829,18 @@ export default function TeamManagementScreen() {
                 <Text style={{ color: colors.text.secondary }} className="text-sm font-medium mb-2">New Password (optional)</Text>
                 <View
                   className="rounded-xl px-4"
-                  style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light, height: 50, justifyContent: 'center' }}
+                  style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light, height: 50, flexDirection: 'row', alignItems: 'center' }}
                 >
                   <TextInput
                     value={formPassword}
                     onChangeText={setFormPassword}
                     placeholder="Leave blank to keep current"
                     placeholderTextColor={colors.input.placeholder}
-                    secureTextEntry
-                    style={{ color: colors.input.text, fontSize: 14 }}
+                    secureTextEntry={!showFormPassword}
+                    style={{ flex: 1, color: colors.input.text, fontSize: 14 }}
                     selectionColor={colors.text.primary}
                   />
+                  <PasswordEyeToggle visible={showFormPassword} onToggle={() => setShowFormPassword((v) => !v)} />
                 </View>
               </View>
 

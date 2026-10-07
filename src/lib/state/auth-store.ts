@@ -11,8 +11,10 @@ import { slugifyBusinessName } from '@/lib/tracking-url';
 import {
   areBusinessIdsEquivalent,
   getCanonicalBusinessId,
+  pickTeamMember,
   trimBusinessId,
 } from '@/lib/business-id';
+import { activatePrimaryLinks, fetchIsPrimaryAccount } from '@/lib/primary-account';
 
 export type TeamRole = 'admin' | 'manager' | 'staff';
 export type InviteStatus = 'pending' | 'joined' | 'cancelled' | 'expired';
@@ -312,6 +314,9 @@ const useAuthStore = create<AuthStore>()(
 
           let profile: { id: string; email: string | null; name: string | null; role: string | null; business_id: string | null } | null = null;
 
+          // A verified primary account may have links waiting to become memberships.
+          await activatePrimaryLinks();
+
           for (let attempt = 0; attempt < 6; attempt += 1) {
             const { data: profileData, error: profileError } = await supabase
               .from('profiles')
@@ -331,11 +336,11 @@ const useAuthStore = create<AuthStore>()(
             await wait(500);
           }
 
-          const { data: teamMemberData, error: teamMemberError } = await supabase
+          const { data: teamMemberRows, error: teamMemberError } = await supabase
             .from('team_members')
             .select('email, name, role, business_id')
-            .eq('user_id', authUser.id)
-            .maybeSingle();
+            .eq('user_id', authUser.id);
+          const teamMemberData = pickTeamMember(teamMemberRows, profile?.business_id);
 
           if (teamMemberError) {
             console.warn('Team member lookup failed during session sync:', teamMemberError);
@@ -456,6 +461,9 @@ const useAuthStore = create<AuthStore>()(
             throw authError ?? new Error('Login failed');
           }
 
+          // A verified primary account may have links waiting to become memberships.
+          await activatePrimaryLinks();
+
           const { data: profile, error: profileError } = await supabase
             .from('profiles')
             .select('id, email, name, role, business_id')
@@ -466,11 +474,11 @@ const useAuthStore = create<AuthStore>()(
             console.warn('Auth successful, but profile lookup failed:', profileError);
           }
 
-          const { data: teamMemberData, error: teamMemberError } = await supabase
+          const { data: teamMemberRows, error: teamMemberError } = await supabase
             .from('team_members')
             .select('email, name, role, business_id')
-            .eq('user_id', authData.user.id)
-            .maybeSingle();
+            .eq('user_id', authData.user.id);
+          const teamMemberData = pickTeamMember(teamMemberRows, profile?.business_id);
 
           if (teamMemberError) {
             console.warn('Auth successful, but team member lookup failed:', teamMemberError);
@@ -484,11 +492,14 @@ const useAuthStore = create<AuthStore>()(
           });
 
           if (!businessId) {
+            const isPrimary = await fetchIsPrimaryAccount();
             await supabase.auth.signOut({ scope: 'local' });
             set({ isAuthLoading: false });
             return {
               success: false,
-              error: 'Account data not found. Please contact support.',
+              error: isPrimary
+                ? 'This primary email is not linked to a business yet. Open the confirmation email we sent you, or sign in with your business login and finish linking from Account settings.'
+                : 'Account data not found. Please contact support.',
             };
           }
 

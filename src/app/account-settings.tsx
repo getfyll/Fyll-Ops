@@ -8,6 +8,8 @@ import useAuthStore from '@/lib/state/auth-store';
 import * as Haptics from 'expo-haptics';
 import { getSettingsWebPanelStyles, isFromSettingsRoute } from '@/lib/settings-web-panel';
 import { useSettingsBack } from '@/lib/useSettingsBack';
+import { PrimaryEmailCard } from '@/components/PrimaryEmailCard';
+import { PasswordEyeToggle } from '@/components/PasswordEyeToggle';
 
 type AccountSettingsScreenProps = {
   embeddedInSettings?: boolean;
@@ -33,6 +35,9 @@ export default function AccountSettingsScreen({ embeddedInSettings = false }: Ac
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const primaryPillButtonStyle: ViewStyle = {
@@ -252,6 +257,8 @@ export default function AccountSettingsScreen({ embeddedInSettings = false }: Ac
             <Text style={primaryPillTextStyle} className="font-semibold text-base ml-2">Save Profile</Text>
           </Pressable>
 
+          <PrimaryEmailCard fieldBorderColor={fieldBorderColor} />
+
           {/* Change Password */}
           <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase mb-3 tracking-wider">
             Change Password
@@ -277,10 +284,11 @@ export default function AccountSettingsScreen({ embeddedInSettings = false }: Ac
                 }}
                 placeholder="Enter current password"
                 placeholderTextColor={colors.input.placeholder}
-                secureTextEntry
+                secureTextEntry={!showCurrentPassword}
                 style={{ flex: 1, color: colors.input.text, fontSize: 16, marginLeft: 12 }}
                 selectionColor={colors.text.primary}
               />
+              <PasswordEyeToggle visible={showCurrentPassword} onToggle={() => setShowCurrentPassword((v) => !v)} />
             </View>
           </View>
 
@@ -304,10 +312,11 @@ export default function AccountSettingsScreen({ embeddedInSettings = false }: Ac
                 }}
                 placeholder="Enter new password"
                 placeholderTextColor={colors.input.placeholder}
-                secureTextEntry
+                secureTextEntry={!showNewPassword}
                 style={{ flex: 1, color: colors.input.text, fontSize: 16, marginLeft: 12 }}
                 selectionColor={colors.text.primary}
               />
+              <PasswordEyeToggle visible={showNewPassword} onToggle={() => setShowNewPassword((v) => !v)} />
             </View>
           </View>
 
@@ -331,10 +340,11 @@ export default function AccountSettingsScreen({ embeddedInSettings = false }: Ac
                 }}
                 placeholder="Confirm new password"
                 placeholderTextColor={colors.input.placeholder}
-                secureTextEntry
+                secureTextEntry={!showConfirmPassword}
                 style={{ flex: 1, color: colors.input.text, fontSize: 16, marginLeft: 12 }}
                 selectionColor={colors.text.primary}
               />
+              <PasswordEyeToggle visible={showConfirmPassword} onToggle={() => setShowConfirmPassword((v) => !v)} />
             </View>
           </View>
 

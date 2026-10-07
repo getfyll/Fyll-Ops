@@ -10,6 +10,9 @@ import { useBusinessSwitcherStore, type SavedBusiness, type SavedBusinessSession
 import { supabase } from '@/lib/supabase';
 import { switchBusiness, switchToSavedBusiness, validateSavedBusinessSession } from '@/lib/switch-business';
 import { useBreakpoint } from '@/lib/useBreakpoint';
+import { PrimaryBusinessSwitcher } from '@/components/PrimaryBusinessSwitcher';
+import { PasswordEyeToggle } from '@/components/PasswordEyeToggle';
+import { fetchIsPrimaryAccount } from '@/lib/primary-account';
 
 export default function SwitchBusinessScreen() {
   const router = useRouter();
@@ -27,12 +30,18 @@ export default function SwitchBusinessScreen() {
   const [selected, setSelected] = useState<SavedBusiness | null>(null);
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
+  const [showPassword, setShowPassword] = useState<boolean>(false);
   const [formMessage, setFormMessage] = useState<string>('');
   const [removing, setRemoving] = useState<SavedBusiness | null>(null);
   const [checkingKeys, setCheckingKeys] = useState<Set<string>>(new Set());
   const validatedKeysRef = useRef<Set<string>>(new Set());
   const returnSource = Array.isArray(from) ? from[0] : from;
   const returnRoute = returnSource === 'settings' ? '/(tabs)/settings' : '/(tabs)';
+
+  // A primary Fyll account is one sign-in for several businesses: it gets its own switcher
+  // and must never be saved as a per-business session below.
+  const isPrimaryQuery = useQuery({ queryKey: ['is-primary-account'], queryFn: fetchIsPrimaryAccount, staleTime: 60_000 });
+  const isPrimary = isPrimaryQuery.data === true;
 
   const currentBusiness = useQuery({
     queryKey: ['switcher-current-business', businessId, userId],
@@ -46,6 +55,7 @@ export default function SwitchBusinessScreen() {
   useEffect(() => {
     let mounted = true;
     const saveCurrentBusiness = async () => {
+      if (!isPrimaryQuery.isSuccess || isPrimary) return;
       if (!currentBusiness.data?.name || !businessId || !userId || !currentEmail || currentBusiness.data.id !== businessId) return;
       const { data } = await supabase.auth.getSession();
       if (!mounted) return;
@@ -61,7 +71,7 @@ export default function SwitchBusinessScreen() {
     };
     saveCurrentBusiness().catch(() => undefined);
     return () => { mounted = false; };
-  }, [businessId, currentBusiness.data, currentEmail, remember, userId]);
+  }, [businessId, currentBusiness.data, currentEmail, isPrimary, isPrimaryQuery.isSuccess, remember, userId]);
 
   // Proactively check every OTHER saved business's session in the background so staleness
   // shows up as a badge here instead of surprising the user mid-switch.
@@ -195,12 +205,16 @@ export default function SwitchBusinessScreen() {
             }}
             className="text-base mt-2"
           >
-            {adding
-              ? 'Use the existing login once. After it is saved on this device, switching back will not ask for the password again.'
-              : 'Manage your independent Fyll businesses from one place. Each workspace keeps its own data, team and permissions.'}
+            {isPrimary
+              ? ''
+              : adding
+                ? 'Use the existing login once. After it is saved on this device, switching back will not ask for the password again.'
+                : 'Manage your independent Fyll businesses from one place. Each workspace keeps its own data, team and permissions.'}
           </Text>
 
-          {adding ? (
+          {isPrimary ? (
+            <PrimaryBusinessSwitcher navigateHome={() => router.replace('/(tabs)')} />
+          ) : adding ? (
             <View>
               {selected && <View style={{ backgroundColor: colors.bg.secondary }} className="rounded-2xl p-4 mb-6 flex-row items-center">
                 <Building2 size={24} color={colors.text.primary} />
@@ -211,10 +225,15 @@ export default function SwitchBusinessScreen() {
                 autoCapitalize="none" autoCorrect={false} keyboardType="email-address" autoComplete="email"
                 editable={!login.isPending} style={fieldStyle} placeholder="you@business.com" placeholderTextColor={colors.text.muted} />
               <Text style={{ color: colors.text.primary }} className="font-medium mt-5 mb-2">Password</Text>
-              <TextInput accessibilityLabel="Password" value={password} onChangeText={setPassword}
-                secureTextEntry autoCapitalize="none" autoComplete="current-password"
-                editable={!login.isPending} style={fieldStyle} returnKeyType="go"
+              <View style={{ justifyContent: 'center' }}>
+                <TextInput accessibilityLabel="Password" value={password} onChangeText={setPassword}
+                secureTextEntry={!showPassword} autoCapitalize="none" autoComplete="current-password"
+                editable={!login.isPending} style={[fieldStyle, { paddingRight: 52 }]} returnKeyType="go"
                 onSubmitEditing={() => { if (email.trim() && password && !login.isPending) login.mutate(); }} />
+                <View style={{ position: 'absolute', right: 14 }}>
+                  <PasswordEyeToggle visible={showPassword} onToggle={() => setShowPassword((v) => !v)} />
+                </View>
+              </View>
               {(login.error || formMessage) && <Text accessibilityRole="alert" style={{ color: '#DC2626' }} className="mt-4 leading-5">{login.error?.message ?? formMessage}</Text>}
               <Pressable onPress={() => login.mutate()} disabled={login.isPending || !email.trim() || !password}
                 accessibilityRole="button"

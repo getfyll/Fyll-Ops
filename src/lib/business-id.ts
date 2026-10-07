@@ -60,3 +60,18 @@ export const areBusinessIdsEquivalent = (
   const rightCompact = getBusinessIdCompact(rightTrimmed);
   return Boolean(leftCompact && rightCompact && leftCompact === rightCompact);
 };
+
+// A user can belong to several businesses (a primary Fyll account does), so a
+// membership lookup returns several rows. Pick the one for the business the
+// profile currently points at; fall back to the only/first row.
+export const pickTeamMember = <T extends { business_id?: string | null }>(
+  rows: T[] | null | undefined,
+  activeBusinessId?: string | null,
+): T | null => {
+  if (!rows || rows.length === 0) return null;
+  if (activeBusinessId) {
+    const match = rows.find((row) => areBusinessIdsEquivalent(row.business_id, activeBusinessId));
+    if (match) return match;
+  }
+  return rows[0] ?? null;
+};

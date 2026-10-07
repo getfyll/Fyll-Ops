@@ -4,7 +4,8 @@ import { createBusinessVerificationClient, supabase } from '@/lib/supabase';
 import useAuthStore from '@/lib/state/auth-store';
 import useFyllStore from '@/lib/state/fyll-store';
 import { useBusinessSwitcherStore, type SavedBusiness, type SavedBusinessSession } from '@/lib/state/business-switcher-store';
-import { verifyBusinessLogin, verifySavedBusinessSession, type VerifiedBusinessLogin } from '@/lib/business-login';
+import { buildVerifiedBusinessLogin, verifyBusinessLogin, verifySavedBusinessSession, type VerifiedBusinessLogin } from '@/lib/business-login';
+import { setActiveBusiness } from '@/lib/primary-account';
 import { areBusinessIdsEquivalent } from '@/lib/business-id';
 import { beginWorkspaceTransition, endWorkspaceTransition } from '@/lib/workspace-transition';
 import { storage } from '@/lib/storage';
@@ -216,4 +217,89 @@ export function validateSavedBusinessSession(business: SavedBusiness): Promise<b
   });
   pendingValidations.set(key, promise);
   return promise;
+}
+
+/**
+ * Switches a primary Fyll account to another of its businesses. The primary account is one
+ * sign-in that belongs to several businesses, so nothing is signed out: the server-side
+ * active-business pointer moves, then the workspace is reloaded for the new business.
+ */
+export async function switchPrimaryBusiness(
+  targetBusinessId: string,
+  queryClient: QueryClient,
+  navigateHome: () => void,
+) {
+  if (verifying || useBusinessSwitcherStore.getState().isSwitching) throw new Error('A business switch is already in progress.');
+  if (useAuthStore.getState().isOfflineMode) throw new Error('Connect to the internet to switch businesses.');
+  if (queryClient.isMutating() > 1) throw new Error('Please wait for your changes to finish saving.');
+
+  const previousBusinessId = useAuthStore.getState().businessId;
+  if (areBusinessIdsEquivalent(previousBusinessId, targetBusinessId)) {
+    navigateHome();
+    return;
+  }
+
+  verifying = true;
+  let pointerMoved = false;
+  let installed = false;
+  let transitioning = false;
+  try {
+    await setActiveBusiness(targetBusinessId);
+    pointerMoved = true;
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData.session) throw new Error('Your sign-in expired. Please sign in again.');
+    const verified = await buildVerifiedBusinessLogin(supabase, sessionData.session, targetBusinessId);
+
+    transitioning = true;
+    useBusinessSwitcherStore.setState({ isSwitching: true });
+    publishBusinessSwitch('starting');
+    await queryClient.cancelQueries();
+    await beginWorkspaceTransition();
+    await supabase.removeAllChannels();
+    useAuthStore.setState({
+      businessId: null,
+      currentUser: null,
+      isAuthenticated: false,
+      teamMembers: [],
+      pendingInvites: [],
+      isAuthLoading: true,
+    });
+    useFyllStore.getState().resetStore();
+    queryClient.clear();
+    await storage.removeItem('fyll-storage');
+    await storage.removeItem('fyll_business_settings');
+    await storage.setItem(
+      `fyll_business_settings:${verified.user.businessId}`,
+      JSON.stringify({ businessName: verified.businessName }),
+    );
+    useAuthStore.setState({
+      currentUser: verified.user,
+      businessId: verified.user.businessId,
+      isAuthenticated: true,
+      isAuthLoading: false,
+      isOfflineMode: false,
+      teamMembers: [],
+      pendingInvites: [],
+    });
+    installed = true;
+    navigateHome();
+  } catch (error) {
+    // Put the server pointer back so a failed switch never leaves the next sign-in on the wrong business.
+    if (pointerMoved && !installed && previousBusinessId) {
+      await setActiveBusiness(previousBusinessId).catch(() => undefined);
+    }
+    if (transitioning && !useAuthStore.getState().businessId) {
+      useFyllStore.getState().resetStore();
+      queryClient.clear();
+      useAuthStore.setState({ isAuthenticated: false, currentUser: null, businessId: null, isAuthLoading: false });
+    }
+    throw error;
+  } finally {
+    if (transitioning) {
+      endWorkspaceTransition();
+      useBusinessSwitcherStore.setState({ isSwitching: false });
+      publishBusinessSwitch('finished');
+    }
+    verifying = false;
+  }
 }

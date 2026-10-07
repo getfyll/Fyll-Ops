@@ -1,6 +1,6 @@
 import type { SupabaseClient, Session } from '@supabase/supabase-js';
 import type { AuthUser, TeamRole } from '@/lib/state/auth-store';
-import { areBusinessIdsEquivalent } from '@/lib/business-id';
+import { areBusinessIdsEquivalent, pickTeamMember } from '@/lib/business-id';
 
 export interface VerifiedBusinessLogin {
   session: Session;
@@ -8,7 +8,7 @@ export interface VerifiedBusinessLogin {
   businessName: string;
 }
 
-async function buildVerifiedBusinessLogin(
+export async function buildVerifiedBusinessLogin(
   client: SupabaseClient,
   session: Session,
   expectedBusinessId?: string,
@@ -18,11 +18,11 @@ async function buildVerifiedBusinessLogin(
   if (!authUser?.id) throw new Error('Could not verify this saved session. Please sign in again.');
   const [profileResult, membershipResult] = await Promise.all([
     client.from('profiles').select('id, email, name, role, business_id').eq('id', authUser.id).maybeSingle(),
-    client.from('team_members').select('name, role, business_id').eq('user_id', authUser.id).maybeSingle(),
+    client.from('team_members').select('name, role, business_id').eq('user_id', authUser.id),
   ]);
   if (profileResult.error || membershipResult.error) throw new Error('Unable to verify business access. Please try again.');
   const profile = profileResult.data;
-  const member = membershipResult.data;
+  const member = pickTeamMember(membershipResult.data, profile?.business_id);
   if (profile?.business_id && member?.business_id && !areBusinessIdsEquivalent(profile.business_id, member.business_id)) {
     throw new Error('This account has conflicting business memberships. Please contact support.');
   }
