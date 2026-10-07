@@ -4,6 +4,8 @@ import { FileText, Upload, X, Eye, Trash2, FileIcon, Plus } from 'lucide-react-n
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { useThemeColors } from '@/lib/theme';
+import { usePaymentsPalette } from '@/components/payments/payments-ui';
+import { useBreakpoint } from '@/lib/useBreakpoint';
 import { PrescriptionInfo } from '@/lib/state/fyll-store';
 import { cn } from '@/lib/cn';
 import * as Haptics from 'expo-haptics';
@@ -20,6 +22,8 @@ interface PrescriptionSectionProps {
 
 export function PrescriptionSection({ prescription, onUpdate, editable = true, staffName, containerClassName }: PrescriptionSectionProps) {
   const colors = useThemeColors();
+  const palette = usePaymentsPalette();
+  const { isMobile } = useBreakpoint();
   const router = useRouter();
   const isDark = colors.bg.primary === '#111111';
   const [showEditModal, setShowEditModal] = useState(false);
@@ -198,11 +202,11 @@ export function PrescriptionSection({ prescription, onUpdate, editable = true, s
   return (
     <>
       <View
-        className={cn(containerClassName ?? 'mx-5 mt-4', 'rounded-2xl p-4')}
-        style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+        className={cn(containerClassName ?? 'mx-4 mt-3.5', 'px-4 py-4')}
+        style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, borderRadius: 18 }}
       >
         <View className="flex-row items-center justify-between mb-3">
-          <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '500', letterSpacing: 1.2, textTransform: 'uppercase' }}>Customer notes</Text>
+          <Text style={{ color: palette.text, fontSize: isMobile ? 14 : 16, fontWeight: '600' }}>Customer notes</Text>
           {editable && (
             <Pressable
               onPress={handleOpenEdit}

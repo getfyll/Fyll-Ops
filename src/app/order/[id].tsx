@@ -27,6 +27,7 @@ import { ResolvedAttachmentImage } from '@/components/ResolvedAttachmentImage';
 import { getOrderQcChecklist, isOrderQcChecklistComplete, sanitizeOrderQcRequirements } from '@/lib/order-qc';
 import { sortOrderStatusesForFulfillment } from '@/lib/order-status';
 import { OrderFulfillmentSection } from '@/components/OrderFulfillmentSection';
+import { OrderQcModal } from '@/components/OrderQcModal';
 import { FulfillmentEditModal } from '@/components/FulfillmentEditModal';
 import { PartnerJobFormModal, type PartnerJobFormPrefill } from '@/components/PartnerJobFormModal';
 import { getTeamThreadChannelById, getTeamThreadDisplayNameFromEntityId, isTeamThreadEntityId } from '@/lib/team-threads';
@@ -35,7 +36,7 @@ import { formatAddressValue, normalizeDeliveryStateValue } from '@/lib/format-ad
 import { SearchClearButton } from '@/components/SearchClearButton';
 import { createWooCommerceOrderFromFyll, fetchWooCommerceOrder } from '@/lib/woocommerce';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
-import { FYLL_LIME } from '@/components/payments/payments-ui';
+import { FYLL_LIME, FYLL_LIME_INK, MoneyText, getInitials, usePaymentsPalette } from '@/components/payments/payments-ui';
 
 const STAMP_DUTY_THRESHOLD = 10000;
 const DESKTOP_HEADER_ACTION_MENU_WIDTH = 238;
@@ -179,6 +180,7 @@ export default function OrderDetailScreen() {
   const router = useRouter();
   const colors = useThemeColors();
   const isDark = colors.bg.primary === '#111111';
+  const palette = usePaymentsPalette();
   const insets = useSafeAreaInsets();
   const { id, returnTo } = useLocalSearchParams<{ id: string; returnTo?: string | string[] }>();
   const returnTarget = Array.isArray(returnTo) ? returnTo[0] : returnTo;
@@ -212,6 +214,41 @@ export default function OrderDetailScreen() {
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
   const isOfflineMode = useAuthStore((s) => s.isOfflineMode);
   const { woocommerceStoreUrl, woocommerceConsumerKey, woocommerceConsumerSecret, hasWooCommerceConnection } = useBusinessSettings();
+
+  // Shared look for every card on this page (Fyll Field order-detail redesign).
+  const sectionCardStyle = {
+    backgroundColor: palette.card,
+    borderWidth: 1,
+    borderColor: palette.border,
+    borderRadius: 18,
+    paddingHorizontal: isWebDesktop ? 22 : 16,
+    paddingVertical: isWebDesktop ? 20 : 16,
+    marginTop: isWebDesktop ? 18 : 14,
+    marginHorizontal: isWebDesktop ? 0 : 16,
+  };
+  const sectionTitleStyle = { color: palette.text, fontSize: isWebDesktop ? 16 : 14, fontWeight: '600' as const };
+  const ghostPillStyle = {
+    height: 40,
+    paddingHorizontal: 16,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: palette.outline,
+    backgroundColor: 'transparent',
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    flexDirection: 'row' as const,
+    gap: 7,
+  };
+  const iconButtonStyle = {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: palette.outline,
+    backgroundColor: 'transparent',
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  };
 
   const [draft, setDraft] = useState<Partial<Order>>({});
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -651,6 +688,11 @@ export default function OrderDetailScreen() {
     );
   }
 
+  const headerSubtitle = [
+    new Date(order.orderDate ?? order.createdAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }),
+    order.createdBy ? `created by ${order.createdBy}` : null,
+    order.websiteOrderReference ? `from WooCommerce #${order.websiteOrderReference}` : null,
+  ].filter(Boolean).join(' · ');
   const orderDateSource = order.orderDate ?? order.createdAt;
   const orderDate = new Date(orderDateSource).toLocaleDateString('en-US', {
     weekday: 'long',
@@ -817,6 +859,62 @@ export default function OrderDetailScreen() {
     if (qcReady) {
       setShowQcDetails(false);
     }
+  };
+
+  const handlePassQc = async () => {
+    if (!baseOrder) return;
+    const updatedBy = currentUser?.name || currentUser?.email || 'Staff';
+    const nowIso = new Date().toISOString();
+    await updateOrder(order.id, {
+      ...draft,
+      qcVerified: true,
+      qcVerifiedBy: updatedBy,
+      qcVerifiedAt: nowIso,
+      updatedBy,
+      updatedAt: nowIso,
+      activityLog: [
+        ...(order.activityLog ?? []),
+        {
+          staffName: updatedBy,
+          action: `Passed quality control (${qcChecklist.length} ${qcChecklist.length === 1 ? 'check' : 'checks'}, ${qcPhotos.length} ${qcPhotos.length === 1 ? 'photo' : 'photos'})`,
+          date: nowIso,
+        },
+      ],
+    }, businessId);
+    setDraft({});
+    setShowQcDetails(false);
+    showToast('success', isOfflineMode ? 'Saved locally (offline).' : 'QC passed.');
+  };
+
+  const handleReportQcProblem = async ({ reason, details }: { reason: string; details: string }) => {
+    if (!baseOrder) return;
+    const updatedBy = currentUser?.name || currentUser?.email || 'Staff';
+    const nowIso = new Date().toISOString();
+    const processingStatus = orderedOrderStatuses.find((status) => /processing/i.test(status.name) && !/lens/i.test(status.name))
+      ?? orderedOrderStatuses.find((status) => /processing/i.test(status.name))
+      ?? orderedOrderStatuses.find((status) => !/cancel/i.test(status.name));
+    const targetStatus = processingStatus?.name ?? order.status;
+    await updateOrder(order.id, {
+      ...draft,
+      status: targetStatus,
+      qcVerified: false,
+      qcVerifiedBy: undefined,
+      qcVerifiedAt: undefined,
+      updatedBy,
+      updatedAt: nowIso,
+      activityLog: [
+        ...(order.activityLog ?? []),
+        {
+          staffName: updatedBy,
+          action: `QC problem: ${reason}${details ? ` — ${details}` : ''}`,
+          date: nowIso,
+        },
+        ...(targetStatus !== order.status ? [{ staffName: updatedBy, action: `Moved back to ${targetStatus}`, date: nowIso }] : []),
+      ],
+    }, businessId);
+    setDraft({});
+    setShowQcDetails(false);
+    showToast('success', isOfflineMode ? 'Saved locally (offline).' : 'Sent back to Processing.');
   };
 
   const handleSaveFulfillment = async (updates: Partial<Order>) => {
@@ -1311,22 +1409,6 @@ export default function OrderDetailScreen() {
     });
   };
 
-  const handleToggleQcVerified = (nextValue: boolean) => {
-    if (nextValue && qcPhotos.length === 0) {
-      showToast('error', 'Add QC proof photos before verifying.');
-      return;
-    }
-    if (nextValue && !qcChecklistComplete) {
-      showToast('error', 'Tick all QC requirements before verifying.');
-      return;
-    }
-    mergeDraftUpdates({
-      qcVerified: nextValue,
-      qcVerifiedBy: nextValue ? (currentUser?.name || currentUser?.email || 'Staff') : undefined,
-      qcVerifiedAt: nextValue ? new Date().toISOString() : undefined,
-    });
-  };
-
   const handleSaveRefund = async () => {
     if (!refundAmount || parseFloat(refundAmount) <= 0) return;
 
@@ -1622,68 +1704,81 @@ export default function OrderDetailScreen() {
     ].join('\n');
   };
 
+  const customerRowStyle = { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12, paddingVertical: 12, borderTopWidth: 1, borderTopColor: palette.hairline };
+  const customerRowTextStyle = { color: palette.text, fontSize: isWebDesktop ? 14 : 12, flex: 1, minWidth: 0 };
+
   const customerSection = (
-    <View
-      className={cn('mt-4 rounded-2xl px-4', !isWebDesktop && 'mx-5')}
-      style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light, paddingTop: 20, paddingBottom: 20 }}
-    >
-      <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
-        <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '500', letterSpacing: 1.2, textTransform: 'uppercase' }}>Customer</Text>
-        <View style={{ alignItems: 'flex-end', flexShrink: 1 }}>
-          <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 2 }}>
-            Order date
-          </Text>
-          <Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '400', textAlign: 'right' }} numberOfLines={2}>
-            {orderDate}
-          </Text>
+    <View style={sectionCardStyle}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingBottom: 12 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+          <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: palette.avatarBg, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ color: palette.avatarText, fontSize: 13, fontWeight: '600' }}>{getInitials(order.customerName || '')}</Text>
+          </View>
+          <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
+            <Text style={sectionTitleStyle} numberOfLines={1}>{order.customerName || 'Customer'}</Text>
+            <Text style={{ color: palette.faint, fontSize: isWebDesktop ? 12.5 : 12 }}>Customer</Text>
+          </View>
+        </View>
+        <View style={{ flexDirection: 'row', gap: 6 }}>
+          {order.customerPhone ? (
+            <Pressable
+              onPress={() => Linking.openURL(`tel:${order.customerPhone}`)}
+              accessibilityLabel="Call customer"
+              className="active:opacity-60"
+              style={{ width: 34, height: 34, borderRadius: 10, borderWidth: 1, borderColor: palette.border, alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Phone size={16} color={palette.textSoft} strokeWidth={2} />
+            </Pressable>
+          ) : null}
+          {order.customerEmail ? (
+            <Pressable
+              onPress={() => Linking.openURL(`mailto:${order.customerEmail}`)}
+              accessibilityLabel="Email customer"
+              className="active:opacity-60"
+              style={{ width: 34, height: 34, borderRadius: 10, borderWidth: 1, borderColor: palette.border, alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Mail size={16} color={palette.textSoft} strokeWidth={2} />
+            </Pressable>
+          ) : null}
         </View>
       </View>
 
-      <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '700', marginBottom: 8 }}>{order.customerName}</Text>
+      {order.customerPhone ? (
+        <View style={customerRowStyle}>
+          <Phone size={16} color={palette.muted} strokeWidth={2} />
+          <Text style={customerRowTextStyle}>{order.customerPhone}</Text>
+        </View>
+      ) : null}
 
-      {order.customerPhone && (
-        <Pressable
-          onPress={() => Linking.openURL(`tel:${order.customerPhone}`)}
-          className="flex-row items-center py-2 active:opacity-50"
-        >
-          <Phone size={16} color={colors.text.primary} strokeWidth={2} />
-          <Text style={{ color: colors.text.secondary, fontSize: 12, marginLeft: 8, fontWeight: '500' }}>{order.customerPhone}</Text>
-        </Pressable>
-      )}
-
-      {order.customerEmail && (
-        <Pressable
-          onPress={() => Linking.openURL(`mailto:${order.customerEmail}`)}
-          className="flex-row items-center py-2 active:opacity-50"
-        >
-          <Mail size={16} color={colors.text.primary} strokeWidth={2} />
-          <Text style={{ color: colors.text.secondary, fontSize: 12, marginLeft: 8, fontWeight: '500' }}>{order.customerEmail}</Text>
-        </Pressable>
-      )}
+      {order.customerEmail ? (
+        <View style={customerRowStyle}>
+          <Mail size={16} color={palette.muted} strokeWidth={2} />
+          <Text style={customerRowTextStyle} numberOfLines={1}>{order.customerEmail}</Text>
+        </View>
+      ) : null}
 
       {deliveryAddressText ? (
-        <View className="flex-row items-start py-2">
-          <House size={16} color={colors.text.primary} strokeWidth={2} />
-          <Text style={{ color: colors.text.secondary, fontSize: 12, marginLeft: 8, flex: 1, fontWeight: '500' }}>
-            {deliveryAddressText}
-          </Text>
+        <View style={[customerRowStyle, { alignItems: 'flex-start' }]}>
+          <MapPin size={16} color={palette.muted} strokeWidth={2} style={{ marginTop: 2 }} />
+          <Text style={[customerRowTextStyle, { lineHeight: 20 }]}>{deliveryAddressText}</Text>
         </View>
       ) : null}
 
       {deliveryStateText ? (
-        <View className="flex-row items-start py-2">
-          <MapPin size={16} color={colors.text.primary} strokeWidth={2} />
-          <Text style={{ color: colors.text.secondary, fontSize: 12, marginLeft: 8, flex: 1, fontWeight: '500' }}>
-            State: {deliveryStateText}
-          </Text>
+        <View style={customerRowStyle}>
+          <House size={16} color={palette.muted} strokeWidth={2} />
+          <Text style={customerRowTextStyle}>State: {deliveryStateText}</Text>
         </View>
       ) : null}
     </View>
   );
 
   const itemsSection = (
-    <View className={cn('mt-4 rounded-2xl p-4', !isWebDesktop && 'mx-5')} style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
-      <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '500', letterSpacing: 1.2, marginBottom: 12, textTransform: 'uppercase' }}>Items</Text>
+    <View style={sectionCardStyle}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', paddingBottom: 12 }}>
+        <Text style={sectionTitleStyle}>Items</Text>
+        <Text style={{ color: palette.faint, fontSize: isWebDesktop ? 13 : 12 }}>{order.items.length} item{order.items.length === 1 ? '' : 's'}</Text>
+      </View>
 
       {order.items.map((item, index) => {
         const { productName, variantName, sku, imageUrl, isLoading } = getItemDetails(item);
@@ -1696,12 +1791,12 @@ export default function OrderDetailScreen() {
         return (
           <View
             key={`${item.productId}-${item.variantId}-${index}`}
-            className="py-3"
+            style={{ paddingVertical: 14, borderTopWidth: 1, borderTopColor: palette.hairline }}
           >
             <View className="flex-row items-center">
               <View
-                className="w-12 h-12 rounded-xl items-center justify-center mr-3 overflow-hidden"
-                style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}
+                className="items-center justify-center mr-3 overflow-hidden"
+                style={{ width: 52, height: 52, borderRadius: 12, backgroundColor: palette.inset, borderWidth: 1, borderColor: palette.border }}
               >
                 <ResolvedAttachmentImage
                   imageUrl={imageUrl}
@@ -1718,7 +1813,7 @@ export default function OrderDetailScreen() {
                   </>
                 ) : (
                   <>
-                    <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '700' }}>{productName || 'Product unavailable'}</Text>
+                    <Text style={{ color: palette.text, fontSize: isWebDesktop ? 15 : 12, fontWeight: '500' }}>{productName || 'Product unavailable'}</Text>
                     {variantName ? <Text style={{ color: colors.text.muted }} className="text-xs">{variantName}</Text> : null}
                     {selectedOptions ? <Text style={{ color: colors.text.secondary }} className="text-xs">{selectedOptions}</Text> : null}
                     {sku ? <Text style={{ color: colors.text.muted }} className="text-xs">SKU: {sku.toUpperCase()}</Text> : null}
@@ -1726,7 +1821,7 @@ export default function OrderDetailScreen() {
                 )}
               </View>
               <View className="items-end">
-                <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '400' }}>
+                <Text style={{ color: palette.text, fontSize: isWebDesktop ? 15 : 12, fontWeight: '600' }}>
                   {formatCurrency(item.unitPrice * item.quantity)}
                 </Text>
                 <Text style={{ color: colors.text.muted }} className="text-xs">
@@ -1793,9 +1888,9 @@ export default function OrderDetailScreen() {
       })}
 
       {shouldShowSubtotal ? (
-        <View className="flex-row items-center justify-between border-t mt-2 pt-3 pb-1" style={{ borderTopColor: colors.border.light }}>
-          <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '500' }}>Subtotal</Text>
-          <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '400' }}>{formatCurrency(order.subtotal)}</Text>
+        <View className="flex-row items-center justify-between pt-3 pb-1" style={{ borderTopWidth: 1, borderTopColor: palette.hairline }}>
+          <Text style={{ color: palette.textSoft, fontSize: isWebDesktop ? 14 : 12 }}>Subtotal</Text>
+          <Text style={{ color: palette.textSoft, fontSize: isWebDesktop ? 14 : 12 }}>{formatCurrency(order.subtotal)}</Text>
         </View>
       ) : null}
 
@@ -1817,8 +1912,8 @@ export default function OrderDetailScreen() {
       {/* Delivery Fee */}
       {hasDeliveryFee && (
         <View className="flex-row items-center justify-between py-2">
-          <Text style={{ color: colors.text.tertiary, fontSize: 12 }}>Delivery Fee</Text>
-          <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '400' }}>{formatCurrency(order.deliveryFee)}</Text>
+          <Text style={{ color: palette.textSoft, fontSize: isWebDesktop ? 14 : 12 }}>Delivery Fee</Text>
+          <Text style={{ color: palette.textSoft, fontSize: isWebDesktop ? 14 : 12 }}>{formatCurrency(order.deliveryFee)}</Text>
         </View>
       )}
 
@@ -1826,12 +1921,12 @@ export default function OrderDetailScreen() {
       {hasDiscountAmount && (
         <View className="flex-row items-center justify-between py-2">
           <View className="flex-row items-center">
-            <Percent size={14} color="#10B981" strokeWidth={2} />
-          <Text style={{ color: '#10B981', fontSize: 12, marginLeft: 8, fontWeight: '500' }}>
+            <Percent size={14} color={palette.limeOnSurface} strokeWidth={2} />
+          <Text style={{ color: palette.limeOnSurface, fontSize: isWebDesktop ? 14 : 12, marginLeft: 8, fontWeight: '500' }}>
             Discount{order.discountCode ? ` (${order.discountCode})` : ''}
           </Text>
         </View>
-          <Text style={{ color: '#10B981', fontSize: 12, fontWeight: '400' }}>-{formatCurrency(order.discountAmount)}</Text>
+          <Text style={{ color: palette.limeOnSurface, fontSize: isWebDesktop ? 14 : 12 }}>-{formatCurrency(order.discountAmount)}</Text>
         </View>
       )}
 
@@ -1846,11 +1941,11 @@ export default function OrderDetailScreen() {
         </View>
       ) : null}
 
-      <View className="border-t mt-2 pt-3 flex-row items-center justify-between" style={{ borderTopColor: colors.border.medium }}>
-        <Text style={{ color: colors.text.primary, fontSize: 16, fontWeight: '700' }}>Total</Text>
-        <Text style={{ color: colors.text.primary, fontSize: 16, fontWeight: '700' }}>
+      <View className="mt-2 pt-3 flex-row items-center justify-between" style={{ borderTopWidth: 1, borderTopColor: palette.hairline }}>
+        <Text style={{ color: palette.text, fontSize: 15, fontWeight: '600' }}>Total</Text>
+        <MoneyText style={{ color: palette.text, fontSize: 22 }}>
           {formatCurrency(order.refund && order.refund.amount > 0 ? order.totalAmount - order.refund.amount : order.totalAmount)}
-        </Text>
+        </MoneyText>
       </View>
       {order.refund && order.refund.amount > 0 && (
         <Text style={{ color: colors.text.muted }} className="text-xs text-right mt-1">
@@ -1861,12 +1956,12 @@ export default function OrderDetailScreen() {
   );
 
   const wooCommerceSection = (
-    <View className={cn('mt-4 rounded-2xl p-4', !isWebDesktop && 'mx-5')} style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
-      <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '500', letterSpacing: 1.2, marginBottom: 18, textTransform: 'uppercase' }}>WooCommerce Link</Text>
+    <View style={sectionCardStyle}>
+      <Text style={[sectionTitleStyle, { marginBottom: 14 }]}>WooCommerce Link</Text>
 
       {!order.websiteOrderReference ? (
 <>
-<Text style={{ color: colors.text.secondary, fontSize: 11, fontWeight: '500', marginBottom: 7 }}>Woo order ID or reference</Text>
+<Text style={{ color: palette.muted, fontSize: isWebDesktop ? 12.5 : 12, fontWeight: '500', marginBottom: 8 }}>Woo order ID or reference</Text>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 }}>
         <TextInput
           value={wooReferenceDraft}
@@ -1874,16 +1969,16 @@ export default function OrderDetailScreen() {
           placeholder="e.g. 49135"
           placeholderTextColor={colors.text.muted}
           autoCapitalize="characters"
-          style={{ flex: 1, minWidth: 0, height: 42, borderRadius: 12, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.secondary, color: colors.text.primary, paddingHorizontal: 12, fontSize: 13 }}
+          style={{ flex: 1, minWidth: 0, height: 44, borderRadius: 12, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.inset, color: palette.text, paddingHorizontal: 12, fontSize: 14 }}
         />
         <Pressable
           onPress={() => void handleLinkWooOrder()}
           disabled={isLinkingWooOrder}
           className="active:opacity-80"
-          style={{ height: 42, flexShrink: 0, paddingHorizontal: 16, borderRadius: 12, backgroundColor: colors.text.primary, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', opacity: isLinkingWooOrder ? 0.7 : 1 }}
+          style={{ height: 44, flexShrink: 0, paddingHorizontal: 18, borderRadius: 999, backgroundColor: FYLL_LIME, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', opacity: isLinkingWooOrder ? 0.7 : 1 }}
         >
-          {isLinkingWooOrder ? <ActivityIndicator size="small" color={colors.bg.primary} /> : null}
-          <Text style={{ color: colors.bg.primary, fontSize: 12, fontWeight: '600', marginLeft: isLinkingWooOrder ? 7 : 0 }}>{isLinkingWooOrder ? 'Linking…' : 'Link to Woo'}</Text>
+          {isLinkingWooOrder ? <ActivityIndicator size="small" color={FYLL_LIME_INK} /> : null}
+          <Text style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '600', marginLeft: isLinkingWooOrder ? 7 : 0 }}>{isLinkingWooOrder ? 'Linking…' : 'Link to Woo'}</Text>
         </Pressable>
       </View>
 </>
@@ -1896,42 +1991,42 @@ export default function OrderDetailScreen() {
               width: 30,
               height: 30,
               borderRadius: 8,
-              backgroundColor: colors.bg.secondary,
+              backgroundColor: palette.softFill,
               alignItems: 'center',
               justifyContent: 'center',
-              marginRight: 8,
+              marginRight: 10,
             }}
           >
-            <RefreshCcw size={15} color={colors.text.secondary} strokeWidth={2} />
+            <RefreshCcw size={15} color={palette.textSoft} strokeWidth={2} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '600', textTransform: 'uppercase' }}>
+            <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>
               {order.websiteOrderReference ? 'Linked WooCommerce Order' : 'Not yet sent to WooCommerce'}
             </Text>
-            <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '700', marginTop: 4 }}>
+            <Text style={{ color: palette.text, fontSize: isWebDesktop ? 15 : 12, fontWeight: '600', marginTop: 3 }}>
               {order.websiteOrderReference || 'Create a matching website order'}
             </Text>
           </View>
         </View>
 
-        <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: colors.border.light, paddingTop: 12 }}>
+        <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: palette.hairline, paddingTop: 12 }}>
           {order.customerEmail ? (
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
-              <Text style={{ color: colors.text.secondary, fontSize: 12 }}>Customer Email</Text>
-              <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '600', marginLeft: 12, flexShrink: 1, textAlign: 'right' }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+              <Text style={{ color: palette.muted, fontSize: isWebDesktop ? 13.5 : 12 }}>Customer Email</Text>
+              <Text style={{ color: palette.text, fontSize: isWebDesktop ? 13.5 : 12, fontWeight: '600', marginLeft: 12, flexShrink: 1, textAlign: 'right' }}>
                 {order.customerEmail}
               </Text>
             </View>
           ) : null}
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
-            <Text style={{ color: colors.text.secondary, fontSize: 12 }}>Current Source</Text>
-              <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '500', marginLeft: 12 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+            <Text style={{ color: palette.muted, fontSize: isWebDesktop ? 13.5 : 12 }}>Current Source</Text>
+              <Text style={{ color: palette.text, fontSize: isWebDesktop ? 13.5 : 12, fontWeight: '500', marginLeft: 12 }}>
               {formatOrderSourcePart(order.source) || 'Not set'}
             </Text>
           </View>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={{ color: colors.text.secondary, fontSize: 12 }}>Linked Status</Text>
-            <Text style={{ color: order.websiteOrderReference ? FYLL_LIME : colors.text.muted, fontSize: 12, fontWeight: '600', marginLeft: 12 }}>
+            <Text style={{ color: palette.muted, fontSize: isWebDesktop ? 13.5 : 12 }}>Linked Status</Text>
+            <Text style={{ color: order.websiteOrderReference ? palette.limeOnSurface : palette.faint, fontSize: isWebDesktop ? 13.5 : 12, fontWeight: '600', marginLeft: 12 }}>
               {order.websiteOrderReference ? 'Linked' : 'Not linked'}
             </Text>
           </View>
@@ -1950,7 +2045,7 @@ export default function OrderDetailScreen() {
             onPress={() => void handleSendToWoo()}
             disabled={isSendingToWoo}
             className="active:opacity-80"
-            style={{ marginTop: 10, height: 44, borderRadius: 999, backgroundColor: '#DCEB45', alignItems: 'center', justifyContent: 'center', flexDirection: 'row', opacity: isSendingToWoo ? 0.65 : 1 }}
+            style={{ marginTop: 10, height: 44, borderRadius: 999, backgroundColor: FYLL_LIME, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', opacity: isSendingToWoo ? 0.65 : 1 }}
           >
             {isSendingToWoo ? <ActivityIndicator size="small" color="#17190B" /> : <Send size={16} color="#17190B" strokeWidth={2.3} />}
             <Text style={{ color: '#17190B', fontSize: 13, fontWeight: '600', marginLeft: 8 }}>{isSendingToWoo ? 'Sending…' : 'Send to Woo'}</Text>
@@ -1961,8 +2056,8 @@ export default function OrderDetailScreen() {
   );
 
   const sourcePaymentSection = isSocialCheckoutPaymentOrder(order) ? (
-    <View className={cn('mt-4 rounded-2xl p-5', !isWebDesktop && 'mx-5')} style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
-      <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '500', letterSpacing: 1.2, marginBottom: 20, textTransform: 'uppercase' }}>Payment</Text>
+    <View style={sectionCardStyle}>
+      <Text style={[sectionTitleStyle, { marginBottom: 14 }]}>Payment</Text>
       <View className="flex-row items-start justify-between">
         <View className="flex-row items-center">
           <Tag size={18} color={colors.text.tertiary} strokeWidth={2} />
@@ -1973,23 +2068,23 @@ export default function OrderDetailScreen() {
             <CreditCard size={18} color={colors.text.tertiary} strokeWidth={2} />
             <Text style={{ color: colors.text.secondary, fontSize: 12, marginLeft: 10, fontWeight: '500' }}>{order.paymentMethod || 'Bank Transfer'}</Text>
           </View>
-          <View className="rounded-full px-5 py-2 mt-4" style={{ backgroundColor: 'rgba(5, 150, 105, 0.1)' }}>
-            <Text style={{ color: '#047857', fontSize: 12, fontWeight: '700' }}>Confirmed</Text>
+          <View className="rounded-full px-4 mt-4" style={{ height: 26, justifyContent: 'center', backgroundColor: palette.tones.verified.bg }}>
+            <Text style={{ color: palette.tones.verified.ink, fontSize: 12, fontWeight: '600' }}>Confirmed</Text>
           </View>
         </View>
       </View>
-      <View className="flex-row items-center rounded-[22px] px-5 py-4 mt-6" style={{ backgroundColor: colors.bg.secondary }}>
-        <FileText size={28} color={colors.text.tertiary} strokeWidth={1.8} />
-        <View className="ml-4 flex-1">
-          <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '700' }} numberOfLines={1}>
+      <View className="flex-row items-center rounded-[16px] px-4 py-3 mt-5" style={{ backgroundColor: palette.inset, borderWidth: 1, borderColor: palette.border }}>
+        <FileText size={24} color={palette.muted} strokeWidth={1.8} />
+        <View className="ml-3 flex-1">
+          <Text style={{ color: palette.text, fontSize: isWebDesktop ? 14 : 12, fontWeight: '500' }} numberOfLines={1}>
             transfer-receipt-{order.websiteOrderReference || order.orderNumber}.jpg
           </Text>
-          <Text style={{ color: colors.text.muted, fontSize: 12, marginTop: 4 }}>Payment link · confirmed</Text>
+          <Text style={{ color: palette.faint, fontSize: isWebDesktop ? 12.5 : 12, marginTop: 3 }}>Payment link · confirmed</Text>
         </View>
       </View>
     </View>
   ) : (
-    <View className={cn('mt-4 rounded-2xl p-4', !isWebDesktop && 'mx-5')} style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
+    <View style={sectionCardStyle}>
       <View className="flex-row items-center justify-between">
         <View className="flex-row items-center">
           <Tag size={16} color={colors.text.primary} strokeWidth={2} />
@@ -2006,10 +2101,9 @@ export default function OrderDetailScreen() {
   );
 
   const fulfillmentSection = (
-    <View className={cn('mt-4 rounded-2xl p-4', !isWebDesktop && 'mx-5')} style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
+    <View style={sectionCardStyle}>
       <OrderFulfillmentSection
         order={order}
-        title="Fulfillment"
         onCopied={() => showToast('success', 'Tracking info copied.')}
         onEditFulfillment={() => setShowFulfillmentModal(true)}
       />
@@ -2017,8 +2111,8 @@ export default function OrderDetailScreen() {
   );
 
   const customerNoteSection = order.customerNote?.trim() ? (
-    <View className={cn('mt-4 rounded-2xl p-4', !isWebDesktop && 'mx-5')} style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
-      <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '500', letterSpacing: 1.2, marginBottom: 12, textTransform: 'uppercase' }}>Customer Note</Text>
+    <View style={sectionCardStyle}>
+      <Text style={[sectionTitleStyle, { marginBottom: 12 }]}>Customer Note</Text>
       <View className="rounded-2xl px-4 py-3" style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}>
         <Text style={{ color: colors.text.secondary, fontSize: 12, lineHeight: 18, fontWeight: '500' }}>
           {order.customerNote.trim()}
@@ -2038,11 +2132,11 @@ export default function OrderDetailScreen() {
 
   const primaryActionPillStyle = {
     ...actionPillBaseStyle,
-    backgroundColor: colors.text.primary,
+    backgroundColor: FYLL_LIME,
   };
 
   const primaryActionTextStyle = {
-    color: colors.bg.primary,
+    color: FYLL_LIME_INK,
     fontSize: 12,
     fontWeight: '600' as const,
   };
@@ -2066,7 +2160,7 @@ export default function OrderDetailScreen() {
     paddingHorizontal: 10,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: colors.border.light,
+    borderColor: palette.outline,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   };
@@ -2102,9 +2196,9 @@ export default function OrderDetailScreen() {
   };
 
   const logisticsSection = (
-    <View className={cn('mt-4 rounded-2xl p-4', !isWebDesktop && 'mx-5')} style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
+    <View style={sectionCardStyle}>
       <View className="flex-row items-center justify-between mb-3">
-        <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '500', letterSpacing: 1.2, textTransform: 'uppercase' }}>Logistics</Text>
+        <Text style={sectionTitleStyle}>Logistics</Text>
         <Pressable
           onPress={handleOpenLogistics}
           className="active:opacity-70 flex-row items-center justify-center"
@@ -2154,7 +2248,7 @@ export default function OrderDetailScreen() {
 
   const prescriptionSection = (
     <PrescriptionSection
-      containerClassName={cn('mt-4', !isWebDesktop && 'mx-5')}
+      containerClassName={isWebDesktop ? 'mt-[18px]' : 'mt-3.5 mx-4'}
       prescription={order.prescription}
       onUpdate={handleUpdatePrescription}
       editable={true}
@@ -2163,9 +2257,9 @@ export default function OrderDetailScreen() {
   );
 
   const refundSection = (
-    <View className={cn('mt-4 rounded-2xl p-4', !isWebDesktop && 'mx-5')} style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
+    <View style={sectionCardStyle}>
       <View className="flex-row items-center justify-between mb-3">
-        <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '500', letterSpacing: 1.2, textTransform: 'uppercase' }}>Refund</Text>
+        <Text style={sectionTitleStyle}>Refund</Text>
         <View className="flex-row items-center" style={{ gap: 8 }}>
           {canCreateRefundRequest ? (
             <Pressable
@@ -2247,149 +2341,12 @@ export default function OrderDetailScreen() {
   const qcCompletedBg = qcReady ? 'rgba(5,150,105,0.12)' : qcVerified ? 'rgba(217,119,6,0.12)' : colors.bg.secondary;
   const qcChecklistProgress = `${qcChecklist.length}/${qcRequirements.length || 0} checks`;
 
-  const qcDetailContent = (
-    <>
-      <Text style={{ color: colors.text.secondary, fontSize: 12, marginBottom: 12 }}>
-        Tick every check, upload proof, and confirm QC before dispatching.
-      </Text>
-
-      <View style={{ gap: 8 }}>
-        {qcRequirements.length === 0 ? (
-          <Text style={{ color: colors.text.tertiary, fontSize: 12 }}>
-            No quality control checks configured.
-          </Text>
-        ) : qcRequirements.map((item) => {
-          const checked = qcChecklist.includes(item.key);
-          return (
-            <Pressable
-              key={item.key}
-              onPress={() => handleToggleQcChecklistItem(item.key)}
-              className="flex-row items-center"
-              style={{ minHeight: 34, gap: 9 }}
-            >
-              <View
-                style={{
-                  width: 20,
-                  height: 20,
-                  borderRadius: 6,
-                  borderWidth: 1,
-                  borderColor: checked ? '#10B981' : colors.border.light,
-                  backgroundColor: checked ? '#10B981' : colors.bg.card,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                {checked ? <Check size={13} color="#FFFFFF" strokeWidth={3} /> : null}
-              </View>
-              <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: checked ? '700' : '500' }}>
-                {item.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-
-      <View className="flex-row flex-wrap mt-3" style={{ gap: 10 }}>
-        {qcPhotos.map((photo, index) => (
-          <Pressable
-            key={`${photo}-${index}`}
-            onPress={() => {
-              void openAttachmentPath(photo);
-            }}
-            className="active:opacity-80"
-            style={{
-              width: 78,
-              height: 78,
-              borderRadius: 12,
-              overflow: 'hidden',
-              borderWidth: 1,
-              borderColor: colors.border.light,
-              backgroundColor: colors.bg.secondary,
-            }}
-          >
-            <ResolvedAttachmentImage imageUrl={photo} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-            <Pressable
-              onPress={() => handleRemoveQcPhoto(index)}
-              className="absolute top-1 right-1 w-6 h-6 rounded-full items-center justify-center"
-              style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}
-            >
-              <X size={12} color="#FFFFFF" strokeWidth={2.5} />
-            </Pressable>
-          </Pressable>
-        ))}
-        <Pressable
-          onPress={handleAddQcPhoto}
-          disabled={qcUploading}
-          className="active:opacity-80"
-          style={{
-            width: 78,
-            height: 78,
-            borderRadius: 12,
-            borderWidth: 1,
-            borderColor: colors.border.light,
-            backgroundColor: colors.bg.secondary,
-            alignItems: 'center',
-            justifyContent: 'center',
-            opacity: qcUploading ? 0.6 : 1,
-          }}
-        >
-          <Camera size={18} color={colors.text.primary} strokeWidth={2} />
-          <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 6 }}>
-            {qcUploading ? 'Uploading' : 'Add photo'}
-          </Text>
-        </Pressable>
-      </View>
-
-      {qcUploadError ? (
-        <Text style={{ color: '#EF4444', fontSize: 12, marginTop: 8 }}>{qcUploadError}</Text>
-      ) : null}
-
-      <View className="py-3 mt-3">
-        <View className="flex-row items-center justify-between">
-          <View className="flex-1 pr-3">
-            <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '700' }}>QC verified</Text>
-            <Text style={{ color: colors.text.muted, fontSize: 12, marginTop: 4 }}>
-              Requires all checklist items and at least one proof photo.
-            </Text>
-          </View>
-          <Switch
-            value={qcVerified}
-            onValueChange={handleToggleQcVerified}
-            trackColor={{ false: '#9CA3AF', true: '#111111' }}
-            thumbColor="#FFFFFF"
-          />
-        </View>
-        {qcVerified && order.qcVerifiedBy ? (
-          <Text style={{ color: colors.text.tertiary, fontSize: 11, marginTop: 8 }}>
-            Verified by {order.qcVerifiedBy}
-            {order.qcVerifiedAt ? ` · ${new Date(order.qcVerifiedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}` : ''}
-          </Text>
-        ) : null}
-      </View>
-
-      <View className="mt-3">
-        <Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '600', marginBottom: 8 }}>QC note</Text>
-        <View className="rounded-xl px-3" style={{ borderWidth: 1, borderColor: colors.border.light }}>
-          <TextInput
-            placeholder="Add QC notes (optional)"
-            placeholderTextColor={colors.text.muted}
-            value={order.qcNote ?? ''}
-            onChangeText={(value) => mergeDraftUpdates({ qcNote: value })}
-            multiline
-            numberOfLines={3}
-            style={{ paddingVertical: 6, color: colors.text.primary, fontSize: 13, minHeight: 64 }}
-          />
-        </View>
-      </View>
-    </>
-  );
-
   const qcSection = (
-    <View className={cn('mt-4 rounded-2xl p-4', !isWebDesktop && 'mx-5')} style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
+    <View style={sectionCardStyle}>
       <View className="flex-row items-start justify-between" style={{ gap: 12 }}>
         <View style={{ flex: 1 }}>
-          <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '500', letterSpacing: 1.2, textTransform: 'uppercase' }}>Quality Control</Text>
-          <Text style={{ color: colors.text.secondary, fontSize: 12, marginTop: 4 }}>
+          <Text style={sectionTitleStyle}>Quality Control</Text>
+          <Text style={{ color: palette.faint, fontSize: isWebDesktop ? 13 : 12, marginTop: 4 }}>
             {qcReady ? 'Proof, checklist and verification are complete.' : 'Run QC before dispatching this order.'}
           </Text>
         </View>
@@ -2397,6 +2354,17 @@ export default function OrderDetailScreen() {
           <Text style={{ color: qcCompletedColor, fontSize: 11, fontWeight: '600' }}>{qcCompletedLabel}</Text>
         </View>
       </View>
+
+      {qcRequirements.length > 0 ? (
+        <View style={{ flexDirection: 'row', gap: 4, marginTop: 14 }}>
+          {qcRequirements.map((item) => (
+            <View
+              key={`qc-seg-${item.key}`}
+              style={{ flex: 1, maxWidth: 28, height: 6, borderRadius: 3, backgroundColor: qcChecklist.includes(item.key) ? palette.tones.verified.dot : palette.softFill }}
+            />
+          ))}
+        </View>
+      ) : null}
 
       <View className="flex-row flex-wrap mt-3" style={{ gap: 8 }}>
         <View className="rounded-full px-3 py-1" style={{ backgroundColor: colors.bg.secondary }}>
@@ -2456,19 +2424,19 @@ export default function OrderDetailScreen() {
           }}
           className="active:opacity-80"
           style={{
-            minHeight: 46,
+            minHeight: 44,
             paddingHorizontal: 18,
             borderRadius: 999,
-            borderWidth: 1,
-            borderColor: colors.text.primary,
-            backgroundColor: colors.text.primary,
+            backgroundColor: qcReady ? 'transparent' : FYLL_LIME,
+            borderWidth: qcReady ? 1 : 0,
+            borderColor: palette.outline,
             alignItems: 'center',
             justifyContent: 'center',
             flexDirection: 'row',
           }}
         >
-          <Check size={16} color={colors.bg.primary} strokeWidth={2} />
-          <Text style={{ color: colors.bg.primary, fontSize: 12, fontWeight: '600', marginLeft: 8 }}>
+          <Check size={16} color={qcReady ? palette.text : FYLL_LIME_INK} strokeWidth={2} />
+          <Text style={{ color: qcReady ? palette.text : FYLL_LIME_INK, fontSize: 14, fontWeight: '600', marginLeft: 8 }}>
             {qcReady ? (showQcDetails ? 'Hide QC details' : 'View QC details') : 'Start quality control'}
           </Text>
         </Pressable>
@@ -2477,17 +2445,17 @@ export default function OrderDetailScreen() {
             onPress={() => setShowQcModal(true)}
             className="active:opacity-80"
             style={{
-              minHeight: 46,
+              minHeight: 44,
               paddingHorizontal: 18,
               borderRadius: 999,
               borderWidth: 1,
-              borderColor: colors.border.light,
-              backgroundColor: colors.bg.card,
+              borderColor: palette.outline,
+              backgroundColor: 'transparent',
               alignItems: 'center',
               justifyContent: 'center',
             }}
           >
-            <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '600' }}>Edit</Text>
+            <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>Edit</Text>
           </Pressable>
         ) : null}
       </View>
@@ -2495,9 +2463,9 @@ export default function OrderDetailScreen() {
   );
 
   const casesSection = (
-    <View className={cn('mt-4 rounded-2xl p-4', !isWebDesktop && 'mx-5')} style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
+    <View style={sectionCardStyle}>
       <View className="flex-row items-center justify-between mb-3">
-        <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '500', letterSpacing: 1.2, textTransform: 'uppercase' }}>Cases</Text>
+        <Text style={sectionTitleStyle}>Cases</Text>
         <View className="flex-row items-center gap-2">
           <Pressable
             onPress={handleCreateCase}
@@ -2534,9 +2502,9 @@ export default function OrderDetailScreen() {
   );
 
   const partnerJobSection = (
-    <View className={cn('mt-4 rounded-2xl p-4', !isWebDesktop && 'mx-5')} style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
+    <View style={sectionCardStyle}>
       <View className="flex-row items-center justify-between mb-3">
-        <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '500', letterSpacing: 1.2, textTransform: 'uppercase' }}>Partner Job</Text>
+        <Text style={sectionTitleStyle}>Partner Job</Text>
         <Pressable
           onPress={handleSendToPartner}
           disabled={partners.length === 0}
@@ -2586,59 +2554,57 @@ export default function OrderDetailScreen() {
   );
 
   const printLabelSection = (
-    <View className={cn('mt-4', !isWebDesktop && 'mx-5')}>
-      {isDark ? (
-        <Pressable
-          onPress={handlePrintLabel}
-          className="rounded-full items-center justify-center active:opacity-80 flex-row"
-          style={{ backgroundColor: '#FFFFFF', height: 52 }}
-        >
-          <Printer size={18} color="#111111" strokeWidth={2} />
-          <Text style={{ color: '#111111', fontSize: 12, fontWeight: '600', marginLeft: 8 }}>
-            Print Shipping Label
-          </Text>
-        </Pressable>
-      ) : (
-        <Button
-          onPress={handlePrintLabel}
-          icon={<Printer size={18} color="#FFFFFF" strokeWidth={2} />}
-        >
-          Print Shipping Label
-        </Button>
-      )}
+    <View style={{ marginTop: isWebDesktop ? 18 : 14, marginHorizontal: isWebDesktop ? 0 : 16 }}>
+      <Pressable
+        onPress={handlePrintLabel}
+        className="active:opacity-80"
+        style={[ghostPillStyle, { height: 48, width: '100%' }]}
+      >
+        <Printer size={16} color={palette.text} strokeWidth={2} />
+        <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>Print Shipping Label</Text>
+      </Pressable>
     </View>
   );
 
+  const activeStatusIndex = orderedOrderStatuses.findIndex((status) => status.name === activeStatus);
+  const nextStatusOption = activeStatusIndex >= 0
+    ? orderedOrderStatuses.slice(activeStatusIndex + 1).find((status) => !/cancel/i.test(status.name)) ?? null
+    : null;
+  const nextStatusBlocked = Boolean(nextStatusOption && isDispatchStatus(nextStatusOption.name) && !qcReady);
+
   const updateStatusSection = (
-    <View className={cn('mt-4 rounded-2xl p-4', !isWebDesktop && 'mx-5')} style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
-      <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '500', letterSpacing: 1.2, marginBottom: 12, textTransform: 'uppercase' }}>Update Status</Text>
+    <View style={[sectionCardStyle, { gap: 12 }]}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <Text style={sectionTitleStyle}>Status</Text>
+        <Text style={{ color: palette.faint, fontSize: isWebDesktop ? 12.5 : 12 }}>Logged in Activity</Text>
+      </View>
 
       <Pressable
         onPress={() => setShowStatusModal((current) => !current)}
-        className="flex-row items-center rounded-full px-4"
         style={{
-          minHeight: 48,
-          backgroundColor: activeStatusDisplay.bg,
+          minHeight: 50,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 10,
+          paddingHorizontal: 14,
+          borderRadius: 14,
+          backgroundColor: `${activeStatusDisplay.color}1f`,
           borderWidth: 1,
           borderColor: `${activeStatusDisplay.color}55`,
         }}
       >
-        <View
-          className="w-8 h-8 rounded-full items-center justify-center mr-3"
-          style={{ backgroundColor: activeStatusDisplay.bg }}
-        >
-          <View className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: activeStatusDisplay.color }} />
-        </View>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '400', letterSpacing: 1, textTransform: 'uppercase' }}>Current status</Text>
-          <Text style={{ color: activeStatusDisplay.color, fontSize: 12, fontWeight: '500', marginTop: 2 }} numberOfLines={1}>
+        <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: activeStatusDisplay.color }} />
+        <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
+          <Text style={{ color: palette.muted, fontSize: 11, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>Current status</Text>
+          <Text style={{ color: activeStatusDisplay.color, fontSize: 15, fontWeight: '600' }} numberOfLines={1}>
             {activeStatusDisplay.label}
           </Text>
         </View>
-        <ChevronDown size={18} color={activeStatusDisplay.color} strokeWidth={2.2} />
+        <ChevronDown size={16} color={palette.textSoft} strokeWidth={2.4} />
       </Pressable>
+
       {showStatusModal ? (
-        <View style={{ gap: 8, marginTop: 10 }}>
+        <View style={{ padding: 6, borderRadius: 16, backgroundColor: palette.cardHover, borderWidth: 1, borderColor: palette.outline }}>
           {orderedOrderStatuses.map((status) => {
             const currentStatus = baseOrder?.status ?? order.status;
             const selectedStatus = draft.status ?? currentStatus;
@@ -2646,6 +2612,7 @@ export default function OrderDetailScreen() {
             const isDispatch = isDispatchStatus(status.name);
             const isDisabled = isDispatch && !qcReady;
             const optionDisplay = getSystemOrderStatusDisplay(status.name, status.color);
+            const isCancel = /cancel/i.test(status.name);
             return (
               <Pressable
                 key={status.id}
@@ -2656,48 +2623,52 @@ export default function OrderDetailScreen() {
                   }
                   handleUpdateStatus(status.name);
                 }}
-                className="rounded-full px-4 active:opacity-80"
+                className="active:opacity-80"
                 style={{
-                  minHeight: 46,
+                  minHeight: 42,
                   flexDirection: 'row',
                   alignItems: 'center',
                   gap: 10,
-                  ...(isSelected ? { backgroundColor: optionDisplay.color } : { backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }),
+                  paddingHorizontal: 10,
+                  borderRadius: 10,
+                  backgroundColor: isSelected ? palette.softFill : 'transparent',
                   opacity: isDisabled ? 0.5 : 1,
+                  ...(isCancel ? { borderTopWidth: 1, borderTopColor: palette.hairline, borderRadius: 0 } : null),
                 }}
               >
-                <View
-                  style={{
-                    width: 24,
-                    height: 24,
-                    borderRadius: 999,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: isSelected ? 'rgba(255,255,255,0.25)' : optionDisplay.bg,
-                  }}
-                >
-                  {isSelected ? (
-                    <Check size={13} color="#FFFFFF" strokeWidth={3} />
-                  ) : (
-                    <View style={{ width: 8, height: 8, borderRadius: 999, backgroundColor: optionDisplay.color }} />
-                  )}
-                </View>
-                <Text style={{ color: isSelected ? '#FFFFFF' : colors.text.primary, fontSize: 12, fontWeight: '500', flex: 1 }}>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: optionDisplay.color }} />
+                <Text style={{ color: isCancel ? palette.danger : palette.text, fontSize: isWebDesktop ? 14 : 12, fontWeight: isSelected ? '600' : '500', flex: 1 }}>
                   {optionDisplay.label}
                 </Text>
-                {isSelected ? <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '500' }}>Selected</Text> : null}
+                {isSelected ? <Check size={14} color={palette.text} strokeWidth={2.6} /> : null}
               </Pressable>
             );
           })}
         </View>
       ) : null}
+
+      {nextStatusOption ? (
+        <Pressable
+          onPress={() => {
+            if (nextStatusBlocked) {
+              showToast('error', 'Add QC photos and verify QC before dispatching.');
+              return;
+            }
+            handleUpdateStatus(nextStatusOption.name);
+          }}
+          className="active:opacity-85"
+          style={{ height: 48, borderRadius: 999, backgroundColor: FYLL_LIME, alignItems: 'center', justifyContent: 'center', opacity: nextStatusBlocked ? 0.55 : 1 }}
+        >
+          <Text style={{ color: FYLL_LIME_INK, fontSize: 15, fontWeight: '600' }}>Move to {getSystemOrderStatusDisplay(nextStatusOption.name, nextStatusOption.color).label}</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 
   const relatedPaymentSection = isWebDesktop && relatedPayment ? (
-    <View className="mt-4 rounded-2xl p-4" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
+    <View style={sectionCardStyle}>
       <View className="flex-row items-center justify-between mb-3">
-        <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '500', letterSpacing: 1.2, textTransform: 'uppercase' }}>Payment</Text>
+        <Text style={sectionTitleStyle}>Payment</Text>
         {relatedPayment.amount > 0 ? (
           <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '600' }}>
             {formatCurrency(relatedPayment.amount)}
@@ -2761,101 +2732,91 @@ export default function OrderDetailScreen() {
 
   const staffActivitySection =
     (order.createdBy || order.updatedBy || (order.activityLog && order.activityLog.length > 0)) ? (
-      <View className={cn('mt-4', !isWebDesktop && 'mx-5')}>
-        <View className="rounded-2xl p-4" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light, gap: 14 }}>
-          <View className="flex-row items-center justify-between" style={{ gap: 10 }}>
-            <Text style={{ color: colors.text.secondary, fontSize: 10, fontWeight: '400', letterSpacing: 1, textTransform: 'uppercase' }}>Activity</Text>
-            <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '400' }}>
-              {orderActivityEntries.length} event{orderActivityEntries.length === 1 ? '' : 's'}
-            </Text>
-          </View>
-
-          {orderActivityEntries.map((entry, index) => (
-            <View key={entry.key} style={{ flexDirection: 'row', gap: 10 }}>
-              <View style={{ width: 10, alignItems: 'center' }}>
-                <View style={{ width: 8, height: 8, borderRadius: 999, backgroundColor: index === 0 ? colors.text.primary : colors.text.tertiary, marginTop: 5 }} />
-                {index < orderActivityEntries.length - 1 ? (
-                  <View style={{ width: 1, flex: 1, minHeight: 26, backgroundColor: colors.border.light, marginTop: 5 }} />
-                ) : null}
-              </View>
-              <View style={{ flex: 1, paddingBottom: index < orderActivityEntries.length - 1 ? 12 : 0 }}>
-                <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '500' }}>{entry.action}</Text>
-                <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '400', marginTop: 3 }}>
-                  {entry.user} · {new Date(entry.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}, {new Date(entry.date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
-                </Text>
-              </View>
-            </View>
-          ))}
+      <View style={sectionCardStyle}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', paddingBottom: 14 }}>
+          <Text style={sectionTitleStyle}>Activity</Text>
+          <Text style={{ color: palette.faint, fontSize: 13 }}>
+            {orderActivityEntries.length} event{orderActivityEntries.length === 1 ? '' : 's'}
+          </Text>
         </View>
+
+        {orderActivityEntries.map((entry, index) => (
+          <View key={entry.key} style={{ flexDirection: 'row', gap: 12 }}>
+            <View style={{ width: 12, alignItems: 'center' }}>
+              <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: index === 0 ? palette.text : palette.faint, marginTop: 4 }} />
+              {index < orderActivityEntries.length - 1 ? (
+                <View style={{ width: 2, flex: 1, minHeight: 24, backgroundColor: palette.hairline, marginVertical: 4 }} />
+              ) : null}
+            </View>
+            <View style={{ flex: 1, paddingBottom: index < orderActivityEntries.length - 1 ? 14 : 4, gap: 2 }}>
+              <Text style={{ color: palette.text, fontSize: 10, fontWeight: '500' }}>{entry.action}</Text>
+              <Text style={{ color: palette.faint, fontSize: 10 }}>
+                {entry.user} · {new Date(entry.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}, {new Date(entry.date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+              </Text>
+            </View>
+          </View>
+        ))}
       </View>
     ) : null;
 
   return (
-    <View className="flex-1" style={{ backgroundColor: isWebDesktop ? colors.bg.primary : colors.bg.secondary }}>
+    <View className="flex-1" style={{ backgroundColor: palette.page }}>
       <SafeAreaView className="flex-1" edges={['top']}>
         {/* Header */}
         {isWebDesktop ? (
-          <View style={{ backgroundColor: colors.bg.primary, borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
+          <View style={{ backgroundColor: palette.page }}>
             <View
               style={{
                 paddingHorizontal: 28,
-                paddingTop: 20,
-                paddingBottom: 12,
+                paddingTop: 28,
+                paddingBottom: 8,
                 width: '100%',
                 maxWidth: webMaxWidth,
                 alignSelf: 'flex-start',
               }}
             >
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 18 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 }}>
-                  <Pressable
-                    onPress={handleBack}
-                    className="active:opacity-70"
-                    style={{ width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}
-                  >
-                    <ArrowLeft size={19} color={colors.text.primary} strokeWidth={2} />
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 280, gap: 14 }}>
+                  <Pressable onPress={handleBack} accessibilityLabel="Back" className="active:opacity-70" style={iconButtonStyle}>
+                    <ArrowLeft size={19} color={palette.text} strokeWidth={2.2} />
                   </Pressable>
 
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-                      <Text style={{ color: colors.text.primary, fontSize: 22, fontWeight: '700' }} numberOfLines={1}>
+                  <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', columnGap: 12 }}>
+                      <Text style={{ color: palette.text, fontSize: 28, lineHeight: 34, fontWeight: '700', letterSpacing: -0.4 }} numberOfLines={1}>
                         {order.orderNumber}
                       </Text>
                       <Pressable
                         onPress={() => setShowStatusModal(true)}
                         className="active:opacity-80"
-                        style={{ backgroundColor: badgeBgColor, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 }}
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}
                       >
-                        <Text style={{ color: badgeTextColor, fontSize: 12, fontWeight: '700' }}>
-                          {displayStatus}
-                        </Text>
+                        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: activeStatusDisplay.color }} />
+                        <Text style={{ color: activeStatusDisplay.color, fontSize: 13.5, fontWeight: '600' }}>{displayStatus}</Text>
                       </Pressable>
                     </View>
+                    <Text style={{ color: palette.faint, fontSize: 13.5 }} numberOfLines={1}>{headerSubtitle}</Text>
                   </View>
                 </View>
 
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                   {showDeliveryConfirmationTrigger ? (
                     <View
                       style={{
                         height: 40,
                         paddingHorizontal: 14,
                         borderRadius: 999,
-                        backgroundColor: colors.bg.primary,
                         borderWidth: 1,
-                        borderColor: colors.border.light,
+                        borderColor: palette.outline,
                         flexDirection: 'row',
                         alignItems: 'center',
-                        justifyContent: 'space-between',
                         gap: 12,
                         opacity: canSendDeliveryConfirmationEmail ? 1 : 0.6,
                       }}
                     >
-                      <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                        <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '700' }} numberOfLines={1}>
-                          Send delivery email
-                        </Text>
-                      </View>
+                      <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }} numberOfLines={1}>
+                        Send delivery email
+                      </Text>
                       <Switch
                         value={sendDeliveryConfirmationEmail && canSendDeliveryConfirmationEmail}
                         onValueChange={(value) => setSendDeliveryConfirmationEmail(value)}
@@ -2883,146 +2844,103 @@ export default function OrderDetailScreen() {
                     Save Changes
                   </Button>
 
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <Pressable
-                      onPress={handleOpenEdit}
-                      accessibilityLabel="Edit order"
-                      className="active:opacity-80"
-                      style={{
-                        width: 40,
-                        height: 40,
-                        borderRadius: 20,
-                        backgroundColor: colors.bg.primary,
-                        borderWidth: 1,
-                        borderColor: colors.border.light,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      <Edit2 size={16} color={colors.text.primary} strokeWidth={2.15} />
-                    </Pressable>
+                  <Pressable onPress={handleOpenEdit} accessibilityLabel="Edit order" className="active:opacity-80" style={iconButtonStyle}>
+                    <Edit2 size={16} color={palette.text} strokeWidth={2.15} />
+                  </Pressable>
 
-                    <Pressable
-                      onPress={() => {
-                        void handleOpenThread();
-                      }}
-                      accessibilityLabel={orderThreadQuery.data ? 'Open order thread' : 'Start order thread'}
-                      className="active:opacity-80"
+                  <Pressable
+                    onPress={() => {
+                      void handleOpenThread();
+                    }}
+                    accessibilityLabel={orderThreadQuery.data ? 'Open order thread' : 'Start order thread'}
+                    className="active:opacity-80"
+                    style={[iconButtonStyle, { position: 'relative' }]}
+                  >
+                    <MessageSquare size={17} color={palette.text} strokeWidth={2} />
+                    <View
                       style={{
-                        width: 40,
-                        height: 40,
-                        borderRadius: 20,
-                        backgroundColor: colors.bg.primary,
-                        borderWidth: 1,
-                        borderColor: colors.border.light,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        position: 'relative',
+                        position: 'absolute',
+                        top: 10,
+                        right: 10,
+                        width: 8,
+                        height: 8,
+                        borderRadius: 4,
+                        backgroundColor: orderThreadQuery.data ? '#EF4444' : '#9CA3AF',
                       }}
-                    >
-                      <MessageSquare size={17} color={colors.text.primary} strokeWidth={2} />
-                      <View
-                        style={{
-                          position: 'absolute',
-                          top: 10,
-                          right: 10,
-                          width: 8,
-                          height: 8,
-                          borderRadius: 4,
-                          backgroundColor: orderThreadQuery.data ? '#EF4444' : '#9CA3AF',
-                        }}
-                      />
-                    </Pressable>
+                    />
+                  </Pressable>
 
-                    <Pressable
-                      onPress={openFlagModal}
-                      accessibilityLabel="Flag order"
-                      className="active:opacity-80"
-                      style={{
-                        width: 40,
-                        height: 40,
-                        borderRadius: 20,
-                        backgroundColor: order.flagNote ? 'rgba(245, 158, 11, 0.16)' : colors.bg.primary,
-                        borderWidth: 1,
-                        borderColor: order.flagNote ? colors.accent.warning : colors.border.light,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      <Flag
-                        size={16}
-                        color={order.flagNote ? colors.accent.warning : colors.text.primary}
-                        fill={order.flagNote ? colors.accent.warning : 'transparent'}
-                        strokeWidth={2.15}
-                      />
-                    </Pressable>
+                  <Pressable
+                    onPress={openFlagModal}
+                    accessibilityLabel="Flag order"
+                    className="active:opacity-80"
+                    style={[iconButtonStyle, order.flagNote ? { backgroundColor: 'rgba(245, 158, 11, 0.16)', borderColor: colors.accent.warning } : null]}
+                  >
+                    <Flag
+                      size={16}
+                      color={order.flagNote ? colors.accent.warning : palette.text}
+                      fill={order.flagNote ? colors.accent.warning : 'transparent'}
+                      strokeWidth={2.15}
+                    />
+                  </Pressable>
 
-                    <Pressable
-                      ref={headerActionButtonRef}
-                      onPress={handleOpenHeaderActionMenu}
-                      accessibilityLabel="More order actions"
-                      className="active:opacity-80"
-                      style={{
-                        width: 40,
-                        height: 40,
-                        borderRadius: 20,
-                        backgroundColor: colors.bg.primary,
-                        borderWidth: 1,
-                        borderColor: colors.border.light,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      <MoreVertical size={17} color={colors.text.primary} strokeWidth={2} />
-                    </Pressable>
-                  </View>
+                  <Pressable onPress={handlePrintLabel} accessibilityLabel="Print shipping label" className="active:opacity-80" style={ghostPillStyle}>
+                    <Printer size={15} color={palette.text} strokeWidth={2} />
+                    <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>Shipping label</Text>
+                  </Pressable>
+
+                  <Pressable
+                    ref={headerActionButtonRef}
+                    onPress={handleOpenHeaderActionMenu}
+                    accessibilityLabel="More order actions"
+                    className="active:opacity-80"
+                    style={iconButtonStyle}
+                  >
+                    <MoreVertical size={17} color={palette.text} strokeWidth={2} />
+                  </Pressable>
                 </View>
               </View>
             </View>
           </View>
         ) : (
-          <View style={{ borderBottomWidth: 1, borderBottomColor: colors.border.light, backgroundColor: colors.bg.primary }}>
+          <View style={{ borderBottomWidth: 1, borderBottomColor: palette.hairline, backgroundColor: palette.page }}>
             <View
               className="flex-row items-center"
-              style={{
-                paddingHorizontal: 16,
-                paddingVertical: 10,
-              }}
+              style={{ paddingHorizontal: 12, paddingTop: 6, paddingBottom: 10, gap: 4 }}
             >
               <Pressable
                 onPress={handleBack}
+                accessibilityLabel="Back"
                 className="active:opacity-50 items-center justify-center"
-                style={{ width: 34, height: 34, borderRadius: 17, marginRight: 10 }}
+                style={{ width: 44, height: 44, borderRadius: 22 }}
               >
-                <ArrowLeft size={20} color={colors.text.primary} strokeWidth={2} />
+                <ArrowLeft size={20} color={palette.text} strokeWidth={2.2} />
               </Pressable>
-              <View className="flex-1">
-                <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-                  <Text style={{ color: colors.text.primary, fontSize: 17, fontWeight: '700' }}>{order.orderNumber}</Text>
-                  <Pressable
-                    onPress={() => setShowStatusModal(true)}
-                    className="active:opacity-80"
-                    style={{ backgroundColor: badgeBgColor, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3 }}
-                  >
-                    <Text style={{ color: badgeTextColor, fontSize: 11, fontWeight: '700' }}>
-                      {displayStatus}
-                    </Text>
-                  </Pressable>
-                </View>
+              <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
+                <Text style={{ color: palette.text, fontSize: 16, fontWeight: '600' }} numberOfLines={1}>{order.orderNumber}</Text>
+                <Pressable
+                  onPress={() => setShowStatusModal(true)}
+                  className="active:opacity-80"
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start' }}
+                >
+                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: activeStatusDisplay.color }} />
+                  <Text style={{ color: activeStatusDisplay.color, fontSize: isWebDesktop ? 12.5 : 12, fontWeight: '600' }}>{displayStatus}</Text>
+                </Pressable>
               </View>
               <Pressable
                 onPress={() => {
                   void handleOpenThread();
                 }}
-                className="w-10 h-10 rounded-full items-center justify-center mr-2 active:opacity-70"
-                style={{ width: 36, height: 36, backgroundColor: colors.bg.secondary, position: 'relative' }}
+                accessibilityLabel={orderThreadQuery.data ? 'Open order thread' : 'Start order thread'}
+                className="items-center justify-center active:opacity-70"
+                style={{ width: 44, height: 44, borderRadius: 22, position: 'relative' }}
               >
-                <MessageSquare size={17} color={colors.text.primary} strokeWidth={2} />
+                <MessageSquare size={17} color={palette.text} strokeWidth={2} />
                 <View
                   style={{
                     position: 'absolute',
-                    top: 8,
-                    right: 8,
+                    top: 10,
+                    right: 10,
                     width: 8,
                     height: 8,
                     borderRadius: 4,
@@ -3033,10 +2951,11 @@ export default function OrderDetailScreen() {
               <Pressable
                 ref={headerActionButtonRef}
                 onPress={handleOpenHeaderActionMenu}
-                className="w-10 h-10 rounded-full items-center justify-center active:opacity-70"
-                style={{ width: 36, height: 36, backgroundColor: colors.bg.secondary }}
+                accessibilityLabel="More order actions"
+                className="items-center justify-center active:opacity-70"
+                style={{ width: 44, height: 44, borderRadius: 22 }}
               >
-                <MoreVertical size={17} color={colors.text.primary} strokeWidth={2} />
+                <MoreVertical size={17} color={palette.text} strokeWidth={2} />
               </Pressable>
             </View>
           </View>
@@ -3045,23 +2964,23 @@ export default function OrderDetailScreen() {
         <ScrollView
           className="flex-1"
           showsVerticalScrollIndicator={false}
-          style={{ backgroundColor: isWebDesktop ? colors.bg.primary : colors.bg.secondary }}
+          style={{ backgroundColor: palette.page }}
           contentContainerStyle={{
             paddingBottom: isWebDesktop ? 40 : Math.max(24, insets.bottom + 140),
-            paddingTop: isWebDesktop ? 14 : 16,
+            paddingTop: isWebDesktop ? 4 : 2,
             width: '100%',
             maxWidth: isWebDesktop ? webMaxWidth : undefined,
             alignSelf: isWebDesktop ? 'flex-start' : undefined,
             paddingHorizontal: isWebDesktop ? 28 : 0,
           }}
         >
+          {fulfillmentSection}
           {isWebDesktop ? (
-            <View style={{ flexDirection: 'row', gap: 24 }}>
+            <View style={{ flexDirection: 'row', gap: 18, alignItems: 'flex-start' }}>
               <View style={{ flex: 1, minWidth: 0 }}>
-                {customerSection}
                 {itemsSection}
+                {customerSection}
                 {sourcePaymentSection}
-                {fulfillmentSection}
                 {customerNoteSection}
                 {prescriptionSection}
                 {logisticsSection}
@@ -3069,23 +2988,21 @@ export default function OrderDetailScreen() {
               </View>
               <View style={{ width: rightColumnWidth ?? 420 }}>
                 {updateStatusSection}
-                {wooCommerceSection}
                 {relatedPaymentSection}
+                {wooCommerceSection}
                 {casesSection}
                 {partnerJobSection}
                 {refundSection}
-                {printLabelSection}
                 {staffActivitySection}
               </View>
             </View>
           ) : (
             <>
               {updateStatusSection}
-              {customerSection}
               {itemsSection}
-              {wooCommerceSection}
               {sourcePaymentSection}
-              {fulfillmentSection}
+              {wooCommerceSection}
+              {customerSection}
               {customerNoteSection}
               {prescriptionSection}
               {partnerJobSection}
@@ -3102,10 +3019,10 @@ export default function OrderDetailScreen() {
 
         {/* Sticky Save */}
         {!isWebDesktop ? (
-          <View style={{ borderTopWidth: 1, borderTopColor: colors.border.light, backgroundColor: colors.bg.primary }}>
+          <View style={{ borderTopWidth: 1, borderTopColor: palette.hairline, backgroundColor: palette.page }}>
             <View
               style={{
-                paddingHorizontal: 20,
+                paddingHorizontal: 16,
                 paddingTop: 12,
                 paddingBottom: Math.max(12, insets.bottom + 12),
                 width: '100%',
@@ -3254,80 +3171,35 @@ export default function OrderDetailScreen() {
           </Pressable>
         </Modal>
 
-        <Modal
+        <OrderQcModal
           visible={showQcModal}
-          animationType="fade"
-          transparent
-          onRequestClose={() => setShowQcModal(false)}
-        >
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            className="flex-1"
-          >
-            <Pressable
-              className="flex-1 items-center justify-center"
-              style={{ backgroundColor: 'rgba(0, 0, 0, 0.55)', paddingHorizontal: 18 }}
-              onPress={() => setShowQcModal(false)}
-            >
-              <Pressable
-                onPress={(event) => event.stopPropagation()}
-                className="rounded-2xl overflow-hidden"
-                style={{
-                  backgroundColor: colors.bg.primary,
-                  width: '100%',
-                  maxWidth: 560,
-                  maxHeight: '88%',
-                  borderWidth: 1,
-                  borderColor: colors.border.light,
-                }}
-              >
-                <View className="flex-row items-center justify-between px-5 py-4" style={{ borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
-                  <View style={{ flex: 1, paddingRight: 12 }}>
-                    <Text style={{ color: colors.text.primary, fontSize: 16, fontWeight: '700' }}>Quality Control</Text>
-                    <Text style={{ color: colors.text.secondary, fontSize: 12, marginTop: 3 }}>
-                      Confirm checklist, proof photos, and QC note.
-                    </Text>
-                  </View>
-                  <Pressable
-                    onPress={() => setShowQcModal(false)}
-                    className="rounded-full items-center justify-center active:opacity-70"
-                    style={{ width: 34, height: 34, backgroundColor: colors.bg.secondary }}
-                  >
-                    <X size={17} color={colors.text.tertiary} strokeWidth={2} />
-                  </Pressable>
-                </View>
-
-                <ScrollView
-                  className="px-5 py-4"
-                  showsVerticalScrollIndicator={false}
-                  keyboardShouldPersistTaps="handled"
-                >
-                  {qcDetailContent}
-                </ScrollView>
-
-                <View className="flex-row items-center justify-end px-5 py-4" style={{ borderTopWidth: 1, borderTopColor: colors.border.light, gap: 10 }}>
-                  <Pressable
-                    onPress={() => setShowQcModal(false)}
-                    className="rounded-full px-4 items-center justify-center active:opacity-80"
-                    style={{ height: 40, borderWidth: 1, borderColor: colors.border.light }}
-                  >
-                    <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '700' }}>Close</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => { void handleSaveQcAndClose(); }}
-                    disabled={qcUploading}
-                    className="rounded-full px-5 items-center justify-center active:opacity-80"
-                    style={{ height: 40, backgroundColor: colors.text.primary, opacity: qcUploading ? 0.55 : 1 }}
-                  >
-                    <Text style={{ color: colors.bg.primary, fontSize: 12, fontWeight: '700' }}>
-                      {qcReady ? 'Save QC' : 'Save progress'}
-                    </Text>
-                  </Pressable>
-                </View>
-              </Pressable>
-            </Pressable>
-          </KeyboardAvoidingView>
-        </Modal>
+          onClose={() => setShowQcModal(false)}
+          orderNumber={order.orderNumber}
+          customerName={order.customerName}
+          checkedBy={order.qcVerifiedBy}
+          item={order.items[0] ? (() => {
+            const details = getItemDetails(order.items[0]);
+            return {
+              name: [details.productName || 'Product unavailable', details.variantName].filter(Boolean).join(' · '),
+              meta: [details.sku ? details.sku.toUpperCase() : '', `Qty ${order.items[0].quantity}`, order.orderTypeName ?? ''].filter(Boolean).join(' · '),
+              imageUrl: details.imageUrl,
+            };
+          })() : null}
+          requirements={qcRequirements}
+          checklist={qcChecklist}
+          onToggleCheck={handleToggleQcChecklistItem}
+          photos={qcPhotos}
+          maxPhotos={5}
+          onAddPhoto={() => { void handleAddQcPhoto(); }}
+          onRemovePhoto={handleRemoveQcPhoto}
+          uploading={qcUploading}
+          uploadError={qcUploadError}
+          note={order.qcNote ?? ''}
+          onChangeNote={(value) => mergeDraftUpdates({ qcNote: value })}
+          onFinishLater={handleSaveQcAndClose}
+          onPass={handlePassQc}
+          onReportProblem={handleReportQcProblem}
+        />
 
         <FulfillmentEditModal
           visible={showFulfillmentModal}
