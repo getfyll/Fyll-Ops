@@ -66,6 +66,13 @@ import { useBusinessSettings } from '@/hooks/useBusinessSettings';
 import { isBusinessFeatureEnabled } from '@/lib/feature-access';
 import { SearchClearButton } from '@/components/SearchClearButton';
 import { fetchSocialCheckoutDrafts, getSocialCheckoutQueryKey } from '@/lib/social-checkout-query';
+import { supabaseData } from '@/lib/supabase/data';
+import { buildHomeNeeds, type HomePaymentRecord } from '@/lib/home-needs';
+import { NeedsYouCard, NeedsYouCarousel, useDismissedNeeds, useVisibleNeeds } from '@/components/home/NeedsYouToday';
+import { JumpToRow, JumpToGrid, buildJumpToItems } from '@/components/home/JumpToRow';
+import { EmptyLine, HomeCard, HomeCardHeader, HomeLink, HomeRow, KpiStrip, StatusText, HOME_GAP, type KpiItem } from '@/components/home/home-ui';
+import { FYLL_LIME, FYLL_LIME_INK, usePaymentsPalette } from '@/components/payments/payments-ui';
+import { useFonts, BricolageGrotesque_700Bold } from '@expo-google-fonts/bricolage-grotesque';
 
 const ORDER_NOTIFICATIONS_SEEN_KEY_PREFIX = 'dashboard-order-notifications-seen';
 const ONBOARDING_DISMISSED_KEY_PREFIX = 'dashboard-onboarding-dismissed';
@@ -92,71 +99,6 @@ const getTaskStatusMeta = (status: Task['status']) => {
   if (status === 'in_progress') return { label: 'In progress', color: '#2563EB', background: 'rgba(37,99,235,0.12)' };
   return { label: 'Todo', color: '#B45309', background: 'rgba(180,83,9,0.12)' };
 };
-
-interface MetricCardProps {
-  title: string;
-  value: string;
-  subtitle?: string;
-  trend?: number;
-  icon: React.ReactNode;
-  onPress?: () => void;
-  loading?: boolean;
-}
-
-function MetricCard({ title, value, subtitle, trend, icon, onPress, loading = false }: MetricCardProps) {
-  const colors = useThemeColors();
-  return (
-    <View style={{ flex: 1, minWidth: 0 }}>
-      <Pressable
-        onPress={onPress}
-        className="rounded-2xl p-4 active:opacity-80"
-        style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
-        disabled={!onPress}
-      >
-        <View className="flex-row items-center justify-between mb-3">
-          <View
-            className="w-10 h-10 rounded-xl items-center justify-center"
-            style={{ backgroundColor: colors.bg.secondary }}
-          >
-            {icon}
-          </View>
-          {loading ? (
-            <SkeletonBox width={44} height={22} rounded="full" />
-          ) : trend !== undefined ? (
-            <View className="flex-row items-center px-2 py-1 rounded-full" style={{ backgroundColor: trend >= 0 ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)' }}>
-              {trend >= 0 ? (
-                <ArrowUpRight size={12} color="#22C55E" strokeWidth={2.5} />
-              ) : (
-                <TrendingDown size={12} color="#EF4444" strokeWidth={2.5} />
-              )}
-              <Text style={{ color: trend >= 0 ? '#22C55E' : '#EF4444' }} className="text-xs font-semibold ml-0.5">
-                {Math.abs(trend)}%
-              </Text>
-            </View>
-          ) : null}
-          {onPress && !trend && !loading && (
-            <ChevronRight size={16} color={colors.text.tertiary} strokeWidth={2} />
-          )}
-        </View>
-        {loading ? (
-          <>
-            <SkeletonBox width="68%" height={11} rounded="md" />
-            <View style={{ height: 10 }} />
-            <SkeletonBox width="48%" height={24} rounded="md" />
-            <View style={{ height: 8 }} />
-            <SkeletonBox width="58%" height={11} rounded="md" />
-          </>
-        ) : (
-          <>
-            <Text style={{ color: colors.text.tertiary }} className="text-xs font-medium tracking-wide uppercase mb-1">{title}</Text>
-            <Text style={{ color: colors.text.primary }} className="text-2xl font-bold tracking-tight">{value}</Text>
-            {subtitle && <Text style={{ color: colors.text.muted }} className="text-xs mt-1">{subtitle}</Text>}
-          </>
-        )}
-      </Pressable>
-    </View>
-  );
-}
 
 type OnboardingStep = {
   id: string;
@@ -1253,102 +1195,87 @@ function NotificationPanel({
   );
 }
 
-// Recent Order Item Component
+// Recent order row (shared by the web and mobile home page). `wide` lays it out
+// as a table row for the full-width web card.
 interface RecentOrderItemProps {
   order: DashboardRecentOrder;
-  statusColorMap: Record<string, string>;
+  statusColor: string;
+  dateLabel: string;
   onPress: () => void;
-  isLast?: boolean;
+  first?: boolean;
+  wide?: boolean;
 }
 
-function RecentOrderItem({ order, statusColorMap, onPress, isLast = false }: RecentOrderItemProps) {
-  const colors = useThemeColors();
-
-  const statusColor = getOrderStatusColor(order.status, statusColorMap, '#F59E0B');
-
+function RecentOrderItem({ order, statusColor, dateLabel, onPress, first = false, wide = false }: RecentOrderItemProps) {
+  const palette = usePaymentsPalette();
+  if (wide) {
+    return (
+      <HomeRow onPress={onPress} first={first} style={{ gap: 16 }}>
+        <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600', flex: 1.5 }} numberOfLines={1}>{order.customerName}</Text>
+        <Text style={{ color: palette.faint, fontSize: 12, flex: 1 }} numberOfLines={1}>{order.orderNumber}</Text>
+        <Text style={{ color: palette.faint, fontSize: 12, width: 90 }}>{dateLabel}</Text>
+        <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600', width: 110, textAlign: 'right' }}>{formatCurrency(order.totalAmount)}</Text>
+        <View style={{ width: 150, alignItems: 'flex-end' }}>
+          <StatusText label={order.status} color={statusColor} />
+        </View>
+      </HomeRow>
+    );
+  }
   return (
-    <View>
-      <Pressable
-        onPress={onPress}
-        className="flex-row items-center py-3 active:opacity-70"
-        style={isLast ? undefined : { borderBottomWidth: 1, borderBottomColor: colors.border.light }}
-      >
-        <View className="flex-1">
-          <Text style={{ color: colors.text.primary }} className="font-semibold text-sm" numberOfLines={1}>
-            {order.customerName}
-          </Text>
-          <Text style={{ color: colors.text.tertiary }} className="text-xs mt-0.5">
-            {order.itemName} • {order.itemDetail}
-          </Text>
-        </View>
-        <View className="items-end">
-          <View className="px-2 py-1 rounded-md" style={{ backgroundColor: `${statusColor}15` }}>
-            <Text style={{ color: statusColor }} className="text-xs font-semibold">{order.status}</Text>
-          </View>
-        </View>
-      </Pressable>
-    </View>
+    <HomeRow onPress={onPress} first={first}>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>{order.customerName}</Text>
+        <Text style={{ color: palette.faint, fontSize: 12 }} numberOfLines={1}>{order.orderNumber} {'\u00b7'} {dateLabel}</Text>
+      </View>
+      <View style={{ alignItems: 'flex-end', gap: 2, flexShrink: 0 }}>
+        <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }}>{formatCurrency(order.totalAmount)}</Text>
+        <StatusText label={order.status} color={statusColor} />
+      </View>
+    </HomeRow>
   );
 }
 
 interface RecentPartnerJobItemProps {
   job: DashboardRecentPartnerJob;
   onPress: () => void;
-  isLast?: boolean;
+  first?: boolean;
 }
 
-function RecentPartnerJobItem({ job, onPress, isLast = false }: RecentPartnerJobItemProps) {
-  const colors = useThemeColors();
+function RecentPartnerJobItem({ job, onPress, first = false }: RecentPartnerJobItemProps) {
+  const palette = usePaymentsPalette();
 
   const normalizedStatus = String(job.status ?? '').trim().toLowerCase().replace(/[_-]+/g, ' ');
   const statusMeta = normalizedStatus.includes('cancel')
-    ? { label: 'Cancelled', color: '#DC2626', background: 'rgba(220,38,38,0.12)' }
+    ? { label: 'Cancelled', color: palette.danger }
     : normalizedStatus.includes('ready')
-      ? { label: 'Ready for pickup', color: '#2563EB', background: 'rgba(37,99,235,0.12)' }
+      ? { label: 'Ready for pickup', color: palette.tones.verified.ink }
       : normalizedStatus.includes('progress')
-        ? { label: 'In progress', color: '#B45309', background: 'rgba(180,83,9,0.12)' }
+        ? { label: 'In progress', color: palette.warn }
         : normalizedStatus.includes('sent to business') || normalizedStatus.includes('returned')
-          ? { label: 'Sent to business', color: '#16A34A', background: 'rgba(22,163,74,0.12)' }
+          ? { label: 'Sent to business', color: palette.tones.verified.ink }
           : normalizedStatus.includes('sent')
-            ? { label: 'Sent to partner', color: '#6B7280', background: 'rgba(107,114,128,0.12)' }
-            : { label: normalizedStatus ? normalizedStatus.replace(/\b\w/g, (char) => char.toUpperCase()) : 'Status', color: '#6B7280', background: 'rgba(107,114,128,0.12)' };
+            ? { label: 'Sent to partner', color: palette.muted }
+            : { label: normalizedStatus ? normalizedStatus.replace(/\b\w/g, (char) => char.toUpperCase()) : 'Status', color: palette.muted };
 
   return (
-    <View>
-      <Pressable
-        onPress={onPress}
-        className="flex-row items-center py-3 active:opacity-70"
-        style={isLast ? undefined : { borderBottomWidth: 1, borderBottomColor: colors.border.light }}
-      >
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={{ color: colors.text.primary }} className="font-semibold text-sm" numberOfLines={1}>
-            {job.customerName || 'Customer'}
-          </Text>
-          <Text style={{ color: colors.text.tertiary }} className="text-xs mt-0.5" numberOfLines={1}>
-            {job.jobType || job.itemLabel || 'Partner job'} • {job.partnerName || 'No partner'}
-          </Text>
-        </View>
-        <View style={{ alignItems: 'flex-end', flexShrink: 0, marginLeft: 12 }}>
-          <View
-            className="px-2 py-1 rounded-md"
-            style={{ backgroundColor: statusMeta.background, maxWidth: 150 }}
-          >
-            <Text style={{ color: statusMeta.color }} className="text-xs font-semibold" numberOfLines={1}>
-              {statusMeta.label}
-            </Text>
-          </View>
-        </View>
-      </Pressable>
-    </View>
+    <HomeRow onPress={onPress} first={first}>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>{job.customerName || 'Customer'}</Text>
+        <Text style={{ color: palette.faint, fontSize: 12 }} numberOfLines={1}>{job.jobType || job.itemLabel || 'Partner job'} {'\u00b7'} {job.partnerName || 'No partner'}</Text>
+      </View>
+      <StatusText label={statusMeta.label} color={statusMeta.color} />
+    </HomeRow>
   );
 }
 
 export default function DashboardScreen() {
   const router = useRouter();
   const colors = useThemeColors();
+  const palette = usePaymentsPalette();
   const isDark = colors.bg.primary === '#111111';
   const tabBarHeight = useTabBarHeight();
-  const { isDesktop } = useBreakpoint();
+  const { isDesktop, isMobile } = useBreakpoint();
+  const [bricolageLoaded] = useFonts({ BricolageGrotesque_700Bold });
   const isWebDesktop = Platform.OS === 'web' && isDesktop;
   const products = useFyllStore((s) => s.products);
   const orders = useFyllStore((s) => s.orders);
@@ -1760,6 +1687,46 @@ export default function DashboardScreen() {
     () => (socialCheckoutDraftsQuery.data ?? []).filter((draft) => getSocialCheckoutEffectiveStatus(draft) === 'payment_submitted').length,
     [socialCheckoutDraftsQuery.data]
   );
+  const isOfflineMode = useAuthStore((s) => s.isOfflineMode);
+  const useGlobalLowStockThreshold = useFyllStore((s) => s.useGlobalLowStockThreshold);
+  const globalLowStockThreshold = useFyllStore((s) => s.globalLowStockThreshold);
+  const canSeePaymentNeeds = userRole !== 'staff' && canUseSocialCheckout;
+  // Same query key as the Orders screen, so the two share one cached fetch.
+  const homePaymentsQuery = useQuery({
+    queryKey: ['orders-unlinked-verified-payments', businessId],
+    enabled: Boolean(businessId) && !isOfflineMode && canSeePaymentNeeds,
+    queryFn: async () => {
+      const rows = await supabaseData.fetchCollection<HomePaymentRecord>('payments', businessId!);
+      return rows.map((row) => row.data);
+    },
+    staleTime: 30_000,
+  });
+  const homeNeeds = useMemo(() => buildHomeNeeds({
+    orders,
+    products,
+    partnerJobs,
+    partners,
+    orderStatuses,
+    payments: canSeePaymentNeeds ? (homePaymentsQuery.data ?? null) : null,
+    openCasesCount: canUseCases ? openCasesCount : 0,
+    pendingVerificationCount: canSeePaymentNeeds ? pendingPaymentCount : 0,
+    globalLowStock: { enabled: useGlobalLowStockThreshold, value: globalLowStockThreshold },
+    now: new Date(eventNowTick),
+  }), [canSeePaymentNeeds, canUseCases, eventNowTick, globalLowStockThreshold, homePaymentsQuery.data, openCasesCount, orderStatuses, orders, partnerJobs, partners, pendingPaymentCount, products, useGlobalLowStockThreshold]);
+  const { dismissed: dismissedNeeds, dismiss: dismissNeed, restore: restoreNeeds } = useDismissedNeeds(businessId);
+  const visibleNeeds = useVisibleNeeds(homeNeeds, dismissedNeeds);
+  const jumpToItems = buildJumpToItems({
+    canUseCases,
+    canUseSocialCheckout,
+    canUseFinance,
+    canUseInsights,
+    isAdmin: userRole === 'admin',
+    isManagerOrAdmin: userRole === 'admin' || userRole === 'manager',
+    openCasesCount,
+    pendingPaymentCount,
+    financeBadgeCount: financeCardBadgeCount,
+    activePartnerJobsCount,
+  });
   const onboardingSteps = useMemo<OnboardingStep[]>(() => [
     {
       id: 'business-profile',
@@ -1933,10 +1900,13 @@ export default function DashboardScreen() {
     }
   };
 
-  const [selectedTrendIndex, setSelectedTrendIndex] = useState<number | null>(null);
+  const [selectedRevenueTrendIndex, setSelectedRevenueTrendIndex] = useState<number | null>(null);
+  const [selectedOrderVolumeIndex, setSelectedOrderVolumeIndex] = useState<number | null>(null);
 
-  const selectedTrendDay =
-    typeof selectedTrendIndex === 'number' ? revenueTrend7d.days[selectedTrendIndex] : null;
+  const selectedRevenueTrendDay =
+    typeof selectedRevenueTrendIndex === 'number' ? revenueTrend7d.days[selectedRevenueTrendIndex] : null;
+  const selectedOrderVolumeDay =
+    typeof selectedOrderVolumeIndex === 'number' ? revenueTrend7d.days[selectedOrderVolumeIndex] : null;
 
   const revenueLineData = useMemo(
     () => revenueTrend7d.days.map((day) => ({ key: day.key, label: day.label, value: day.value })),
@@ -1955,421 +1925,329 @@ export default function DashboardScreen() {
     return `₦${Math.round(value)}`;
   };
 
-  const WebRecentOrders = (
-    <WebCard style={{ padding: 0, flex: 1 }}>
-      <View style={{ padding: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Text style={{ color: colors.text.primary }} className="text-base font-bold">
-          Recent Orders
-        </Text>
-        <Pressable
-          onPress={() => router.push('/orders')}
-          className="flex-row items-center px-2 py-1 active:opacity-70"
-        >
-          <Text style={{ color: colors.text.primary }} className="text-xs font-semibold mr-1">
-            View All
-          </Text>
-          <ChevronRight size={14} color={colors.text.primary} strokeWidth={2} />
-        </Pressable>
-      </View>
+  const trendBadge = (change: number | null) => {
+    if (change === null) return null;
+    return (
+      <Text style={{ color: change >= 0 ? palette.limeOnSurface : palette.danger, fontSize: 12, fontWeight: '600' }}>
+        {change >= 0 ? '+' : '-'}{Math.abs(change)}%
+      </Text>
+    );
+  };
 
+  const renderRecentOrders = (limit: number, routeFor: (id: string) => string, wide = false) => (
+    <HomeCard>
+      <HomeCardHeader
+        title="Recent orders"
+        subtitle={shouldShowDashboardSkeleton ? undefined : `Last ${Math.min(limit, recentOrdersWeb.length)} orders`}
+        loading={shouldShowDashboardSkeleton}
+        right={<HomeLink onPress={() => router.push(isWebDesktop ? '/orders' : '/(tabs)/orders')} />}
+      />
       {shouldShowDashboardSkeleton ? (
-        <View style={{ paddingHorizontal: 18, paddingBottom: 18, gap: 12 }}>
-          {[0, 1, 2].map((index) => (
-            <View key={`web-order-skeleton-${index}`} className="flex-row items-center" style={{ gap: 12 }}>
-              <SkeletonBox width="22%" height={13} rounded="md" />
-              <SkeletonBox width="31%" height={13} rounded="md" />
-              <SkeletonBox width="18%" height={13} rounded="md" />
-              <SkeletonBox width="20%" height={24} rounded="md" />
+        [0, 1, 2].map((index) => (
+          <HomeRow key={`order-skeleton-${index}`} first={index === 0}>
+            <View style={{ flex: 1 }}>
+              <SkeletonBox width="55%" height={13} rounded="md" />
+              <View style={{ height: 7 }} />
+              <SkeletonBox width="38%" height={11} rounded="md" />
             </View>
-          ))}
-        </View>
+            <SkeletonBox width={70} height={22} rounded="full" />
+          </HomeRow>
+        ))
       ) : recentOrdersWeb.length === 0 ? (
-        <View style={{ paddingHorizontal: 18, paddingBottom: 18 }}>
-          <Text style={{ color: colors.text.muted }} className="text-sm">
-            No orders yet.
-          </Text>
-        </View>
+        <EmptyLine text="No orders yet." />
       ) : (
-        <View style={{ borderTopWidth: 1, borderTopColor: colors.border.light }}>
-          {recentOrdersWeb.map((order, idx) => {
-            const statusColor = getStatusColor(order.status);
-            const dateSource = order.orderDate ?? order.createdAt;
-            return (
-              <Pressable
-                key={order.id}
-                onPress={() => router.push(`/orders/${order.id}`)}
-                className="active:opacity-70"
-                style={{
-                  borderBottomWidth: idx === recentOrdersWeb.length - 1 ? 0 : 1,
-                  borderBottomColor: colors.border.light,
-                }}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingVertical: 14 }}>
-                  <Text style={{ color: colors.text.primary, flex: 1.1 }} className="text-sm font-semibold" numberOfLines={1}>
-                    {order.orderNumber}
-                  </Text>
-                  <Text style={{ color: colors.text.secondary, flex: 1.6 }} className="text-sm" numberOfLines={1}>
-                    {order.customerName}
-                  </Text>
-                  <Text style={{ color: colors.text.primary, flex: 1 }} className="text-sm font-semibold" numberOfLines={1}>
-                    {formatCurrency(order.totalAmount)}
-                  </Text>
-                  <View style={{ flex: 1.2, flexDirection: 'row' }}>
-                    <View className="px-2 py-1 rounded-md" style={{ backgroundColor: `${statusColor}15` }}>
-                      <Text style={{ color: statusColor }} className="text-xs font-semibold" numberOfLines={1}>
-                        {order.status}
-                      </Text>
-                    </View>
-                  </View>
-                  <Text style={{ color: colors.text.tertiary, width: 72, textAlign: 'right' }} className="text-sm">
-                    {formatShortDate(dateSource)}
-                  </Text>
-                </View>
-              </Pressable>
-            );
-          })}
-        </View>
-      )}
-    </WebCard>
-  );
-
-  const WebRecentPartnerJobs = (
-    <WebCard style={{ padding: 0, flex: 1 }}>
-      <View style={{ padding: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Text style={{ color: colors.text.primary }} className="text-base font-bold">
-          Partner Jobs
-        </Text>
-        <Pressable
-          onPress={() => router.push('/partners?partnerSection=jobs')}
-          className="flex-row items-center px-2 py-1 active:opacity-70"
-        >
-          <Text style={{ color: colors.text.primary }} className="text-xs font-semibold mr-1">
-            View All
-          </Text>
-          <ChevronRight size={14} color={colors.text.primary} strokeWidth={2} />
-        </Pressable>
-      </View>
-
-      {shouldShowDashboardSkeleton ? (
-        <View style={{ paddingHorizontal: 18, paddingBottom: 18, gap: 12 }}>
-          {[0, 1, 2].map((index) => (
-            <View key={`web-partner-job-skeleton-${index}`} className="flex-row items-center" style={{ gap: 12 }}>
-              <View style={{ flex: 1 }}>
-                <SkeletonBox width="58%" height={13} rounded="md" />
-                <View style={{ height: 7 }} />
-                <SkeletonBox width="42%" height={11} rounded="md" />
-              </View>
-              <SkeletonBox width={110} height={25} rounded="md" />
+        <>
+          {wide ? (
+            <View style={{ flexDirection: 'row', gap: 16, paddingBottom: 8 }}>
+              <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', flex: 1.5 }}>Customer</Text>
+              <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', flex: 1 }}>Order</Text>
+              <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', width: 90 }}>Date</Text>
+              <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', width: 110, textAlign: 'right' }}>Total</Text>
+              <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', width: 150, textAlign: 'right' }}>Status</Text>
             </View>
-          ))}
-        </View>
-      ) : recentPartnerJobs.length === 0 ? (
-        <View style={{ paddingHorizontal: 18, paddingBottom: 18 }}>
-          <Text style={{ color: colors.text.muted }} className="text-sm">
-            No partner jobs yet.
-          </Text>
-        </View>
-      ) : (
-        <View style={{ borderTopWidth: 1, borderTopColor: colors.border.light, paddingHorizontal: 18 }}>
-          {recentPartnerJobs.map((job, idx) => (
-            <RecentPartnerJobItem
-              key={job.id}
-              job={job}
-              onPress={() => router.push('/partners?partnerSection=jobs')}
-              isLast={idx === recentPartnerJobs.length - 1}
-            />
-          ))}
-        </View>
+          ) : null}
+        {recentOrdersWeb.slice(0, limit).map((order, index) => (
+          <RecentOrderItem
+            key={order.id}
+            order={order}
+            statusColor={getOrderStatusColor(order.status, orderStatusColorMap, '#F59E0B')}
+            dateLabel={formatShortDate(order.orderDate ?? order.createdAt)}
+            onPress={() => router.push(routeFor(order.id) as any)}
+            first={index === 0 && !wide}
+            wide={wide}
+          />
+        ))}
+        </>
       )}
-    </WebCard>
+    </HomeCard>
   );
 
-  const WebMostSoldProducts = (
-    <WebCard style={{ padding: 0, flex: 1 }}>
-      <View style={{ padding: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 }}>
-          <View
-            className="w-10 h-10 rounded-xl items-center justify-center mr-3"
-            style={{ backgroundColor: colors.bg.secondary }}
-          >
-            <Package size={20} color={colors.text.primary} strokeWidth={2} />
-          </View>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ color: colors.text.primary }} className="font-bold text-base" numberOfLines={1}>
-              Most Sold
-            </Text>
-            {shouldShowDashboardSkeleton ? (
-              <SkeletonBox width={150} height={11} rounded="md" />
-            ) : (
-              <Text style={{ color: colors.text.tertiary }} className="text-xs" numberOfLines={1}>
-                {mostSoldProducts.length === 0
-                  ? 'No sales yet'
-                  : `Top ${Math.min(mostSoldProducts.length, 8)} products by quantity`}
-              </Text>
-            )}
-          </View>
-        </View>
-
-        <Pressable onPress={() => router.push('/insights/best-sellers')} className="flex-row items-center px-2 py-1 active:opacity-70">
-          <Text style={{ color: colors.text.primary }} className="text-xs font-semibold mr-1">
-            View All
-          </Text>
-          <ChevronRight size={14} color={colors.text.primary} strokeWidth={2} />
-        </Pressable>
-      </View>
-
+  const renderPartnerJobs = (limit: number) => (
+    <HomeCard>
+      <HomeCardHeader
+        title="Partner jobs"
+        subtitle={shouldShowDashboardSkeleton ? undefined : `Last ${Math.min(limit, recentPartnerJobs.length)} jobs`}
+        loading={shouldShowDashboardSkeleton}
+        right={<HomeLink onPress={() => router.push('/partners?partnerSection=jobs' as any)} />}
+      />
       {shouldShowDashboardSkeleton ? (
-        <View style={{ paddingHorizontal: 18, paddingBottom: 18, gap: 12 }}>
-          {[0, 1, 2].map((index) => (
-            <View key={`web-most-sold-skeleton-${index}`} className="flex-row items-center" style={{ gap: 12 }}>
+        [0, 1, 2].map((index) => (
+          <HomeRow key={`job-skeleton-${index}`} first={index === 0}>
+            <View style={{ flex: 1 }}>
+              <SkeletonBox width="50%" height={13} rounded="md" />
+              <View style={{ height: 7 }} />
+              <SkeletonBox width="42%" height={11} rounded="md" />
+            </View>
+            <SkeletonBox width={90} height={22} rounded="full" />
+          </HomeRow>
+        ))
+      ) : recentPartnerJobs.length === 0 ? (
+        <EmptyLine text="No partner jobs yet." />
+      ) : (
+        recentPartnerJobs.slice(0, limit).map((job, index) => (
+          <RecentPartnerJobItem
+            key={job.id}
+            job={job}
+            onPress={() => router.push('/partners?partnerSection=jobs' as any)}
+            first={index === 0}
+          />
+        ))
+      )}
+    </HomeCard>
+  );
+
+  const renderMostSold = (limit: number, routeFor: (id: string) => string) => {
+    const top = mostSoldProducts.slice(0, limit);
+    const maxQuantity = Math.max(1, ...top.map((row) => row.quantity));
+    return (
+      <HomeCard>
+        <HomeCardHeader
+          title="Most sold"
+          subtitle={shouldShowDashboardSkeleton ? undefined : top.length === 0 ? 'No sales yet' : `Top ${top.length} products by quantity`}
+          loading={shouldShowDashboardSkeleton}
+          right={<HomeLink onPress={() => router.push('/insights/best-sellers' as any)} />}
+        />
+        {shouldShowDashboardSkeleton ? (
+          [0, 1, 2].map((index) => (
+            <HomeRow key={`sold-skeleton-${index}`} first={index === 0}>
               <View style={{ flex: 1 }}>
                 <SkeletonBox width="52%" height={13} rounded="md" />
                 <View style={{ height: 7 }} />
                 <SkeletonBox width="30%" height={11} rounded="md" />
               </View>
-              <SkeletonBox width={44} height={13} rounded="md" />
-            </View>
-          ))}
-        </View>
-      ) : mostSoldProducts.length === 0 ? (
-        <View style={{ paddingHorizontal: 18, paddingBottom: 18 }}>
-          <Text style={{ color: colors.text.muted }} className="text-sm">
-            No sales yet.
-          </Text>
-        </View>
-      ) : (
-        <View style={{ borderTopWidth: 1, borderTopColor: colors.border.light }}>
-          {mostSoldProducts.slice(0, 8).map((row, idx, arr) => (
-            <Pressable
-              key={row.productId}
-              onPress={() => router.push(`/inventory/${row.productId}`)}
-              className="active:opacity-70"
-              style={{
-                borderBottomWidth: idx === arr.length - 1 ? 0 : 1,
-                borderBottomColor: colors.border.light,
-              }}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingVertical: 14 }}>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ color: colors.text.primary }} className="text-sm font-semibold" numberOfLines={1}>
-                    {row.name}
-                  </Text>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mt-0.5" numberOfLines={1}>
-                    {row.sku}
-                  </Text>
+              <SkeletonBox width={30} height={13} rounded="md" />
+            </HomeRow>
+          ))
+        ) : top.length === 0 ? (
+          <EmptyLine text="No sales yet." />
+        ) : (
+          top.map((row, index) => (
+            <HomeRow key={row.productId} first={index === 0} onPress={() => router.push(routeFor(row.productId) as any)} style={{ alignItems: 'flex-start' }}>
+              <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '600', width: 16, paddingTop: 1 }}>{index + 1}</Text>
+              <View style={{ flex: 1, minWidth: 0, gap: 6 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>{row.name}</Text>
+                    <Text style={{ color: palette.faint, fontSize: 12 }} numberOfLines={1}>{row.sku}</Text>
+                  </View>
+                  <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }}>{row.quantity} sold</Text>
                 </View>
-                <Text style={{ color: colors.text.primary, width: 90, textAlign: 'right' }} className="text-sm font-semibold">
-                  {row.quantity}
-                </Text>
+                <View style={{ height: 4, borderRadius: 2, backgroundColor: palette.softFill, overflow: 'hidden' }}>
+                  <View style={{ height: 4, borderRadius: 2, width: `${Math.round((row.quantity / maxQuantity) * 100)}%`, backgroundColor: FYLL_LIME }} />
+                </View>
               </View>
-            </Pressable>
-          ))}
-        </View>
-      )}
-    </WebCard>
-  );
+            </HomeRow>
+          ))
+        )}
+      </HomeCard>
+    );
+  };
 
-  const WebRevenueTrend = (
-    <WebCard style={{ padding: 18, flex: 1 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 }}>
-          <View
-            className="w-10 h-10 rounded-xl items-center justify-center mr-3"
-            style={{ backgroundColor: colors.bg.secondary }}
-          >
-            <DollarSign size={20} color={colors.text.primary} strokeWidth={2} />
-          </View>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ color: colors.text.primary }} className="font-bold text-base" numberOfLines={1}>
-              Revenue Trend
-            </Text>
-            {shouldShowDashboardSkeleton ? (
-              <SkeletonBox width={180} height={11} rounded="md" />
-            ) : (
-              <Text style={{ color: colors.text.tertiary }} className="text-xs" numberOfLines={1}>
-                {selectedTrendDay
-                  ? `${formatShortDate(selectedTrendDay.key)} • ${formatCurrency(selectedTrendDay.value)}`
-                  : `Last 7 days • ${formatCurrency(revenueTrend7d.total)} • ${revenueTrend7d.ordersTotal} orders`}
-              </Text>
-            )}
-          </View>
-        </View>
-        {revenueTrend7d.change !== null ? (
-          <View
-            className="flex-row items-center px-2 py-1 rounded-full"
-            style={{ backgroundColor: revenueTrend7d.change >= 0 ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)' }}
-          >
-            {revenueTrend7d.change >= 0 ? (
-              <ArrowUpRight size={12} color="#22C55E" strokeWidth={2.5} />
-            ) : (
-              <TrendingDown size={12} color="#EF4444" strokeWidth={2.5} />
-            )}
-            <Text style={{ color: revenueTrend7d.change >= 0 ? '#22C55E' : '#EF4444' }} className="text-xs font-semibold ml-0.5">
-              {Math.abs(revenueTrend7d.change)}%
-            </Text>
-          </View>
-        ) : null}
-      </View>
-
+  const renderRevenueTrend = (chartHeight: number) => (
+    <HomeCard>
+      <HomeCardHeader
+        title="Revenue trend"
+        loading={shouldShowDashboardSkeleton}
+        subtitle={selectedRevenueTrendDay
+          ? `${formatShortDate(selectedRevenueTrendDay.key)} · ${formatCurrency(selectedRevenueTrendDay.value)}`
+          : `Last 7 days · ${formatCurrency(revenueTrend7d.total)} · ${revenueTrend7d.ordersTotal} orders`}
+        right={trendBadge(revenueTrend7d.change)}
+      />
       {shouldShowDashboardSkeleton ? (
-        <SkeletonBox width="100%" height={220} rounded="lg" />
+        <SkeletonBox width="100%" height={chartHeight} rounded="lg" />
       ) : (
         <InteractiveLineChart
           data={revenueLineData}
-          height={220}
-          lineColor={colors.text.primary}
-          gridColor={colors.border.light}
-          textColor={colors.text.muted}
-          selectedIndex={selectedTrendIndex}
-          onSelectIndex={setSelectedTrendIndex}
+          height={chartHeight}
+          lineColor={palette.limeOnSurface}
+          gridColor={palette.hairline}
+          textColor={palette.faint}
+          selectedIndex={selectedRevenueTrendIndex}
+          onSelectIndex={setSelectedRevenueTrendIndex}
           formatYLabel={formatCompactCurrencyTick}
+          formatValueLabel={formatCurrency}
+          tooltipBackgroundColor={palette.inverseBg}
+          tooltipTextColor={palette.inverseText}
         />
       )}
-    </WebCard>
-  );
-
-  const WebOrderVolume = (
-    <WebCard style={{ padding: 18, flex: 1 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 }}>
-          <View
-            className="w-10 h-10 rounded-xl items-center justify-center mr-3"
-            style={{ backgroundColor: colors.bg.secondary }}
-          >
-            <ShoppingCart size={20} color={colors.text.primary} strokeWidth={2} />
-          </View>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ color: colors.text.primary }} className="font-bold text-base" numberOfLines={1}>
-              Order Volume
-            </Text>
-            {shouldShowDashboardSkeleton ? (
-              <SkeletonBox width={150} height={11} rounded="md" />
-            ) : (
-              <Text style={{ color: colors.text.tertiary }} className="text-xs" numberOfLines={1}>
-                {selectedTrendDay
-                  ? `${formatShortDate(selectedTrendDay.key)} • ${selectedTrendDay.orders} orders`
-                  : `Last 7 days • ${revenueTrend7d.ordersTotal} orders`}
-              </Text>
-            )}
-          </View>
-        </View>
-        {revenueTrend7d.ordersChange !== null ? (
-          <View
-            className="flex-row items-center px-2 py-1 rounded-full"
-            style={{ backgroundColor: revenueTrend7d.ordersChange >= 0 ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)' }}
-          >
-            {revenueTrend7d.ordersChange >= 0 ? (
-              <ArrowUpRight size={12} color="#22C55E" strokeWidth={2.5} />
-            ) : (
-              <TrendingDown size={12} color="#EF4444" strokeWidth={2.5} />
-            )}
-            <Text style={{ color: revenueTrend7d.ordersChange >= 0 ? '#22C55E' : '#EF4444' }} className="text-xs font-semibold ml-0.5">
-              {Math.abs(revenueTrend7d.ordersChange)}%
-            </Text>
-          </View>
-        ) : null}
-      </View>
-
-      {shouldShowDashboardSkeleton ? (
-        <SkeletonBox width="100%" height={220} rounded="lg" />
-      ) : (
-        <InteractiveBarChart
-          data={orderVolumeData}
-          height={220}
-          barColor={colors.text.primary}
-          gridColor={colors.border.light}
-          textColor={colors.text.muted}
-          selectedIndex={selectedTrendIndex}
-          onSelectIndex={setSelectedTrendIndex}
-          formatYLabel={(value) => String(Math.round(value))}
-        />
-      )}
-    </WebCard>
-  );
-
-  const WebStaffTasksCard = (
-    <WebCard style={{ padding: 0, flex: 1 }}>
-      <View style={{ padding: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 }}>
-          <View
-            className="w-10 h-10 rounded-xl items-center justify-center mr-3"
-            style={{ backgroundColor: colors.bg.secondary }}
-          >
-            <ClipboardList size={20} color={colors.text.primary} strokeWidth={2} />
-          </View>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ color: colors.text.primary }} className="font-bold text-base" numberOfLines={1}>
-              Your Tasks
-            </Text>
-            <Text style={{ color: colors.text.tertiary }} className="text-xs" numberOfLines={1}>
-              {mobileHomeScopedTasks.length} added or assigned
-            </Text>
-          </View>
-        </View>
-        <Pressable onPress={() => router.push('/(tabs)/tasks' as any)} className="flex-row items-center px-2 py-1 active:opacity-70">
-          <Text style={{ color: colors.text.primary }} className="text-xs font-semibold mr-1">
-            View All
-          </Text>
-          <ChevronRight size={14} color={colors.text.primary} strokeWidth={2} />
-        </Pressable>
-      </View>
-
-      {mobileHomeTasksQuery.isPending || shouldShowDashboardSkeleton ? (
-        <View style={{ paddingHorizontal: 18, paddingBottom: 18, gap: 12 }}>
-          {[0, 1, 2].map((index) => (
-            <View key={`web-task-skeleton-${index}`} className="flex-row items-center" style={{ gap: 10 }}>
-              <SkeletonBox width={28} height={28} rounded="full" />
-              <View style={{ flex: 1 }}>
-                <SkeletonBox width="72%" height={13} rounded="md" />
-                <View style={{ height: 7 }} />
-                <SkeletonBox width="48%" height={11} rounded="md" />
-              </View>
-              <SkeletonBox width={62} height={22} rounded="full" />
+      {!isWebDesktop && !shouldShowDashboardMetricsSkeleton ? (
+        <View style={{ flexDirection: 'row', marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: palette.hairline }}>
+          {[
+            ['Products', stats.productSales],
+            ['Delivery', stats.deliveryFees],
+            ['Services', stats.servicesRevenue],
+          ].map(([label, amount], index) => (
+            <View key={String(label)} style={{ flex: 1, gap: 2, alignItems: index === 0 ? 'flex-start' : index === 1 ? 'center' : 'flex-end' }}>
+              <Text style={{ color: palette.faint, fontSize: 12, textAlign: index === 0 ? 'left' : index === 1 ? 'center' : 'right' }}>{label}</Text>
+              <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600', textAlign: index === 0 ? 'left' : index === 1 ? 'center' : 'right' }}>{formatCurrency(Number(amount))}</Text>
             </View>
           ))}
         </View>
-      ) : mobileHomeTaskRows.length === 0 ? (
-        <View style={{ paddingHorizontal: 18, paddingBottom: 18 }}>
-          <Text style={{ color: colors.text.muted }} className="text-sm">
-            No open tasks assigned or created by you.
-          </Text>
-        </View>
-      ) : (
-        <View style={{ borderTopWidth: 1, borderTopColor: colors.border.light }}>
-          {mobileHomeTaskRows.map((task, index) => {
-            const status = getTaskStatusMeta(task.status);
-            return (
-              <Pressable
-                key={task.id}
-                onPress={() => router.push(`/(tabs)/task/${task.id}` as any)}
-                className="active:opacity-70"
-                style={{
-                  borderBottomWidth: index === mobileHomeTaskRows.length - 1 ? 0 : 1,
-                  borderBottomColor: colors.border.light,
-                }}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingVertical: 14 }}>
-                  <Text style={{ color: colors.text.primary, flex: 1.5 }} className="text-sm font-semibold" numberOfLines={1}>
-                    {toSentenceCase(task.title)}
-                  </Text>
-                  <Text style={{ color: colors.text.tertiary, width: 92, textAlign: 'right' }} className="text-sm">
-                    {formatTaskDueDate(task.due_date)}
-                  </Text>
-                  <View style={{ width: 110, alignItems: 'flex-end' }}>
-                    <View className="px-2 py-1 rounded-md" style={{ backgroundColor: status.background }}>
-                      <Text style={{ color: status.color }} className="text-xs font-semibold" numberOfLines={1}>
-                        {status.label}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-              </Pressable>
-            );
-          })}
-        </View>
-      )}
-    </WebCard>
+      ) : null}
+    </HomeCard>
   );
+
+  const renderOrderVolume = (chartHeight: number) => (
+    <HomeCard>
+      <HomeCardHeader
+        title="Order volume"
+        loading={shouldShowDashboardSkeleton}
+        subtitle={selectedOrderVolumeDay
+          ? `${formatShortDate(selectedOrderVolumeDay.key)} · ${selectedOrderVolumeDay.orders} orders`
+          : `Last 7 days · ${revenueTrend7d.ordersTotal} orders`}
+        right={trendBadge(revenueTrend7d.ordersChange)}
+      />
+      {shouldShowDashboardSkeleton ? (
+        <SkeletonBox width="100%" height={chartHeight} rounded="lg" />
+      ) : (
+        <InteractiveBarChart
+          data={orderVolumeData}
+          height={chartHeight}
+          barColor={FYLL_LIME}
+          gridColor={palette.hairline}
+          textColor={palette.faint}
+          selectedIndex={selectedOrderVolumeIndex}
+          onSelectIndex={setSelectedOrderVolumeIndex}
+          formatYLabel={(value) => String(Math.round(value))}
+          formatValueLabel={(value) => `${Math.round(value)} ${Math.round(value) === 1 ? 'order' : 'orders'}`}
+          tooltipBackgroundColor={palette.inverseBg}
+          tooltipTextColor={palette.inverseText}
+        />
+      )}
+    </HomeCard>
+  );
+
+  const renderTasks = () => (
+    <HomeCard>
+      <HomeCardHeader
+        title={userRole === 'staff' ? 'Your tasks' : 'Tasks'}
+        subtitle={userRole === 'staff' ? `${mobileHomeScopedTasks.length} added or assigned` : `${mobileHomeScopedTasks.length} active`}
+        right={<HomeLink onPress={() => router.push('/(tabs)/tasks' as any)} />}
+      />
+      {mobileHomeTasksQuery.isPending || shouldShowDashboardSkeleton ? (
+        [0, 1, 2].map((index) => (
+          <HomeRow key={`task-skeleton-${index}`} first={index === 0}>
+            <View style={{ flex: 1 }}>
+              <SkeletonBox width="62%" height={13} rounded="md" />
+              <View style={{ height: 7 }} />
+              <SkeletonBox width="36%" height={11} rounded="md" />
+            </View>
+            <SkeletonBox width={64} height={22} rounded="full" />
+          </HomeRow>
+        ))
+      ) : mobileHomeTaskRows.length === 0 ? (
+        <EmptyLine text="No open tasks assigned or created by you." />
+      ) : (
+        mobileHomeTaskRows.map((task, index) => {
+          const status = getTaskStatusMeta(task.status);
+          return (
+            <HomeRow key={task.id} first={index === 0} onPress={() => router.push(`/(tabs)/task/${task.id}` as any)}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>{toSentenceCase(task.title)}</Text>
+                <Text style={{ color: palette.faint, fontSize: 12 }}>{formatTaskDueDate(task.due_date)}</Text>
+              </View>
+              <StatusText label={status.label} color={status.color} />
+            </HomeRow>
+          );
+        })
+      )}
+    </HomeCard>
+  );
+
+  const renderSalesBySource = () => (
+    <HomeCard>
+      <HomeCardHeader
+        title="Sales by source"
+        right={<HomeLink onPress={() => router.push('/insights/platforms' as any)} />}
+      />
+      {shouldShowDashboardSkeleton ? (
+        [0, 1, 2, 3].map((index) => (
+          <View key={`source-skeleton-${index}`} style={{ marginBottom: 12 }}>
+            <SkeletonBox width="38%" height={13} rounded="md" />
+            <View style={{ height: 8 }} />
+            <SkeletonBox width="100%" height={6} rounded="full" />
+          </View>
+        ))
+      ) : platformData.length === 0 ? (
+        <EmptyLine text="No orders yet." />
+      ) : (
+        platformData.slice(0, 4).map((item, index) => (
+          <View key={item.label} style={{ gap: 6, paddingVertical: 10, borderTopWidth: index === 0 ? 0 : 1, borderTopColor: palette.hairline }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
+              <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>{item.label}</Text>
+              <Text style={{ color: palette.faint, fontSize: 12 }}>
+                <Text style={{ color: palette.text, fontWeight: '600' }}>{item.value}</Text> {'·'} {item.percentage}%
+              </Text>
+            </View>
+            <View style={{ height: 4, borderRadius: 2, backgroundColor: palette.softFill, overflow: 'hidden' }}>
+              <View style={{ height: 4, borderRadius: 2, width: `${Math.min(item.percentage, 100)}%`, backgroundColor: FYLL_LIME }} />
+            </View>
+          </View>
+        ))
+      )}
+    </HomeCard>
+  );
+
+  const kpiItems: KpiItem[] = [
+    ...((userRole === 'admin' || userRole === 'manager') ? [{
+      key: 'revenue',
+      label: 'Total revenue',
+      value: formatCurrency(stats.totalRevenue),
+      sub: 'this month',
+      trend: stats.revenueChange !== 0 ? stats.revenueChange : null,
+      onPress: () => handleCardPress(isWebDesktop ? '/insights' : '/(tabs)/insights'),
+    }] : []),
+    {
+      key: 'delivery',
+      label: 'Out for delivery',
+      value: String(fulfillment.dispatch),
+      sub: `${stats.pendingOrders} open orders`,
+      onPress: () => goToFulfillment('dispatch'),
+    },
+    {
+      key: 'inventory',
+      label: 'Inventory items',
+      value: String(dashboardMetrics?.inventoryVariantCount ?? 0),
+      sub: `${dashboardMetrics?.productCount ?? 0} products`,
+      onPress: () => handleCardPress(isWebDesktop ? '/inventory' : '/(tabs)/inventory'),
+    },
+    {
+      key: 'customers',
+      label: 'Customers',
+      value: String(dashboardMetrics?.customerCount ?? 0),
+      sub: 'total customers',
+      onPress: () => handleCardPress('/customers'),
+    },
+  ];
+
+  const greetingHour = new Date(eventNowTick).getHours();
+  const greeting = greetingHour < 12 ? 'Good morning' : greetingHour < 17 ? 'Good afternoon' : 'Good evening';
+  const todayLabel = new Date(eventNowTick).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+  const needsSummary = visibleNeeds.length === 0
+    ? 'Nothing needs you right now'
+    : `${visibleNeeds.length} ${visibleNeeds.length === 1 ? 'thing needs' : 'things need'} you today`;
+
+  const firstName = userName.trim().split(/\s+/)[0] ?? '';
 
   if (isWebDesktop) {
     return (
@@ -2391,22 +2269,18 @@ export default function DashboardScreen() {
           >
             <WebContainer>
               <WebPageHeader
-                title="Dashboard"
-                subtitle={userName ? `Welcome back, ${userName}` : 'Welcome back'}
+                title={firstName ? `${greeting}, ${firstName}` : greeting}
+                titleTextStyle={bricolageLoaded ? { fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400' } : undefined}
+                subtitle={`${todayLabel} · ${needsSummary}`}
                 actions={
                   <>
                     <Pressable
                       onPress={() => router.push('/new-order')}
                       className="rounded-full px-4 flex-row items-center active:opacity-80"
-                      style={{ backgroundColor: colors.accent.primary, height: 44 }}
+                      style={{ backgroundColor: FYLL_LIME, height: 40 }}
                     >
-                      <Plus size={18} color={colors.bg.primary === '#111111' ? '#000000' : '#FFFFFF'} strokeWidth={2.5} />
-                      <Text
-                        style={{ color: colors.bg.primary === '#111111' ? '#000000' : '#FFFFFF' }}
-                        className="font-semibold ml-2 text-sm"
-                      >
-                        New Order
-                      </Text>
+                      <Plus size={16} color={FYLL_LIME_INK} strokeWidth={2.6} />
+                      <Text style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '600', marginLeft: 6 }}>New order</Text>
                     </Pressable>
                     <WebFeatureSearchMenu />
                     <WebMoreMenu />
@@ -2418,100 +2292,62 @@ export default function DashboardScreen() {
                 }
               />
 
-              {showAuditBanner ? (
-                <View style={{ marginTop: 16 }}>
+              <View style={{ marginTop: HOME_GAP, gap: HOME_GAP }}>
+                {showAuditBanner ? (
                   <AuditBanner onPress={() => handleQuickAction('/inventory-audit')} inset={false} />
-                </View>
-              ) : null}
+                ) : null}
 
-              {upcomingHomeEvent && upcomingHomeEventMeta ? (
-                <View style={{ marginTop: 16 }}>
+                {upcomingHomeEvent && upcomingHomeEventMeta ? (
                   <EventBanner
                     title={upcomingHomeEventMeta.title}
                     subtitle={upcomingHomeEventMeta.subtitle}
                     onPress={() => router.push(`/(tabs)/task/${upcomingHomeEvent.id}` as any)}
                     inset={false}
                   />
-                </View>
-              ) : null}
+                ) : null}
 
-              {showOnboardingChecklist ? (
-                <View style={{ marginTop: 16 }}>
+                {showOnboardingChecklist ? (
                   <OnboardingChecklistCard
                     steps={onboardingSteps}
                     onDismiss={handleDismissOnboarding}
                     onStepPress={handleOnboardingStepPress}
                     inset={false}
                   />
-                </View>
-              ) : null}
+                ) : null}
 
-              <View style={{ marginTop: 16 }}>
+                <JumpToRow items={jumpToItems} onPress={handleCardPress} />
+
+                <KpiStrip items={kpiItems} loading={shouldShowDashboardMetricsSkeleton} />
+
+                <NeedsYouCard
+                  needs={visibleNeeds}
+                  onAction={handleCardPress}
+                  onDismiss={dismissNeed}
+                  onRestore={restoreNeeds}
+                />
+
                 <FulfillmentPipelineCard
                   counts={fulfillment}
                   onPress={() => goToFulfillment()}
                   onStagePress={(stage) => goToFulfillment(stage)}
                 />
-              </View>
 
-              <View style={{ marginTop: 18, flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-                {(userRole === 'admin' || userRole === 'manager') && (
-                  <MetricCard
-                    title="Total Revenue"
-                    value={formatCurrency(stats.totalRevenue)}
-                    subtitle="This month"
-                    trend={stats.revenueChange}
-                    icon={<DollarSign size={18} color={colors.text.primary} strokeWidth={2.5} />}
-                    onPress={() => handleCardPress('/insights')}
-                    loading={shouldShowDashboardMetricsSkeleton}
-                  />
-                )}
-                <MetricCard
-                  title="Active Orders"
-                  value={String(stats.pendingOrders)}
-                  subtitle={`${stats.totalOrders} total`}
-                  icon={<ShoppingCart size={18} color={colors.text.primary} strokeWidth={2.5} />}
-                  onPress={() => handleCardPress('/orders')}
-                  loading={shouldShowDashboardMetricsSkeleton}
-                />
-                <MetricCard
-                  title="Inventory Items"
-                  value={String(dashboardMetrics?.inventoryVariantCount ?? 0)}
-                  subtitle={`${dashboardMetrics?.productCount ?? 0} products`}
-                  icon={<Package size={18} color={colors.text.primary} strokeWidth={2.5} />}
-                  onPress={() => handleCardPress('/inventory')}
-                  loading={shouldShowDashboardMetricsSkeleton}
-                />
-                <MetricCard
-                  title="Customers"
-                  value={String(dashboardMetrics?.customerCount ?? 0)}
-                  subtitle="Total customers"
-                  icon={<Users size={18} color={colors.text.primary} strokeWidth={2.5} />}
-                  onPress={() => handleCardPress('/customers')}
-                  loading={shouldShowDashboardMetricsSkeleton}
-                />
-              </View>
-
-              <View style={{ marginTop: 16, flexDirection: 'row', alignItems: 'stretch', gap: 16 }}>
-                {(userRole === 'admin' || userRole === 'manager') && (
-                  <View style={{ flex: 1.4, minWidth: 0 }}>{WebRevenueTrend}</View>
-                )}
-                <View style={{ flex: 1, minWidth: 0 }}>{WebOrderVolume}</View>
-              </View>
-
-              {userRole === 'staff' ? (
-                <View style={{ marginTop: 16 }}>
-                  {WebStaffTasksCard}
+                <View style={{ flexDirection: 'row', alignItems: 'stretch', gap: HOME_GAP }}>
+                  {(userRole === 'admin' || userRole === 'manager') && (
+                    <View style={{ flex: 1.4, minWidth: 0 }}>{renderRevenueTrend(200)}</View>
+                  )}
+                  <View style={{ flex: 1, minWidth: 0 }}>{renderOrderVolume(200)}</View>
                 </View>
-              ) : null}
 
-              <View style={{ marginTop: 16, flexDirection: 'row', alignItems: 'stretch', gap: 16 }}>
-                <View style={{ flex: 1.4, minWidth: 0 }}>{WebRecentOrders}</View>
-                <View style={{ flex: 1, minWidth: 0 }}>{WebMostSoldProducts}</View>
-              </View>
+                {userRole === 'staff' ? renderTasks() : null}
 
-              <View style={{ marginTop: 16 }}>
-                {WebRecentPartnerJobs}
+                {renderRecentOrders(8, (id) => `/orders/${id}`, true)}
+
+                <View style={{ flexDirection: 'row', alignItems: 'stretch', gap: HOME_GAP }}>
+                  <View style={{ flex: 1, minWidth: 0 }}>{renderPartnerJobs(4)}</View>
+                  <View style={{ flex: 1, minWidth: 0 }}>{renderMostSold(4, (id) => `/inventory/${id}`)}</View>
+                  <View style={{ flex: 1, minWidth: 0 }}>{renderSalesBySource()}</View>
+                </View>
               </View>
             </WebContainer>
           </ScrollView>
@@ -2526,16 +2362,16 @@ export default function DashboardScreen() {
         <ScrollView
           className="flex-1"
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: tabBarHeight + 16 }}
+          contentContainerStyle={{ paddingBottom: tabBarHeight + 72 }}
         >
           {/* Header */}
-          <View className="px-5 pt-6 pb-2">
-            <View className="flex-row items-center justify-between">
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: colors.text.tertiary }} className="text-sm font-medium">Welcome back</Text>
-                {userName ? (
-                  <Text style={{ color: colors.text.primary }} className="text-3xl font-bold tracking-tight">{userName}</Text>
-                ) : null}
+          <View style={{ paddingHorizontal: 20, paddingTop: 24, paddingBottom: 4 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                <Text style={{ color: palette.faint, fontSize: 12 }}>{todayLabel}</Text>
+                <Text style={{ color: palette.text, fontSize: 22, fontWeight: bricolageLoaded ? '400' : '700', fontFamily: bricolageLoaded ? 'BricolageGrotesque_700Bold' : undefined, letterSpacing: -0.4 }} numberOfLines={1}>
+                  {firstName ? `${greeting}, ${firstName}` : greeting}
+                </Text>
               </View>
               <NotificationBell
                 count={unreadNotificationCount}
@@ -2581,682 +2417,90 @@ export default function DashboardScreen() {
             />
           ) : null}
 
-          {/* Hero Revenue Card — admin & manager only */}
-          {(userRole === 'admin' || userRole === 'manager') && (
-          <View className="px-5 pt-4">
-            <View
-              className="rounded-3xl overflow-hidden p-6"
-              style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
-            >
-              <View className="flex-row items-center justify-between mb-4">
-                <Text style={{ color: colors.text.muted }} className="text-sm font-medium">Total Revenue</Text>
-                {shouldShowDashboardMetricsSkeleton ? (
-                  <SkeletonBox width={48} height={24} rounded="full" />
-                ) : stats.revenueChange !== 0 ? (
-                  <View style={{ backgroundColor: stats.revenueChange >= 0 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999 }}>
-                    {stats.revenueChange >= 0 ? (
-                      <ArrowUpRight size={12} color="#22C55E" strokeWidth={2.5} />
-                    ) : (
-                      <TrendingDown size={12} color="#EF4444" strokeWidth={2.5} />
-                    )}
-                    <Text style={{ color: stats.revenueChange >= 0 ? '#22C55E' : '#EF4444', fontSize: 12, fontWeight: '700', marginLeft: 2 }}>
-                      {Math.abs(stats.revenueChange)}%
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
-              {shouldShowDashboardMetricsSkeleton ? (
-                <>
-                  <SkeletonBox width="72%" height={38} rounded="md" />
-                  <View style={{ height: 8 }} />
-                  <SkeletonBox width="30%" height={14} rounded="md" />
-                </>
-              ) : (
-                <>
-                  <Text style={{ color: colors.text.primary }} className="text-4xl font-bold tracking-tight mb-1">
-                    {formatCurrency(stats.totalRevenue)}
-                  </Text>
-                  <Text style={{ color: colors.text.muted }} className="text-sm">This month</Text>
-                </>
-              )}
-
-              <View className="flex-row mt-4 pt-4" style={{ borderTopWidth: 1, borderTopColor: colors.border.light }}>
-                <View className="flex-1">
-                  <Text style={{ color: colors.text.muted }} className="text-xs">Products</Text>
-                  {shouldShowDashboardMetricsSkeleton ? <SkeletonBox width="78%" height={14} rounded="md" /> : <Text style={{ color: colors.text.primary }} className="font-semibold">{formatCurrency(stats.productSales)}</Text>}
-                </View>
-                <View className="flex-1">
-                  <Text style={{ color: colors.text.muted }} className="text-xs">Delivery</Text>
-                  {shouldShowDashboardMetricsSkeleton ? <SkeletonBox width="78%" height={14} rounded="md" /> : <Text style={{ color: colors.text.primary }} className="font-semibold">{formatCurrency(stats.deliveryFees)}</Text>}
-                </View>
-                <View className="flex-1">
-                  <Text style={{ color: colors.text.muted }} className="text-xs">Services</Text>
-                  {shouldShowDashboardMetricsSkeleton ? <SkeletonBox width="78%" height={14} rounded="md" /> : <Text style={{ color: colors.text.primary }} className="font-semibold">{formatCurrency(stats.servicesRevenue)}</Text>}
-                </View>
-              </View>
-            </View>
-          </View>
-          )}
-
-          {/* Stats Grid - Clickable */}
-          <View className="px-5 pt-4">
-            <View className="flex-row flex-wrap gap-3">
-              <MetricCard
-                title="Active Orders"
-                value={String(stats.pendingOrders)}
-                subtitle={`${stats.totalOrders} total`}
-                icon={<ShoppingCart size={20} color={colors.text.primary} strokeWidth={2} />}
-                onPress={() => handleCardPress('/(tabs)/orders')}
-                loading={shouldShowDashboardMetricsSkeleton}
+          {!shouldShowDashboardSkeleton ? (
+            <View className="pt-4">
+              <NeedsYouCarousel
+                needs={visibleNeeds}
+                onAction={handleCardPress}
+                onDismiss={dismissNeed}
+                onRestore={restoreNeeds}
               />
-              <MetricCard
-                title="Products"
-                value={String(dashboardMetrics?.productCount ?? 0)}
-                subtitle="in catalog"
-                icon={<BarChart3 size={20} color={colors.text.primary} strokeWidth={2} />}
-                onPress={() => handleCardPress('/(tabs)/inventory')}
-                loading={shouldShowDashboardMetricsSkeleton}
-              />
-            </View>
-          </View>
-
-          <View className="px-5 pt-6">
-            <View className="flex-row gap-3">
-              {canUseCases ? (
-                <Pressable
-                  onPress={() => handleCardPress('/cases')}
-                  className="flex-1 rounded-2xl p-4 active:opacity-80"
-                  style={{
-                    backgroundColor: colors.bg.card,
-                    borderWidth: 1,
-                    borderColor: colors.border.light,
-                    position: 'relative',
-                  }}
-                >
-                  {openCasesCount > 0 ? (
-                    <View
-                      className="rounded-full items-center justify-center"
-                      style={{
-                        position: 'absolute',
-                        top: 10,
-                        right: 10,
-                        minWidth: 22,
-                        height: 22,
-                        paddingHorizontal: 6,
-                        backgroundColor: '#F59E0B',
-                      }}
-                    >
-                      <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '700' }}>
-                        {openCasesCount > 99 ? '99+' : openCasesCount}
-                      </Text>
-                    </View>
-                  ) : null}
-                  <View
-                    className="w-10 h-10 rounded-xl items-center justify-center mb-3"
-                    style={{ backgroundColor: 'rgba(245,158,11,0.14)' }}
-                  >
-                    <FileText size={20} color="#F59E0B" strokeWidth={2.5} />
-                  </View>
-                  <View className="flex-row items-center justify-between">
-                    <Text style={{ color: colors.text.primary }} className="font-bold text-sm">Cases</Text>
-                  </View>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1" numberOfLines={2}>
-                    {openCasesCount > 0 ? 'Open cases' : 'Customer cases'}
-                  </Text>
-                </Pressable>
-              ) : null}
-
-              {canUseSocialCheckout ? (
-                <Pressable
-                  onPress={() => handleCardPress('/payments')}
-                  className="flex-1 rounded-2xl p-4 active:opacity-80"
-                  style={{
-                    backgroundColor: colors.bg.card,
-                    borderWidth: 1,
-                    borderColor: colors.border.light,
-                    position: 'relative',
-                  }}
-                >
-                  {pendingPaymentCount > 0 ? (
-                    <View
-                      className="rounded-full items-center justify-center"
-                      style={{
-                        position: 'absolute',
-                        top: 10,
-                        right: 10,
-                        minWidth: 22,
-                        height: 22,
-                        paddingHorizontal: 6,
-                        backgroundColor: '#8B5CF6',
-                      }}
-                    >
-                      <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '700' }}>
-                        {pendingPaymentCount > 99 ? '99+' : pendingPaymentCount}
-                      </Text>
-                    </View>
-                  ) : null}
-                  <View
-                    className="w-10 h-10 rounded-xl items-center justify-center mb-3"
-                    style={{ backgroundColor: 'rgba(139,92,246,0.12)' }}
-                  >
-                    <Wallet size={20} color="#8B5CF6" strokeWidth={2.5} />
-                  </View>
-                  <View className="flex-row items-center justify-between">
-                    <Text style={{ color: colors.text.primary }} className="font-bold text-sm">Payments</Text>
-                  </View>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1" numberOfLines={2}>
-                    {pendingPaymentCount > 0 ? 'Pending review' : 'Social checkout links'}
-                  </Text>
-                </Pressable>
-              ) : null}
-            </View>
-          </View>
-
-          {/* Finance & Insights navigation cards */}
-          {(userRole === 'admin' || userRole === 'manager') && (canUseFinance || canUseInsights) && (
-            <View className="px-5 pt-6">
-              <View className="flex-row gap-3">
-                {canUseFinance ? (
-                  <Pressable
-                    onPress={() => router.push('/(tabs)/finance' as any)}
-                    className="flex-1 rounded-2xl p-4 active:opacity-80"
-                    style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light, position: 'relative' }}
-                  >
-                    {financeCardBadgeCount > 0 ? (
-                      <View
-                        className="rounded-full items-center justify-center"
-                        style={{
-                          position: 'absolute',
-                          top: 10,
-                          right: 10,
-                          minWidth: 22,
-                          height: 22,
-                          paddingHorizontal: 6,
-                          backgroundColor: '#2563EB',
-                        }}
-                      >
-                        <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '700' }}>
-                          {financeCardBadgeCount > 99 ? '99+' : financeCardBadgeCount}
-                        </Text>
-                      </View>
-                    ) : null}
-                    <View className="w-9 h-9 rounded-xl items-center justify-center mb-2" style={{ backgroundColor: 'rgba(16,185,129,0.12)' }}>
-                      <DollarSign size={18} color="#10B981" strokeWidth={2.5} />
-                    </View>
-                    <Text style={{ color: colors.text.primary }} className="font-bold text-sm">Finance</Text>
-                    <Text style={{ color: colors.text.tertiary }} className="text-xs mt-0.5">
-                      {userRole === 'admin'
-                        ? `${financeCardBadgeCount} requests pending`
-                        : 'Expenses & procurement'}
-                    </Text>
-                  </Pressable>
-                ) : null}
-                {userRole === 'admin' && canUseInsights ? (
-                  <Pressable
-                    onPress={() => router.push('/(tabs)/insights' as any)}
-                    className="flex-1 rounded-2xl p-4 active:opacity-80"
-                    style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
-                  >
-                    <View className="w-9 h-9 rounded-xl items-center justify-center mb-2" style={{ backgroundColor: 'rgba(59,130,246,0.12)' }}>
-                      <BarChart3 size={18} color="#3B82F6" strokeWidth={2.5} />
-                    </View>
-                    <Text style={{ color: colors.text.primary }} className="font-bold text-sm">Insights</Text>
-                    <Text style={{ color: colors.text.tertiary }} className="text-xs mt-0.5">Sales & trends</Text>
-                  </Pressable>
-                ) : null}
-              </View>
-            </View>
-          )}
-
-          {/* Partner Jobs */}
-          <View className="px-5 pt-6">
-            <Pressable
-              onPress={() => router.push('/partners?partnerSection=jobs' as any)}
-              className="w-full rounded-2xl p-4 active:opacity-80"
-              style={{
-                backgroundColor: colors.bg.card,
-                borderWidth: 1,
-                borderColor: colors.border.light,
-                position: 'relative',
-              }}
-            >
-              {activePartnerJobsCount > 0 ? (
-                <View
-                  className="rounded-full items-center justify-center"
-                  style={{
-                    position: 'absolute',
-                    top: '50%',
-                    marginTop: -11,
-                    right: 14,
-                    minWidth: 22,
-                    height: 22,
-                    paddingHorizontal: 6,
-                    backgroundColor: isDark ? '#FFFFFF' : '#000000',
-                  }}
-                >
-                  <Text style={{ color: isDark ? '#000000' : '#FFFFFF', fontSize: 11, fontWeight: '700' }}>
-                    {activePartnerJobsCount > 99 ? '99+' : activePartnerJobsCount}
-                  </Text>
-                </View>
-              ) : null}
-              <View className="flex-row items-center">
-                <View
-                  className="w-10 h-10 rounded-xl items-center justify-center mr-3"
-                  style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)' }}
-                >
-                  <Truck size={20} color={isDark ? '#FFFFFF' : '#000000'} strokeWidth={2.5} />
-                </View>
-                <View className="flex-1 pr-10">
-                  <Text style={{ color: colors.text.primary }} className="font-bold text-sm">Partner Jobs</Text>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mt-0.5" numberOfLines={1}>
-                    {activePartnerJobsCount > 0 ? `${activePartnerJobsCount} active job${activePartnerJobsCount === 1 ? '' : 's'}` : 'No active jobs'}
-                  </Text>
-                </View>
-              </View>
-            </Pressable>
-          </View>
-
-          {/* Fulfillment Pipeline */}
-          <View className="px-5 pt-6">
-            <FulfillmentPipelineCard
-              counts={fulfillment}
-              onPress={() => goToFulfillment()}
-              onStagePress={(stage) => goToFulfillment(stage)}
-            />
-          </View>
-
-          {/* Recent Orders Feed */}
-          {(shouldShowDashboardSkeleton || recentOrdersMobile.length > 0) && (
-            <View className="px-5 pt-6">
-              <View
-                className="rounded-2xl p-4"
-                style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
-              >
-                <View className="flex-row items-center mb-2">
-                  <View className="w-10 h-10 rounded-xl items-center justify-center mr-3" style={{ backgroundColor: colors.bg.secondary }}>
-                    <ShoppingCart size={20} color={colors.text.primary} strokeWidth={2} />
-                  </View>
-                  <View className="flex-1">
-                    <Text style={{ color: colors.text.primary }} className="font-bold text-base">Recent Orders</Text>
-                    {shouldShowDashboardSkeleton ? (
-                      <SkeletonBox width={72} height={11} rounded="md" />
-                    ) : (
-                      <Text style={{ color: colors.text.tertiary }} className="text-xs">Last {recentOrdersMobile.length} orders</Text>
-                    )}
-                  </View>
-                  <Pressable
-                    onPress={() => router.push('/(tabs)/orders')}
-                    className="flex-row items-center px-3 py-1.5 rounded-full active:opacity-70"
-                    style={{ backgroundColor: colors.bg.secondary }}
-                  >
-                    <Text style={{ color: colors.text.primary }} className="text-xs font-semibold mr-1">View All</Text>
-                    <ChevronRight size={14} color={colors.text.primary} strokeWidth={2} />
-                  </Pressable>
-                </View>
-                {shouldShowDashboardSkeleton ? (
-                  Array.from({ length: 4 }).map((_, index) => (
-                    <View
-                      key={`recent-order-skeleton-${index}`}
-                      className="flex-row items-center"
-                      style={{
-                        paddingVertical: 12,
-                        borderTopWidth: index === 0 ? 0 : 1,
-                        borderTopColor: colors.border.light,
-                      }}
-                    >
-                      <View style={{ flex: 1 }}>
-                        <SkeletonBox width="58%" height={13} rounded="md" />
-                        <View style={{ height: 8 }} />
-                        <SkeletonBox width="42%" height={11} rounded="md" />
-                      </View>
-                      <SkeletonBox width={78} height={22} rounded="full" />
-                    </View>
-                  ))
-                ) : (
-                  recentOrdersMobile.map((order, index) => (
-                    <RecentOrderItem
-                      key={order.id}
-                      order={order}
-                      statusColorMap={orderStatusColorMap}
-                      onPress={() => router.push(`/order/${order.id}`)}
-                      isLast={index === recentOrdersMobile.length - 1}
-                    />
-                  ))
-                )}
-              </View>
-            </View>
-          )}
-
-          {(shouldShowDashboardSkeleton || recentPartnerJobs.length > 0) && (
-            <View className="px-5 pt-6">
-              <View
-                className="rounded-2xl p-4"
-                style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
-              >
-                <View className="flex-row items-center mb-2">
-                  <View className="w-10 h-10 rounded-xl items-center justify-center mr-3" style={{ backgroundColor: colors.bg.secondary }}>
-                    <Truck size={20} color={colors.text.primary} strokeWidth={2} />
-                  </View>
-                  <View className="flex-1">
-                    <Text style={{ color: colors.text.primary }} className="font-bold text-base">Partner Jobs</Text>
-                    {shouldShowDashboardSkeleton ? (
-                      <SkeletonBox width={96} height={11} rounded="md" />
-                    ) : (
-                      <Text style={{ color: colors.text.tertiary }} className="text-xs">Last {recentPartnerJobs.length} jobs</Text>
-                    )}
-                  </View>
-                  <Pressable
-                    onPress={() => router.push('/partners?partnerSection=jobs')}
-                    className="flex-row items-center px-3 py-1.5 rounded-full active:opacity-70"
-                    style={{ backgroundColor: colors.bg.secondary }}
-                  >
-                    <Text style={{ color: colors.text.primary }} className="text-xs font-semibold mr-1">View All</Text>
-                    <ChevronRight size={14} color={colors.text.primary} strokeWidth={2} />
-                  </Pressable>
-                </View>
-                {shouldShowDashboardSkeleton ? (
-                  Array.from({ length: 4 }).map((_, index) => (
-                    <View
-                      key={`partner-job-skeleton-${index}`}
-                      className="flex-row items-center"
-                      style={{
-                        paddingVertical: 12,
-                        borderTopWidth: index === 0 ? 0 : 1,
-                        borderTopColor: colors.border.light,
-                      }}
-                    >
-                      <View style={{ flex: 1 }}>
-                        <SkeletonBox width="54%" height={13} rounded="md" />
-                        <View style={{ height: 8 }} />
-                        <SkeletonBox width="48%" height={11} rounded="md" />
-                      </View>
-                      <SkeletonBox width={88} height={22} rounded="full" />
-                    </View>
-                  ))
-                ) : (
-                  recentPartnerJobs.map((job, index) => (
-                    <RecentPartnerJobItem
-                      key={job.id}
-                      job={job}
-                      onPress={() => router.push('/partners?partnerSection=jobs')}
-                      isLast={index === recentPartnerJobs.length - 1}
-                    />
-                  ))
-                )}
-              </View>
-            </View>
-          )}
-
-          {shouldShowHomeTaskCard ? (
-            <View className="px-5 pt-6">
-              <View
-                className="rounded-2xl overflow-hidden"
-                style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
-              >
-                <View className="flex-row items-center p-4">
-                  <View className="w-10 h-10 rounded-xl items-center justify-center mr-3" style={{ backgroundColor: colors.bg.secondary }}>
-                    <ClipboardList size={20} color={colors.text.primary} strokeWidth={2} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ color: colors.text.primary }} className="font-bold text-base">
-                      {userRole === 'staff' ? 'Your Tasks' : 'Tasks'}
-                    </Text>
-                    <Text style={{ color: colors.text.tertiary }} className="text-xs">
-                      {userRole === 'staff' ? `${mobileHomeScopedTasks.length} added or assigned` : `${mobileHomeScopedTasks.length} active`}
-                    </Text>
-                  </View>
-                  <Pressable
-                    onPress={() => router.push('/(tabs)/tasks' as any)}
-                    className="flex-row items-center px-3 py-1.5 rounded-full active:opacity-70"
-                    style={{ backgroundColor: colors.bg.secondary }}
-                  >
-                    <Text style={{ color: colors.text.primary }} className="text-xs font-semibold mr-1">View All</Text>
-                    <ChevronRight size={14} color={colors.text.primary} strokeWidth={2} />
-                  </Pressable>
-                </View>
-
-                <View style={{ borderTopWidth: 1, borderTopColor: colors.border.light }}>
-                  {mobileHomeTasksQuery.isPending || shouldShowDashboardSkeleton
-                    ? Array.from({ length: 5 }).map((_, index) => (
-                      <View
-                        key={`task-loading-${index}`}
-                        style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          paddingHorizontal: 16,
-                          paddingVertical: 12,
-                          borderBottomWidth: index === 4 ? 0 : 1,
-                          borderBottomColor: colors.border.light,
-                        }}
-                      >
-                        <View style={{ flex: 1.6 }}>
-                          <SkeletonBox width="72%" height={13} rounded="md" />
-                          <View style={{ height: 7 }} />
-                          <SkeletonBox width="48%" height={11} rounded="md" />
-                        </View>
-                        <View style={{ width: 70, alignItems: 'flex-end' }}>
-                          <SkeletonBox width={52} height={12} rounded="md" />
-                        </View>
-                        <View style={{ width: 94, alignItems: 'flex-end' }}>
-                          <SkeletonBox width={72} height={22} rounded="full" />
-                        </View>
-                      </View>
-                    ))
-                    : null}
-
-                  {!mobileHomeTasksQuery.isPending && !shouldShowDashboardSkeleton
-                    ? mobileHomeTaskRows.map((task, index) => {
-                      const status = getTaskStatusMeta(task.status);
-                      return (
-                        <Pressable
-                          key={task.id}
-                          onPress={() => router.push(`/(tabs)/task/${task.id}` as any)}
-                          className="active:opacity-70"
-                          style={{
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            paddingHorizontal: 16,
-                            paddingVertical: 12,
-                            borderBottomWidth: index === mobileHomeTaskRows.length - 1 ? 0 : 1,
-                            borderBottomColor: colors.border.light,
-                          }}
-                        >
-                          <Text style={{ flex: 1.6, color: colors.text.primary, fontSize: 13, fontWeight: '500' }} numberOfLines={1}>
-                            {toSentenceCase(task.title)}
-                          </Text>
-                          <Text style={{ width: 70, textAlign: 'right', color: colors.text.tertiary, fontSize: 12, fontWeight: '500' }}>
-                            {formatTaskDueDate(task.due_date)}
-                          </Text>
-                          <View style={{ width: 94, alignItems: 'flex-end' }}>
-                            <View style={{ borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: status.background }}>
-                              <Text style={{ color: status.color, fontSize: 11, fontWeight: '700' }}>
-                                {status.label}
-                              </Text>
-                            </View>
-                          </View>
-                        </Pressable>
-                      );
-                    })
-                    : null}
-                </View>
-              </View>
             </View>
           ) : null}
 
-          {/* Most Sold Products - Mobile */}
-          {(shouldShowDashboardSkeleton || mostSoldProducts.length > 0) && (
-            <View className="px-5 pt-6">
-              <View
-                className="rounded-2xl overflow-hidden"
-                style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
-              >
-                <View className="flex-row items-center p-4">
-                  <View className="w-10 h-10 rounded-xl items-center justify-center mr-3" style={{ backgroundColor: colors.bg.secondary }}>
-                    <Package size={20} color={colors.text.primary} strokeWidth={2} />
-                  </View>
-                  <View className="flex-1">
-                    <Text style={{ color: colors.text.primary }} className="font-bold text-base">Most Sold</Text>
-                    {shouldShowDashboardSkeleton ? (
-                      <SkeletonBox width={112} height={11} rounded="md" />
-                    ) : (
-                      <Text style={{ color: colors.text.tertiary }} className="text-xs">Top {Math.min(mostSoldProducts.length, 5)} products by quantity</Text>
-                    )}
-                  </View>
-                  <Pressable
-                    onPress={() => router.push('/insights/best-sellers')}
-                    className="flex-row items-center px-3 py-1.5 rounded-full active:opacity-70"
-                    style={{ backgroundColor: colors.bg.secondary }}
-                  >
-                    <Text style={{ color: colors.text.primary }} className="text-xs font-semibold mr-1">View All</Text>
-                    <ChevronRight size={14} color={colors.text.primary} strokeWidth={2} />
-                  </Pressable>
-                </View>
-                <View style={{ borderTopWidth: 1, borderTopColor: colors.border.light }}>
-                  {shouldShowDashboardSkeleton ? Array.from({ length: 4 }).map((_, idx) => (
-                    <View
-                      key={`most-sold-skeleton-${idx}`}
-                      style={{
-                        borderBottomWidth: idx === 3 ? 0 : 1,
-                        borderBottomColor: colors.border.light,
-                      }}
-                    >
-                      <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14 }}>
-                        <View style={{ flex: 1, minWidth: 0 }}>
-                          <SkeletonBox width="58%" height={13} rounded="md" />
-                          <View style={{ height: 8 }} />
-                          <SkeletonBox width="36%" height={11} rounded="md" />
-                        </View>
-                        <SkeletonBox width={28} height={18} rounded="md" />
-                      </View>
-                    </View>
-                  )) : mostSoldProducts.slice(0, 5).map((row, idx, arr) => (
-                    <Pressable
-                      key={row.productId}
-                      onPress={() => router.push(`/product/${row.productId}`)}
-                      className="active:opacity-70"
-                      style={{
-                        borderBottomWidth: idx === arr.length - 1 ? 0 : 1,
-                        borderBottomColor: colors.border.light,
-                      }}
-                    >
-                      <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14 }}>
-                        <View style={{ flex: 1, minWidth: 0 }}>
-                          <Text style={{ color: colors.text.primary }} className="text-sm font-semibold" numberOfLines={1}>
-                            {row.name}
-                          </Text>
-                          <Text style={{ color: colors.text.tertiary }} className="text-xs mt-0.5" numberOfLines={1}>
-                            {row.sku}
-                          </Text>
-                        </View>
-                        <Text style={{ color: colors.text.primary }} className="text-base font-bold">
-                          {row.quantity}
-                        </Text>
-                      </View>
-                    </Pressable>
-                  ))}
-                </View>
-              </View>
-            </View>
-          )}
+          <View style={{ gap: HOME_GAP, paddingTop: HOME_GAP }}>
+            <View style={{ paddingHorizontal: 20, gap: HOME_GAP }}>
+              <KpiStrip items={kpiItems} loading={shouldShowDashboardMetricsSkeleton} />
 
-          {/* Sales by Source */}
-          <View className="px-5 pt-6">
-            <View
-              className="rounded-2xl p-4"
-              style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
-            >
-              <View className="flex-row items-center justify-between mb-4">
-                <View className="flex-row items-center">
-                  <View
-                    className="w-10 h-10 rounded-xl items-center justify-center mr-3"
-                    style={{ backgroundColor: colors.bg.secondary }}
-                  >
-                    <BarChart3 size={20} color={colors.text.primary} strokeWidth={2} />
-                  </View>
-                  <Text style={{ color: colors.text.primary }} className="font-bold text-base">Sales by Source</Text>
-                </View>
+              {(userRole === 'admin' || userRole === 'manager') ? renderRevenueTrend(170) : null}
+
+              <JumpToGrid items={jumpToItems} onPress={handleCardPress} />
+
+              <FulfillmentPipelineCard
+                counts={fulfillment}
+                onPress={() => goToFulfillment()}
+                onStagePress={(stage) => goToFulfillment(stage)}
+              />
+
+              {renderRecentOrders(5, (id) => `/order/${id}`)}
+
+              {renderPartnerJobs(5)}
+
+              {shouldShowHomeTaskCard ? renderTasks() : null}
+
+              {renderMostSold(5, (id) => `/product/${id}`)}
+
+              {renderSalesBySource()}
+
+              <View style={{ flexDirection: 'row', gap: HOME_GAP, paddingBottom: 8 }}>
                 <Pressable
-                  onPress={() => router.push('/insights/platforms')}
-                  className="flex-row items-center px-3 py-1.5 rounded-full active:opacity-70"
-                  style={{ backgroundColor: colors.bg.secondary }}
+                  onPress={() => handleQuickAction('/new-order')}
+                  className="active:opacity-80"
+                  style={{ flex: 1, height: 48, borderRadius: 999, backgroundColor: FYLL_LIME, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}
                 >
-                  <Text style={{ color: colors.text.primary }} className="text-xs font-semibold mr-1">View All</Text>
-                  <ChevronRight size={14} color={colors.text.primary} strokeWidth={2} />
+                  <Plus size={18} color={FYLL_LIME_INK} strokeWidth={2.4} />
+                  <Text style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '600' }}>New order</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => handleQuickAction('/scan')}
+                  className="active:opacity-80"
+                  style={{ flex: 1, height: 48, borderRadius: 999, borderWidth: 1, borderColor: palette.outline, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+                >
+                  <Scan size={18} color={palette.text} strokeWidth={2.2} />
+                  <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>Scan item</Text>
                 </Pressable>
               </View>
-              {shouldShowDashboardSkeleton ? (
-                Array.from({ length: 4 }).map((_, index) => (
-                  <View key={`platform-source-skeleton-${index}`} className="mb-3">
-                    <View className="flex-row items-center justify-between mb-1.5">
-                      <SkeletonBox width="38%" height={14} rounded="md" />
-                      <SkeletonBox width={58} height={14} rounded="md" />
-                    </View>
-                    <SkeletonBox width="100%" height={12} rounded="full" />
-                  </View>
-                ))
-              ) : platformData.length === 0 ? (
-                <Text style={{ color: colors.text.muted }} className="text-sm text-center py-4">No orders yet</Text>
-              ) : (
-                platformData.slice(0, 4).map((item) => (
-                  <View key={item.label} className="mb-3">
-                    <View className="flex-row items-center justify-between mb-1.5">
-                      <Text style={{ color: colors.text.secondary }} className="text-sm font-medium">
-                        {item.label}
-                      </Text>
-                      <View className="flex-row items-center">
-                        <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">
-                          {item.value}
-                        </Text>
-                        <Text style={{ color: colors.text.muted }} className="text-xs ml-2">
-                          {item.percentage}%
-                        </Text>
-                      </View>
-                    </View>
-                    <View
-                      className="h-3 rounded-full overflow-hidden"
-                      style={{ backgroundColor: colors.bg.secondary }}
-                    >
-                      <View
-                        className="h-full rounded-full"
-                        style={{
-                          width: `${Math.min(item.percentage, 100)}%`,
-                          backgroundColor: colors.text.primary,
-                        }}
-                      />
-                    </View>
-                  </View>
-                ))
-              )}
-            </View>
-          </View>
-
-          {/* Quick Actions */}
-          <View className="px-5 pt-6 pb-8">
-            <Text style={{ color: colors.text.primary }} className="font-bold text-base mb-4">Quick Actions</Text>
-            <View className="flex-row gap-3">
-              <Pressable
-                onPress={() => handleQuickAction('/new-order')}
-                className="flex-1 rounded-2xl overflow-hidden active:opacity-80 p-4"
-                style={{ backgroundColor: '#111111' }}
-              >
-                <Plus size={24} color="#FFFFFF" strokeWidth={2} />
-                <Text className="text-white font-semibold mt-2">New Order</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => handleQuickAction('/scan')}
-                className="flex-1 active:opacity-70"
-              >
-                <View
-                  className="rounded-2xl p-4"
-                  style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
-                >
-                  <Scan size={24} color={colors.text.primary} strokeWidth={2} />
-                  <Text style={{ color: colors.text.primary }} className="font-semibold mt-2">Scan Item</Text>
-                </View>
-              </Pressable>
             </View>
           </View>
         </ScrollView>
+
+        {isMobile ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Create new order"
+            onPress={() => handleQuickAction('/new-order')}
+            style={(state) => [
+              {
+                position: 'absolute',
+                right: 20,
+                bottom: Math.max(96, tabBarHeight - 48),
+                width: 56,
+                height: 56,
+                borderRadius: 28,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: FYLL_LIME,
+                transform: [{ scale: state.pressed ? 0.94 : 1 }],
+                zIndex: 40,
+              },
+              Platform.OS === 'web'
+                ? ({ boxShadow: '0 10px 28px rgba(0,0,0,0.35)' } as object)
+                : { shadowColor: '#000000', shadowOpacity: 0.3, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
+            ]}
+          >
+            <Plus size={24} color={FYLL_LIME_INK} strokeWidth={2.6} />
+          </Pressable>
+        ) : null}
       </SafeAreaView>
     </View>
   );
