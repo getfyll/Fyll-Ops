@@ -51,6 +51,15 @@ const PENDING_DELIVERY_PATTERNS: RegExp[] = [
   /still[\s-]?expect/i,
 ];
 
+// Statuses whose names contain "deliver" but mean the order is still on its way:
+// "Delivery Confirmation" (the customer has been asked whether they received it, and until they
+// say yes it is NOT delivered) and "Out for delivery".
+const AWAITING_DELIVERY_PATTERNS: RegExp[] = [
+  /delivery[\s-]?confirmation/i,
+  /confirm(ing)?[\s-]?(the[\s-]?)?delivery/i,
+  /out[\s-]?for[\s-]?delivery/i,
+];
+
 const DELIVERED_PATTERNS: RegExp[] = [
   /deliver/i,
   /fulfilled?/i,
@@ -97,12 +106,17 @@ const PENDING_PAYMENT_PATTERNS: RegExp[] = [
 
 const normalizeName = (value?: string | null) => value?.trim().toLowerCase() ?? '';
 
+export const isAwaitingDeliveryStatusName = (name?: string | null) => (
+  matchesAny(normalizeName(name), AWAITING_DELIVERY_PATTERNS)
+);
+
 export const inferOrderTrackingStage = (name?: string | null): OrderTrackingStage => {
   const value = normalizeName(name);
   if (!value) return 'received';
   if (matchesAny(value, CANCELLED_PATTERNS)) return 'cancelled';
   if (matchesAny(value, PENDING_PAYMENT_PATTERNS)) return 'pending-payment';
   if (matchesAny(value, PENDING_DELIVERY_PATTERNS)) return 'out-for-delivery';
+  if (matchesAny(value, AWAITING_DELIVERY_PATTERNS)) return 'out-for-delivery';
   if (matchesAny(value, COMPLETED_PATTERNS)) return 'completed';
   if (matchesAny(value, DELIVERED_PATTERNS)) return 'delivered';
   if (matchesAny(value, OUT_FOR_DELIVERY_PATTERNS)) return 'out-for-delivery';
@@ -112,7 +126,12 @@ export const inferOrderTrackingStage = (name?: string | null): OrderTrackingStag
 
 export const resolveOrderTrackingStage = (
   status?: Pick<OrderStatusLike, 'name' | 'trackingStage'> | null
-): OrderTrackingStage => status?.trackingStage ?? inferOrderTrackingStage(status?.name);
+): OrderTrackingStage => {
+  // A saved stage of "delivered" on a Delivery Confirmation status is the old name-matching
+  // mistake, so the name wins (cancelled is still respected).
+  if (status && status.trackingStage !== 'cancelled' && isAwaitingDeliveryStatusName(status.name)) return 'out-for-delivery';
+  return status?.trackingStage ?? inferOrderTrackingStage(status?.name);
+};
 
 export const findOrderTrackingStageByName = (
   statusName: string | undefined | null,

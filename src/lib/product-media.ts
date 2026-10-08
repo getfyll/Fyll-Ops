@@ -1,5 +1,5 @@
 import type { ProductVariant } from '@/lib/state/fyll-store';
-import { uploadBusinessAttachment } from '@/lib/storage-attachments';
+import { publishAttachmentToPublicBucket, uploadBusinessAttachment } from '@/lib/storage-attachments';
 
 const LOCAL_PRODUCT_MEDIA_PATTERN = /^(file:|blob:|data:)/i;
 
@@ -40,6 +40,9 @@ export const uploadProductMediaIfNeeded = async ({
     uri: normalizedUri,
     fileName,
   });
+
+  // Customers see these photos on public pages, so publish a public copy as well.
+  await publishAttachmentToPublicBucket(uploaded.storagePath);
 
   return uploaded.storagePath;
 };

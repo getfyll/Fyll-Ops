@@ -1,4 +1,4 @@
-import { findOrderTrackingStageByName } from '@/lib/order-status';
+import { findOrderTrackingStageByName, isAwaitingDeliveryStatusName } from '@/lib/order-status';
 import { normalizeDeliveryStateValue } from '@/lib/format-address';
 import type { Order, OrderStatus, OrderTimelineSettings } from '@/lib/state/fyll-store';
 
@@ -135,6 +135,8 @@ export const bucketFulfillmentStatus = (status: string): FulfillmentStageKey | n
   if (!value) return null;
 
   if (matchesAny(value, [/refund/i, /cancel/i, /reject/i, /\bcomplete(d)?\b/i])) return null;
+  // Delivery Confirmation / Out for delivery: still on its way, not delivered.
+  if (isAwaitingDeliveryStatusName(value)) return 'dispatch';
   if (matchesAny(value, DELIVERED_PATTERNS)) return 'delivered';
   if (matchesAny(value, DISPATCH_PATTERNS)) return 'dispatch';
   if (matchesAny(value, PROCESSING_PATTERNS)) return 'processing';
@@ -167,6 +169,8 @@ export const getOrderFulfillmentStage = (
   if (!value) return 'pending';
 
   if (trackingStage === 'cancelled' || matchesAny(value, CANCELLED_PATTERNS)) return 'cancelled';
+  // Delivery Confirmation / Out for delivery: not finished until the customer confirms.
+  if (isAwaitingDeliveryStatusName(value)) return 'processing';
   if (trackingStage === 'completed' || trackingStage === 'delivered' || matchesAny(value, DELIVERED_PATTERNS)) return 'completed';
   if (trackingStage === 'pending-payment' || trackingStage === 'received' || matchesAny(value, PENDING_PATTERNS)) return 'pending';
   if (trackingStage === 'out-for-delivery') return 'processing';
@@ -295,6 +299,7 @@ export const getPublicTrackingStep = (
   const value = (order.status ?? '').trim().toLowerCase();
   const trackingStage = findOrderTrackingStageByName(order.status, orderStatuses);
 
+  if (isAwaitingDeliveryStatusName(value)) return 'out-for-delivery';
   if (trackingStage === 'completed') return 'completed';
   if (trackingStage === 'delivered' || stage === 'completed' || matchesAny(value, DELIVERED_PATTERNS)) return 'delivered';
   if (trackingStage === 'out-for-delivery' || matchesAny(value, DISPATCH_PATTERNS)) {

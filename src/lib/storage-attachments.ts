@@ -283,6 +283,26 @@ export const uploadSocialCheckoutProof = async ({
   return { publicUrl: data.publicUrl, storagePath };
 };
 
+// Product and variant photos are uploaded to the private attachments bucket, but the public
+// tracking page and storefront only read the public business-assets bucket. Publish a copy under
+// the same path so the photo shows up there without anyone running a copy script. Never throws:
+// a failed copy must not block saving the product.
+export const publishAttachmentToPublicBucket = async (storagePath: string) => {
+  const path = storagePath.replace(/^\/+/, '');
+  if (!path) return;
+  try {
+    const { error } = await supabase
+      .storage
+      .from(COLLABORATION_ATTACHMENTS_BUCKET)
+      .copy(path, path, { destinationBucket: BUSINESS_ASSETS_BUCKET });
+    if (error && !/already exists|duplicate/i.test(error.message ?? '')) {
+      console.warn('Could not publish photo to the public bucket:', error.message);
+    }
+  } catch (error) {
+    console.warn('Could not publish photo to the public bucket:', error);
+  }
+};
+
 export const resolveBusinessAssetUrl = (pathOrUrl: string | null | undefined) => {
   const normalized = pathOrUrl?.trim() ?? '';
   if (!normalized) return null;

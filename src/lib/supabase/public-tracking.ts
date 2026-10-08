@@ -49,6 +49,19 @@ export interface PublicTrackingOrder {
   activityLog?: Pick<OrderActivityEntry, 'action' | 'date'>[];
 }
 
+// A variant as the public tracking page needs it: which one was ordered, and its own photo.
+export interface PublicTrackingProductVariant {
+  id: string;
+  name?: string;
+  imageUrl?: string | null;
+  variableValues?: Record<string, string>;
+}
+
+export type PublicTrackingProduct = Pick<Product, 'id' | 'name'> & {
+  imageUrl?: string | null;
+  variants?: PublicTrackingProductVariant[];
+};
+
 export interface PublicOrderTrackingLookupResult {
   businessId: string | null;
   businessSlug?: string | null;
@@ -58,7 +71,7 @@ export interface PublicOrderTrackingLookupResult {
   businessWebsite: string | null;
   order: PublicTrackingOrder | null;
   socialCheckout: PublicSocialCheckoutTracking | null;
-  products: (Pick<Product, 'id' | 'name'> & { imageUrl?: string | null })[];
+  products: PublicTrackingProduct[];
   orderStatuses: OrderStatus[];
   orderTimelineSettings: OrderTimelineSettings | null;
 }
@@ -381,7 +394,19 @@ const normalizeLookupPayload = (value: unknown): PublicOrderTrackingLookupResult
     order,
     socialCheckout,
     products: Array.isArray(next.products)
-      ? (next.products as (Pick<Product, 'id' | 'name'> & { imageUrl?: unknown })[]).map((product) => ({ ...product, imageUrl: resolveBusinessAssetUrl(typeof product.imageUrl === 'string' && product.imageUrl.trim() ? product.imageUrl.trim() : null) }))
+      ? (next.products as (Pick<Product, 'id' | 'name'> & { imageUrl?: unknown; variants?: unknown })[]).map((product) => ({
+        ...product,
+        imageUrl: resolveBusinessAssetUrl(typeof product.imageUrl === 'string' && product.imageUrl.trim() ? product.imageUrl.trim() : null),
+        variants: Array.isArray(product.variants)
+          ? (product.variants as { id?: unknown; name?: unknown; imageUrl?: unknown }[])
+            .filter((variant) => typeof variant?.id === 'string' && variant.id)
+            .map((variant) => ({
+              id: String(variant.id),
+              name: typeof variant.name === 'string' && variant.name.trim() ? variant.name.trim() : undefined,
+              imageUrl: resolveBusinessAssetUrl(typeof variant.imageUrl === 'string' && variant.imageUrl.trim() ? variant.imageUrl.trim() : null),
+            }))
+          : [],
+      }))
       : [],
     orderStatuses,
     orderTimelineSettings: normalizeOrderTimelineSettings(next.orderTimelineSettings),

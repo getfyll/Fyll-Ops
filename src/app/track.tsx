@@ -250,6 +250,13 @@ const trackingBodyFont = Platform.OS === 'web'
 // Status changes are logged as "Updated status to <name>"; only these become
 // customer updates, mapped to wording that suits the buyer.
 const CUSTOMER_STATUS_CHANGE = /^Updated status to\s+(.+)$/i;
+// Status changes in the activity log read "Updated status to X" or, when the system moves an
+// order itself, "Auto-moved A to B after N days". Both name the status the order moved into.
+const getStatusChangeTarget = (action?: string) => {
+  if (typeof action !== 'string') return undefined;
+  return (action.match(CUSTOMER_STATUS_CHANGE)?.[1]
+    ?? action.match(/^Auto-moved\s+.+?\s+to\s+(.+?)(?:\s+after\s+.+)?$/i)?.[1])?.trim();
+};
 const CUSTOMER_MILESTONE_LABEL: Partial<Record<ReturnType<typeof findOrderTrackingStageByName>, string>> = {
   received: 'Order confirmed',
   processing: 'Being prepared',
@@ -501,18 +508,20 @@ function PurchaseTrackingResult({
   const itemLines = order
     ? [
         ...order.items.map((item, index) => {
-          const product = result.products.find((entry) => entry.id === item.productId) as
-            | (PublicOrderTrackingLookupResult['products'][number] & { imageUrl?: string | null; variants?: { id: string; imageUrl?: string | null }[] })
-            | undefined;
+          const product = result.products.find((entry) => entry.id === item.productId);
           const unitPrice = Number(item.unitPrice) || 0;
-          const variantImage = product?.variants?.find((variant) => variant.id === item.variantId)?.imageUrl;
+          // The ordered variant: its own photo and name, not the product's base ones.
+          const variant = product?.variants?.find((entry) => entry.id === item.variantId);
           // Images can be stored in other shapes (objects, arrays); only use real URL strings.
-          const image = [variantImage, product?.imageUrl].map(asText).find(Boolean) ?? '';
+          const image = [variant?.imageUrl, product?.imageUrl].map(asText).find(Boolean) ?? '';
+          const variantLabel = asText(item.variantName)
+            || asText(variant?.name)
+            || Object.values(variant?.variableValues ?? {}).map(asText).filter(Boolean).join(' / ');
           return {
             key: `${item.productId}-${item.variantId}-${index}`,
-            label: product?.name || 'Order item',
+            label: product?.name || asText(item.productName) || 'Order item',
             image: image || null,
-            detail: `Qty ${item.quantity}`,
+            detail: [variantLabel, `Qty ${item.quantity}`].filter(Boolean).join(' · '),
             amount: unitPrice * item.quantity,
           };
         }),
@@ -526,10 +535,26 @@ function PurchaseTrackingResult({
       ]
     : [];
 
+  // When it was delivered: the customer's confirmation if there is one, otherwise the moment the
+  // status moved to Delivered, otherwise the last update.
+  const isDelivered = publicStep === 'delivered' || publicStep === 'completed';
+  const confirmedAtIso = order?.deliveryConfirmationConfirmedAt || '';
+  const deliveredAtIso = !order || !isDelivered
+    ? ''
+    : confirmedAtIso
+      || [...(order.activityLog ?? [])].reverse().find((entry) => {
+        const statusName = getStatusChangeTarget(entry.action);
+        if (!statusName) return false;
+        const stage = findOrderTrackingStageByName(statusName, result.orderStatuses);
+        return stage === 'delivered' || stage === 'completed';
+      })?.date
+      || order.updatedAt
+      || '';
+
   const updates: PurchaseTrackingUpdate[] = [];
   if (order) {
-    const currentLabel = publicStep === 'out-for-delivery' ? 'On its way' : publicStep === 'delivered' || publicStep === 'completed' ? 'Delivered' : 'Being prepared';
-    updates.push({ key: 'current-order-status', label: currentLabel, time: 'Now' });
+    const currentLabel = publicStep === 'out-for-delivery' ? 'On its way' : isDelivered ? 'Delivered' : 'Being prepared';
+    updates.push({ key: 'current-order-status', label: currentLabel, time: isDelivered && deliveredAtIso ? formatUpdateStamp(deliveredAtIso) : 'Now' });
     // Customer-facing milestones only: status changes, reworded per tracking
     // stage. Staff notes, edits, WooCommerce syncs etc. never appear here.
     const seenLabels = new Set<string>([currentLabel]);
@@ -617,14 +642,37 @@ function PurchaseTrackingResult({
       : payment
         ? { label: 'Payment reference', value: `SC-${payment.code}` }
         : null;
-  const stepWhen = [
-    payment?.submittedAt ? formatShortStamp(payment.submittedAt) : '',
-    payment?.reviewedAt ? formatShortStamp(payment.reviewedAt) : '',
+  // The earliest time the order moved into a given tracking stage, from the activity log.
+  const firstStageDate = (stages: string[]) => (
     order
-      ? orderProgressIndex === 2 ? 'Now' : formatShortStamp(order.createdAt, false)
+      ? (order.activityLog ?? []).find((entry) => {
+        const target = getStatusChangeTarget(entry.action);
+        return Boolean(target) && stages.includes(findOrderTrackingStageByName(target, result.orderStatuses));
+      })?.date
+      : undefined
+  );
+  const dispatchedAtIso = order?.logistics?.dispatchDate || order?.logistics?.datePickedUp || firstStageDate(['out-for-delivery']) || '';
+  const stepWhen = [
+    // Paid / Verified: the payment's own times, else the order's date (orders are created once paid).
+    payment?.submittedAt
+      ? formatShortStamp(payment.submittedAt)
+      : order ? formatShortStamp(order.orderDate || order.createdAt, false) : '',
+    payment?.reviewedAt
+      ? formatShortStamp(payment.reviewedAt)
+      : order ? formatShortStamp(order.orderDate || order.createdAt, false) : '',
+    order
+      ? orderProgressIndex === 2 ? 'Now' : formatShortStamp(order.fulfillmentStartedAt || order.createdAt, false)
       : payment?.status === 'verified' ? 'In progress' : '',
-    orderProgressIndex === 3 ? 'Now' : '',
-    eta && orderProgressIndex < 4 ? `Est. ${eta.shortDate}` : orderProgressIndex === 4 ? 'Done' : '',
+    orderProgressIndex === 3
+      ? 'Now'
+      : orderProgressIndex === 4 && dispatchedAtIso ? formatShortStamp(dispatchedAtIso, false) : '',
+    eta && orderProgressIndex < 4
+      ? `Est. ${eta.shortDate}`
+      : orderProgressIndex === 4
+        ? deliveredAtIso
+          ? `${confirmedAtIso ? 'Confirmed ' : ''}${formatShortStamp(deliveredAtIso, false)}`
+          : 'Done'
+        : '',
   ];
   const sidePadding = compact ? 20 : 32;
   const circle = compact ? 32 : 40;
@@ -735,22 +783,27 @@ function PurchaseTrackingResult({
         {itemLines.length > 0 ? itemsList : <Text style={{ fontFamily: trackingBodyFont, fontSize: compact ? 12 : 14, color: muted }}>Items will appear here shortly.</Text>}
         <View style={{ height: 1, backgroundColor: 'rgba(30,30,30,0.07)' }} />
         <View style={{ flexDirection: compact ? 'column' : 'row', gap: compact ? 14 : 20 }}>
-          <View style={{ flex: 1, flexDirection: 'row', gap: 12, alignItems: 'flex-start' }}>
+          <View style={{ flex: compact ? undefined : 1, flexDirection: 'row', gap: 12, alignItems: 'flex-start' }}>
             <MapPin size={20} color={muted} strokeWidth={2} style={{ marginTop: 2 }} />
             <View style={{ flex: 1, gap: 3 }}>
               <Text style={{ fontFamily: trackingBodyFont, fontSize: compact ? 12 : 13.5, color: muted }}>Delivering to</Text>
               {recipientDetails}
             </View>
           </View>
-          <View style={{ flex: 1, flexDirection: 'row', gap: 12, alignItems: 'flex-start' }}>
+          <View style={{ flex: compact ? undefined : 1, flexDirection: 'row', gap: 12, alignItems: 'flex-start' }}>
             <Truck size={20} color={muted} strokeWidth={2} style={{ marginTop: 2 }} />
             <View style={{ flex: 1, gap: 3 }}>
               <Text style={{ fontFamily: trackingBodyFont, fontSize: compact ? 12 : 13.5, color: muted }}>Delivery</Text>
               <Text style={{ fontFamily: trackingBodyFont, fontSize: compact ? 12 : 15, lineHeight: compact ? 17 : 21, color: '#1E1E1E' }}>
-                {publicStep === 'delivered' || publicStep === 'completed'
+                {isDelivered
                   ? 'Delivered'
                   : eta ? `Estimated ${eta.longDate}` : 'Dispatch details appear once it ships'}
               </Text>
+              {isDelivered && deliveredAtIso ? (
+                <Text style={{ fontFamily: trackingBodyFont, fontSize: compact ? 12 : 14, lineHeight: compact ? 17 : 20, color: muted }}>
+                  {confirmedAtIso ? 'Confirmed' : 'Delivered'} {formatShortStamp(deliveredAtIso)}
+                </Text>
+              ) : null}
             </View>
           </View>
         </View>
@@ -940,11 +993,9 @@ function PurchaseTrackingResult({
         <Link2 size={18} color="#5F6A00" strokeWidth={2} />
         <Text style={{ flex: 1, fontFamily: trackingBodyFont, fontSize: compact ? 12 : 13.5, lineHeight: 19, color: '#55564E' }}>Bookmark this page. Every update for this purchase shows up here.</Text>
       </View>
-      {compact ? (
-        <Pressable accessibilityRole="button" onPress={onReset} style={{ height: 48, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(30,30,30,0.14)', alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? 14 : 14.5, color: '#1E1E1E' }}>Track another order</Text>
-        </Pressable>
-      ) : null}
+      <Pressable accessibilityRole="button" onPress={onReset} style={{ height: 48, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(30,30,30,0.14)', alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? 14 : 14.5, color: '#1E1E1E' }}>Track another order</Text>
+      </Pressable>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingTop: 6 }}>
         <Text style={{ fontFamily: trackingBodyFont, fontSize: compact ? 11 : 13, color: muted }}>Tracked by</Text>
         <Image source={fyllWordmarkPng} accessibilityLabel="Fyll" resizeMode="contain" style={{ width: 16 * (344 / 195), height: 16, tintColor: '#1E1E1E' }} />
@@ -964,31 +1015,6 @@ function PurchaseTrackingResult({
           />
           <SafeAreaView edges={['top']}>
             <View style={{ width: '100%', maxWidth: 1160 + sidePadding * 2, alignSelf: 'center', paddingHorizontal: sidePadding, paddingTop: compact ? 30 : 28, paddingBottom: compact ? 70 : 92, gap: compact ? 22 : 44 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
-                  <View style={{ width: compact ? 40 : 46, height: compact ? 40 : 46, borderRadius: 999, borderWidth: 2, borderColor: '#D5E057', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                    {logoUri ? (
-                      <Image source={{ uri: logoUri }} resizeMode="contain" style={{ width: compact ? 34 : 40, height: compact ? 34 : 40 }} />
-                    ) : (
-                      <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? 16 : 18, color: '#1E1E1E' }}>{businessName.charAt(0).toUpperCase()}</Text>
-                    )}
-                  </View>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text numberOfLines={1} style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? 15 : 16, color: '#FFFFFF' }}>{businessName}</Text>
-                    <Text style={{ fontFamily: trackingBodyFont, fontSize: compact ? 11 : 13, color: 'rgba(244,244,239,0.75)' }}>Order tracking</Text>
-                  </View>
-                </View>
-                {!compact ? (
-                  <Pressable accessibilityRole="button" onPress={onReset} style={{ height: 38, paddingHorizontal: 16, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)', justifyContent: 'center' }}>
-                    <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: 14, color: '#FFFFFF' }}>Track another order</Text>
-                  </Pressable>
-                ) : null}
-                <View style={{ height: compact ? 32 : 38, paddingHorizontal: compact ? 12 : 14, borderRadius: 999, backgroundColor: 'rgba(20,20,20,0.35)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                  <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? 10 : 12.5, color: '#EEF2C4' }}>Secured by</Text>
-                  <Image source={fyllWordmarkPng} accessibilityLabel="Fyll" resizeMode="contain" style={{ width: 11 * (344 / 195), height: 11, tintColor: '#EEF2C4' }} />
-                </View>
-              </View>
-
               <View style={{ flexDirection: wide ? 'row' : 'column', alignItems: wide ? 'flex-end' : 'stretch', justifyContent: 'space-between', gap: wide ? 40 : 12 }}>
                 <View style={{ gap: compact ? 10 : 14, maxWidth: 680, flexShrink: 1 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -1760,6 +1786,8 @@ export default function TrackOrderScreen() {
           resultOrder.id,
           {
             status: deliveredStatusName,
+            deliveryConfirmationStatus: 'confirmed',
+            deliveryConfirmationConfirmedAt: new Date().toISOString(),
             updatedBy: 'Customer',
             updatedAt: new Date().toISOString(),
           },
