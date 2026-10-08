@@ -68,7 +68,8 @@ self.addEventListener('fetch', (event) => {
           caches.open(CACHE_NAME).then((cache) => cache.put(request, responseClone));
           return response;
         })
-        .catch(() => cached);
+        // With nothing cached either, return a real (error) Response: respondWith() throws on undefined.
+        .catch(() => cached || Response.error());
 
       return cached || networkFetch;
     })
