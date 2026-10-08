@@ -3,6 +3,7 @@ import type { ThemeColors } from '@/lib/theme';
 
 const MOBILE_TAB_BAR_HIDDEN_ROUTES = new Set([
   '/inventory-audit',
+  '/customers',
   '/settings-panel',
 ]);
 
