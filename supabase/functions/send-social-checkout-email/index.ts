@@ -284,12 +284,12 @@ const renderOrderSummaryTable = ({
 
   const rows = safeLines.map((line) => `
     <tr>
-      <td style="padding:14px 0;border-bottom:1px solid #e5e7eb;vertical-align:top;">
-        <div style="font-size:14px;font-weight:600;color:#111827;line-height:1.4;">${escapeHtml(line.name)}</div>
-        ${line.detail ? `<div style="font-size:12px;color:#6b7280;line-height:1.4;margin-top:2px;">${escapeHtml(line.detail)}</div>` : ''}
+      <td style="padding:14px 0;border-bottom:1px solid rgba(30,30,30,0.1);vertical-align:top;">
+        <div style="font-size:15.5px;font-weight:600;color:#1e1e1e;line-height:1.4;">${escapeHtml(line.name)}</div>
+        ${line.detail ? `<div style="font-size:13.5px;color:#6b6c63;line-height:1.4;margin-top:2px;">${escapeHtml(line.detail)}</div>` : ''}
       </td>
-      <td align="center" style="padding:14px 10px;border-bottom:1px solid #e5e7eb;font-size:13px;color:#6b7280;vertical-align:top;">${line.quantity}</td>
-      <td align="right" style="padding:14px 0;border-bottom:1px solid #e5e7eb;font-size:14px;font-weight:600;color:#111827;vertical-align:top;">${escapeHtml(formatCurrency(line.amount))}</td>
+      <td align="center" style="padding:14px 10px;border-bottom:1px solid rgba(30,30,30,0.1);font-size:14px;color:#6b6c63;vertical-align:top;">${line.quantity}</td>
+      <td align="right" style="padding:14px 0;border-bottom:1px solid rgba(30,30,30,0.1);font-size:15.5px;font-weight:600;color:#1e1e1e;vertical-align:top;white-space:nowrap;">${escapeHtml(formatCurrency(line.amount))}</td>
     </tr>
   `).join('')
 
@@ -303,17 +303,18 @@ const renderOrderSummaryTable = ({
 
   const summary = summaryRows.map(([label, value, isTotal]) => `
     <tr>
-      <td colspan="2" align="right" style="padding:${isTotal ? '14px 0 0' : '8px 0 0'};font-size:${isTotal ? '15px' : '13px'};font-weight:${isTotal ? '700' : '500'};color:${isTotal ? '#111827' : '#6b7280'};">${escapeHtml(label)}</td>
-      <td align="right" style="padding:${isTotal ? '14px 0 0' : '8px 0 0'};font-size:${isTotal ? '16px' : '13px'};font-weight:${isTotal ? '700' : '600'};color:#111827;">${escapeHtml(value)}</td>
+      <td colspan="2" align="right" style="padding:${isTotal ? '14px 12px 0 0' : '8px 12px 0 0'};font-size:${isTotal ? '16px' : '14px'};font-weight:${isTotal ? '600' : '400'};color:${isTotal ? '#1e1e1e' : '#6b6c63'};">${escapeHtml(label)}</td>
+      <td align="right" style="padding:${isTotal ? '14px 0 0' : '8px 0 0'};font-size:${isTotal ? '16px' : '14px'};font-weight:${isTotal ? '600' : '500'};color:#1e1e1e;white-space:nowrap;">${escapeHtml(value)}</td>
     </tr>
   `).join('')
 
+  const headStyle = 'padding:0 0 10px;font-size:12.5px;font-weight:600;color:#6b6c63;text-transform:uppercase;letter-spacing:0.8px;border-bottom:1px solid rgba(30,30,30,0.1);'
   return `
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;">
       <tr>
-        <th align="left" style="padding:0 0 8px;font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.1em;border-bottom:1px solid #e5e7eb;">Item</th>
-        <th align="center" style="padding:0 10px 8px;font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.1em;border-bottom:1px solid #e5e7eb;">Qty</th>
-        <th align="right" style="padding:0 0 8px;font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.1em;border-bottom:1px solid #e5e7eb;">Amount</th>
+        <th align="left" style="${headStyle}">Item</th>
+        <th align="center" style="${headStyle}padding:0 10px 10px;">Qty</th>
+        <th align="right" style="${headStyle}">Amount</th>
       </tr>
       ${rows}
       ${summary}
@@ -324,9 +325,7 @@ const renderOrderSummaryTable = ({
 const renderOrderCreatedEmail = ({
   brandName,
   brandLogoUrl,
-  preheader,
-  title,
-  subtitle,
+  firstName,
   orderNumber,
   paymentLabel,
   ctaUrl,
@@ -334,66 +333,159 @@ const renderOrderCreatedEmail = ({
 }: {
   brandName: string
   brandLogoUrl?: string
-  preheader: string
-  title: string
-  subtitle: string
+  firstName: string
   orderNumber: string
   paymentLabel: string
   ctaUrl: string
   orderSummaryHtml: string
-}) => `
-  <!DOCTYPE html>
-  <html lang="en">
-    <head>
-      <meta charset="UTF-8" />
-      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-      <title>${escapeHtml(title)}</title>
-    </head>
-    <body style="margin:0;padding:0;background-color:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#111827;-webkit-font-smoothing:antialiased;">
-      <div style="display:none;max-height:0;overflow:hidden;opacity:0;">${escapeHtml(preheader)}</div>
-      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#f9fafb;padding:40px 0;">
-        <tr>
-          <td align="center">
-            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;margin:0 auto;background-color:#ffffff;padding:40px;border:1px solid #e5e7eb;border-radius:12px;">
-              <tr>
-                <td>
-                  <div style="text-align:left;margin-bottom:28px;">
-                    ${brandLogoUrl
-                      ? `<img src="${brandLogoUrl}" alt="${escapeHtml(brandName)}" style="max-width:140px;max-height:40px;width:auto;height:auto;display:inline-block;border:0;outline:none;text-decoration:none;" />`
-                      : `<div style="font-weight:700;font-size:24px;letter-spacing:-0.03em;color:#111827;">${escapeHtml(brandName)}</div>`
-                    }
-                  </div>
-                  <div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:12px;">Order created</div>
-                  <h1 style="font-size:26px;font-weight:600;line-height:1.25;margin:0 0 12px 0;color:#111827;letter-spacing:-0.02em;">${escapeHtml(title)}</h1>
-                  <p style="font-size:15px;line-height:1.6;color:#4b5563;margin:0 0 24px 0;">${escapeHtml(subtitle)}</p>
-                  <div style="margin-bottom:28px;">
-                    <a href="${ctaUrl}" style="display:inline-block;background-color:#000000;color:#ffffff !important;text-decoration:none;font-weight:500;padding:15px 32px;border-radius:9999px;font-size:14px;text-align:center;">Track Order</a>
-                  </div>
-                  <div style="background-color:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:20px;margin-bottom:24px;">
-                    <div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px;">Order reference</div>
-                    <div style="font-size:18px;font-weight:700;color:#111827;">${escapeHtml(orderNumber)}</div>
-                    <div style="font-size:12px;color:#6b7280;margin-top:6px;">Linked payment reference ${escapeHtml(paymentLabel)}</div>
-                  </div>
-                  <div style="background-color:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:20px;margin-bottom:32px;">
-                    <div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:14px;">Order summary</div>
-                    ${orderSummaryHtml}
-                  </div>
-                  <div style="text-align:left;font-size:11px;color:#9ca3af;border-top:1px solid #e5e7eb;padding-top:24px;line-height:1.6;letter-spacing:0.02em;">
-                    You are receiving this because this order was created from a confirmed social checkout payment.<br />
-                    <div style="margin-top:10px;">
-                      <img src="${FYLL_WORDMARK_URL}" alt="Fyll" style="max-width:92px;max-height:24px;width:auto;height:auto;display:inline-block;border:0;outline:none;text-decoration:none;" />
-                    </div>
-                    <div style="margin-top:6px;">Powered by Fyll</div>
-                  </div>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-      </table>
-    </body>
-  </html>
-`
+}) => {
+  const safeBrandName = escapeHtml(brandName)
+  const safeLogoUrl = brandLogoUrl ? escapeHtml(brandLogoUrl) : ''
+  const safeCtaUrl = escapeHtml(ctaUrl)
+  const safeFieldUrl = escapeHtml(FYLL_FIELD_EMAIL_URL)
+  const displayUrl = escapeHtml(ctaUrl.replace(/^https?:\/\//i, '').replace(/\/$/, ''))
+  const helpUrl = escapeHtml(new URL('/help', APP_BASE_URL).toString())
+  const privacyUrl = escapeHtml(new URL('/privacy', APP_BASE_URL).toString())
+  const brandInitial = escapeHtml(brandName.charAt(0).toUpperCase() || 'F')
+  const documentTitle = `Your order has been created: ${orderNumber}`
+  const preheader = `${brandName} has created your order. Track every step with your link.`
+  const logoMarkup = safeLogoUrl
+    ? `<img src="${safeLogoUrl}" alt="${safeBrandName}" width="48" height="48" style="display:block;width:48px;height:48px;border-radius:50%;object-fit:cover;border:3px solid #d5e057;box-sizing:border-box;" />`
+    : `<span style="display:block;width:42px;height:42px;line-height:42px;border-radius:50%;background:#ffffff;border:3px solid #d5e057;color:#1e1e1e;font-size:19px;font-weight:600;text-align:center;">${brandInitial}</span>`
+
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="color-scheme" content="light only" />
+        <meta name="supported-color-schemes" content="light only" />
+        <title>${escapeHtml(documentTitle)}</title>
+        <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,800&amp;family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&amp;display=swap" rel="stylesheet" />
+        <style>
+          :root { color-scheme: light only; supported-color-schemes: light only; }
+          body, table, td, a { font-family:'DM Sans',-apple-system,'Segoe UI',system-ui,sans-serif; }
+          a:hover { color:#3f4a08 !important; }
+          @media only screen and (max-width:640px) {
+            .email-wrap { padding:18px 12px 28px !important; }
+            .email-card { border-radius:22px !important; }
+            .hero { height:200px !important; padding:26px 24px !important; }
+            .hero-brand { font-size:16px !important; }
+            .hero-title { font-size:30px !important; letter-spacing:-1px !important; }
+            .content { padding:28px 22px 30px !important; }
+            .ref-value { font-size:30px !important; letter-spacing:-1px !important; }
+            .date-cell { font-size:13px !important; }
+            .footer { padding:22px 22px 26px !important; }
+          }
+        </style>
+      </head>
+      <body style="margin:0;padding:0;background:#ffffff;color:#1e1e1e;-webkit-font-smoothing:antialiased;">
+        <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${escapeHtml(preheader)}</div>
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#ffffff;border-collapse:collapse;">
+          <tr>
+            <td class="email-wrap" align="center" style="padding:32px 20px 40px;">
+              <table role="presentation" class="email-card" width="640" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:640px;background:#ffffff;border:1px solid #e3e3de;border-radius:28px;overflow:hidden;box-shadow:0 20px 50px rgba(30,30,30,0.08);border-collapse:separate;">
+                <tr>
+                  <td class="hero" background="${safeFieldUrl}" valign="top" style="height:200px;padding:30px 36px;box-sizing:border-box;background-color:#3f4a08;background-image:linear-gradient(180deg,rgba(20,20,20,0.15),rgba(20,20,20,0.45)),url('${safeFieldUrl}');background-size:cover;background-position:center;">
+                    <table role="presentation" width="100%" height="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;height:100%;border-collapse:collapse;">
+                      <tr>
+                        <td valign="top">
+                          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:collapse;">
+                            <tr>
+                              <td valign="middle">
+                                <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;">
+                                  <tr>
+                                    <td valign="middle" style="padding-right:12px;">${logoMarkup}</td>
+                                    <td class="hero-brand" valign="middle" style="font-size:18px;font-weight:600;color:#ffffff;">${safeBrandName}</td>
+                                  </tr>
+                                </table>
+                              </td>
+                              <td align="right" valign="middle">
+                                <span style="display:inline-block;padding:8px 14px;border-radius:999px;background:rgba(20,20,20,0.35);border:1px solid rgba(255,255,255,0.2);color:#eef2c4;font-size:12.5px;font-weight:600;white-space:nowrap;"><span style="color:#d5e057;font-size:14px;line-height:0;">●</span>&nbsp;&nbsp;Order created</span>
+                              </td>
+                            </tr>
+                          </table>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td valign="bottom">
+                          <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;">
+                            <tr>
+                              <td valign="middle" style="padding-right:14px;">
+                                <span style="display:block;width:54px;height:54px;line-height:54px;border-radius:50%;background:#d5e057;color:#1e1e1e;font-size:29px;font-weight:600;text-align:center;box-shadow:0 0 0 8px rgba(213,224,87,0.22);">✓</span>
+                              </td>
+                              <td class="hero-title" valign="middle" style="font-family:'Bricolage Grotesque','Arial Black',sans-serif;font-weight:800;font-size:34px;letter-spacing:-1.2px;color:#ffffff;line-height:1;">Order created</td>
+                            </tr>
+                          </table>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td class="content" style="padding:34px 40px 36px;">
+                    <p style="margin:0 0 22px;font-size:16.5px;line-height:1.6;color:#3a3b35;">Hi ${escapeHtml(firstName)},<br />${safeBrandName} has created your order from your confirmed payment. Follow every step from one link.</p>
+
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;table-layout:fixed;margin:0 0 22px;background:#f6f6f1;border:1px solid rgba(30,30,30,0.06);border-radius:20px;border-collapse:separate;">
+                      <tr>
+                        <td width="62%" valign="middle" style="width:62%;padding:20px 8px 20px 22px;vertical-align:middle;">
+                          <div style="font-size:12.5px;font-weight:600;letter-spacing:0.8px;text-transform:uppercase;color:#6b6c63;margin-bottom:4px;">Order reference</div>
+                          <div class="ref-value" style="font-family:'Bricolage Grotesque','Arial Black',sans-serif;font-weight:800;font-size:34px;letter-spacing:-1.2px;line-height:1.1;color:#1e1e1e;word-break:break-all;">${escapeHtml(orderNumber)}</div>
+                        </td>
+                        <td class="date-cell" width="38%" align="right" valign="middle" style="width:38%;padding:20px 22px 20px 8px;font-size:14px;color:#6b6c63;line-height:1.5;text-align:right;vertical-align:middle;">Linked payment<br />${escapeHtml(paymentLabel)}</td>
+                      </tr>
+                    </table>
+
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;margin:0 0 12px;border-collapse:separate;">
+                      <tr>
+                        <td align="center" bgcolor="#d5e057" style="height:58px;border-radius:999px;">
+                          <a href="${safeCtaUrl}" style="display:block;padding:17px 20px;color:#1e1e1e !important;font-size:17px;font-weight:600;text-decoration:none;line-height:24px;">Track your order&nbsp;&nbsp;→</a>
+                        </td>
+                      </tr>
+                    </table>
+                    <div style="margin:0 0 28px;text-align:center;font-size:13.5px;color:#6b6c63;line-height:1.45;">Or open <a href="${safeCtaUrl}" style="color:#5f6a00;font-weight:600;text-decoration:underline;word-break:break-all;">${displayUrl}</a></div>
+
+                    <div style="font-size:12.5px;font-weight:600;letter-spacing:0.8px;text-transform:uppercase;color:#6b6c63;margin-bottom:12px;">Order summary</div>
+                    <div style="margin:0 0 24px;">${orderSummaryHtml}</div>
+
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#f6f6f1;border-radius:20px;border-collapse:separate;">
+                      <tr><td colspan="2" style="padding:22px 22px 14px;font-size:12.5px;font-weight:600;letter-spacing:0.8px;text-transform:uppercase;color:#6b6c63;">What happens next</td></tr>
+                      <tr>
+                        <td valign="top" style="padding:0 14px 14px 22px;width:28px;"><span style="display:block;width:28px;height:28px;line-height:28px;border-radius:50%;background:#d5e057;color:#1e1e1e;font-size:13px;font-weight:600;text-align:center;">1</span></td>
+                        <td valign="top" style="padding:3px 22px 14px 0;font-size:15px;line-height:1.5;color:#3a3b35;">${safeBrandName} prepares your order.</td>
+                      </tr>
+                      <tr>
+                        <td valign="top" style="padding:0 14px 14px 22px;width:28px;"><span style="display:block;width:28px;height:28px;line-height:28px;border-radius:50%;background:rgba(30,30,30,0.07);color:#55564e;font-size:13px;font-weight:600;text-align:center;">2</span></td>
+                        <td valign="top" style="padding:3px 22px 14px 0;font-size:15px;line-height:1.5;color:#3a3b35;">It is packed and sent out for delivery.</td>
+                      </tr>
+                      <tr>
+                        <td valign="top" style="padding:0 14px 22px 22px;width:28px;"><span style="display:block;width:28px;height:28px;line-height:28px;border-radius:50%;background:rgba(30,30,30,0.07);color:#55564e;font-size:13px;font-weight:600;text-align:center;">3</span></td>
+                        <td valign="top" style="padding:3px 22px 22px 0;font-size:15px;line-height:1.5;color:#3a3b35;">Follow every update at the same tracking link.</td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td class="footer" style="padding:22px 40px 28px;border-top:1px solid rgba(30,30,30,0.07);">
+                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 10px;border-collapse:collapse;">
+                      <tr>
+                        <td valign="middle" style="padding-right:8px;font-size:13px;color:#6b6c63;">Secured by</td>
+                        <td valign="middle"><img src="${escapeHtml(FYLL_WORDMARK_URL)}" alt="Fyll" style="display:block;height:17px;max-width:78px;width:auto;border:0;filter:brightness(0.12);" /></td>
+                      </tr>
+                    </table>
+                    <div style="font-size:12.5px;line-height:1.55;color:#8c8d84;margin-bottom:10px;">You're getting this because ${safeBrandName} created an order for you from a confirmed payment through Fyll. Questions about your purchase? Reply to this email to reach ${safeBrandName}.</div>
+                    <div style="font-size:12.5px;"><a href="${helpUrl}" style="color:#55564e;margin-right:16px;">Help</a><a href="${privacyUrl}" style="color:#55564e;">Privacy</a></div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </body>
+    </html>
+  `
+}
 
 const renderPaymentConfirmedEmail = ({
   status,
@@ -806,9 +898,7 @@ const buildEmailContent = ({
     html: renderOrderCreatedEmail({
       brandName: businessName,
       brandLogoUrl: businessLogoUrl,
-      preheader: `${businessName} has created your order.`,
-      title: `Hi ${firstName}, your order has been created`,
-      subtitle: `${businessName} has created your order from your confirmed payment. Track the order below and review the bill summary.`,
+      firstName,
       orderNumber: orderNumber || paymentLabel,
       paymentLabel,
       ctaUrl: trackingUrl || checkoutUrl,
