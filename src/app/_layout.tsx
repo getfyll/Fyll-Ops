@@ -301,6 +301,7 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
     || firstSegment === 'procurement'
     || firstSegment === 'expense'
     || firstSegment === 'case'
+    || firstSegment === 'customer'
     || firstSegment === 'task'
     || firstSegment === 'return'
     || firstSegment === 'social-checkout'
