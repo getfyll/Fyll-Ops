@@ -6,7 +6,8 @@ import { Eye, EyeOff, Mail, Lock, UserPlus, ChevronLeft, User as UserIcon, Key }
 import { useResolvedThemeMode, useThemeColors } from '@/lib/theme';
 import useAuthStore from '@/lib/state/auth-store';
 import * as Haptics from 'expo-haptics';
-import { FyllLogo } from '@/components/FyllLogo';
+import { AuthField, AuthHeader, AuthNote, AuthPrimaryButton, AuthShell } from '@/components/auth/AuthShell';
+import { FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, usePaymentsPalette } from '@/components/payments/payments-ui';
 import { supabase } from '@/lib/supabase';
 import { isPartnerPortalHostname } from '@/lib/partner-host';
 import PartnerLoginScreen from './partner-login';
@@ -24,12 +25,13 @@ export default function LoginScreen() {
   const router = useRouter();
   const { invite: inviteParam, access: accessParam, signup: signupParam, returnTo: returnToParam } = useLocalSearchParams<{ invite?: string; access?: string; signup?: string; returnTo?: string | string[] }>();
   const colors = useThemeColors();
+  const palette = usePaymentsPalette();
   const { width } = useWindowDimensions();
   const isWeb = Platform.OS === 'web';
   const isWide = isWeb && width >= 1200;
   const isDark = useResolvedThemeMode() === 'dark';
-  const primaryActionBg = isDark ? '#FFFFFF' : '#111111';
-  const primaryActionText = isDark ? '#111111' : '#FFFFFF';
+  const primaryActionBg = FYLL_LIME;
+  const primaryActionText = FYLL_LIME_INK;
   const login = useAuthStore((s) => s.login);
   const signup = useAuthStore((s) => s.signup);
   const getInviteByCode = useAuthStore((s) => s.getInviteByCode);
@@ -351,63 +353,61 @@ export default function LoginScreen() {
     }
   };
 
+  const loginLink = (
+    <Pressable
+      onPress={() => {
+        setMode('login');
+        resetInviteForm();
+        resetSignupForm();
+      }}
+      className="active:opacity-70"
+    >
+      <Text style={{ color: palette.muted, fontSize: 14 }}>
+        Already have an account? <Text style={{ color: palette.limeOnSurface, fontWeight: '700' }}>Log in</Text>
+      </Text>
+    </Pressable>
+  );
+
   if (mode === 'invite') {
     return (
-      <View className="flex-1" style={{ backgroundColor: colors.bg.primary }}>
-        <SafeAreaView className="flex-1">
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            className="flex-1"
-          >
-            <ScrollView
-              className="flex-1"
-              contentContainerStyle={isWide ? { flexGrow: 1 } : { paddingBottom: 32 }}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-              <View className={isWide ? 'flex-1 flex-row' : 'flex-1'}>
-                <View className={isWide ? 'w-[52%] items-center justify-center' : undefined}>
-                  <View className={isWide ? 'w-full max-w-[520px] px-10 py-12' : 'flex-1 px-6 pt-4'}>
-                {/* Back Button */}
+      <AuthShell
+        isWide={isWide}
+        topRight={loginLink}
+        hero={{
+          uri: teamHeroUri,
+          onError: () => {
+            if (teamHeroUri !== AUTH_HERO_FALLBACK_URI) {
+              setTeamHeroUri(AUTH_HERO_FALLBACK_URI);
+            }
+          },
+          title: 'Welcome to the team.',
+          body: 'Join your workspace and start collaborating on orders, services, and cases.',
+          chips: ['Shared customers', 'Live order updates', 'Thread collaboration'],
+        }}
+      >
+        {/* Back Button */}
                 <Pressable
                   onPress={() => {
                     setMode('login');
                     resetInviteForm();
                   }}
-                  className="w-10 h-10 rounded-xl items-center justify-center mb-6 active:opacity-50"
-                  style={{ backgroundColor: colors.bg.secondary }}
+                  className="w-10 h-10 rounded-full items-center justify-center mb-6 active:opacity-50"
+                  style={{ backgroundColor: palette.softFill }}
                 >
                   <ChevronLeft size={20} color={colors.text.primary} strokeWidth={2} />
                 </Pressable>
 
                 {/* Header */}
-                <View className={isWide ? 'mb-8' : 'items-center mb-8'}>
-                  <FyllLogo width={50} color={colors.text.primary} />
-                  <Text style={{ color: colors.text.primary }} className={isWide ? 'text-2xl font-bold mt-4' : 'text-2xl font-bold mt-4 text-center'}>
-                    Join Your Team
-                  </Text>
-                  <Text style={{ color: colors.text.tertiary }} className={isWide ? 'text-base mt-2' : 'text-base text-center mt-2'}>
-                    Enter your invite code to create an account
-                  </Text>
-                </View>
+<AuthHeader title="Join your team." subtitle="Enter your invite code to create an account" />
 
-                {!inviteEmail ? (
+{!inviteEmail ? (
                   // Step 1: Enter invite code
                   <View>
                     <View className="mb-4">
-                      <Text style={{ color: colors.text.secondary }} className="text-sm font-medium mb-2">
+                      <Text style={{ color: palette.textSoft }} className="text-sm font-medium mb-2">
                         Invite Code
                       </Text>
-                      <View
-                        className="flex-row items-center rounded-xl px-4"
-                        style={{
-                          backgroundColor: colors.input.bg,
-                          borderWidth: 1,
-                          borderColor: inviteError ? '#EF4444' : colors.input.border,
-                          height: 56,
-                        }}
-                      >
-                        <Key size={20} color={colors.text.tertiary} strokeWidth={1.5} />
+                      <AuthField error={Boolean(inviteError)}>
                         <TextInput
                           value={inviteCode}
                           onChangeText={(text) => {
@@ -415,35 +415,29 @@ export default function LoginScreen() {
                             setInviteError('');
                           }}
                           placeholder="Enter code (e.g. ABC123XY)"
-                          placeholderTextColor={colors.input.placeholder}
+                          placeholderTextColor={palette.faint}
                           autoCapitalize="characters"
                           autoCorrect={false}
                           style={{
                             flex: 1,
-                            color: colors.input.text,
+                            color: palette.text,
                             fontSize: 16,
-                            marginLeft: 12,
+                            marginLeft: 0,
                             fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
                             letterSpacing: 2,
                           }}
                           selectionColor={colors.text.primary}
                         />
-                      </View>
+                      </AuthField>
                     </View>
 
                     {inviteError ? (
-                      <View className="mb-4 p-3 rounded-xl" style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)' }}>
-                        <Text className="text-red-500 text-sm text-center">{inviteError}</Text>
+                      <View className="mb-4 p-3 rounded-xl" style={{ backgroundColor: palette.dangerBg }}>
+                        <Text style={{ color: palette.danger }} className="text-sm text-center">{inviteError}</Text>
                       </View>
                     ) : null}
 
-                    <Pressable
-                      onPress={handleVerifyCode}
-                      className="rounded-xl items-center justify-center active:opacity-80"
-                      style={{ backgroundColor: primaryActionBg, height: 56 }}
-                    >
-                      <Text style={{ color: primaryActionText }} className="font-semibold text-base">Verify Code</Text>
-                    </Pressable>
+                    <AuthPrimaryButton label="Verify code" onPress={handleVerifyCode} />
                   </View>
                 ) : (
                   // Step 2: Create account
@@ -456,19 +450,10 @@ export default function LoginScreen() {
 
                     {/* Name Input */}
                     <View className="mb-4">
-                      <Text style={{ color: colors.text.secondary }} className="text-sm font-medium mb-2">
+                      <Text style={{ color: palette.textSoft }} className="text-sm font-medium mb-2">
                         Your Name
                       </Text>
-                      <View
-                        className="flex-row items-center rounded-xl px-4"
-                        style={{
-                          backgroundColor: colors.input.bg,
-                          borderWidth: 1,
-                          borderColor: colors.input.border,
-                          height: 56,
-                        }}
-                      >
-                        <UserIcon size={20} color={colors.text.tertiary} strokeWidth={1.5} />
+                      <AuthField>
                         <TextInput
                           value={inviteName}
                           onChangeText={(text) => {
@@ -476,28 +461,19 @@ export default function LoginScreen() {
                             setInviteError('');
                           }}
                           placeholder="Enter your full name"
-                          placeholderTextColor={colors.input.placeholder}
-                          style={{ flex: 1, color: colors.input.text, fontSize: 16, marginLeft: 12 }}
+                          placeholderTextColor={palette.faint}
+                          style={{ flex: 1, color: palette.text, fontSize: 16, marginLeft: 0 }}
                           selectionColor={colors.text.primary}
                         />
-                      </View>
+                      </AuthField>
                     </View>
 
                     {/* Password Input */}
                     <View className="mb-4">
-                      <Text style={{ color: colors.text.secondary }} className="text-sm font-medium mb-2">
+                      <Text style={{ color: palette.textSoft }} className="text-sm font-medium mb-2">
                         Create Password
                       </Text>
-                      <View
-                        className="flex-row items-center rounded-xl px-4"
-                        style={{
-                          backgroundColor: colors.input.bg,
-                          borderWidth: 1,
-                          borderColor: inviteError ? '#EF4444' : colors.input.border,
-                          height: 56,
-                        }}
-                      >
-                        <Lock size={20} color={colors.text.tertiary} strokeWidth={1.5} />
+                      <AuthField error={Boolean(inviteError)}>
                         <TextInput
                           value={invitePassword}
                           onChangeText={(text) => {
@@ -505,9 +481,9 @@ export default function LoginScreen() {
                             setInviteError('');
                           }}
                           placeholder="Create a password"
-                          placeholderTextColor={colors.input.placeholder}
+                          placeholderTextColor={palette.faint}
                           secureTextEntry={!showInvitePassword}
-                          style={{ flex: 1, color: colors.input.text, fontSize: 16, marginLeft: 12 }}
+                          style={{ flex: 1, color: palette.text, fontSize: 16, marginLeft: 0 }}
                           selectionColor={colors.text.primary}
                         />
                         <Pressable onPress={() => setShowInvitePassword(!showInvitePassword)}>
@@ -517,24 +493,15 @@ export default function LoginScreen() {
                             <Eye size={20} color={colors.text.tertiary} />
                           )}
                         </Pressable>
-                      </View>
+                      </AuthField>
                     </View>
 
                     {/* Confirm Password */}
                     <View className="mb-6">
-                      <Text style={{ color: colors.text.secondary }} className="text-sm font-medium mb-2">
+                      <Text style={{ color: palette.textSoft }} className="text-sm font-medium mb-2">
                         Confirm Password
                       </Text>
-                      <View
-                        className="flex-row items-center rounded-xl px-4"
-                        style={{
-                          backgroundColor: colors.input.bg,
-                          borderWidth: 1,
-                          borderColor: inviteError ? '#EF4444' : colors.input.border,
-                          height: 56,
-                        }}
-                      >
-                        <Lock size={20} color={colors.text.tertiary} strokeWidth={1.5} />
+                      <AuthField error={Boolean(inviteError)}>
                         <TextInput
                           value={inviteConfirmPassword}
                           onChangeText={(text) => {
@@ -542,106 +509,45 @@ export default function LoginScreen() {
                             setInviteError('');
                           }}
                           placeholder="Confirm password"
-                          placeholderTextColor={colors.input.placeholder}
+                          placeholderTextColor={palette.faint}
                           secureTextEntry={!showInvitePassword}
-                          style={{ flex: 1, color: colors.input.text, fontSize: 16, marginLeft: 12 }}
+                          style={{ flex: 1, color: palette.text, fontSize: 16, marginLeft: 0 }}
                           selectionColor={colors.text.primary}
                         />
-                      </View>
+                      </AuthField>
                     </View>
 
                     {inviteError ? (
-                      <View className="mb-4 p-3 rounded-xl" style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)' }}>
-                        <Text className="text-red-500 text-sm text-center">{inviteError}</Text>
+                      <View className="mb-4 p-3 rounded-xl" style={{ backgroundColor: palette.dangerBg }}>
+                        <Text style={{ color: palette.danger }} className="text-sm text-center">{inviteError}</Text>
                       </View>
                     ) : null}
 
-                    <Pressable
-                      onPress={handleCreateAccount}
-                      disabled={isLoading}
-                      className="rounded-xl items-center justify-center active:opacity-80 flex-row"
-                      style={{ backgroundColor: primaryActionBg, height: 56, opacity: isLoading ? 0.7 : 1 }}
-                    >
-                      {isLoading && (
-                        <ActivityIndicator size="small" color={primaryActionText} style={{ marginRight: 8 }} />
-                      )}
-                      <Text style={{ color: primaryActionText }} className="font-semibold text-base">
-                        {isLoading ? 'Creating Account...' : 'Create Account'}
-                      </Text>
-                    </Pressable>
+                    <AuthPrimaryButton label={isLoading ? 'Creating account...' : 'Create account'} onPress={handleCreateAccount} loading={isLoading} />
                   </View>
                 )}
-                  </View>
-                </View>
-
-                {isWide && (
-                  <View className="flex-1 px-10 py-12">
-                    <View
-                      className="flex-1 rounded-[32px] overflow-hidden border"
-                      style={{ borderColor: colors.border.light }}
-                    >
-                      <Image
-                        source={{ uri: teamHeroUri }}
-                        style={{ width: '100%', height: '100%' }}
-                        resizeMode="cover"
-                        onError={() => {
-                          if (teamHeroUri !== AUTH_HERO_FALLBACK_URI) {
-                            setTeamHeroUri(AUTH_HERO_FALLBACK_URI);
-                          }
-                        }}
-                      />
-                      <View
-                        className="absolute inset-0"
-                        style={{ backgroundColor: isDark ? 'rgba(0,0,0,0.38)' : 'rgba(0,0,0,0.22)' }}
-                      />
-                      <View className="absolute bottom-8 left-8 right-8">
-                        <Text className="text-white text-3xl font-semibold">
-                          Welcome to the team.
-                        </Text>
-                        <Text className="text-white/80 text-sm mt-3">
-                          Join your workspace and start collaborating on orders, services, and cases.
-                        </Text>
-                        <View className="mt-5 flex-row gap-2">
-                          <View className="px-3 py-1.5 rounded-full border border-white/40">
-                            <Text className="text-white text-xs">Shared customers</Text>
-                          </View>
-                          <View className="px-3 py-1.5 rounded-full border border-white/40">
-                            <Text className="text-white text-xs">Live order updates</Text>
-                          </View>
-                          <View className="px-3 py-1.5 rounded-full border border-white/40">
-                            <Text className="text-white text-xs">Thread collaboration</Text>
-                          </View>
-                        </View>
-                      </View>
-                    </View>
-                  </View>
-                )}
-              </View>
-            </ScrollView>
-          </KeyboardAvoidingView>
-        </SafeAreaView>
-      </View>
+      </AuthShell>
     );
   }
 
   if (mode === 'signup') {
     return (
-      <View className="flex-1" style={{ backgroundColor: colors.bg.primary }}>
-        <SafeAreaView className="flex-1">
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            className="flex-1"
-          >
-            <ScrollView
-              className="flex-1"
-              contentContainerStyle={isWide ? { flexGrow: 1 } : { paddingBottom: 32 }}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-              <View className={isWide ? 'flex-1 flex-row' : 'flex-1'}>
-                <View className={isWide ? 'w-[52%] items-center justify-center' : undefined}>
-                  <View className={isWide ? 'w-full max-w-[520px] px-10 py-12' : 'px-6 pt-4'}>
-                    {/* Back Button */}
+      <AuthShell
+        isWide={isWide}
+        topRight={loginLink}
+        hero={{
+          uri: authHeroUri,
+          onError: () => {
+            if (authHeroUri !== AUTH_HERO_FALLBACK_URI) {
+              setAuthHeroUri(AUTH_HERO_FALLBACK_URI);
+            }
+          },
+          title: 'Start with a clean setup.',
+          body: 'Build your catalog, services, and cases with a focused workflow.',
+          chips: ['Fast onboarding', 'Service management', 'Case tracking'],
+        }}
+      >
+        {/* Back Button */}
                     <Pressable
                       onPress={() => {
                         if (signupAccessCodeVerified) {
@@ -653,39 +559,22 @@ export default function LoginScreen() {
                           resetSignupForm();
                         }
                       }}
-                      className="w-10 h-10 rounded-xl items-center justify-center mb-6 active:opacity-50"
-                      style={{ backgroundColor: colors.bg.secondary }}
+                      className="w-10 h-10 rounded-full items-center justify-center mb-6 active:opacity-50"
+                      style={{ backgroundColor: palette.softFill }}
                     >
                       <ChevronLeft size={20} color={colors.text.primary} strokeWidth={2} />
                     </Pressable>
 
                     {/* Header */}
-                    <View className="items-center mb-8">
-                      <FyllLogo width={50} color={colors.text.primary} />
-                      <Text style={{ color: colors.text.primary }} className="text-2xl font-bold mt-4">
-                        {signupAccessCodeVerified ? 'Create Your Account' : 'VIP Founder Access'}
-                      </Text>
-                      <Text style={{ color: colors.text.tertiary }} className="text-base text-center mt-2">
-                        {signupAccessCodeVerified ? 'Set up your business in minutes' : 'Enter your access code to unlock founder signup'}
-                      </Text>
-                    </View>
+<AuthHeader title={signupAccessCodeVerified ? 'Create your account.' : 'VIP founder access.'} subtitle={signupAccessCodeVerified ? 'Set up your business in minutes' : 'Enter your access code to unlock founder signup'} />
 
-                    {!signupAccessCodeVerified ? (
+{!signupAccessCodeVerified ? (
                       <View>
                         <View className="mb-4">
-                          <Text style={{ color: colors.text.secondary }} className="text-sm font-medium mb-2">
+                          <Text style={{ color: palette.textSoft }} className="text-sm font-medium mb-2">
                             Access Code
                           </Text>
-                          <View
-                            className="flex-row items-center rounded-xl px-4"
-                            style={{
-                              backgroundColor: colors.input.bg,
-                              borderWidth: 1,
-                              borderColor: signupError ? '#EF4444' : colors.input.border,
-                              height: 56,
-                            }}
-                          >
-                            <Key size={20} color={colors.text.tertiary} strokeWidth={1.5} />
+                          <AuthField error={Boolean(signupError)}>
                             <TextInput
                               value={signupAccessCode}
                               onChangeText={(text) => {
@@ -694,20 +583,20 @@ export default function LoginScreen() {
                                 setSignupAccessCodeMessage('');
                               }}
                               placeholder="Enter VIP code (e.g. MINT2026)"
-                              placeholderTextColor={colors.input.placeholder}
+                              placeholderTextColor={palette.faint}
                               autoCapitalize="characters"
                               autoCorrect={false}
                               style={{
                                 flex: 1,
-                                color: colors.input.text,
+                                color: palette.text,
                                 fontSize: 16,
-                                marginLeft: 12,
+                                marginLeft: 0,
                                 fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
                                 letterSpacing: 1.5,
                               }}
                               selectionColor={colors.text.primary}
                             />
-                          </View>
+                          </AuthField>
                         </View>
 
                         <View className="mb-6 p-4 rounded-xl" style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}>
@@ -720,24 +609,12 @@ export default function LoginScreen() {
                         </View>
 
                         {signupError ? (
-                          <View className="mb-4 p-3 rounded-xl" style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)' }}>
-                            <Text className="text-red-500 text-sm text-center">{signupError}</Text>
+                          <View className="mb-4 p-3 rounded-xl" style={{ backgroundColor: palette.dangerBg }}>
+                            <Text style={{ color: palette.danger }} className="text-sm text-center">{signupError}</Text>
                           </View>
                         ) : null}
 
-                        <Pressable
-                          onPress={handleVerifySignupAccessCode}
-                          disabled={isVerifyingSignupAccessCode}
-                          className="rounded-xl items-center justify-center active:opacity-80 flex-row"
-                          style={{ backgroundColor: primaryActionBg, height: 56, opacity: isVerifyingSignupAccessCode ? 0.7 : 1 }}
-                        >
-                          {isVerifyingSignupAccessCode ? (
-                            <ActivityIndicator size="small" color={primaryActionText} style={{ marginRight: 8 }} />
-                          ) : null}
-                          <Text style={{ color: primaryActionText }} className="font-semibold text-base">
-                            {isVerifyingSignupAccessCode ? 'Checking Access...' : 'Unlock Signup'}
-                          </Text>
-                        </Pressable>
+                        <AuthPrimaryButton label={isVerifyingSignupAccessCode ? 'Checking access...' : 'Unlock signup'} onPress={handleVerifySignupAccessCode} loading={isVerifyingSignupAccessCode} />
                       </View>
                     ) : (
                       <>
@@ -749,19 +626,10 @@ export default function LoginScreen() {
 
                         {/* Business Name */}
                         <View className="mb-4">
-                          <Text style={{ color: colors.text.secondary }} className="text-sm font-medium mb-2">
+                          <Text style={{ color: palette.textSoft }} className="text-sm font-medium mb-2">
                             Business Name
                           </Text>
-                          <View
-                            className="flex-row items-center rounded-xl px-4"
-                            style={{
-                              backgroundColor: colors.input.bg,
-                              borderWidth: 1,
-                              borderColor: signupError ? '#EF4444' : colors.input.border,
-                              height: 56,
-                            }}
-                          >
-                            <UserPlus size={20} color={colors.text.tertiary} strokeWidth={1.5} />
+                          <AuthField error={Boolean(signupError)}>
                             <TextInput
                               value={businessName}
                               onChangeText={(text) => {
@@ -769,28 +637,19 @@ export default function LoginScreen() {
                                 setSignupError('');
                               }}
                               placeholder="Business name"
-                              placeholderTextColor={colors.input.placeholder}
-                              style={{ flex: 1, color: colors.input.text, fontSize: 16, marginLeft: 12 }}
+                              placeholderTextColor={palette.faint}
+                              style={{ flex: 1, color: palette.text, fontSize: 16, marginLeft: 0 }}
                               selectionColor={colors.text.primary}
                             />
-                          </View>
+                          </AuthField>
                         </View>
 
                         {/* Name */}
                         <View className="mb-4">
-                          <Text style={{ color: colors.text.secondary }} className="text-sm font-medium mb-2">
+                          <Text style={{ color: palette.textSoft }} className="text-sm font-medium mb-2">
                             Your Name
                           </Text>
-                          <View
-                            className="flex-row items-center rounded-xl px-4"
-                            style={{
-                              backgroundColor: colors.input.bg,
-                              borderWidth: 1,
-                              borderColor: signupError ? '#EF4444' : colors.input.border,
-                              height: 56,
-                            }}
-                          >
-                            <UserIcon size={20} color={colors.text.tertiary} strokeWidth={1.5} />
+                          <AuthField error={Boolean(signupError)}>
                             <TextInput
                               value={signupName}
                               onChangeText={(text) => {
@@ -798,28 +657,19 @@ export default function LoginScreen() {
                                 setSignupError('');
                               }}
                               placeholder="Your full name"
-                              placeholderTextColor={colors.input.placeholder}
-                              style={{ flex: 1, color: colors.input.text, fontSize: 16, marginLeft: 12 }}
+                              placeholderTextColor={palette.faint}
+                              style={{ flex: 1, color: palette.text, fontSize: 16, marginLeft: 0 }}
                               selectionColor={colors.text.primary}
                             />
-                          </View>
+                          </AuthField>
                         </View>
 
                         {/* Email */}
                         <View className="mb-4">
-                          <Text style={{ color: colors.text.secondary }} className="text-sm font-medium mb-2">
+                          <Text style={{ color: palette.textSoft }} className="text-sm font-medium mb-2">
                             Email Address
                           </Text>
-                          <View
-                            className="flex-row items-center rounded-xl px-4"
-                            style={{
-                              backgroundColor: colors.input.bg,
-                              borderWidth: 1,
-                              borderColor: signupError ? '#EF4444' : colors.input.border,
-                              height: 56,
-                            }}
-                          >
-                            <Mail size={20} color={colors.text.tertiary} strokeWidth={1.5} />
+                          <AuthField error={Boolean(signupError)}>
                             <TextInput
                               value={signupEmail}
                               onChangeText={(text) => {
@@ -827,31 +677,22 @@ export default function LoginScreen() {
                                 setSignupError('');
                               }}
                               placeholder="you@business.com"
-                              placeholderTextColor={colors.input.placeholder}
+                              placeholderTextColor={palette.faint}
                               keyboardType="email-address"
                               autoCapitalize="none"
                               autoCorrect={false}
-                              style={{ flex: 1, color: colors.input.text, fontSize: 16, marginLeft: 12 }}
+                              style={{ flex: 1, color: palette.text, fontSize: 16, marginLeft: 0 }}
                               selectionColor={colors.text.primary}
                             />
-                          </View>
+                          </AuthField>
                         </View>
 
                         {/* Password */}
                         <View className="mb-4">
-                          <Text style={{ color: colors.text.secondary }} className="text-sm font-medium mb-2">
+                          <Text style={{ color: palette.textSoft }} className="text-sm font-medium mb-2">
                             Password
                           </Text>
-                          <View
-                            className="flex-row items-center rounded-xl px-4"
-                            style={{
-                              backgroundColor: colors.input.bg,
-                              borderWidth: 1,
-                              borderColor: signupError ? '#EF4444' : colors.input.border,
-                              height: 56,
-                            }}
-                          >
-                            <Lock size={20} color={colors.text.tertiary} strokeWidth={1.5} />
+                          <AuthField error={Boolean(signupError)}>
                             <TextInput
                               value={signupPassword}
                               onChangeText={(text) => {
@@ -859,9 +700,9 @@ export default function LoginScreen() {
                                 setSignupError('');
                               }}
                               placeholder="Create a password"
-                              placeholderTextColor={colors.input.placeholder}
+                              placeholderTextColor={palette.faint}
                               secureTextEntry={!showPassword}
-                              style={{ flex: 1, color: colors.input.text, fontSize: 16, marginLeft: 12 }}
+                              style={{ flex: 1, color: palette.text, fontSize: 16, marginLeft: 0 }}
                               selectionColor={colors.text.primary}
                             />
                             <Pressable onPress={() => setShowPassword(!showPassword)}>
@@ -871,24 +712,15 @@ export default function LoginScreen() {
                                 <Eye size={20} color={colors.text.tertiary} />
                               )}
                             </Pressable>
-                          </View>
+                          </AuthField>
                         </View>
 
                         {/* Confirm Password */}
                         <View className="mb-6">
-                          <Text style={{ color: colors.text.secondary }} className="text-sm font-medium mb-2">
+                          <Text style={{ color: palette.textSoft }} className="text-sm font-medium mb-2">
                             Confirm Password
                           </Text>
-                          <View
-                            className="flex-row items-center rounded-xl px-4"
-                            style={{
-                              backgroundColor: colors.input.bg,
-                              borderWidth: 1,
-                              borderColor: signupError ? '#EF4444' : colors.input.border,
-                              height: 56,
-                            }}
-                          >
-                            <Lock size={20} color={colors.text.tertiary} strokeWidth={1.5} />
+                          <AuthField error={Boolean(signupError)}>
                             <TextInput
                               value={signupConfirmPassword}
                               onChangeText={(text) => {
@@ -896,302 +728,121 @@ export default function LoginScreen() {
                                 setSignupError('');
                               }}
                               placeholder="Confirm password"
-                              placeholderTextColor={colors.input.placeholder}
+                              placeholderTextColor={palette.faint}
                               secureTextEntry={!showPassword}
-                              style={{ flex: 1, color: colors.input.text, fontSize: 16, marginLeft: 12 }}
+                              style={{ flex: 1, color: palette.text, fontSize: 16, marginLeft: 0 }}
                               selectionColor={colors.text.primary}
                             />
-                          </View>
+                          </AuthField>
                         </View>
 
                         {signupError ? (
-                          <View className="mb-4 p-3 rounded-xl" style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)' }}>
-                            <Text className="text-red-500 text-sm text-center">{signupError}</Text>
+                          <View className="mb-4 p-3 rounded-xl" style={{ backgroundColor: palette.dangerBg }}>
+                            <Text style={{ color: palette.danger }} className="text-sm text-center">{signupError}</Text>
                           </View>
                         ) : null}
 
-                        <Pressable
-                          onPress={handleSignup}
-                          disabled={isLoading}
-                          className="rounded-xl items-center justify-center active:opacity-80 flex-row"
-                          style={{ backgroundColor: primaryActionBg, height: 56, opacity: isLoading ? 0.7 : 1 }}
-                        >
-                          {isLoading && (
-                            <ActivityIndicator size="small" color={primaryActionText} style={{ marginRight: 8 }} />
-                          )}
-                          <Text style={{ color: primaryActionText }} className="font-semibold text-base">
-                            {isLoading ? 'Creating Account...' : 'Create Account'}
-                          </Text>
-                        </Pressable>
+                        <AuthPrimaryButton label={isLoading ? 'Creating account...' : 'Create account'} onPress={handleSignup} loading={isLoading} />
                       </>
                     )}
-
-                  </View>
-                </View>
-
-                {isWide && (
-                  <View className="flex-1 px-10 py-12">
-                    <View
-                      className="flex-1 rounded-[32px] overflow-hidden border"
-                      style={{ borderColor: colors.border.light }}
-                    >
-                      <Image
-                        source={{ uri: authHeroUri }}
-                        style={{ width: '100%', height: '100%' }}
-                        resizeMode="cover"
-                        onError={() => {
-                          if (authHeroUri !== AUTH_HERO_FALLBACK_URI) {
-                            setAuthHeroUri(AUTH_HERO_FALLBACK_URI);
-                          }
-                        }}
-                      />
-                      <View
-                        className="absolute inset-0"
-                        style={{ backgroundColor: isDark ? 'rgba(0,0,0,0.38)' : 'rgba(0,0,0,0.22)' }}
-                      />
-                      <View className="absolute bottom-8 left-8 right-8">
-                        <Text className="text-white text-3xl font-semibold">
-                          Start with a clean setup.
-                        </Text>
-                        <Text className="text-white/80 text-sm mt-3">
-                          Build your catalog, services, and cases with a focused workflow.
-                        </Text>
-                        <View className="mt-5 flex-row gap-2">
-                          <View className="px-3 py-1.5 rounded-full border border-white/40">
-                            <Text className="text-white text-xs">Fast onboarding</Text>
-                          </View>
-                          <View className="px-3 py-1.5 rounded-full border border-white/40">
-                            <Text className="text-white text-xs">Service management</Text>
-                          </View>
-                          <View className="px-3 py-1.5 rounded-full border border-white/40">
-                            <Text className="text-white text-xs">Case tracking</Text>
-                          </View>
-                        </View>
-                      </View>
-                    </View>
-                  </View>
-                )}
-              </View>
-            </ScrollView>
-          </KeyboardAvoidingView>
-        </SafeAreaView>
-      </View>
+      </AuthShell>
     );
   }
 
   return (
-    <View className="flex-1" style={{ backgroundColor: colors.bg.primary }}>
-      <SafeAreaView className="flex-1">
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          className="flex-1"
-        >
-          <ScrollView
-            className="flex-1"
-            contentContainerStyle={isWide ? { flexGrow: 1 } : { paddingBottom: 32 }}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
-            <View className={isWide ? 'flex-1 flex-row' : 'flex-1'}>
-              <View className={isWide ? 'w-[52%] items-center justify-center' : undefined}>
-                <View className={isWide ? 'w-full max-w-[520px] px-10 py-12' : 'px-6 pt-10'}>
-              {/* Logo */}
-              <View className="items-center mb-10">
-                <FyllLogo width={50} color={colors.text.primary} />
-                <Text style={{ color: colors.text.primary }} className="text-2xl font-bold mt-4">
-                  Welcome Back
-                </Text>
-                <Text style={{ color: colors.text.tertiary }} className="text-base text-center mt-2">
-                  Sign in to manage your business
-                </Text>
-              </View>
+    <AuthShell
+      isWide={isWide}
+      hero={{
+        uri: authHeroUri,
+        onError: () => {
+          if (authHeroUri !== AUTH_HERO_FALLBACK_URI) {
+            setAuthHeroUri(AUTH_HERO_FALLBACK_URI);
+          }
+        },
+        title: 'Run your ops with clarity.',
+        body: 'Inventory, orders, services, and cases — all in one focused workspace.',
+        chips: ['Realtime insights', 'Track services', 'Case management'],
+      }}
+    >
+      <AuthHeader title="Log in to your business" subtitle="Orders, stock, payments and your team, in one place." />
 
-              {/* Email Input */}
-              <View className="mb-4">
-                <Text style={{ color: colors.text.secondary }} className="text-sm font-medium mb-2">
-                  Email Address
-                </Text>
-                <View
-                  className="flex-row items-center rounded-xl px-4"
-                  style={{
-                    backgroundColor: colors.input.bg,
-                    borderWidth: 1,
-                    borderColor: error ? '#EF4444' : colors.input.border,
-                    height: 56,
-                  }}
-                >
-                  <Mail size={20} color={colors.text.tertiary} strokeWidth={1.5} />
-                  <TextInput
-                    value={email}
-                    onChangeText={(text) => {
-                      setEmail(text);
-                      setError('');
-                    }}
-                    placeholder="you@business.com"
-                    placeholderTextColor={colors.input.placeholder}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    style={{ flex: 1, color: colors.input.text, fontSize: 16, marginLeft: 12 }}
-                    selectionColor={colors.text.primary}
-                  />
-                </View>
-              </View>
+      {/* Email Input */}
+      <View className="mb-5">
+        <Text style={{ color: palette.textSoft, fontSize: 15, fontWeight: '500', marginBottom: 8 }}>Business email</Text>
+        <AuthField error={Boolean(error)}>
+          <TextInput
+            value={email}
+            onChangeText={(text) => {
+              setEmail(text);
+              setError('');
+            }}
+            placeholder="you@business.com"
+            placeholderTextColor={palette.faint}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
+            style={{ flex: 1, color: palette.text, fontSize: 16 }}
+            selectionColor={colors.text.primary}
+          />
+        </AuthField>
+      </View>
 
-              {/* Password Input */}
-              <View className="mb-3">
-                <Text style={{ color: colors.text.secondary }} className="text-sm font-medium mb-2">
-                  Password
-                </Text>
-                <View
-                  className="flex-row items-center rounded-xl px-4"
-                  style={{
-                    backgroundColor: colors.input.bg,
-                    borderWidth: 1,
-                    borderColor: error ? '#EF4444' : colors.input.border,
-                    height: 56,
-                  }}
-                >
-                  <Lock size={20} color={colors.text.tertiary} strokeWidth={1.5} />
-                  <TextInput
-                    value={password}
-                    onChangeText={(text) => {
-                      setPassword(text);
-                      setError('');
-                    }}
-                    placeholder="Enter your password"
-                    placeholderTextColor={colors.input.placeholder}
-                    secureTextEntry={!showPassword}
-                    style={{ flex: 1, color: colors.input.text, fontSize: 16, marginLeft: 12 }}
-                    selectionColor={colors.text.primary}
-                  />
-                  <Pressable onPress={() => setShowPassword(!showPassword)}>
-                    {showPassword ? (
-                      <EyeOff size={20} color={colors.text.tertiary} />
-                    ) : (
-                      <Eye size={20} color={colors.text.tertiary} />
-                    )}
-                  </Pressable>
-                </View>
-              </View>
+      {/* Password Input */}
+      <View className="mb-6">
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+          <Text style={{ color: palette.textSoft, fontSize: 15, fontWeight: '500' }}>Password</Text>
+          <Pressable onPress={handlePasswordReset} disabled={isResetting} className="active:opacity-70">
+            <Text style={{ color: palette.limeOnSurface, fontSize: 14.5, fontWeight: '700' }}>
+              {isResetting ? 'Sending reset email...' : 'Forgot password?'}
+            </Text>
+          </Pressable>
+        </View>
+        <AuthField error={Boolean(error)}>
+          <TextInput
+            value={password}
+            onChangeText={(text) => {
+              setPassword(text);
+              setError('');
+            }}
+            placeholder="Your password"
+            placeholderTextColor={palette.faint}
+            secureTextEntry={!showPassword}
+            style={{ flex: 1, color: palette.text, fontSize: 16 }}
+            selectionColor={colors.text.primary}
+            onSubmitEditing={handleLogin}
+          />
+          <Pressable onPress={() => setShowPassword(!showPassword)} hitSlop={10}>
+            {showPassword ? (
+              <EyeOff size={20} color={colors.text.tertiary} />
+            ) : (
+              <Eye size={20} color={colors.text.tertiary} />
+            )}
+          </Pressable>
+        </AuthField>
+      </View>
 
-              {/* Error */}
-              {error ? (
-                <View className="mb-4 p-3 rounded-xl" style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)' }}>
-                  <Text className="text-red-500 text-sm text-center">{error}</Text>
-                </View>
-              ) : null}
+      {/* Error */}
+      {error ? (
+        <View className="mb-4 p-3 rounded-xl" style={{ backgroundColor: palette.dangerBg }}>
+          <Text style={{ color: palette.danger }} className="text-sm text-center">{error}</Text>
+        </View>
+      ) : null}
 
-              {resetMessage ? (
-                <View className="mb-4 p-3 rounded-xl" style={{ backgroundColor: 'rgba(34, 197, 94, 0.1)' }}>
-                  <Text style={{ color: '#22C55E' }} className="text-sm text-center">{resetMessage}</Text>
-                </View>
-              ) : null}
+      {resetMessage ? (
+        <View className="mb-4 p-3 rounded-xl" style={{ backgroundColor: 'rgba(34, 197, 94, 0.1)' }}>
+          <Text style={{ color: '#22C55E' }} className="text-sm text-center">{resetMessage}</Text>
+        </View>
+      ) : null}
 
-              {/* Login Button */}
-              <Pressable
-                onPress={handleLogin}
-                disabled={isLoading}
-                className="rounded-xl items-center justify-center active:opacity-80 flex-row"
-                style={{ backgroundColor: primaryActionBg, height: 56, opacity: isLoading ? 0.7 : 1 }}
-              >
-                {isLoading && (
-                  <ActivityIndicator size="small" color={primaryActionText} style={{ marginRight: 8 }} />
-                )}
-                <Text style={{ color: primaryActionText }} className="font-semibold text-base">
-                  {isLoading ? 'Signing in...' : 'Sign In'}
-                </Text>
-              </Pressable>
+      <AuthPrimaryButton label={isLoading ? 'Logging in...' : 'Log in'} onPress={handleLogin} loading={isLoading} />
 
-              {/* Reset Password */}
-              <Pressable
-                onPress={handlePasswordReset}
-                disabled={isResetting}
-                className="mt-4 items-center"
-              >
-                <Text style={{ color: colors.text.tertiary }} className="text-sm">
-                  {isResetting ? 'Sending reset email...' : 'Forgot password?'}
-                </Text>
-              </Pressable>
-
-              <View className="my-6" />
-
-              {/* Founder Access (invite-only) */}
-              <Pressable
-                onPress={() => {
-                  setMode('signup');
-                  resetSignupForm();
-                }}
-                className="rounded-xl items-center justify-center active:opacity-80"
-                style={{ borderWidth: 1, borderColor: colors.border.light, height: 56 }}
-              >
-                <Text style={{ color: colors.text.primary }} className="font-semibold text-base">
-                  Founder Access Code
-                </Text>
-              </Pressable>
-
-              {/* Invite */}
-              <Pressable
-                onPress={() => {
-                  setMode('invite');
-                  resetInviteForm();
-                }}
-                className="mt-4 rounded-xl items-center justify-center active:opacity-80"
-                style={{ borderWidth: 1, borderColor: colors.border.light, height: 56 }}
-              >
-                <Text style={{ color: colors.text.primary }} className="font-semibold text-base">
-                  Join With Invite Code
-                </Text>
-              </Pressable>
-                </View>
-              </View>
-
-              {isWide && (
-                <View className="flex-1 px-10 py-12">
-                  <View
-                    className="flex-1 rounded-[32px] overflow-hidden border"
-                    style={{ borderColor: colors.border.light }}
-                  >
-                    <Image
-                      source={{ uri: authHeroUri }}
-                      style={{ width: '100%', height: '100%' }}
-                      resizeMode="cover"
-                      onError={() => {
-                        if (authHeroUri !== AUTH_HERO_FALLBACK_URI) {
-                          setAuthHeroUri(AUTH_HERO_FALLBACK_URI);
-                        }
-                      }}
-                    />
-                    <View
-                      className="absolute inset-0"
-                      style={{ backgroundColor: isDark ? 'rgba(0,0,0,0.38)' : 'rgba(0,0,0,0.22)' }}
-                    />
-                    <View className="absolute bottom-8 left-8 right-8">
-                      <Text className="text-white text-3xl font-semibold">
-                        Run your ops with clarity.
-                      </Text>
-                      <Text className="text-white/80 text-sm mt-3">
-                        Inventory, orders, services, and cases — all in one focused workspace.
-                      </Text>
-                      <View className="mt-5 flex-row gap-2">
-                        <View className="px-3 py-1.5 rounded-full border border-white/40">
-                          <Text className="text-white text-xs">Realtime insights</Text>
-                        </View>
-                        <View className="px-3 py-1.5 rounded-full border border-white/40">
-                          <Text className="text-white text-xs">Track services</Text>
-                        </View>
-                        <View className="px-3 py-1.5 rounded-full border border-white/40">
-                          <Text className="text-white text-xs">Case management</Text>
-                        </View>
-                      </View>
-                    </View>
-                  </View>
-                </View>
-              )}
-            </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
-    </View>
+      <AuthNote
+        compact={!isWide}
+        rows={[
+          { label: 'Joining a team?', action: 'Use your invite code', onPress: () => { setMode('invite'); resetInviteForm(); } },
+          { label: 'Starting a business?', action: 'Use your founder access code', onPress: () => { setMode('signup'); resetSignupForm(); } },
+        ]}
+      />
+    </AuthShell>
   );
 }

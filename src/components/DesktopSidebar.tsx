@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, ScrollView, Platform } from 'react-native';
 import { useGlobalSearchParams, usePathname, useRouter, useSegments } from 'expo-router';
-import { LayoutDashboard, Package, ShoppingCart, MoreHorizontal, BarChart3, Users, LogOut, Database, FileText, Briefcase, MessageSquare, ChevronsLeft, ChevronsRight, TrendingUp, TrendingDown, ChevronDown, ChevronUp, Receipt, Truck, Calculator, Settings, ListTodo, User, Banknote, Boxes, Megaphone, Printer, RotateCcw, Wallet, Link2, ClipboardCheck, Building2, AlertTriangle } from 'lucide-react-native';
+import { LayoutDashboard, Package, ShoppingCart, MoreHorizontal, BarChart3, Users, LogOut, FileText, Briefcase, MessageSquare, ChevronsLeft, ChevronsRight, TrendingUp, TrendingDown, ChevronDown, ChevronUp, Receipt, Truck, Calculator, Settings, ListTodo, User, Banknote, Boxes, Megaphone, Printer, RotateCcw, Wallet, Link2, ClipboardCheck, Building2, AlertTriangle } from 'lucide-react-native';
 import { useThemeColors } from '@/lib/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import useAuthStore, { ROLE_PERMISSIONS } from '@/lib/state/auth-store';
@@ -1204,34 +1204,6 @@ export function DesktopSidebar() {
             ) : null}
           </View>
         )}
-
-        <Pressable
-          onPress={() => router.push('/supabase-check')}
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: isCollapsed ? 'center' : 'flex-start',
-            paddingHorizontal: isCollapsed ? 0 : 16,
-            paddingVertical: 12,
-            borderRadius: isCollapsed ? 999 : 12,
-            backgroundColor: 'rgba(34, 197, 94, 0.12)',
-            marginBottom: 8,
-          }}
-        >
-          <Database size={18} color="#22C55E" strokeWidth={2} />
-          {!isCollapsed ? (
-            <Text
-              style={{
-                fontSize: 14,
-                fontWeight: '600',
-                color: '#22C55E',
-                marginLeft: 12,
-              }}
-            >
-              Test Supabase
-            </Text>
-          ) : null}
-        </Pressable>
 
         <Pressable
           onPress={handleLogout}

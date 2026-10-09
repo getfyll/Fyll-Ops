@@ -391,11 +391,20 @@ function SwipeableMessage({
   children: React.ReactNode;
 }) {
   const colors = useThemeColors();
+  const { width: viewportWidth } = useWindowDimensions();
+  // Native always swipes. On the web only touch phones swipe, so mouse dragging on desktop can
+  // still select message text.
+  const swipeEnabled = Platform.OS !== 'web'
+    || (viewportWidth < 768 && typeof navigator !== 'undefined' && (navigator.maxTouchPoints ?? 0) > 0);
   const translateX = useSharedValue<number>(0);
   const didTriggerReply = useSharedValue<boolean>(false);
   const swipeDirection = isOwnMessage ? -1 : 1;
   const maxSwipeDistance = 84;
   const replyTriggerDistance = 56;
+  const triggerReply = useCallback(() => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onSwipeReply();
+  }, [onSwipeReply]);
 
   const bubbleAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: translateX.value }],
@@ -417,22 +426,23 @@ function SwipeableMessage({
 
   const panGesture = useMemo(
     () => Gesture.Pan()
-      .enabled(Platform.OS !== 'web')
+      .enabled(swipeEnabled)
       .activeOffsetX([-12, 12])
       .failOffsetY([-10, 10])
       .onUpdate((event) => {
         const rawTranslation = event.translationX * swipeDirection;
         if (rawTranslation <= 0) {
-          translateX.value = withSpring(0, {
-            damping: 22,
-            stiffness: 280,
-            mass: 0.3,
-          });
+          translateX.value = 0;
           didTriggerReply.value = false;
           return;
         }
 
-        translateX.value = Math.min(rawTranslation, maxSwipeDistance) * swipeDirection;
+        // Keep the first part of the drag direct, then add resistance so the
+        // reply affordance feels intentional without stealing horizontal space.
+        const resistedTranslation = rawTranslation <= replyTriggerDistance
+          ? rawTranslation
+          : replyTriggerDistance + (rawTranslation - replyTriggerDistance) * 0.35;
+        translateX.value = Math.min(resistedTranslation, maxSwipeDistance) * swipeDirection;
       })
       .onEnd(() => {
         const didCrossThreshold = Math.abs(translateX.value) >= replyTriggerDistance;
@@ -444,7 +454,7 @@ function SwipeableMessage({
 
         if (didCrossThreshold && !didTriggerReply.value) {
           didTriggerReply.value = true;
-          runOnJS(onSwipeReply)();
+          runOnJS(triggerReply)();
         }
 
         didTriggerReply.value = false;
@@ -457,10 +467,10 @@ function SwipeableMessage({
         });
         didTriggerReply.value = false;
       }),
-    [didTriggerReply, maxSwipeDistance, onSwipeReply, replyTriggerDistance, swipeDirection, translateX]
+    [didTriggerReply, maxSwipeDistance, replyTriggerDistance, swipeDirection, swipeEnabled, translateX, triggerReply]
   );
 
-  if (Platform.OS === 'web') {
+  if (!swipeEnabled) {
     return <>{children}</>;
   }
 
@@ -469,7 +479,7 @@ function SwipeableMessage({
     : colors.text.muted;
 
   return (
-    <GestureDetector gesture={panGesture}>
+    <GestureDetector gesture={panGesture} touchAction="pan-y">
       <View
         style={{
           position: 'relative',
@@ -2045,7 +2055,7 @@ export function CollaborationThreadPanel({
       const bubbleMessageLineHeight = useMobileBubbleTypography ? 17 : 23;
       const bubbleTimestampFontSize = useMobileBubbleTypography ? 8 : 9;
       const bubbleTimestampLineHeight = useMobileBubbleTypography ? 10 : 11;
-      const headerNameColor = isOwnComment ? ownBubbleSecondaryTextColor : avatarColor;
+      const headerNameColor = isOwnComment ? ownBubbleSecondaryTextColor : colors.text.primary;
       const attachments = comment.attachments ?? [];
       const hasOnlyImageAttachments = attachments.length > 0
         && attachments.every((attachment) => isImageAttachment(attachment.file_name, attachment.mime_type));
@@ -2248,42 +2258,28 @@ export function CollaborationThreadPanel({
                   {parentComment && (
                     <View
                       style={{
-                        marginTop: 10,
-                        marginLeft: 10,
-                        marginRight: 10,
+                        marginTop: 8,
+                        marginLeft: 8,
+                        marginRight: 8,
                         marginBottom: 8,
                         minWidth: 0,
-                        width: 'auto',
                         maxWidth: '100%',
-                        borderTopLeftRadius: 10,
-                        borderTopRightRadius: 10,
-                        borderBottomLeftRadius: 10,
-                        borderBottomRightRadius: 10,
+                        borderRadius: 12,
                         overflow: 'hidden',
-                        borderBottomWidth: 1,
-                        borderBottomColor: isOwnComment
-                          ? 'rgba(0,0,0,0.2)'
-                          : (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.12)'),
                         backgroundColor: isOwnComment
-                          ? 'rgba(0,0,0,0.26)'
-                          : (isDark ? '#252527' : '#2B2B2E'),
+                          ? 'rgba(20,20,20,0.1)'
+                          : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(17,17,17,0.05)'),
                       }}
                     >
                       <View style={{ flexDirection: 'row', alignItems: 'stretch', minWidth: 0 }}>
-                        <View
-                          style={{
-                            flex: 1,
-                            minWidth: 0,
-                            paddingHorizontal: 10,
-                            paddingVertical: 9,
-                          }}
-                        >
+                        <View style={{ width: 3, backgroundColor: isOwnComment ? FYLL_LIME_INK : FYLL_LIME }} />
+                        <View style={{ flex: 1, minWidth: 0, paddingHorizontal: 10, paddingVertical: 7 }}>
                           <Text
                             style={{
-                              color: 'rgba(255,255,255,0.92)',
+                              color: isOwnComment ? FYLL_LIME_INK : (isDark ? FYLL_LIME : colors.text.primary),
                               fontSize: 12,
-                              fontWeight: '600',
-                              marginBottom: 4,
+                              fontWeight: '700',
+                              marginBottom: 2,
                             }}
                             numberOfLines={1}
                             ellipsizeMode="tail"
@@ -2292,15 +2288,13 @@ export function CollaborationThreadPanel({
                           </Text>
                           <Text
                             style={{
-                              color: isOwnComment
-                                ? ownBubbleMutedTextColor
-                                : 'rgba(255,255,255,0.82)',
+                              color: isOwnComment ? 'rgba(20,20,20,0.7)' : colors.text.muted,
                               fontSize: 12,
-                              lineHeight: 18,
+                              lineHeight: 17,
                               flexShrink: 1,
                               ...(Platform.OS === 'web' ? ({ wordBreak: 'break-word' } as any) : null),
                             }}
-                            numberOfLines={3}
+                            numberOfLines={2}
                             ellipsizeMode="tail"
                           >
                             {parentComment.body.trim() || 'Attachment'}
@@ -2471,28 +2465,32 @@ export function CollaborationThreadPanel({
                     {(() => {
                       return (
                         <>
-                          {hasEveryonePing && (
-                            <View
-                              style={{
-                                alignSelf: 'flex-start',
-                                flexDirection: 'row',
-                                alignItems: 'center',
-                                gap: 6,
-                                marginBottom: (orderSegs.length > 0 || hasInlineText) ? 8 : 0,
-                                paddingHorizontal: 8,
-                                paddingVertical: 4,
-                                borderRadius: 999,
-                                backgroundColor: 'rgba(239,68,68,0.12)',
-                                borderWidth: 1,
-                                borderColor: 'rgba(239,68,68,0.45)',
-                              }}
-                            >
-                              <Bell size={11} color="#DC2626" strokeWidth={2.2} />
-                              <Text style={{ fontSize: 11, fontWeight: '800', color: '#DC2626', letterSpacing: 0.1 }}>
-                                Team Ping
-                              </Text>
-                            </View>
-                          )}
+                          {hasEveryonePing && (() => {
+                            const pingInk = isOwnComment ? FYLL_LIME_INK : (isDark ? FYLL_LIME : '#5A6100');
+                            return (
+                              <View
+                                style={{
+                                  alignSelf: 'flex-start',
+                                  flexDirection: 'row',
+                                  alignItems: 'center',
+                                  gap: 6,
+                                  marginBottom: (orderSegs.length > 0 || hasInlineText) ? 8 : 0,
+                                  paddingLeft: 8,
+                                  paddingRight: 10,
+                                  height: 22,
+                                  borderRadius: 999,
+                                  backgroundColor: isOwnComment
+                                    ? 'rgba(20,20,20,0.12)'
+                                    : (isDark ? 'rgba(213,224,87,0.14)' : 'rgba(213,224,87,0.32)'),
+                                }}
+                              >
+                                <Bell size={11} color={pingInk} strokeWidth={2.4} />
+                                <Text style={{ fontSize: 10, fontWeight: '700', color: pingInk, letterSpacing: 0.9, textTransform: 'uppercase' }}>
+                                  Team ping
+                                </Text>
+                              </View>
+                            );
+                          })()}
 
                           {orderSegs.map((segment, segIndex) => {
                             const rawNum = segment.value.replace('📦', '').replace('#', '').split('—')[0].trim();
