@@ -718,6 +718,19 @@ function NotificationPanel({
         : 'payment';
       return `${customerName} made a ${sourceLabel} payment${amount}`;
     }
+    if (payload?.type === 'quote_update') {
+      const customerName = typeof payload?.customerName === 'string' && payload.customerName.trim()
+        ? payload.customerName.trim()
+        : 'A customer';
+      const quoteNumber = typeof payload?.quoteNumber === 'string' && payload.quoteNumber.trim()
+        ? ` ${payload.quoteNumber.trim()}`
+        : '';
+      if (payload?.status === 'accepted') return `${customerName} accepted quote${quoteNumber}`;
+      if (payload?.status === 'changes_requested') return `${customerName} asked for changes to quote${quoteNumber}`;
+      if (payload?.status === 'declined') return `${customerName} declined quote${quoteNumber}`;
+      if (payload?.status === 'proof_submitted') return `${customerName} uploaded deposit proof for quote${quoteNumber}`;
+      return `Quote${quoteNumber} updated`;
+    }
     if (payload?.type === 'return_request_submitted') {
       const customerName = typeof payload?.customerName === 'string' && payload.customerName.trim()
         ? payload.customerName.trim()
@@ -771,7 +784,8 @@ function NotificationPanel({
   const isPaymentNotification = useCallback((n: CollaborationNotification) => {
     const payload = n.payload as any;
     return payload?.type === 'social_checkout_payment_submitted'
-      || payload?.type === 'payment_received';
+      || payload?.type === 'payment_received'
+      || payload?.type === 'quote_update';
   }, []);
 
   const isReturnNotification = useCallback((n: CollaborationNotification) => {
@@ -829,7 +843,7 @@ function NotificationPanel({
     if (payload?.type === 'delivery_confirmation_pending') {
       return { icon: CircleAlert, color: '#D97706', bg: 'rgba(217,119,6,0.14)' };
     }
-    if (payload?.type === 'social_checkout_payment_submitted' || payload?.type === 'payment_received') {
+    if (payload?.type === 'social_checkout_payment_submitted' || payload?.type === 'payment_received' || payload?.type === 'quote_update') {
       return { icon: Wallet, color: '#7C3AED', bg: 'rgba(124,58,237,0.14)' };
     }
     if (payload?.type === 'return_request_submitted') {
@@ -1570,6 +1584,11 @@ export default function DashboardScreen() {
       } else {
         router.push('/(tabs)/payments' as any);
       }
+      return;
+    }
+    if (payloadType === 'quote_update') {
+      const quoteId = typeof (n.payload as any)?.quoteId === 'string' ? (n.payload as any).quoteId.trim() : '';
+      router.push((quoteId ? `/quote/${encodeURIComponent(quoteId)}` : '/(tabs)/payments') as any);
       return;
     }
     if (payloadType === 'payment_received') {

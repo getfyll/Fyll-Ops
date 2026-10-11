@@ -16,6 +16,8 @@ const SUPABASE_URL = sanitizeEnvValue(Deno.env.get('SUPABASE_URL'))
 const SUPABASE_SERVICE_ROLE_KEY = sanitizeEnvValue(Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))
 const ALLOWED_ORIGIN = sanitizeEnvValue(Deno.env.get('ALLOWED_ORIGIN')) || '*'
 const CRON_SECRET = sanitizeEnvValue(Deno.env.get('CRON_SECRET'))
+// A separate secret for the database triggers. It can only send quote and payment notifications.
+const QUOTE_NOTIFY_SECRET = sanitizeEnvValue(Deno.env.get('QUOTE_NOTIFY_SECRET'))
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
@@ -192,6 +194,19 @@ type PaymentReceivedPayload = {
   status?: string
   paymentMethod?: string
   checkoutCode?: string
+}
+
+type QuoteUpdatePayload = {
+  type: 'quote_update'
+  businessId?: string
+  quoteId?: string
+  quoteNumber?: string
+  customerName?: string
+  total?: string
+  depositAmount?: string
+  status?: string
+  message?: string
+  reason?: string
 }
 
 const jsonResponse = (status: number, body: Record<string, unknown>) => (
@@ -937,6 +952,85 @@ const notifyPaymentReceived = async (
     data: notificationPayload,
     idempotencyKey: collapseId,
     collapseId,
+  })
+}
+
+const notifyQuoteUpdate = async (
+  admin: ReturnType<typeof getAdminClient>,
+  payload: QuoteUpdatePayload,
+) => {
+  const text = (value: unknown) => (typeof value === 'string' ? value.trim() : '')
+  const businessId = text(payload.businessId)
+  const quoteNumber = text(payload.quoteNumber)
+  const status = text(payload.status)
+  if (!businessId || !quoteNumber || !status) {
+    throw new Error('Missing businessId, quoteNumber or status.')
+  }
+
+  const customerName = text(payload.customerName)
+  const customer = customerName || 'A customer'
+  const amount = formatPaymentAmount(text(payload.total) || '0')
+  const deposit = formatPaymentAmount(text(payload.depositAmount) || '0')
+  const message = text(payload.message)
+  const reason = text(payload.reason)
+
+  let heading = ''
+  let content = ''
+  if (status === 'accepted') {
+    heading = `✅ Quote accepted`
+    content = `${customer} accepted ${quoteNumber} (${amount}). Waiting for the ${deposit} deposit.`
+  } else if (status === 'changes_requested') {
+    heading = `✏️ Changes requested`
+    content = `${customer} asked for changes to ${quoteNumber}${message ? `: “${message.slice(0, 120)}”` : '.'}`
+  } else if (status === 'declined') {
+    heading = `Quote declined`
+    content = `${customer} declined ${quoteNumber}${reason ? ` · ${reason}` : ''}.`
+  } else if (status === 'proof_submitted') {
+    heading = `💸 Deposit proof received`
+    content = `${customer} uploaded proof of ${deposit} for ${quoteNumber}. Verify it to create the order.`
+  } else {
+    return { message: 'No notification for this quote status.' }
+  }
+
+  const recipients = await listBusinessRecipientIds(admin, businessId)
+  const notificationPayload = {
+    type: 'quote_update' as const,
+    businessId,
+    quoteId: text(payload.quoteId),
+    quoteNumber,
+    customerName,
+    status,
+    amount,
+    depositAmount: deposit,
+    message,
+    reason,
+  }
+
+  if (recipients.length === 0) {
+    return { message: 'No business recipients.' }
+  }
+
+  const rows = recipients.map((recipientUserId) => ({
+    business_id: businessId,
+    user_id: recipientUserId,
+    actor_user_id: null,
+    thread_id: null,
+    event_type: 'reply' as const,
+    payload: notificationPayload,
+  }))
+  const { error: insertError } = await admin.from('collaboration_notifications').insert(rows)
+  if (insertError) {
+    throw new Error('Could not persist quote in-app notifications.')
+  }
+
+  // A decline then reopen then decline again should notify each time, so the key carries a timestamp.
+  return await sendPushNotification({
+    recipients,
+    heading,
+    content,
+    data: notificationPayload,
+    idempotencyKey: `quote:${businessId}:${notificationPayload.quoteId || quoteNumber}:${status}:${Date.now()}`,
+    collapseId: `quote:${businessId}:${notificationPayload.quoteId || quoteNumber}`,
   })
 }
 
@@ -1808,6 +1902,19 @@ serve(async (req: Request) => {
     // Cron auth: bypass user JWT when a valid CRON_SECRET is provided.
     const rawAuth = req.headers.get('Authorization') ?? ''
     const rawToken = rawAuth.startsWith('Bearer ') ? rawAuth.slice(7).trim() : ''
+    if (QUOTE_NOTIFY_SECRET.length >= 16 && rawToken === QUOTE_NOTIFY_SECRET) {
+      const payload = await req.json()
+      if (payload?.type === 'quote_update') {
+        const result = await notifyQuoteUpdate(admin, payload as QuoteUpdatePayload)
+        return jsonResponse(200, { success: true, type: 'quote_update', result })
+      }
+      if (payload?.type === 'payment_received') {
+        const result = await notifyPaymentReceived(admin, payload as PaymentReceivedPayload)
+        return jsonResponse(200, { success: true, type: 'payment_received', result })
+      }
+      return jsonResponse(403, { error: 'This secret only sends quote and payment notifications.' })
+    }
+
     if (CRON_SECRET.length >= 16 && rawToken === CRON_SECRET) {
       const payload = await req.json()
 
@@ -1832,6 +1939,11 @@ serve(async (req: Request) => {
       if (payload?.type === 'payment_received') {
         const result = await notifyPaymentReceived(admin, payload as PaymentReceivedPayload)
         return jsonResponse(200, { success: true, type: 'payment_received', result })
+      }
+
+      if (payload?.type === 'quote_update') {
+        const result = await notifyQuoteUpdate(admin, payload as QuoteUpdatePayload)
+        return jsonResponse(200, { success: true, type: 'quote_update', result })
       }
 
       if (payload?.type === 'order_delivery_details_updated') {
