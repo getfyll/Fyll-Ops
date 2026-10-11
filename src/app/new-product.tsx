@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Modal, Platform, Pressable, Text, TextInput, View } from 'react-native';
+import { Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
-import { Camera, Check, Plus, X } from 'lucide-react-native';
+import { Camera, Check, ChevronDown, Plus, Trash2, X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import useFyllStore, { generateProductId, generateVariantBarcode, type ProductVariant } from '@/lib/state/fyll-store';
 import useAuthStore from '@/lib/state/auth-store';
@@ -94,7 +94,8 @@ export default function NewProductScreen() {
   const [isNewDesign, setIsNewDesign] = useState<boolean>(false);
   const [coverUrl, setCoverUrl] = useState<string | null>(null);
   const [hasOptions, setHasOptions] = useState<boolean>(false);
-  const [options, setOptions] = useState<ProductOption[]>([{ id: newId(), name: 'Colour', values: [], input: '' }]);
+  const [variableMenuOpen, setVariableMenuOpen] = useState<boolean>(false);
+  const [options, setOptions] = useState<ProductOption[]>([]);
   const [overrides, setOverrides] = useState<Record<string, VariantOverride>>({});
   const [bulkStock, setBulkStock] = useState<string>('');
   const [bulkPrice, setBulkPrice] = useState<string>('');
@@ -163,7 +164,7 @@ export default function NewProductScreen() {
     setIsNewDesign(false);
     setCoverUrl(null);
     setHasOptions(false);
-    setOptions([{ id: newId(), name: 'Colour', values: [], input: '' }]);
+    setOptions([]);
     setOverrides({});
     setSingleStock('');
     setSingleSku('');
@@ -235,7 +236,7 @@ export default function NewProductScreen() {
     const match = productVariables.find((variable) => variable.name.trim().toLowerCase() === option.name.trim().toLowerCase());
     return (match?.values ?? []).filter((value) => !option.values.some((v) => v.toLowerCase() === value.toLowerCase())).slice(0, 8);
   };
-  const otherOptionNames = productVariables.map((variable) => variable.name).filter((n) => !options.some((option) => option.name.trim().toLowerCase() === n.trim().toLowerCase()));
+  const savedVariableChoices = productVariables.filter((variable, index, all) => variable.name.trim() && all.findIndex((v) => v.name.trim().toLowerCase() === variable.name.trim().toLowerCase()) === index);
 
   const setOverride = (key: string, patch: VariantOverride) => setOverrides((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }));
   const applyBulk = (field: 'stock' | 'price', value: string) => {
@@ -491,21 +492,77 @@ export default function NewProductScreen() {
       </View>
       {hasOptions ? (
         <>
+          <View style={{ gap: 8 }}>
+            <Text style={[sub, { fontWeight: '600', color: palette.textSoft }]}>Variables</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Choose variables"
+              onPress={() => setVariableMenuOpen((open) => !open)}
+              style={(state) => ({ height: 46, paddingHorizontal: 16, borderRadius: 14, borderWidth: 1, borderColor: variableMenuOpen ? FYLL_LIME : palette.outline, backgroundColor: isHovered(state) ? palette.softFill : palette.inset, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' })}
+            >
+              <Text style={{ color: options.length ? palette.text : palette.faint, fontSize: isMobile ? 13 : 14 }} numberOfLines={1}>
+                {options.length ? options.map((option) => option.name.trim() || 'New variable').join(', ') : 'Select a variable'}
+              </Text>
+              <ChevronDown size={18} color={palette.muted} style={{ transform: [{ rotate: variableMenuOpen ? '180deg' : '0deg' }] }} />
+            </Pressable>
+            {variableMenuOpen ? (
+              <View style={{ borderRadius: 14, borderWidth: 1, borderColor: palette.outline, backgroundColor: palette.inset, overflow: 'hidden' }}>
+                <ScrollView style={{ maxHeight: 260 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                  {savedVariableChoices.map((variable, index) => {
+                    const selected = options.some((option) => option.name.trim().toLowerCase() === variable.name.trim().toLowerCase());
+                    const disabled = !selected && options.length >= 3;
+                    return (
+                      <Pressable
+                        key={variable.id}
+                        disabled={disabled}
+                        onPress={() => setOptions((prev) => (selected
+                          ? prev.filter((option) => option.name.trim().toLowerCase() !== variable.name.trim().toLowerCase())
+                          : [...prev, { id: newId(), name: variable.name, values: [], input: '' }]))}
+                        style={(state) => ({ minHeight: 46, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 10, borderTopWidth: index === 0 ? 0 : 1, borderTopColor: palette.hairline, backgroundColor: isHovered(state) ? palette.softFill : 'transparent', opacity: disabled ? 0.4 : 1 })}
+                      >
+                        <View style={{ width: 20, height: 20, borderRadius: 6, alignItems: 'center', justifyContent: 'center', backgroundColor: selected ? FYLL_LIME : 'transparent', borderWidth: selected ? 0 : 1, borderColor: palette.outline }}>
+                          {selected ? <Check size={13} color={FYLL_LIME_INK} strokeWidth={3} /> : null}
+                        </View>
+                        <Text style={{ flex: 1, color: palette.text, fontSize: isMobile ? 13 : 14, fontWeight: '600' }}>{variable.name}</Text>
+                        <Text style={{ color: palette.faint, fontSize: isMobile ? 11 : 12 }}>{variable.values.length} {variable.values.length === 1 ? 'value' : 'values'}</Text>
+                      </Pressable>
+                    );
+                  })}
+                  <Pressable
+                    disabled={options.length >= 3}
+                    onPress={() => { setOptions((prev) => [...prev, { id: newId(), name: '', values: [], input: '' }]); setVariableMenuOpen(false); }}
+                    style={(state) => ({ minHeight: 46, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 10, borderTopWidth: savedVariableChoices.length ? 1 : 0, borderTopColor: palette.hairline, backgroundColor: isHovered(state) ? palette.softFill : 'transparent', opacity: options.length >= 3 ? 0.4 : 1 })}
+                  >
+                    <Plus size={16} color={palette.textSoft} strokeWidth={2.4} />
+                    <Text style={{ color: palette.textSoft, fontSize: isMobile ? 13 : 14, fontWeight: '600' }}>New variable</Text>
+                  </Pressable>
+                </ScrollView>
+                {options.length >= 3 ? <Text style={[sub, { paddingHorizontal: 16, paddingBottom: 10 }]}>You can use up to 3 variables.</Text> : null}
+              </View>
+            ) : null}
+          </View>
           {options.map((option, index) => {
             const suggestions = suggestionsFor(option);
             return (
               <View key={option.id} style={{ borderRadius: 14, borderWidth: 1, borderColor: palette.border, padding: 14, gap: 12 }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
-                    <TextInput value={option.name} onChangeText={(value) => updateOption(option.id, { name: value })} placeholder="Option name" placeholderTextColor={palette.faint} style={[{ color: palette.text, fontSize: isMobile ? 14 : 14, fontWeight: '600', paddingVertical: 2, minWidth: 80, flexShrink: 1 }, webNoOutline]} />
+                    <TextInput value={option.name} onChangeText={(value) => updateOption(option.id, { name: value })} placeholder="Name this option" placeholderTextColor={palette.faint} style={[{ color: palette.text, fontSize: isMobile ? 14 : 14, fontWeight: '600', paddingVertical: 2, width: option.name ? option.name.length * 9 + 10 : 150, maxWidth: '70%', flexShrink: 1 }, webNoOutline]} />
                     <Text style={{ color: palette.faint, fontSize: isMobile ? 10 : 12 }}>option {index + 1}</Text>
                   </View>
-                  {options.length > 1 || option.values.length ? (
-                    <Pressable onPress={() => setOptions((prev) => (prev.length > 1 ? prev.filter((o) => o.id !== option.id) : [{ ...option, values: [], input: '' }]))}>
-                      <Text style={{ color: palette.faint, fontSize: isMobile ? 12 : 12.5 }}>Remove</Text>
-                    </Pressable>
-                  ) : null}
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove ${option.name.trim() || 'variable'}`}
+                    hitSlop={8}
+                    onPress={() => setOptions((prev) => prev.filter((o) => o.id !== option.id))}
+                    style={(state) => ({ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: isHovered(state) || state.pressed ? 'rgba(239,68,68,0.16)' : 'rgba(239,68,68,0.08)' })}
+                  >
+                    <Trash2 size={16} color="#EF4444" strokeWidth={2.2} />
+                  </Pressable>
                 </View>
+                {!option.name.trim() ? (
+                  <Text style={sub}>Type a name for this variable, like Frame shape, then add its values.</Text>
+                ) : (
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
                   {option.values.map((value) => {
                     const swatch = swatchForName(value);
@@ -529,7 +586,8 @@ export default function NewProductScreen() {
                     style={[cell, { height: 34, borderRadius: 999, paddingHorizontal: 14, width: isMobile ? '100%' : 230 }, webNoOutline]}
                   />
                 </View>
-                {suggestions.length ? (
+                )}
+                {option.name.trim() && suggestions.length ? (
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
                     <Text style={[sub, { fontSize: isMobile ? 10 : 12.5, paddingRight: 4 }]}>Used before:</Text>
                     {suggestions.map((value) => (
@@ -542,12 +600,6 @@ export default function NewProductScreen() {
               </View>
             );
           })}
-          {options.length < 3 ? (
-            <Pressable onPress={() => setOptions((prev) => [...prev, { id: newId(), name: otherOptionNames[0] ?? 'Size', values: [], input: '' }])} style={(state) => ({ ...dashedPill(state, 36), alignSelf: 'flex-start', paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 6 })}>
-              <Text style={{ color: palette.textSoft, fontSize: isMobile ? 12 : 13.5, fontWeight: '600' }}>+ Add another option</Text>
-              {!isMobile ? <Text style={{ color: palette.faint, fontSize: 13.5 }}>e.g. Size, Lens type</Text> : null}
-            </Pressable>
-          ) : null}
         </>
       ) : null}
     </View>
