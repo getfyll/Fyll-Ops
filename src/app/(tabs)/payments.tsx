@@ -3,7 +3,10 @@ import { View, Text, ScrollView, Pressable, TextInput, Platform, RefreshControl,
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Wallet, Link2, Landmark, Store, Check, Trash2, Pencil, AlertTriangle, ChevronRight } from 'lucide-react-native';
+import { Plus, Search, Wallet, Link2, Landmark, Store, Check, Trash2, Pencil, AlertTriangle, ChevronRight, FileText } from 'lucide-react-native';
+import { PaymentsCreateMenu } from '@/components/quotes/PaymentsCreateMenu';
+import { useQuotes } from '@/lib/quotes-api';
+import { QUOTE_STATUS_LABEL, QUOTE_STATUS_TONE, getQuoteEffectiveStatus, type QuoteStatus } from '@/lib/quotes';
 import useAuthStore from '@/lib/state/auth-store';
 import { supabaseData } from '@/lib/supabase/data';
 import { notifyFyllCheckoutPaymentConfirmed, showFyllCheckoutSyncFailedNotice } from '@/lib/fyll-checkout-confirmation';
@@ -240,8 +243,8 @@ const STOREFRONT_STATUS_LABEL: Record<StorefrontPaymentStatus, string> = {
   refunded: 'Refunded',
 };
 
-type PaymentSource = 'social_checkout' | 'storefront' | 'fyll_checkout';
-type PaymentFilter = null | 'awaiting' | 'needs_review' | 'confirmed' | 'expired';
+type PaymentSource = 'social_checkout' | 'storefront' | 'fyll_checkout' | 'quote';
+type PaymentFilter = null | 'quotes' | 'awaiting' | 'needs_review' | 'confirmed' | 'expired';
 type PaymentPeriod = 'all' | 'week' | 'month' | 'year';
 
 type PaymentRecord = {
@@ -252,10 +255,12 @@ type PaymentRecord = {
   customerName: string;
   customerPhone?: string;
   amount: number;
+  // What counts towards the money summary when it differs from the shown amount (quotes: the deposit).
+  moneyAmount?: number;
   amountCaption?: string;
   statusLabel: string;
   tone: StatusTone;
-  statusGroup: Exclude<PaymentFilter, null>;
+  statusGroup: Exclude<PaymentFilter, null | 'quotes'>;
   createdAt: string;
   createdLabel: string;
   onPress: () => void;
@@ -281,6 +286,18 @@ const SOCIAL_STATUS_TONE: Record<SocialCheckoutStatus, StatusTone> = {
   expired: 'closed',
 };
 
+const QUOTE_STATUS_GROUP: Record<QuoteStatus, Exclude<PaymentFilter, null | 'quotes'>> = {
+  sent: 'awaiting',
+  changes_requested: 'awaiting',
+  accepted: 'awaiting',
+  proof_submitted: 'needs_review',
+  proof_rejected: 'awaiting',
+  order_created: 'confirmed',
+  declined: 'expired',
+  expired: 'expired',
+  cancelled: 'expired',
+};
+
 const STOREFRONT_STATUS_TONE: Record<StorefrontPaymentStatus, StatusTone> = {
   pending: 'awaiting',
   proof_submitted: 'review',
@@ -292,12 +309,13 @@ const STOREFRONT_STATUS_TONE: Record<StorefrontPaymentStatus, StatusTone> = {
 };
 
 function SourceIcon({ source, color, size = 12 }: { source: PaymentSource; color: string; size?: number }) {
-  const Icon = source === 'social_checkout' ? Link2 : Store;
+  const Icon = source === 'social_checkout' ? Link2 : source === 'quote' ? FileText : Store;
   return <Icon size={size} color={color} strokeWidth={2.2} />;
 }
 
 const SOURCE_LABEL: Record<PaymentSource, string> = {
   social_checkout: 'Payment link',
+  quote: 'Quote',
   storefront: 'Storefront',
   fyll_checkout: 'Fyll Checkout',
 };
@@ -631,6 +649,8 @@ export default function PaymentsScreen() {
   const [paymentPeriod, setPaymentPeriod] = useState<PaymentPeriod>('all');
   const [searchFocused, setSearchFocused] = useState<boolean>(false);
   const [actionRecord, setActionRecord] = useState<PaymentRecord | null>(null);
+  const [createMenuOpen, setCreateMenuOpen] = useState<boolean>(false);
+  const quotesQuery = useQuotes();
   const [hasSeededFyllCheckoutDemo, setHasSeededFyllCheckoutDemo] = useState(false);
 
   useEffect(() => {
@@ -890,6 +910,10 @@ export default function PaymentsScreen() {
 
   const drafts = draftsQuery.data ?? [];
   const storefrontPayments = sharedPaymentsQuery.data ?? [];
+  const quotes = quotesQuery.data ?? [];
+  const periodQuotes = useMemo(() => (
+    quotes.filter((quote) => isPaymentInPeriod(quote.createdAt, paymentPeriod))
+  ), [quotes, paymentPeriod]);
   const periodDrafts = useMemo(() => (
     drafts.filter((draft) => isPaymentInPeriod(draft.createdAt, paymentPeriod))
   ), [drafts, paymentPeriod]);
@@ -919,7 +943,8 @@ export default function PaymentsScreen() {
 
   const counts = useMemo(() => {
     const result: Record<Exclude<PaymentFilter, null> | 'all', number> = {
-      all: periodDrafts.length + periodStorefrontPayments.length,
+      all: periodDrafts.length + periodStorefrontPayments.length + periodQuotes.length,
+      quotes: periodQuotes.length,
       awaiting: 0,
       needs_review: 0,
       confirmed: 0,
@@ -940,8 +965,12 @@ export default function PaymentsScreen() {
       if (status === 'confirmed' || status === 'verified') result.confirmed += 1;
       if (status === 'rejected' || status === 'failed' || status === 'refunded') result.expired += 1;
     });
+    periodQuotes.forEach((quote) => {
+      const group = QUOTE_STATUS_GROUP[getQuoteEffectiveStatus(quote)];
+      result[group] += 1;
+    });
     return result;
-  }, [periodDrafts, periodStorefrontPayments]);
+  }, [periodDrafts, periodQuotes, periodStorefrontPayments]);
 
   const paymentRecordsInPeriod = useMemo<PaymentRecord[]>(() => {
     const socialRecords = periodDrafts.map((draft): PaymentRecord => {
@@ -1050,14 +1079,42 @@ export default function PaymentsScreen() {
       };
     });
 
-    return [...socialRecords, ...storefrontRecords]
+    const quoteRecords = periodQuotes.map((quote): PaymentRecord => {
+      const quoteStatus = getQuoteEffectiveStatus(quote);
+      const group = QUOTE_STATUS_GROUP[quoteStatus];
+      const quoteTone = QUOTE_STATUS_TONE[quoteStatus];
+      return {
+        id: `quote-${quote.id}`,
+        source: 'quote',
+        reference: quote.quoteNumber,
+        orderNumber: quote.convertedOrderNumber,
+        customerName: quote.customerName || '—',
+        customerPhone: quote.customerPhone,
+        amount: quote.total,
+        moneyAmount: group === 'expired' ? 0 : quote.depositAmount,
+        amountCaption: quoteStatus === 'order_created' || group === 'expired'
+          ? undefined
+          : `${quote.depositPercent >= 100 ? 'Pay in full' : `Deposit ${formatCurrency(quote.depositAmount)}`}`,
+        statusLabel: QUOTE_STATUS_LABEL[quoteStatus],
+        tone: quoteTone === 'neutral' ? 'awaiting' : quoteTone,
+        statusGroup: group,
+        createdAt: quote.createdAt,
+        createdLabel: formatCreatedDate(quote.createdAt),
+        onPress: () => router.push(`/quote/${quote.id}` as never),
+        editAction: ['sent', 'changes_requested', 'declined', 'expired'].includes(quoteStatus)
+          ? { onEdit: () => router.push(`/quote/new?id=${quote.id}` as never) }
+          : undefined,
+      };
+    });
+
+    return [...socialRecords, ...storefrontRecords, ...quoteRecords]
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [confirmStorefrontPaymentMutation, currentUserRole, deletePaymentRecordMutation, orderLookup, periodDrafts, periodStorefrontPayments, router]);
+  }, [confirmStorefrontPaymentMutation, currentUserRole, deletePaymentRecordMutation, orderLookup, periodDrafts, periodQuotes, periodStorefrontPayments, router]);
 
   const paymentRecords = useMemo<PaymentRecord[]>(() => {
     const query = searchQuery.trim().toLowerCase();
     return paymentRecordsInPeriod
-      .filter((record) => !statusFilter || record.statusGroup === statusFilter)
+      .filter((record) => !statusFilter || (statusFilter === 'quotes' ? record.source === 'quote' : record.statusGroup === statusFilter))
       .filter((record) => {
         if (!query) return true;
         return (
@@ -1077,6 +1134,7 @@ export default function PaymentsScreen() {
 
   const filterChips: { key: PaymentFilter; label: string; count: number }[] = [
     { key: null, label: 'All', count: counts.all },
+    { key: 'quotes', label: 'Quotes', count: counts.quotes ?? 0 },
     { key: 'awaiting', label: 'Awaiting payment', count: counts.awaiting ?? 0 },
     { key: 'needs_review', label: 'Needs review', count: counts.needs_review ?? 0 },
     { key: 'confirmed', label: 'Verified', count: counts.confirmed ?? 0 },
@@ -1092,9 +1150,9 @@ export default function PaymentsScreen() {
     && drafts.length === 0
     && storefrontPayments.length === 0;
 
-  const unpaidRecords = paymentRecordsInPeriod.filter((record) => record.statusGroup === 'awaiting');
+  const unpaidRecords = paymentRecordsInPeriod.filter((record) => record.statusGroup === 'awaiting' && record.source !== 'quote');
   const reviewRecords = paymentRecordsInPeriod.filter((record) => record.statusGroup === 'needs_review');
-  const sumAmounts = (records: PaymentRecord[]) => records.reduce((sum, record) => sum + record.amount, 0);
+  const sumAmounts = (records: PaymentRecord[]) => records.reduce((sum, record) => sum + (record.moneyAmount ?? record.amount), 0);
   const verifiedAmount = sumAmounts(paymentRecordsInPeriod.filter((record) => record.statusGroup === 'confirmed'));
   const reviewAmount = sumAmounts(reviewRecords);
   const unpaidAmount = sumAmounts(unpaidRecords);
@@ -1177,8 +1235,9 @@ export default function PaymentsScreen() {
             ) : null}
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="New payment link"
-              onPress={handleNewLink}
+              accessibilityLabel="Create"
+              accessibilityState={{ expanded: createMenuOpen }}
+              onPress={() => setCreateMenuOpen((open) => !open)}
               style={(state) => ({
                 height: 40,
                 paddingHorizontal: 16,
@@ -1483,11 +1542,13 @@ export default function PaymentsScreen() {
         {isMobile ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="New payment link"
-            onPress={handleNewLink}
+            accessibilityLabel="Create"
+            accessibilityState={{ expanded: createMenuOpen }}
+            onPress={() => setCreateMenuOpen((open) => !open)}
             style={(state) => [
               {
                 position: 'absolute',
+                zIndex: 70,
                 right: 20,
                 bottom: Math.max(96, tabBarHeight - 48),
                 width: 56,
@@ -1503,9 +1564,18 @@ export default function PaymentsScreen() {
                 : { shadowColor: '#000000', shadowOpacity: 0.3, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
             ]}
           >
-            <Plus size={24} color={FYLL_LIME_INK} strokeWidth={2.6} />
+            <Plus size={24} color={FYLL_LIME_INK} strokeWidth={2.6} style={{ transform: [{ rotate: createMenuOpen ? '45deg' : '0deg' }] }} />
           </Pressable>
         ) : null}
+        <PaymentsCreateMenu
+          open={createMenuOpen}
+          onClose={() => setCreateMenuOpen(false)}
+          onNewQuote={() => router.push('/quote/new' as never)}
+          onNewBill={handleNewLink}
+          placement={isMobile
+            ? { right: 20, bottom: Math.max(96, tabBarHeight - 48) + 68 }
+            : { right: horizontalPadding, top: isWebDesktop ? 76 : 64 }}
+        />
         <PaymentActionSheet record={actionRecord} palette={palette} onClose={() => setActionRecord(null)} />
       </SafeAreaView>
     </View>

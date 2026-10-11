@@ -70,6 +70,7 @@ import { supabaseData } from '@/lib/supabase/data';
 import { buildHomeNeeds, type HomePaymentRecord } from '@/lib/home-needs';
 import { NeedsYouCard, NeedsYouCarousel, useDismissedNeeds, useVisibleNeeds } from '@/components/home/NeedsYouToday';
 import { JumpToRow, JumpToGrid, buildJumpToItems } from '@/components/home/JumpToRow';
+import { StorefrontCard } from '@/components/home/StorefrontCard';
 import { EmptyLine, HomeCard, HomeCardHeader, HomeLink, HomeRow, KpiStrip, StatusText, HOME_GAP, type KpiItem } from '@/components/home/home-ui';
 import { FYLL_LIME, FYLL_LIME_INK, usePaymentsPalette } from '@/components/payments/payments-ui';
 import { useFonts, BricolageGrotesque_700Bold } from '@expo-google-fonts/bricolage-grotesque';
@@ -1289,7 +1290,7 @@ export default function DashboardScreen() {
   const expenseRequests = useFyllStore((s) => s.expenseRequests);
   const customers = useFyllStore((s) => s.customers);
   const auditLogs = useFyllStore((s) => s.auditLogs);
-  const { businessName, businessPhone, returnAddress, storefrontEnabled, featureAccess, isLoading: isLoadingBusinessSettings } = useBusinessSettings();
+  const { businessName, businessPhone, returnAddress, storefrontEnabled, storefrontSlug, companyName, featureAccess, isLoading: isLoadingBusinessSettings } = useBusinessSettings();
   const canUseStorefront = isBusinessFeatureEnabled(featureAccess, 'storefront');
   const canUseCases = isBusinessFeatureEnabled(featureAccess, 'cases');
   const canUseSocialCheckout = isBusinessFeatureEnabled(featureAccess, 'socialCheckout');
@@ -2332,6 +2333,15 @@ export default function DashboardScreen() {
                   onStagePress={(stage) => goToFulfillment(stage)}
                 />
 
+                {userRole === 'admin' || userRole === 'manager' ? (
+                  <StorefrontCard
+                    enabled={storefrontEnabled}
+                    storefrontSlug={storefrontSlug}
+                    businessName={businessName || companyName}
+                    onConnectWebsite={() => router.push('/woocommerce/connect' as any)}
+                  />
+                ) : null}
+
                 <View style={{ flexDirection: 'row', alignItems: 'stretch', gap: HOME_GAP }}>
                   {(userRole === 'admin' || userRole === 'manager') && (
                     <View style={{ flex: 1.4, minWidth: 0 }}>{renderRevenueTrend(200)}</View>
@@ -2441,6 +2451,15 @@ export default function DashboardScreen() {
                 onPress={() => goToFulfillment()}
                 onStagePress={(stage) => goToFulfillment(stage)}
               />
+
+              {userRole === 'admin' || userRole === 'manager' ? (
+                <StorefrontCard
+                  enabled={storefrontEnabled}
+                  storefrontSlug={storefrontSlug}
+                  businessName={businessName || companyName}
+                  onConnectWebsite={() => router.push('/woocommerce/connect' as any)}
+                />
+              ) : null}
 
               {renderRecentOrders(5, (id) => `/order/${id}`)}
 

@@ -30,7 +30,7 @@ const fyllColors = {
 };
 const fyllFieldPhone = require('../../assets/fyll-field-phone.jpg');
 const fyllFieldDesktop = require('../../assets/fyll-field-desktop.jpg');
-const fyllWordmarkPng = require('../../assets/fyllfyll wordmark.png');
+const fyllWordmarkPng = require('../../assets/fyll-wordmark-thick-light.png');
 // Fyll customer accounts (one account for every Fyll store).
 const FYLL_SIGN_UP_URL = 'https://account.fyll.store';
 
@@ -319,6 +319,20 @@ function MerchantLogo({ logo, name, size = 76, ring, innerBorder }: { logo: stri
 }
 
 
+// The top bar every payment-link screen shares with the quote page: the Fyll wordmark on the left
+// and a "Secured by fyll" pill on the right.
+function PublicHeader() {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 22, paddingHorizontal: 8 }}>
+      <Image source={fyllWordmarkPng} accessibilityLabel="Fyll" resizeMode="contain" style={{ width: 28 * (900 / 493), height: 28, tintColor: '#F7F8EA' }} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 7, paddingHorizontal: 12, borderRadius: 999, backgroundColor: 'rgba(20,20,20,0.35)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)' }}>
+        <Lock size={12} color="#EEF2C4" strokeWidth={2.4} />
+        <DText weight="600" style={{ color: '#EEF2C4', fontSize: 12 }}>Secured by fyll</DText>
+      </View>
+    </View>
+  );
+}
+
 type StatusTone = 'lime' | 'amber' | 'red';
 const STATUS_TONE_RGB: Record<StatusTone, string> = { lime: '213,224,87', amber: '251,191,36', red: '248,113,113' };
 const STATUS_TONE_HEX: Record<StatusTone, string> = { lime: '#D5E057', amber: '#FBBF24', red: '#F87171' };
@@ -330,10 +344,8 @@ type LucideIcon = React.ComponentType<{ size?: number; color?: string; strokeWid
 function StatusHero({ tone, icon: Icon, title, body, fontReady }: { tone: StatusTone; icon: LucideIcon; title: string; body?: string; fontReady: boolean }) {
   const rgb = STATUS_TONE_RGB[tone];
   return (
-    <View style={{ alignItems: 'center' }}>
-      <View style={{ paddingTop: 14 }}>
-        <Image source={fyllWordmarkPng} accessibilityLabel="Fyll" resizeMode="contain" style={{ width: 24 * (344 / 195), height: 24, tintColor: '#F7F8EA' }} />
-      </View>
+    <View>
+      <PublicHeader />
       <View style={{ marginTop: 64, alignItems: 'center', gap: 18, paddingHorizontal: 16 }}>
         <View
           style={[
@@ -401,7 +413,7 @@ function PublicMessageState({
           <StatusHero tone={tone} icon={icon} title={title} body={body} fontReady={fontReady} />
           <View style={{ marginTop: 'auto', paddingTop: 40, paddingBottom: 24, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 4 }}>
             <DText style={{ color: 'rgba(244,244,239,0.45)', fontSize: 12 }}>Secured by</DText>
-            <Image source={fyllWordmarkPng} accessibilityLabel="Fyll" resizeMode="contain" style={{ width: 11 * (344 / 195), height: 11, tintColor: fyllColors.accent }} />
+            <Image source={fyllWordmarkPng} accessibilityLabel="Fyll" resizeMode="contain" style={{ width: 11 * (900 / 493), height: 11, tintColor: fyllColors.accent }} />
           </View>
         </View>
       </ScrollView>
@@ -549,8 +561,8 @@ export default function PublicSocialCheckoutScreen() {
   if (!fontsSettled || draftQuery.isLoading) {
     return (
       <PublicPageBackground fieldHeight={420} fadeStart={0.45}>
-        <View style={{ alignItems: 'center', paddingTop: 14 }}>
-          <Image source={fyllWordmarkPng} accessibilityLabel="Fyll" resizeMode="contain" style={{ width: 24 * (344 / 195), height: 24, tintColor: '#F7F8EA' }} />
+        <View style={{ width: '100%', maxWidth: 440, alignSelf: 'center', paddingHorizontal: 16 }}>
+          <PublicHeader />
         </View>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
           <ActivityIndicator color={fyllColors.accent} />
@@ -736,13 +748,7 @@ export default function PublicSocialCheckoutScreen() {
       <PublicPageBackground fieldHeight={460}>
         <ScrollView contentContainerStyle={{ flexGrow: 1, alignItems: 'center', paddingHorizontal: 16 }} showsVerticalScrollIndicator={false}>
           <View style={{ width: '100%', maxWidth: 440, flexGrow: 1 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 14, paddingHorizontal: 8 }}>
-              <Image source={fyllWordmarkPng} accessibilityLabel="Fyll" resizeMode="contain" style={{ width: 26 * (344 / 195), height: 26, tintColor: '#F7F8EA' }} />
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 7, paddingHorizontal: 12, borderRadius: 999, backgroundColor: 'rgba(20,20,20,0.35)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)' }}>
-                <Lock size={12} color="#EEF2C4" strokeWidth={2.4} />
-                <DText weight="600" style={{ color: '#EEF2C4', fontSize: 12 }}>Secure checkout</DText>
-              </View>
-            </View>
+            <PublicHeader />
 
             <RequestGlass style={{ marginTop: 150 }}>
               <View style={{ paddingTop: 26, paddingHorizontal: 24, paddingBottom: 24, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
@@ -805,7 +811,7 @@ export default function PublicSocialCheckoutScreen() {
             <View style={{ marginTop: 'auto', paddingTop: 40, paddingHorizontal: 8, paddingBottom: 24, alignItems: 'center', gap: 6 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
                 <DText style={{ color: 'rgba(244,244,239,0.72)', fontSize: 13 }}>Powered by</DText>
-                <Image source={fyllWordmarkPng} accessibilityLabel="Fyll" resizeMode="contain" style={{ width: 12 * (344 / 195), height: 12, tintColor: fyllColors.accent }} />
+                <Image source={fyllWordmarkPng} accessibilityLabel="Fyll" resizeMode="contain" style={{ width: 12 * (900 / 493), height: 12, tintColor: fyllColors.accent }} />
               </View>
               <DText style={{ color: 'rgba(244,244,239,0.45)', fontSize: 12, textAlign: 'center' }}>
                 Payments you can see through · <NativeText style={{ color: fyllColors.accent }}>Privacy</NativeText>
@@ -837,7 +843,7 @@ export default function PublicSocialCheckoutScreen() {
               <ChevronLeft size={18} color="#F4F4EF" strokeWidth={2.2} />
             </Pressable>
             <DText weight="600" style={{ flex: 1, color: '#F4F4EF', fontSize: 16 }}>Checkout</DText>
-            <Image source={fyllWordmarkPng} accessibilityLabel="Fyll" resizeMode="contain" style={{ width: 21 * (344 / 195), height: 21, tintColor: '#F7F8EA' }} />
+            <Image source={fyllWordmarkPng} accessibilityLabel="Fyll" resizeMode="contain" style={{ width: 21 * (900 / 493), height: 21, tintColor: '#F7F8EA' }} />
           </View>
 
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingTop: 34, paddingHorizontal: 8 }}>
@@ -1029,7 +1035,7 @@ export default function PublicSocialCheckoutScreen() {
             ) : null}
             <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 4 }}>
               <DText style={{ color: 'rgba(244,244,239,0.45)', fontSize: 12 }}>Secured by</DText>
-              <Image source={fyllWordmarkPng} accessibilityLabel="Fyll" resizeMode="contain" style={{ width: 11 * (344 / 195), height: 11, tintColor: fyllColors.accent }} />
+              <Image source={fyllWordmarkPng} accessibilityLabel="Fyll" resizeMode="contain" style={{ width: 11 * (900 / 493), height: 11, tintColor: fyllColors.accent }} />
               <DText style={{ color: 'rgba(244,244,239,0.45)', fontSize: 12 }}>· © Fyll 2026</DText>
             </View>
           </View>

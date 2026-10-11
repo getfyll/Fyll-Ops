@@ -32,6 +32,8 @@ import { fetchWooCommerceOrder, fetchWooCommerceOrders, type WooNormalizedOrder 
 import { normalizeWooLookupValue } from '@/lib/woocommerce-link';
 import { DesktopSidebar } from '@/components/DesktopSidebar';
 import { supabaseData } from '@/lib/supabase/data';
+import { useQueryClient } from '@tanstack/react-query';
+import { fetchQuotes, quotesQueryKey, updateQuote } from '@/lib/quotes-api';
 import { queueSocialCheckoutEmail } from '@/lib/supabase/social-checkout-emails';
 import { SearchClearButton } from '@/components/SearchClearButton';
 
@@ -210,6 +212,10 @@ export default function NewOrderScreen() {
     linkPaymentId?: string;
     socialCheckoutBill?: string;
     socialCheckoutAmount?: string;
+    quoteId?: string;
+    quoteItems?: string;
+    quoteAdditionalCharges?: string;
+    quoteAdditionalNote?: string;
     items?: string;
     services?: string;
     prefillProductId?: string;
@@ -227,6 +233,7 @@ export default function NewOrderScreen() {
   const socialCheckoutBill = params.socialCheckoutBill || '';
   const socialCheckoutAmount = Number(params.socialCheckoutAmount) || 0;
   const hasSocialCheckoutPrefill = Boolean(socialCheckoutReference || socialCheckoutBill);
+  const quoteId = typeof params.quoteId === 'string' ? params.quoteId.trim() : '';
   const canvasBg = !isDark && (hasSocialCheckoutPrefill || isDesktopWeb) ? '#FFFFFF' : colors.bg.primary;
   const panelBg = !isDark && (hasSocialCheckoutPrefill || isDesktopWeb) ? '#FFFFFF' : colors.bg.primary;
   const textPrimaryClass = isDark ? 'text-white' : 'text-gray-900';
@@ -257,6 +264,7 @@ export default function NewOrderScreen() {
   const saleSources = useFyllStore((s) => s.saleSources);
   const paymentMethods = useFyllStore((s) => s.paymentMethods);
   const customers = useFyllStore((s) => s.customers);
+  const queryClient = useQueryClient();
   const addOrder = useFyllStore((s) => s.addOrder);
   const addCustomer = useFyllStore((s) => s.addCustomer);
   const updateVariantStock = useFyllStore((s) => s.updateVariantStock);
@@ -365,8 +373,8 @@ export default function NewOrderScreen() {
   const [optionPickerOptionName, setOptionPickerOptionName] = useState<string | null>(null);
   const [optionPickerSearch, setOptionPickerSearch] = useState('');
   const [deliveryFee, setDeliveryFee] = useState(params.deliveryFee || '');
-  const [additionalCharges, setAdditionalCharges] = useState('');
-  const [additionalChargesNote, setAdditionalChargesNote] = useState('');
+  const [additionalCharges, setAdditionalCharges] = useState(params.quoteAdditionalCharges || '');
+  const [additionalChargesNote, setAdditionalChargesNote] = useState(params.quoteAdditionalNote || '');
   const [discountCode] = useState('');
   const [discountAmount, setDiscountAmount] = useState('');
   const [websiteOrderRef, setWebsiteOrderRef] = useState(params.websiteOrderReference || '');
@@ -425,6 +433,32 @@ export default function NewOrderScreen() {
   const [timePickerTarget, setTimePickerTarget] = useState<TimePickerTarget | null>(null);
   const [pickerHour, setPickerHour] = useState(9);
   const [pickerMinute, setPickerMinute] = useState(0);
+
+  // A verified quote: its inventory items arrive as exact product/variant lines.
+  const quoteItemsHydratedRef = useRef(false);
+  useEffect(() => {
+    if (!params.quoteItems || quoteItemsHydratedRef.current || products.length === 0) return;
+    quoteItemsHydratedRef.current = true;
+    try {
+      const lines: { productId: string; variantId: string; quantity: number; unitPrice: number }[] = JSON.parse(params.quoteItems);
+      const matched: OrderItem[] = [];
+      lines.forEach((line) => {
+        const product = products.find((p) => p.id === line.productId);
+        const variant = product?.variants.find((v) => v.id === line.variantId);
+        if (!product || !variant) return;
+        matched.push({
+          id: createOrderLineId(),
+          productId: product.id,
+          variantId: variant.id,
+          quantity: Number.isFinite(line.quantity) && line.quantity > 0 ? line.quantity : 1,
+          unitPrice: Number.isFinite(line.unitPrice) && line.unitPrice >= 0 ? line.unitPrice : (variant.sellingPrice || 0),
+        });
+      });
+      if (matched.length > 0) setItems(matched);
+    } catch (error) {
+      console.error('Error reading quote items:', error);
+    }
+  }, [params.quoteItems, products]);
 
   // Handle AI-parsed items
   useEffect(() => {
@@ -1105,6 +1139,26 @@ export default function NewOrderScreen() {
         }
       }
 
+      // Created from a verified quote: mark the quote as converted.
+      if (quoteId && businessId) {
+        try {
+          const quote = (await fetchQuotes(businessId)).find((row) => row.id === quoteId);
+          if (quote) {
+            const linkedAt = new Date().toISOString();
+            await updateQuote(businessId, quote, {
+              status: 'order_created',
+              convertedOrderId: order.id,
+              convertedOrderNumber: order.orderNumber,
+              reviewedBy: currentUser?.name,
+              reviewedAt: linkedAt,
+            }, { text: `Deposit verified, order ${order.orderNumber} created`, tone: 'good' });
+            void queryClient.invalidateQueries({ queryKey: quotesQueryKey(businessId) });
+          }
+        } catch (linkError) {
+          console.warn('Quote link update failed:', linkError);
+        }
+      }
+
       const socialCheckoutCode = /^SC-(.+)$/i.exec(socialCheckoutReference.trim())?.[1];
       if (socialCheckoutCode && businessId) {
         try {
@@ -1386,8 +1440,8 @@ export default function NewOrderScreen() {
             <View className={cn('mx-4 mt-4 rounded-2xl p-4 border', cardClass)}>
               <View className="flex-row items-center justify-between mb-3">
                 <View>
-                  <Text className={cn(sectionTitleClass, textPrimaryClass)}>Social Checkout Reference</Text>
-                  <Text className={cn('text-xs mt-1', textMutedClass)}>Payment confirmed before order creation.</Text>
+                  <Text className={cn(sectionTitleClass, textPrimaryClass)}>{quoteId ? 'Quote Reference' : 'Social Checkout Reference'}</Text>
+                  <Text className={cn('text-xs mt-1', textMutedClass)}>{quoteId ? 'Deposit verified before order creation.' : 'Payment confirmed before order creation.'}</Text>
                 </View>
                 <View className="rounded-full px-3 py-1.5" style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}>
                   <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">{socialCheckoutReference || websiteOrderRef}</Text>
@@ -1395,7 +1449,7 @@ export default function NewOrderScreen() {
               </View>
               {socialCheckoutAmount > 0 ? (
                 <View className="flex-row items-center justify-between mb-3">
-                  <Text className={cn('text-sm', textSecondaryClass)}>Paid Amount</Text>
+                  <Text className={cn('text-sm', textSecondaryClass)}>{quoteId ? 'Deposit Paid' : 'Paid Amount'}</Text>
                   <Text className={cn('text-sm font-semibold', textPrimaryClass)}>{formatCurrency(socialCheckoutAmount)}</Text>
                 </View>
               ) : null}

@@ -276,6 +276,36 @@ const getNameFromAuthUser = (email: string, metadata: Record<string, unknown> | 
   return candidates[0] ?? email.split('@')[0] ?? 'User';
 };
 
+const STORE_OWNER_KEY = 'fyll-store-owner';
+
+// The cached workspace data on this device belongs to one business. If a different business signs
+// in without a clean logout (expired session, switched account, new sign-up), drop the cache first
+// so the previous business's dashboard can never show up for it.
+const ensureCachedDataMatchesBusiness = async (
+  nextBusinessId: string,
+  setBusinessId: (id: string | null) => void,
+) => {
+  try {
+    const persistApi = useFyllStore.persist;
+    if (persistApi && !persistApi.hasHydrated()) {
+      await new Promise<void>((resolve) => {
+        persistApi.onFinishHydration(() => resolve());
+        setTimeout(resolve, 3000);
+      });
+    }
+    const owner = await storage.getItem(STORE_OWNER_KEY);
+    if (!owner || !areBusinessIdsEquivalent(owner, nextBusinessId)) {
+      // businessId is cleared first so the sync effects don't read the reset as deletions.
+      setBusinessId(null);
+      useFyllStore.getState().resetStore();
+      await storage.removeItem('fyll-storage');
+    }
+    await storage.setItem(STORE_OWNER_KEY, nextBusinessId);
+  } catch (error) {
+    console.warn('Could not check the cached workspace data:', error);
+  }
+};
+
 const useAuthStore = create<AuthStore>()(
   persist(
     (set, get) => ({
@@ -372,6 +402,8 @@ const useAuthStore = create<AuthStore>()(
             businessId,
           };
 
+          if (!stillCurrent()) return { success: false, error: 'Session changed.' };
+          await ensureCachedDataMatchesBusiness(businessId, (id) => set({ businessId: id }));
           if (!stillCurrent()) return { success: false, error: 'Session changed.' };
           set({
             isAuthenticated: true,
@@ -521,6 +553,7 @@ const useAuthStore = create<AuthStore>()(
             console.warn('Failed to update team member login timestamp:', error);
           }
 
+          await ensureCachedDataMatchesBusiness(businessId, (id) => set({ businessId: id }));
           set({
             isAuthenticated: true,
             currentUser: userData,
@@ -708,6 +741,7 @@ const useAuthStore = create<AuthStore>()(
             set({ businessId: null });
             useFyllStore.getState().resetStore();
             await storage.removeItem('fyll-storage');
+            if (newBusinessId) await storage.setItem(STORE_OWNER_KEY, newBusinessId);
             // Restore businessId after reset is safe
             set({ businessId: newBusinessId });
             console.log('Demo data and AsyncStorage cleared for new account');
@@ -790,6 +824,7 @@ const useAuthStore = create<AuthStore>()(
           await storage.removeItem('fyll-auth-storage');
           // Clear all app data on logout to prevent data leakage between accounts
           await storage.removeItem('fyll-storage');
+          await storage.removeItem(STORE_OWNER_KEY);
           await storage.removeItem('fyll_business_settings');
           console.log('All local storage cleared on logout');
         } catch (storageError) {
@@ -1290,6 +1325,7 @@ const useAuthStore = create<AuthStore>()(
             }
           }
 
+          await ensureCachedDataMatchesBusiness(invite.businessId, (id) => set({ businessId: id }));
           set({
             isAuthenticated: true,
             currentUser: {

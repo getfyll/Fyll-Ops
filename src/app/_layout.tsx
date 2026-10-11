@@ -60,11 +60,12 @@ const webInitialMetrics = {
   frame: { x: 0, y: 0, width: 0, height: 0 },
   insets: { top: 0, left: 0, right: 0, bottom: 0 },
 };
-const PUBLIC_ROUTE_SEGMENTS = new Set(['login', 'welcome', 'start', 'request-invite', 'track', 'order-tracking', 'confirm-delivery', 'start-return', 'checkout', 'platform-admin-login', 'partner', 'partner-login', 'partner-invite']);
+const PUBLIC_ROUTE_SEGMENTS = new Set(['login', 'welcome', 'start', 'request-invite', 'track', 'order-tracking', 'confirm-delivery', 'start-return', 'checkout', 'platform-admin-login', 'partner', 'partner-login', 'partner-invite', 'q', 'quotes']);
 const WOO_CONNECT_SESSION_KEY = 'fyll_woocommerce_connect_params';
 const ROUTE_FEATURES: Record<string, BusinessFeatureKey> = {
   payments: 'socialCheckout',
   'social-checkout': 'socialCheckout',
+  quote: 'socialCheckout',
   'storefront-payment': 'socialCheckout',
   'payment-accounts': 'socialCheckout',
   threads: 'threads',
@@ -267,6 +268,7 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
     || secondSegment === 'start-return'
     || secondSegment === 'track'
     || secondSegment === 'checkout'
+    || secondSegment === 'quotes'
     || isCustomerPortalHost
     || isStorefrontHost
     || isPlatformAdminHost
@@ -305,6 +307,7 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
     || firstSegment === 'task'
     || firstSegment === 'return'
     || firstSegment === 'social-checkout'
+    || firstSegment === 'quote'
     || firstSegment === 'storefront-payment'
     || firstSegment === 'payment-accounts';
   const showRootMobileBottomNav = isMobile
@@ -610,6 +613,11 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
           <Stack.Screen name="[businessSlug]/checkout/[code]" options={{ headerShown: false }} />
           <Stack.Screen name="social-checkout/new" options={{ headerShown: false, presentation: 'transparentModal', animation: 'fade', contentStyle: { backgroundColor: 'transparent' } }} />
           <Stack.Screen name="social-checkout/[id]" options={{ headerShown: false }} />
+          <Stack.Screen name="quote/new" options={{ headerShown: false }} />
+          <Stack.Screen name="quote/[id]" options={{ headerShown: false }} />
+          <Stack.Screen name="q/[code]" options={{ headerShown: false }} />
+          <Stack.Screen name="quotes/[code]" options={{ headerShown: false }} />
+          <Stack.Screen name="[businessSlug]/quotes/[code]" options={{ headerShown: false }} />
           <Stack.Screen name="storefront-payment/[id]" options={{ headerShown: false }} />
           <Stack.Screen name="payment-accounts" options={{ headerShown: false }} />
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
