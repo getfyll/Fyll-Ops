@@ -42,12 +42,36 @@ const jsonResponse = (status: number, body: Record<string, unknown>) => (
   new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 );
 
-const getWordmarkUrl = () => {
+const storageUrl = (file: string) => {
   const base = (Deno.env.get('SUPABASE_URL') ?? '').replace(/\/+$/, '');
-  return base ? `${base}/storage/v1/object/public/business-assets/fyll/fyll-wordmark-email-light.png` : '';
+  return base ? `${base}/storage/v1/object/public/business-assets/fyll/${file}` : '';
 };
 
 // ── Shared pieces ──────────────────────────────────────────────────────────
+// No page background: the email is the card, sitting on the mail app's own background. Colours that
+// have to change in dark mode carry a class (m-*); clients that support prefers-color-scheme (Apple
+// Mail, Outlook, iOS) switch them. Gmail does its own colour flip, so the logo is a dark wordmark with
+// a faint light outline: it reads on white and still shows as an outline on a dark card.
+
+const DARK_MODE_CSS = `
+:root{color-scheme:light dark;supported-color-schemes:light dark}
+.logo-on-dark{display:none !important}
+@media (prefers-color-scheme: dark){
+  .logo-on-light{display:none !important}
+  .logo-on-dark{display:block !important}
+  .m-card{background:#1c1c1b !important;border-color:#2e2e2b !important}
+  .m-ink{color:#f4f4ef !important}
+  .m-body{color:#c9cabf !important}
+  .m-muted{color:#9d9e94 !important}
+  .m-soft{background:#262624 !important}
+  .m-line{border-color:#34342f !important}
+  .m-dot{background:#f4f4ef !important;color:#141414 !important}
+  .m-link{color:#f4f4ef !important}
+  .m-ghost{border-color:#4a4a45 !important}
+  .m-ghost a{color:#f4f4ef !important}
+  .m-yes{background:#2b3012 !important;color:#d5e057 !important}
+  .m-no{background:#3a2420 !important;color:#f0a498 !important}
+}`;
 
 const renderShell = ({
   preheader,
@@ -68,77 +92,80 @@ const renderShell = ({
   closingHtml: string;
   reason?: string;
 }) => {
-  const wordmark = getWordmarkUrl();
-  const logo = wordmark
-    ? `<img src="${wordmark}" height="30" alt="Fyll" style="display:block;height:30px;width:auto;border:0;outline:none;text-decoration:none;">
-       <div style="height:34px;line-height:34px;font-size:0;">&nbsp;</div>`
+  const onLight = storageUrl('fyll-wordmark-email-dark.png');
+  const onDark = storageUrl('fyll-wordmark-email-light-v2.png');
+  const logo = onLight
+    ? `<img class="logo-on-light" src="${onLight}" height="28" alt="Fyll" style="display:block;height:28px;width:auto;border:0;outline:none;text-decoration:none;">
+       <img class="logo-on-dark" src="${onDark}" height="28" alt="" style="display:none;height:28px;width:auto;border:0;outline:none;text-decoration:none;">`
     : '';
   return `<!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Fyll</title></head>
-<body style="margin:0;padding:0;background:#e9e9e3;">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark"><title>Fyll</title><style>${DARK_MODE_CSS}</style></head>
+<body style="margin:0;padding:0;">
 <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${escapeHtml(preheader)}</div>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#e9e9e3;">
-<tr><td align="center" style="padding:28px 12px 40px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+<tr><td align="center" style="padding:12px 8px 24px;">
 <table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:560px;">
-<tr><td bgcolor="#141414" style="background:#141414;border-radius:24px 24px 0 0;padding:28px 28px 32px;">
+<tr><td class="m-card" bgcolor="#ffffff" style="background:#ffffff;border:1px solid #e6e6df;border-radius:20px;padding:22px 20px 22px;font-family:${FONT};">
   ${logo}
-  ${topLine ? `<div style="font-family:${FONT};font-size:16px;line-height:22px;color:#b9bab0;">${escapeHtml(topLine)}</div><div style="height:8px;line-height:8px;font-size:0;">&nbsp;</div>` : ''}
-  ${eyebrow ? `<div style="font-family:${FONT};font-size:11.5px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#d5e057;padding-bottom:10px;">${escapeHtml(eyebrow)}</div>` : ''}
-  <div style="font-family:${FONT};font-size:32px;line-height:37px;font-weight:700;letter-spacing:-0.8px;color:#f4f4ef;">${escapeHtml(headline)}</div>
-  <div style="height:14px;line-height:14px;font-size:0;">&nbsp;</div>
-  <div style="font-family:${FONT};font-size:15.5px;line-height:23px;color:#b9bab0;">${intro}</div>
-</td></tr>
-${bodyHtml}
-<tr><td style="background:#ffffff;padding:24px 28px 30px;border-radius:0 0 24px 24px;font-family:${FONT};">
+  ${spacer(22)}
+  ${topLine ? `<div class="m-muted" style="font-size:15px;line-height:21px;color:#6b6c63;">${escapeHtml(topLine)}</div>${spacer(4)}` : ''}
+  ${eyebrow ? `<div style="font-size:11.5px;font-weight:500;letter-spacing:1px;text-transform:uppercase;color:#7c8a12;padding-bottom:6px;">${escapeHtml(eyebrow)}</div>` : ''}
+  <div class="m-ink" style="font-size:28px;line-height:33px;font-weight:600;letter-spacing:-0.6px;color:#141414;">${escapeHtml(headline)}</div>
+  ${spacer(10)}
+  <div class="m-body" style="font-size:15px;line-height:22px;color:#5f6058;">${intro}</div>
+  ${spacer(20)}
+  ${bodyHtml}
+  ${spacer(20)}
+  <div style="border-top:1px solid #ecece6;" class="m-line">${spacer(16)}</div>
   ${closingHtml}
 </td></tr>
-${reason ? `<tr><td align="center" style="padding:26px 20px 0;font-family:${FONT};"><div style="font-size:12px;line-height:18px;color:#8c8d84;">${escapeHtml(reason)}</div></td></tr>` : ''}
+${reason ? `<tr><td align="center" style="padding:18px 12px 0;font-family:${FONT};"><div style="font-size:12px;line-height:18px;color:#8c8d84;">${escapeHtml(reason)}</div></td></tr>` : ''}
 </table></td></tr></table>
 </body>
 </html>`;
 };
 
-const sectionTitle = (text: string, paddingBottom = 14) => (
-  `<div style="font-size:20px;font-weight:700;letter-spacing:-0.3px;color:#141414;padding-bottom:${paddingBottom}px;">${escapeHtml(text)}</div>`
+const spacer = (px: number) => `<div style="height:${px}px;line-height:${px}px;font-size:0;">&nbsp;</div>`;
+
+const sectionTitle = (text: string, paddingBottom = 10) => (
+  `<div class="m-ink" style="font-size:17px;font-weight:600;letter-spacing:-0.2px;color:#141414;padding-bottom:${paddingBottom}px;">${escapeHtml(text)}</div>`
 );
 
 const renderStep = (index: number, title: string, text: string, isLast: boolean) => `
-<tr><td style="padding:${index === 1 ? '0' : '14px'} 0 0;">
+<tr><td style="padding:${index === 1 ? '0' : '10px'} 0 0;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-    <td width="40" valign="top"><div style="width:28px;height:28px;border-radius:14px;background:#141414;color:#f4f4ef;font-family:${FONT};font-size:13px;font-weight:700;line-height:28px;text-align:center;">${index}</div></td>
-    <td valign="top" style="font-family:${FONT};padding-bottom:14px;border-bottom:${isLast ? '0' : '1px solid #ecece6'};">
-      <div style="font-size:16px;font-weight:600;color:#141414;line-height:22px;">${escapeHtml(title)}</div>
-      <div style="font-size:14px;line-height:21px;color:#5f6058;padding-top:3px;">${escapeHtml(text)}</div>
+    <td width="38" valign="top"><div class="m-dot" style="width:26px;height:26px;border-radius:13px;background:#141414;color:#f4f4ef;font-size:12.5px;font-weight:600;line-height:26px;text-align:center;">${index}</div></td>
+    <td valign="top" class="m-line" style="padding-bottom:10px;border-bottom:${isLast ? '0' : '1px solid #ecece6'};">
+      <div class="m-ink" style="font-size:15px;font-weight:500;color:#141414;line-height:21px;">${escapeHtml(title)}</div>
+      <div class="m-muted" style="font-size:13.5px;line-height:20px;color:#6b6c63;padding-top:2px;">${escapeHtml(text)}</div>
     </td>
   </tr></table>
 </td></tr>`;
 
 // A grey card of label / value rows. Values are pre-escaped HTML (they may contain links).
 const renderDetailsCard = (rows: Array<[string, string]>) => `
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f4f4ef" style="background:#f4f4ef;border-radius:18px;"><tr><td style="padding:6px 18px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td class="m-soft" bgcolor="#f4f4ef" style="background:#f4f4ef;border-radius:16px;padding:4px 16px;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
     ${rows.map(([label, valueHtml], index) => `
     <tr>
-      <td valign="top" style="padding:11px 14px 11px 0;border-top:${index === 0 ? '0' : '1px solid #e3e3db'};font-family:${FONT};font-size:14.5px;line-height:21px;color:#6b6c63;white-space:nowrap;">${escapeHtml(label)}</td>
-      <td align="right" valign="top" style="padding:11px 0;border-top:${index === 0 ? '0' : '1px solid #e3e3db'};font-family:${FONT};font-size:14.5px;line-height:21px;font-weight:600;color:#141414;word-break:break-word;">${valueHtml}</td>
+      <td valign="top" class="m-muted m-line" style="padding:9px 12px 9px 0;border-top:${index === 0 ? '0' : '1px solid #e3e3db'};font-size:14px;line-height:20px;color:#6b6c63;white-space:nowrap;">${escapeHtml(label)}</td>
+      <td align="right" valign="top" class="m-ink m-line" style="padding:9px 0;border-top:${index === 0 ? '0' : '1px solid #e3e3db'};font-size:14px;line-height:20px;font-weight:500;color:#141414;word-break:break-word;">${valueHtml}</td>
     </tr>`).join('')}
   </table>
 </td></tr></table>`;
 
 const renderQuote = (label: string, text: string) => `
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f4f4ef" style="background:#f4f4ef;border-radius:14px;"><tr><td style="padding:14px 16px;font-family:${FONT};">
-  <div style="font-size:11.5px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#6b6c63;padding-bottom:4px;">${escapeHtml(label)}</div>
-  <div style="font-size:14.5px;line-height:22px;color:#3a3b34;white-space:pre-wrap;">${escapeHtml(text)}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td class="m-soft" bgcolor="#f4f4ef" style="background:#f4f4ef;border-radius:14px;padding:12px 16px;">
+  <div class="m-muted" style="font-size:11px;font-weight:500;letter-spacing:1px;text-transform:uppercase;color:#6b6c63;padding-bottom:3px;">${escapeHtml(label)}</div>
+  <div class="m-body" style="font-size:14px;line-height:21px;color:#3a3b34;white-space:pre-wrap;">${escapeHtml(text)}</div>
 </td></tr></table>`;
 
 const renderCallout = (label: string, text: string) => `
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#141414" style="background:#141414;border-radius:18px;"><tr><td style="padding:18px 20px;font-family:${FONT};">
-  <div style="font-size:11.5px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#d5e057;">${escapeHtml(label)}</div>
-  <div style="font-size:15px;line-height:22px;color:#f4f4ef;padding-top:6px;">${escapeHtml(text)}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#141414" style="background:#141414;border-radius:16px;padding:14px 18px;">
+  <div style="font-size:11px;font-weight:500;letter-spacing:1px;text-transform:uppercase;color:#d5e057;">${escapeHtml(label)}</div>
+  <div style="font-size:14px;line-height:21px;color:#f4f4ef;padding-top:4px;">${escapeHtml(text)}</div>
 </td></tr></table>`;
-
-const spacer = (px: number) => `<div style="height:${px}px;line-height:${px}px;font-size:0;">&nbsp;</div>`;
 
 // ── Email 1: to the applicant ──────────────────────────────────────────────
 
@@ -159,20 +186,18 @@ const buildApplicantEmail = (request: {
   if (request.tiktokHandle) rows.push(['TikTok', escapeHtml(request.tiktokHandle)]);
 
   const bodyHtml = `
-<tr><td style="background:#ffffff;padding:28px 28px 0;font-family:${FONT};">
-  ${sectionTitle('What happens next')}
+${sectionTitle('What happens next')}
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
     ${renderStep(1, 'We look at your business', 'We read what you sent and have a look at your page.', false)}
     ${renderStep(2, 'You hear from us by email', 'If it’s a good fit, we send you an invite code.', false)}
     ${renderStep(3, 'Set up in about 15 minutes', 'Add your products, take your first order, invite your team.', true)}
   </table>
-  ${spacer(22)}
+  ${spacer(16)}
   ${renderDetailsCard(rows)}
-  ${spacer(14)}
+  ${spacer(10)}
   ${renderQuote('Your message', request.message)}
-  ${spacer(22)}
-  ${renderCallout('While you wait', `Keep an eye on ${request.email}, and check spam too. Our reply comes from hello@fyll.app.`)}
-</td></tr>`;
+  ${spacer(16)}
+  ${renderCallout('While you wait', `Keep an eye on ${request.email}, and check spam too. Our reply comes from hello@fyll.app.`)}`;
 
   const html = renderShell({
     preheader: 'Fyll Ops is invite-only. Here is what happens next.',
@@ -181,9 +206,9 @@ const buildApplicantEmail = (request: {
     intro: 'Thanks for asking about Fyll Ops. We let businesses in a few at a time and read every request ourselves, so it can take a little while to hear back.',
     bodyHtml,
     closingHtml: `
-      <div style="font-size:14.5px;line-height:22px;color:#5f6058;">Anything to add? Reply to this email and it reaches us. A real person reads it.</div>
-      ${spacer(10)}
-      <div style="font-size:14.5px;font-weight:600;color:#141414;">The Fyll team</div>`,
+      <div class="m-body" style="font-size:14px;line-height:21px;color:#5f6058;">Anything to add? Reply to this email and it reaches us. A real person reads it.</div>
+      ${spacer(8)}
+      <div class="m-ink" style="font-size:14px;font-weight:500;color:#141414;">The Fyll team</div>`,
     reason: 'You’re getting this because you asked for an invitation on fyll.app.',
   });
 
@@ -215,8 +240,8 @@ const buildApplicantEmail = (request: {
 
 const policyPill = (label: string, has: boolean | undefined) => {
   if (has === undefined) return '';
-  const colors = has ? { bg: '#eef2c4', ink: '#4a5200', mark: '&#10003;' } : { bg: '#f6e3df', ink: '#9a3a2f', mark: '&#10005;' };
-  return `<span style="display:inline-block;margin:0 8px 8px 0;padding:6px 12px;border-radius:999px;background:${colors.bg};color:${colors.ink};font-family:${FONT};font-size:13px;font-weight:600;line-height:18px;">${colors.mark}&nbsp; ${escapeHtml(label)}</span>`;
+  const colors = has ? { cls: 'm-yes', bg: '#eef2c4', ink: '#4a5200', mark: '&#10003;' } : { cls: 'm-no', bg: '#f6e3df', ink: '#9a3a2f', mark: '&#10005;' };
+  return `<span class="${colors.cls}" style="display:inline-block;margin:0 6px 6px 0;padding:5px 11px;border-radius:999px;background:${colors.bg};color:${colors.ink};font-size:12.5px;font-weight:500;line-height:18px;">${colors.mark}&nbsp; ${escapeHtml(label)}</span>`;
 };
 
 const buildTeamEmail = (request: {
@@ -246,37 +271,34 @@ const buildTeamEmail = (request: {
       : `${has.join(' and ')} policy in place, ${lacks.join(' and ')} not yet.`.replace(/^./, (c) => c.toUpperCase());
 
   const linkStyle = 'color:#141414;text-decoration:underline;';
+  const linkClass = 'm-link';
   const rows: Array<[string, string]> = [
     ['Name', escapeHtml(request.fullName)],
-    ['Email', `<a href="mailto:${encodeURIComponent(request.email)}" style="${linkStyle}">${escapeHtml(request.email)}</a>`],
+    ['Email', `<a class="m-link" href="mailto:${encodeURIComponent(request.email)}" style="${linkStyle}">${escapeHtml(request.email)}</a>`],
     ['Business', escapeHtml(request.businessName)],
   ];
   const instagram = handleSlug(request.instagramHandle);
   const tiktok = handleSlug(request.tiktokHandle);
-  if (instagram) rows.push(['Instagram', `<a href="https://instagram.com/${instagram}" style="${linkStyle}">@${escapeHtml(instagram)}</a>`]);
-  if (tiktok) rows.push(['TikTok', `<a href="https://www.tiktok.com/@${tiktok}" style="${linkStyle}">@${escapeHtml(tiktok)}</a>`]);
+  if (instagram) rows.push(['Instagram', `<a class="m-link" href="https://instagram.com/${instagram}" style="${linkStyle}">@${escapeHtml(instagram)}</a>`]);
+  if (tiktok) rows.push(['TikTok', `<a class="m-link" href="https://www.tiktok.com/@${tiktok}" style="${linkStyle}">@${escapeHtml(tiktok)}</a>`]);
 
   const replySubject = `Re: your Fyll invitation request`;
   const replyHref = `mailto:${encodeURIComponent(request.email)}?subject=${encodeURIComponent(replySubject)}`;
 
-  const bodyHtml = `
-<tr><td style="background:#ffffff;padding:28px 28px 0;font-family:${FONT};">
-  ${sectionTitle('Their policies', 12)}
+  const bodyHtml = `${sectionTitle('Their policies', 8)}
   <div>${policies.map(([label, value]) => policyPill(label, value)).join('')}</div>
-  ${spacer(14)}
+  ${spacer(10)}
   ${renderDetailsCard(rows)}
-  ${spacer(14)}
+  ${spacer(10)}
   ${renderQuote('Their message', request.message)}
-  ${spacer(22)}
+  ${spacer(16)}
   ${renderCallout('To approve', `Create an invite code in the console, then reply with their link. Reply goes straight to ${first}.`)}
-</td></tr>
-<tr><td style="background:#ffffff;padding:24px 28px 0;">
+  ${spacer(18)}
   <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
-    <td bgcolor="#d5e057" style="border-radius:999px;"><a href="${replyHref}" style="display:inline-block;padding:15px 28px;font-family:${FONT};font-size:15.5px;font-weight:700;color:#141414;text-decoration:none;border-radius:999px;">Reply to ${escapeHtml(first)}</a></td>
-    <td width="10">&nbsp;</td>
-    <td style="border:1.5px solid #d9d9d0;border-radius:999px;"><a href="${CONSOLE_URL}" style="display:inline-block;padding:13.5px 26.5px;font-family:${FONT};font-size:15.5px;font-weight:700;color:#141414;text-decoration:none;border-radius:999px;">Open console</a></td>
-  </tr></table>
-</td></tr>`;
+    <td bgcolor="#d5e057" style="border-radius:999px;"><a href="${replyHref}" style="display:inline-block;padding:13px 24px;font-size:15px;font-weight:600;color:#141414;text-decoration:none;border-radius:999px;">Reply to ${escapeHtml(first)}</a></td>
+    <td width="8">&nbsp;</td>
+    <td class="m-ghost" style="border:1.5px solid #d9d9d0;border-radius:999px;"><a href="${CONSOLE_URL}" style="display:inline-block;padding:11.5px 22.5px;font-size:15px;font-weight:600;color:#141414;text-decoration:none;border-radius:999px;">Open console</a></td>
+  </tr></table>`;
 
   const html = renderShell({
     preheader: `${policySummary} Reply goes to ${first}.`,
