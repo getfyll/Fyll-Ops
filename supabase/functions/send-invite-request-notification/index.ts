@@ -295,9 +295,9 @@ const buildTeamEmail = (request: {
   ${renderCallout('To approve', `Create an invite code in the console, then reply with their link. Reply goes straight to ${first}.`)}
   ${spacer(18)}
   <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
-    <td bgcolor="#d5e057" style="border-radius:999px;"><a href="${replyHref}" style="display:inline-block;padding:13px 24px;font-size:15px;font-weight:600;color:#141414;text-decoration:none;border-radius:999px;">Reply to ${escapeHtml(first)}</a></td>
+    <td bgcolor="#d5e057" style="border-radius:999px;"><a href="${replyHref}" style="display:inline-block;padding:12px 22px;font-size:14px;font-weight:500;color:#141414;text-decoration:none;border-radius:999px;">Reply to ${escapeHtml(first)}</a></td>
     <td width="8">&nbsp;</td>
-    <td class="m-ghost" style="border:1.5px solid #d9d9d0;border-radius:999px;"><a href="${CONSOLE_URL}" style="display:inline-block;padding:11.5px 22.5px;font-size:15px;font-weight:600;color:#141414;text-decoration:none;border-radius:999px;">Open console</a></td>
+    <td class="m-ghost" style="border:1.5px solid #d9d9d0;border-radius:999px;"><a href="${CONSOLE_URL}" style="display:inline-block;padding:10.5px 20.5px;font-size:14px;font-weight:500;color:#141414;text-decoration:none;border-radius:999px;">Open console</a></td>
   </tr></table>`;
 
   const html = renderShell({
