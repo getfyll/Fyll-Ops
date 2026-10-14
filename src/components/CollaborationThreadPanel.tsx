@@ -2049,10 +2049,10 @@ export function CollaborationThreadPanel({
       const ownBubbleSubtleTextColor = 'rgba(30,30,30,0.6)';
       const incomingBubbleTimestampColor = isDark ? 'rgba(255,255,255,0.58)' : '#777777';
       const useMobileBubbleTypography = Platform.OS !== 'web' || isNarrowWebViewport;
-      const bubbleNameFontSize = useMobileBubbleTypography ? 12 : 16;
-      const bubbleNameLineHeight = useMobileBubbleTypography ? 17 : 23;
-      const bubbleMessageFontSize = useMobileBubbleTypography ? 12 : 16;
-      const bubbleMessageLineHeight = useMobileBubbleTypography ? 17 : 23;
+      const bubbleNameFontSize = useMobileBubbleTypography ? 12 : 14;
+      const bubbleNameLineHeight = useMobileBubbleTypography ? 17 : 20;
+      const bubbleMessageFontSize = 14;
+      const bubbleMessageLineHeight = 20;
       const bubbleTimestampFontSize = useMobileBubbleTypography ? 8 : 9;
       const bubbleTimestampLineHeight = useMobileBubbleTypography ? 10 : 11;
       const headerNameColor = isOwnComment ? ownBubbleSecondaryTextColor : colors.text.primary;
