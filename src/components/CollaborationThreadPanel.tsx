@@ -398,7 +398,8 @@ function SwipeableMessage({
     || (viewportWidth < 768 && typeof navigator !== 'undefined' && (navigator.maxTouchPoints ?? 0) > 0);
   const translateX = useSharedValue<number>(0);
   const didTriggerReply = useSharedValue<boolean>(false);
-  const swipeDirection = isOwnMessage ? -1 : 1;
+  // Every message swipes the same way, left to right, whoever sent it.
+  const swipeDirection = 1;
   const maxSwipeDistance = 84;
   const replyTriggerDistance = 56;
   const triggerReply = useCallback(() => {
@@ -494,8 +495,7 @@ function SwipeableMessage({
               top: '50%',
               zIndex: 0,
               marginTop: -10,
-              left: isOwnMessage ? undefined : -30,
-              right: isOwnMessage ? -30 : undefined,
+              left: -30,
             },
             iconAnimatedStyle,
           ]}

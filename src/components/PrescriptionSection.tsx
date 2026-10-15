@@ -4,10 +4,10 @@ import { FileText, Upload, X, Eye, Trash2, FileIcon, Plus } from 'lucide-react-n
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { useThemeColors } from '@/lib/theme';
-import { usePaymentsPalette } from '@/components/payments/payments-ui';
-import { useBreakpoint } from '@/lib/useBreakpoint';
+import { FYLL_LIME, FYLL_LIME_INK, usePaymentsPalette } from '@/components/payments/payments-ui';
 import { PrescriptionInfo } from '@/lib/state/fyll-store';
 import { cn } from '@/lib/cn';
+import { useBreakpoint } from '@/lib/useBreakpoint';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { compressImage } from '@/lib/image-compression';
@@ -18,11 +18,14 @@ interface PrescriptionSectionProps {
   editable?: boolean;
   staffName?: string;
   containerClassName?: string;
+  // When set, the title starts with a numbered circle like the other cards on the New Order screen.
+  stepNumber?: number;
 }
 
-export function PrescriptionSection({ prescription, onUpdate, editable = true, staffName, containerClassName }: PrescriptionSectionProps) {
+export function PrescriptionSection({ prescription, onUpdate, editable = true, staffName, containerClassName, stepNumber }: PrescriptionSectionProps) {
   const colors = useThemeColors();
   const palette = usePaymentsPalette();
+  const [noteFocused, setNoteFocused] = useState<boolean>(false);
   const { isMobile } = useBreakpoint();
   const router = useRouter();
   const isDark = colors.bg.primary === '#111111';
@@ -203,10 +206,17 @@ export function PrescriptionSection({ prescription, onUpdate, editable = true, s
     <>
       <View
         className={cn(containerClassName ?? 'mx-4 mt-3.5', 'px-4 py-4')}
-        style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, borderRadius: 18 }}
+        style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, borderRadius: 20 }}
       >
         <View className="flex-row items-center justify-between mb-3">
-          <Text style={{ color: palette.text, fontSize: isMobile ? 14 : 16, fontWeight: '600' }}>Customer notes</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flexShrink: 1 }}>
+            {stepNumber ? (
+              <View style={{ width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.nudgeBg }}>
+                <Text style={{ color: palette.limeOnSurface, fontSize: 13, fontWeight: '700' }}>{stepNumber}</Text>
+              </View>
+            ) : null}
+            <Text style={{ color: palette.text, fontSize: isMobile ? 14 : 16, fontWeight: '500' }}>Customer notes</Text>
+          </View>
           {editable && (
             <Pressable
               onPress={handleOpenEdit}
@@ -298,193 +308,142 @@ export function PrescriptionSection({ prescription, onUpdate, editable = true, s
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          className="flex-1"
+          style={{ flex: 1 }}
         >
           <Pressable
-            className="flex-1 items-center justify-center"
-            style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)' }}
+            style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20, backgroundColor: 'rgba(0, 0, 0, 0.55)' }}
             onPress={() => setShowEditModal(false)}
           >
             <Pressable
               onPress={(e) => e.stopPropagation()}
-              className="w-[90%] rounded-2xl overflow-hidden"
-              style={{ backgroundColor: colors.bg.primary, maxHeight: '85%', maxWidth: 400 }}
+              style={{ width: '100%', maxWidth: 440, maxHeight: '88%', borderRadius: 26, overflow: 'hidden', backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}
             >
-              {/* Header */}
-              <View
-                className="flex-row items-center justify-between px-5 py-4"
-                style={{ borderBottomWidth: 1, borderBottomColor: colors.border.light }}
-              >
-                <Text style={{ color: colors.text.primary }} className="font-bold text-lg">
-                  {hasPrescription ? 'Edit Customer Note' : 'Add Customer Note'}
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 22, paddingTop: 20, paddingBottom: 8 }}>
+                <Text style={{ color: palette.text, fontSize: 16, fontWeight: '500' }}>
+                  {hasPrescription ? 'Edit customer note' : 'Add customer note'}
                 </Text>
                 <Pressable
                   onPress={() => setShowEditModal(false)}
-                  className="w-8 h-8 rounded-full items-center justify-center active:opacity-50"
-                  style={{ backgroundColor: colors.bg.secondary }}
+                  style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.softFill }}
                 >
-                  <X size={18} color={colors.text.tertiary} strokeWidth={2} />
+                  <X size={16} color={palette.textSoft} strokeWidth={2} />
                 </Pressable>
               </View>
 
               <ScrollView
-                className="px-5 py-4"
+                style={{ paddingHorizontal: 22 }}
+                contentContainerStyle={{ paddingTop: 8, paddingBottom: 22 }}
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="handled"
               >
-                {/* Upload File Section */}
-                <View className="mb-5">
-                  <Text style={{ color: colors.text.primary }} className="text-sm font-medium mb-2">
-                    Upload Customer Note (image or PDF)
-                  </Text>
+                <Text style={{ color: palette.textSoft, fontSize: 14, marginBottom: 8 }}>Upload a note (image or PDF)</Text>
 
-                  {editFileUrl ? (
-                    <View
-                      className="rounded-xl overflow-hidden"
-                      style={{ borderWidth: 1, borderColor: colors.border.light }}
+                {editFileUrl ? (
+                  <View style={{ borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: palette.border }}>
+                    {editFileUrl.toLowerCase().endsWith('.pdf') ? (
+                      <View style={{ height: 96, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.inset }}>
+                        <FileIcon size={30} color={palette.muted} strokeWidth={1.5} />
+                        <Text style={{ color: palette.muted, fontSize: 12, marginTop: 8 }}>PDF document</Text>
+                      </View>
+                    ) : (
+                      <Image source={{ uri: editFileUrl }} style={{ width: '100%', height: 150 }} resizeMode="cover" />
+                    )}
+                    <Pressable
+                      onPress={handleClearFile}
+                      style={{ position: 'absolute', top: 8, right: 8, width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.6)' }}
                     >
-                      {editFileUrl.toLowerCase().endsWith('.pdf') ? (
-                        <View
-                          className="h-24 items-center justify-center"
-                          style={{ backgroundColor: colors.bg.secondary }}
-                        >
-                          <FileIcon size={32} color={colors.text.tertiary} strokeWidth={1.5} />
-                          <Text style={{ color: colors.text.tertiary }} className="text-xs mt-2">PDF Document</Text>
-                        </View>
-                      ) : (
-                        <Image
-                          source={{ uri: editFileUrl }}
-                          style={{ width: '100%', height: 150 }}
-                          resizeMode="cover"
-                        />
-                      )}
-                      <Pressable
-                        onPress={handleClearFile}
-                        className="absolute top-2 right-2 w-8 h-8 rounded-full items-center justify-center"
-                        style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
-                      >
-                        <X size={16} color="#FFFFFF" strokeWidth={2} />
-                      </Pressable>
-                    </View>
-                  ) : (
-                    <View className="flex-row gap-3">
-                      <Pressable
-                        onPress={handlePickImage}
-                        className="flex-1 rounded-xl items-center justify-center py-5 active:opacity-70"
-                        style={{
-                          backgroundColor: colors.bg.secondary,
-                          borderWidth: 1,
-                          borderColor: colors.border.light,
-                          borderStyle: 'dashed'
-                        }}
-                      >
-                        <Upload size={20} color={colors.text.tertiary} strokeWidth={1.5} />
-                        <Text style={{ color: colors.text.tertiary }} className="text-xs mt-2">Image</Text>
-                      </Pressable>
-                      <Pressable
-                        onPress={handlePickDocument}
-                        className="flex-1 rounded-xl items-center justify-center py-5 active:opacity-70"
-                        style={{
-                          backgroundColor: colors.bg.secondary,
-                          borderWidth: 1,
-                          borderColor: colors.border.light,
-                          borderStyle: 'dashed'
-                        }}
-                      >
-                        <FileIcon size={20} color={colors.text.tertiary} strokeWidth={1.5} />
-                        <Text style={{ color: colors.text.tertiary }} className="text-xs mt-2">PDF</Text>
-                      </Pressable>
-                    </View>
-                  )}
-                  {uploadError ? (
-                    <Text className="text-red-500 text-xs mt-2">{uploadError}</Text>
-                  ) : null}
-                </View>
-
-                {/* Divider with OR */}
-                <View className="flex-row items-center mb-5">
-                  <View className="flex-1 h-px" style={{ backgroundColor: colors.border.light }} />
-                  <Text style={{ color: colors.text.muted }} className="mx-3 text-xs">OR</Text>
-                  <View className="flex-1 h-px" style={{ backgroundColor: colors.border.light }} />
-                </View>
-
-                {/* Text Entry Section */}
-                <View className="mb-5">
-                  <Text style={{ color: colors.text.primary }} className="text-sm font-medium mb-2">
-                    Enter Customer Note Details
-                  </Text>
-                  <View
-                    className="rounded-xl px-4 py-3"
-                    style={{
-                      backgroundColor: colors.input.bg,
-                      borderWidth: 1,
-                      borderColor: colors.input.border,
-                      minHeight: 120
-                    }}
-                  >
-                    <TextInput
-                      placeholder="Type customer note here..."
-                      placeholderTextColor={colors.input.placeholder}
-                      value={editText}
-                      onChangeText={(text) => {
-                        setEditText(text);
-                        if (text.trim() && !editFileUrl) {
-                          setEditMode('text');
-                        }
-                      }}
-                      multiline
-                      numberOfLines={5}
-                      style={{
-                        color: colors.input.text,
-                        fontSize: 14,
-                        textAlignVertical: 'top',
-                        minHeight: 100
-                      }}
-                      selectionColor={colors.text.primary}
-                    />
+                      <X size={16} color="#FFFFFF" strokeWidth={2} />
+                    </Pressable>
                   </View>
+                ) : (
+                  <View style={{ flexDirection: 'row', gap: 12 }}>
+                    {([
+                      { label: 'Image', Icon: Upload, onPress: handlePickImage },
+                      { label: 'PDF', Icon: FileIcon, onPress: handlePickDocument },
+                    ] as const).map(({ label, Icon, onPress }) => (
+                      <Pressable
+                        key={label}
+                        onPress={onPress}
+                        style={{ flex: 1, height: 76, borderRadius: 14, alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: palette.inset, borderWidth: 1, borderColor: palette.outline, borderStyle: 'dashed' }}
+                      >
+                        <Icon size={18} color={palette.textSoft} strokeWidth={1.75} />
+                        <Text style={{ color: palette.textSoft, fontSize: 12, fontWeight: '500' }}>{label}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                )}
+                {uploadError ? (
+                  <Text style={{ color: palette.danger, fontSize: 12, marginTop: 8 }}>{uploadError}</Text>
+                ) : null}
+
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginVertical: 18 }}>
+                  <View style={{ flex: 1, height: 1, backgroundColor: palette.hairline }} />
+                  <Text style={{ color: palette.faint, fontSize: 12, marginHorizontal: 12 }}>or</Text>
+                  <View style={{ flex: 1, height: 1, backgroundColor: palette.hairline }} />
                 </View>
 
-                {/* Info Note */}
+                <Text style={{ color: palette.textSoft, fontSize: 14, marginBottom: 8 }}>Type the note</Text>
                 <View
-                  className="rounded-xl px-3 py-2 mb-5"
-                  style={{ backgroundColor: `${colors.text.primary}08` }}
+                  style={{
+                    borderRadius: 14,
+                    backgroundColor: palette.inset,
+                    borderWidth: 1,
+                    borderColor: noteFocused ? (palette.isDark ? FYLL_LIME : '#B8C43A') : palette.outline,
+                    paddingHorizontal: 16,
+                    paddingVertical: 12,
+                    minHeight: 120,
+                  }}
                 >
-                  <Text style={{ color: colors.text.muted }} className="text-xs">
-                    Only one option is required. You can upload a file OR enter text, or both.
-                  </Text>
+                  <TextInput
+                    placeholder="Type customer note here..."
+                    placeholderTextColor={palette.faint}
+                    value={editText}
+                    onFocus={() => setNoteFocused(true)}
+                    onBlur={() => setNoteFocused(false)}
+                    onChangeText={(text) => {
+                      setEditText(text);
+                      if (text.trim() && !editFileUrl) {
+                        setEditMode('text');
+                      }
+                    }}
+                    multiline
+                    numberOfLines={5}
+                    style={[
+                      { color: palette.text, fontSize: 14, textAlignVertical: 'top', minHeight: 96 },
+                      Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null,
+                    ]}
+                    selectionColor={palette.text}
+                  />
                 </View>
 
-                {/* Action Buttons */}
-                <View className="gap-3 mb-4">
+                <Text style={{ color: palette.muted, fontSize: 12, marginTop: 10, marginBottom: 20 }}>
+                  Only one is required. Upload a file, type a note, or both.
+                </Text>
+
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <Pressable
+                    onPress={() => setShowEditModal(false)}
+                    style={{ flex: 1, height: 48, borderRadius: 999, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: palette.outline }}
+                  >
+                    <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>Cancel</Text>
+                  </Pressable>
                   <Pressable
                     onPress={handleSave}
-                    className="rounded-full items-center active:opacity-80 w-full"
-                    style={{
-                      backgroundColor: isDark ? '#FFFFFF' : '#111111',
-                      height: 52,
-                      justifyContent: 'center',
-                    }}
+                    style={{ flex: 1.4, height: 48, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: FYLL_LIME }}
                   >
-                    <Text
-                      className="font-semibold text-base"
-                      style={{ color: isDark ? '#111111' : '#FFFFFF' }}
-                    >
-                      Save
-                    </Text>
+                    <Text style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '600' }}>Save note</Text>
                   </Pressable>
-
-                  {hasPrescription && (
-                    <Pressable
-                      onPress={handleRemovePrescription}
-                      className="rounded-xl items-center flex-row justify-center active:opacity-70"
-                      style={{ backgroundColor: 'rgba(239, 68, 68, 0.15)', height: 48 }}
-                    >
-                      <Trash2 size={16} color="#EF4444" strokeWidth={2} />
-                      <Text className="text-red-500 font-medium text-sm ml-2">Remove Customer Note</Text>
-                    </Pressable>
-                  )}
                 </View>
+
+                {hasPrescription && (
+                  <Pressable
+                    onPress={handleRemovePrescription}
+                    style={{ marginTop: 10, height: 44, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+                  >
+                    <Trash2 size={15} color={palette.danger} strokeWidth={2} />
+                    <Text style={{ color: palette.danger, fontSize: 14, fontWeight: '600' }}>Remove customer note</Text>
+                  </Pressable>
+                )}
               </ScrollView>
             </Pressable>
           </Pressable>
