@@ -13,7 +13,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { X, ChevronDown, Check,
+import { X, ChevronDown, Check, Sparkles,
   Link2,
   Mail,
   Phone,
@@ -33,6 +33,7 @@ import { X, ChevronDown, Check,
 import * as Haptics from 'expo-haptics';
 import { useThemeColors } from '@/lib/theme';
 import { useBreakpoint } from '@/lib/useBreakpoint';
+import { LinearGradient } from 'expo-linear-gradient';
 import { FyllAiButton } from '@/components/FyllAiButton';
 import { CaseAiSheet } from '@/components/cases/CaseAiSheet';
 import { BackButton, FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, usePaymentsPalette } from '@/components/payments/payments-ui';
@@ -142,14 +143,14 @@ function FieldInput({ style, onFocus, onBlur, ...props }: React.ComponentProps<t
 // its dropdowns is open so the list is not hidden behind the next card.
 function CaseStepCard({ n, title, compact, palette, raised, children }: { n: number; title: string; compact: boolean; palette: ReturnType<typeof usePaymentsPalette>; raised?: boolean; children: React.ReactNode }) {
   return (
-    <View style={{ position: 'relative', zIndex: raised ? 500 : 1, borderRadius: 20, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, padding: compact ? 16 : 20, gap: 14 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-        <View style={{ width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: FYLL_LIME }}>
-          <Text style={{ color: FYLL_LIME_INK, fontSize: 12, fontWeight: '600' }}>{n}</Text>
+    <View style={{ position: 'relative', zIndex: raised ? 500 : 1, borderRadius: 20, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, padding: 18, gap: 14 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <View style={{ width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.nudgeBg }}>
+          <Text style={{ color: palette.limeOnSurface, fontSize: 12.5, fontWeight: '700' }}>{n}</Text>
         </View>
-        <Text style={{ flex: 1, color: palette.text, fontSize: compact ? 14 : 16, fontWeight: '500' }}>{title}</Text>
+        <Text style={{ flex: 1, color: palette.text, fontSize: 17, fontWeight: '700' }}>{title}</Text>
       </View>
-      {children}
+      <View style={{ marginBottom: -14 }}>{children}</View>
     </View>
   );
 }
@@ -589,8 +590,10 @@ export function CaseForm({
           Haptics.selectionAsync();
       setShow(!show);
     }}
-    className="flex-row items-center justify-between py-3 px-4 rounded-xl"
+    className="flex-row items-center justify-between px-4"
     style={{
+      height: 46,
+      borderRadius: 12,
       backgroundColor: formBg,
       borderWidth: 1,
       borderColor: show ? focusBorder : formBorder,
@@ -604,7 +607,7 @@ export function CaseForm({
               style={{ backgroundColor: colorMap[selected] || colors.text.muted }}
             />
           )}
-          <Text style={{ color: colors.text.primary }} className="font-medium">
+          <Text style={{ color: colors.text.primary, fontSize: 14.5, fontWeight: '600' }}>
             {selected}
           </Text>
         </View>
@@ -677,7 +680,7 @@ export function CaseForm({
         <View style={{ flex: 1, backgroundColor: palette.page }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: palette.hairline, backgroundColor: palette.page }}>
             <BackButton onPress={() => { Haptics.selectionAsync(); onClose(); }} palette={palette} label="Close" />
-            <Text style={{ color: palette.text, fontSize: 16, fontWeight: '500' }}>
+            <Text style={{ color: palette.text, fontSize: 22, fontWeight: '700', letterSpacing: -0.4 }}>
               {isEditing ? 'Edit case' : 'New case'}
             </Text>
           </View>
@@ -731,8 +734,8 @@ export function CaseForm({
                 <CaseStepCard n={1} title="Customer" compact={isMobile} palette={palette} raised={Boolean(linkSearchQuery.trim())}>
             {/* Order Info + Customer Name */}
             {orderId && orderNumber && (
-              <View className="mb-4">
-                <Text style={{ color: palette.textSoft, fontSize: 14, marginBottom: 8 }}>
+              <View className="mb-3.5">
+                <Text style={{ color: palette.textSoft, fontSize: 13, fontWeight: '600', marginBottom: 7 }}>
                   Linked Order
                 </Text>
                 <View
@@ -746,8 +749,8 @@ export function CaseForm({
               </View>
             )}
             {canSearchCaseLink && (
-              <View className="mb-4" style={{ position: 'relative', zIndex: 260, overflow: 'visible' }}>
-                <Text style={{ color: palette.textSoft, fontSize: 14, marginBottom: 8 }}>
+              <View className="mb-3.5" style={{ position: 'relative', zIndex: 260, overflow: 'visible' }}>
+                <Text style={{ color: palette.textSoft, fontSize: 13, fontWeight: '600', marginBottom: 7 }}>
                   Link Customer or Order
                 </Text>
                 {selectedLinkLabel ? (
@@ -785,7 +788,7 @@ export function CaseForm({
                     <View
                       className="rounded-xl px-4 flex-row items-center"
                       style={{
-                        height: 52,
+                        height: 46,
                         backgroundColor: formBg,
                         borderWidth: 1,
                         borderColor: formBorder,
@@ -845,9 +848,9 @@ export function CaseForm({
                 )}
               </View>
             )}
-            <View className="mb-6">
-              <Text style={{ color: palette.textSoft, fontSize: 14, marginBottom: 8 }}>
-                Customer Name *
+            <View className="mb-3.5">
+              <Text style={{ color: palette.textSoft, fontSize: 13, fontWeight: '600', marginBottom: 7 }}>
+                Customer Name <Text style={{ color: palette.danger }}>*</Text>
               </Text>
               <FieldInput
                 value={standaloneCustomerName}
@@ -856,12 +859,12 @@ export function CaseForm({
                 placeholderTextColor={colors.text.muted}
                 className="py-3 px-4"
                 style={{
-                  borderRadius: 14,
+                  borderRadius: 12,
                   backgroundColor: formBg,
                   color: colors.text.primary,
                   borderWidth: 1,
                   borderColor: formBorder,
-                  height: 52,
+                  height: 46,
                 }}
               />
             </View>
@@ -872,9 +875,9 @@ export function CaseForm({
               const issueCard = (
                 <CaseStepCard n={2} title="Issue" compact={isMobile} palette={palette}>
           {/* Issue Summary */}
-          <View className="mb-4">
-            <Text style={{ color: palette.textSoft, fontSize: 14, marginBottom: 8 }}>
-              Issue Summary *
+          <View className="mb-3.5">
+            <Text style={{ color: palette.textSoft, fontSize: 13, fontWeight: '600', marginBottom: 7 }}>
+              Issue Summary <Text style={{ color: palette.danger }}>*</Text>
             </Text>
             <FieldInput
               value={issueSummary}
@@ -883,7 +886,7 @@ export function CaseForm({
               placeholderTextColor={colors.text.muted}
               className="py-3 px-4"
               style={{
-                borderRadius: 14,
+                borderRadius: 12,
                 backgroundColor: formBg,
                 color: colors.text.primary,
                 borderWidth: 1,
@@ -893,8 +896,8 @@ export function CaseForm({
           </View>
 
           {/* Original Customer Message */}
-          <View className="mb-4">
-            <Text style={{ color: palette.textSoft, fontSize: 14, marginBottom: 8 }}>
+          <View className="mb-3.5">
+            <Text style={{ color: palette.textSoft, fontSize: 13, fontWeight: '600', marginBottom: 7 }}>
               Original Customer Message
             </Text>
             <FieldInput
@@ -906,7 +909,7 @@ export function CaseForm({
               numberOfLines={4}
               className="py-3 px-4"
               style={{
-                borderRadius: 14,
+                borderRadius: 12,
                 backgroundColor: formBg,
                 color: colors.text.primary,
                 borderWidth: 1,
@@ -918,15 +921,15 @@ export function CaseForm({
           </View>
 
           {/* Proof Attachments */}
-          <View className="mb-4">
-            <Text style={{ color: palette.textSoft, fontSize: 14, marginBottom: 8 }}>
+          <View className="mb-3.5">
+            <Text style={{ color: palette.textSoft, fontSize: 13, fontWeight: '600', marginBottom: 7 }}>
               Proof Images
             </Text>
             <Pressable
               onPress={handleAddAttachment}
               className="rounded-2xl items-center justify-center active:opacity-80"
               style={{
-                height: 130,
+                height: 150,
                 borderWidth: 1,
                 borderColor: formBorder,
                 borderStyle: 'dashed',
@@ -981,8 +984,8 @@ export function CaseForm({
               <View style={{ position: 'relative', zIndex: showReturnReasonDropdown || showReturnResolutionDropdown || showReturnShippingDropdown ? 210 : 2, overflow: 'visible' }}>
                 <Text style={{ color: palette.muted, fontSize: 12, marginBottom: 14 }}>Choose these manually for business-created returns.</Text>
 
-                <View className="mb-4" style={{ position: 'relative', zIndex: showReturnReasonDropdown ? 90 : 3 }}>
-                  <Text style={{ color: palette.textSoft, fontSize: 14, marginBottom: 8 }}>
+                <View className="mb-3.5" style={{ position: 'relative', zIndex: showReturnReasonDropdown ? 90 : 3 }}>
+                  <Text style={{ color: palette.textSoft, fontSize: 13, fontWeight: '600', marginBottom: 7 }}>
                     Return Reason
                   </Text>
                   {renderDropdown(
@@ -1003,7 +1006,7 @@ export function CaseForm({
                       placeholderTextColor={colors.text.muted}
                       className="py-3 px-4 mt-3"
                       style={{
-                        borderRadius: 14,
+                        borderRadius: 12,
                         backgroundColor: formBg,
                         color: colors.text.primary,
                         borderWidth: 1,
@@ -1014,8 +1017,8 @@ export function CaseForm({
                   ) : null}
                 </View>
 
-                <View className="mb-4" style={{ position: 'relative', zIndex: showReturnResolutionDropdown ? 80 : 2 }}>
-                  <Text style={{ color: palette.textSoft, fontSize: 14, marginBottom: 8 }}>
+                <View className="mb-3.5" style={{ position: 'relative', zIndex: showReturnResolutionDropdown ? 80 : 2 }}>
+                  <Text style={{ color: palette.textSoft, fontSize: 13, fontWeight: '600', marginBottom: 7 }}>
                     Refund or Exchange
                   </Text>
                   {renderDropdown(
@@ -1031,7 +1034,7 @@ export function CaseForm({
                 </View>
 
                 <View style={{ position: 'relative', zIndex: showReturnShippingDropdown ? 70 : 1 }}>
-                  <Text style={{ color: palette.textSoft, fontSize: 14, marginBottom: 8 }}>
+                  <Text style={{ color: palette.textSoft, fontSize: 13, fontWeight: '600', marginBottom: 7 }}>
                     Return Shipping
                   </Text>
                   {renderDropdown(
@@ -1058,8 +1061,8 @@ export function CaseForm({
             <View style={{ position: 'relative', zIndex: showResolutionTypeDropdown ? 250 : 1, overflow: 'visible' }}>
 
               {/* Resolution Type */}
-              <View className="mb-4" style={{ position: 'relative', zIndex: 260 }}>
-                <Text style={{ color: palette.textSoft, fontSize: 14, marginBottom: 8 }}>
+              <View className="mb-3.5" style={{ position: 'relative', zIndex: 260 }}>
+                <Text style={{ color: palette.textSoft, fontSize: 13, fontWeight: '600', marginBottom: 7 }}>
                   Resolution Type
                 </Text>
                 {renderDropdown(
@@ -1073,8 +1076,8 @@ export function CaseForm({
 
               {/* Resolution Value (for refunds/credits) */}
               {(resolutionType === 'Refund Issued' || resolutionType === 'Credit Applied') && (
-                <View className="mb-4" style={{ position: 'relative', zIndex: 1 }}>
-                  <Text style={{ color: palette.textSoft, fontSize: 14, marginBottom: 8 }}>
+                <View className="mb-3.5" style={{ position: 'relative', zIndex: 1 }}>
+                  <Text style={{ color: palette.textSoft, fontSize: 13, fontWeight: '600', marginBottom: 7 }}>
                     Resolution Value
                   </Text>
                   <FieldInput
@@ -1085,7 +1088,7 @@ export function CaseForm({
                     keyboardType="numeric"
                     className="py-3 px-4"
                     style={{
-                      borderRadius: 14,
+                      borderRadius: 12,
                       backgroundColor: formBg,
                       color: colors.text.primary,
                       borderWidth: 1,
@@ -1097,7 +1100,7 @@ export function CaseForm({
 
               {/* Resolution Notes */}
               <View style={{ position: 'relative', zIndex: 1 }}>
-                <Text style={{ color: palette.textSoft, fontSize: 14, marginBottom: 8 }}>
+                <Text style={{ color: palette.textSoft, fontSize: 13, fontWeight: '600', marginBottom: 7 }}>
                   Resolution Notes
                 </Text>
                 <FieldInput
@@ -1109,7 +1112,7 @@ export function CaseForm({
                   numberOfLines={3}
                   className="py-3 px-4"
                   style={{
-                    borderRadius: 14,
+                    borderRadius: 12,
                     backgroundColor: formBg,
                     color: colors.text.primary,
                     borderWidth: 1,
@@ -1128,17 +1131,16 @@ export function CaseForm({
               const detailsCard = (
                 <CaseStepCard n={detailsStep} title="Case details" compact={isMobile} palette={palette} raised={showSourceDropdown || showStatusDropdown || showCaseTypeDropdown}>
           {/* Priority Selection */}
-          <View className="mb-5" style={{ position: 'relative', zIndex: 1 }}>
-            <Text style={{ color: palette.textSoft, fontSize: 14, marginBottom: 8 }}>
+          <View className="mb-3.5" style={{ position: 'relative', zIndex: 1 }}>
+            <Text style={{ color: palette.textSoft, fontSize: 13, fontWeight: '600', marginBottom: 7 }}>
               Priority
             </Text>
             <View
-              className="flex-row p-1.5 rounded-xl"
-              style={{ backgroundColor: formBg, borderWidth: 1, borderColor: formBorder }}
+              style={{ flexDirection: 'row', gap: 2, padding: 3, borderRadius: 12, backgroundColor: palette.page, borderWidth: 1, borderColor: palette.hairline }}
             >
               {CASE_PRIORITIES.map((p) => {
                 const isSelected = priority === p;
-                const priorityColor = CASE_PRIORITY_COLORS[p];
+                const priorityColor = p === 'Low' ? palette.muted : CASE_PRIORITY_COLORS[p];
                 return (
                   <Pressable
                     key={p}
@@ -1146,19 +1148,10 @@ export function CaseForm({
                       Haptics.selectionAsync();
                       setPriority(p);
                     }}
-                    className="flex-1 flex-row items-center justify-center gap-1.5 py-3 rounded-full active:opacity-80"
-                    style={{
-                      backgroundColor: isSelected ? priorityColor : 'transparent',
-                      borderWidth: 0,
-                      borderColor: 'transparent',
-                    }}
+                    style={{ flex: 1, height: 38, borderRadius: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: isSelected ? (p === 'Low' ? palette.softFill : `${priorityColor}2E`) : 'transparent' }}
                   >
-                    {isSelected && <Flag size={12} color="#FFFFFF" strokeWidth={2} />}
-                    <Text
-                      style={{ color: isSelected ? '#FFFFFF' : colors.text.muted, fontSize: 12, fontWeight: '600' }}
-                    >
-                      {p}
-                    </Text>
+                    {isSelected ? <Flag size={13} color={priorityColor} strokeWidth={2.4} /> : null}
+                    <Text style={{ color: isSelected ? priorityColor : palette.muted, fontSize: 13, fontWeight: '600' }}>{p}</Text>
                   </Pressable>
                 );
               })}
@@ -1166,8 +1159,8 @@ export function CaseForm({
           </View>
 
           {/* Source Channel */}
-          <View className="mb-5" style={{ position: 'relative', zIndex: showSourceDropdown ? 240 : 1, overflow: 'visible' }}>
-            <Text style={{ color: palette.textSoft, fontSize: 14, marginBottom: 8 }}>
+          <View className="mb-3.5" style={{ position: 'relative', zIndex: showSourceDropdown ? 240 : 1, overflow: 'visible' }}>
+            <Text style={{ color: palette.textSoft, fontSize: 13, fontWeight: '600', marginBottom: 7 }}>
               Source Channel
             </Text>
             {renderDropdown(
@@ -1182,8 +1175,8 @@ export function CaseForm({
           </View>
 
           {/* Status */}
-          <View className="mb-5" style={{ position: 'relative', zIndex: showStatusDropdown ? 230 : 1, overflow: 'visible' }}>
-            <Text style={{ color: palette.textSoft, fontSize: 14, marginBottom: 8 }}>
+          <View className="mb-3.5" style={{ position: 'relative', zIndex: showStatusDropdown ? 230 : 1, overflow: 'visible' }}>
+            <Text style={{ color: palette.textSoft, fontSize: 13, fontWeight: '600', marginBottom: 7 }}>
               Status
             </Text>
             {renderDropdown(
@@ -1212,8 +1205,8 @@ export function CaseForm({
           </View>
 
           {/* Case Type */}
-          <View className="mb-5" style={{ position: 'relative', zIndex: showCaseTypeDropdown ? 220 : 1, overflow: 'visible' }}>
-            <Text style={{ color: palette.textSoft, fontSize: 14, marginBottom: 8 }}>
+          <View className="mb-3.5" style={{ position: 'relative', zIndex: showCaseTypeDropdown ? 220 : 1, overflow: 'visible' }}>
+            <Text style={{ color: palette.textSoft, fontSize: 13, fontWeight: '600', marginBottom: 7 }}>
               Case Type
             </Text>
             {renderDropdown(
@@ -1230,6 +1223,53 @@ export function CaseForm({
 
                 </CaseStepCard>
               );
+              const aiCard = !isEditing ? (
+                <View style={{ borderRadius: 20, borderWidth: 1, borderColor: 'rgba(168,120,255,0.22)', overflow: 'hidden' }}>
+                  <LinearGradient
+                    pointerEvents="none"
+                    colors={['rgba(168,120,255,0.12)', palette.card, palette.card]}
+                    locations={[0, 0.6, 1]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 0.6, y: 1 }}
+                    style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+                  />
+                  <View style={{ padding: 18, gap: 12 }}>
+                    <View style={{ gap: 5 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Sparkles size={18} color="#B78BFF" strokeWidth={1.8} />
+                        <Text style={{ color: palette.text, fontSize: 16, fontWeight: '700' }}>Draft with Fyll AI</Text>
+                      </View>
+                      <Text style={{ color: palette.muted, fontSize: 13, lineHeight: 19 }}>
+                        Upload screenshots of the issue and Fyll AI writes the case for you.
+                      </Text>
+                    </View>
+                    <FyllAiButton label="Fyll AI Case" onPress={handleOpenAICase} height={48} borderRadius={999} iconSize={16} textSize={14.5} />
+                  </View>
+                </View>
+              ) : null;
+              const createButton = (
+                <Pressable
+                  onPress={handleSave}
+                  style={({ pressed }) => ({ height: 52, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? FYLL_LIME_HOVER : FYLL_LIME })}
+                >
+                  <Text style={{ color: FYLL_LIME_INK, fontSize: 15, fontWeight: '600' }}>
+                    {isEditing ? 'Update case' : 'Create case'}
+                  </Text>
+                </Pressable>
+              );
+              if (!isWide) {
+                return (
+                  <View style={{ gap: 14 }}>
+                    {customerCard}
+                    {issueCard}
+                    {returnCard}
+                    {resolutionCard}
+                    {aiCard}
+                    {detailsCard}
+                    {createButton}
+                  </View>
+                );
+              }
               return (
                 <View style={{ flexDirection: isWide ? 'row' : 'column', alignItems: isWide ? 'flex-start' : 'stretch', gap: 16 }}>
                   <View style={{ flex: isWide ? 1.5 : undefined, gap: 16, zIndex: 2 }}>
@@ -1239,44 +1279,15 @@ export function CaseForm({
                     {resolutionCard}
                   </View>
                   <View style={{ flex: isWide ? 1 : undefined, minWidth: isWide ? 340 : undefined, gap: 16, zIndex: 1 }}>
-                    {!isEditing ? (
-                      <View style={{ borderRadius: 20, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, padding: 16, gap: 12 }}>
-                        <Text style={{ color: palette.text, fontSize: isMobile ? 14 : 16, fontWeight: '500' }}>Draft with Fyll AI</Text>
-                        <Text style={{ color: palette.muted, fontSize: 12, lineHeight: 18 }}>
-                          Upload screenshots of the issue and Fyll AI writes the case for you.
-                        </Text>
-                        <FyllAiButton label="Fyll AI Case" onPress={handleOpenAICase} height={48} borderRadius={999} iconSize={18} textSize={14} />
-                      </View>
-                    ) : null}
+                    {aiCard}
                     {detailsCard}
-                    {isWide ? (
-                      <Pressable
-                        onPress={handleSave}
-                        style={({ pressed }) => ({ height: 52, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? FYLL_LIME_HOVER : FYLL_LIME })}
-                      >
-                        <Text style={{ color: FYLL_LIME_INK, fontSize: 16, fontWeight: '600' }}>
-                          {isEditing ? 'Update case' : 'Create case'}
-                        </Text>
-                      </Pressable>
-                    ) : null}
+                    {createButton}
                   </View>
                 </View>
               );
             })()}
           </ScrollView>
 
-          {!isWide ? (
-            <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 20, borderTopWidth: 1, borderTopColor: palette.hairline, backgroundColor: palette.page }}>
-              <Pressable
-                onPress={handleSave}
-                style={({ pressed }) => ({ height: 52, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? FYLL_LIME_HOVER : FYLL_LIME })}
-              >
-                <Text style={{ color: FYLL_LIME_INK, fontSize: 16, fontWeight: '600' }}>
-                  {isEditing ? 'Update case' : 'Create case'}
-                </Text>
-              </Pressable>
-            </View>
-          ) : null}
         </View>
       </KeyboardAvoidingView>
     </Modal>
