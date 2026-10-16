@@ -3,7 +3,7 @@ import { View, Text, ScrollView, FlatList, Pressable, TextInput, Modal, Platform
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { Plus, Search, ShoppingCart, ChevronRight, Filter, Check, X, ArrowDownAZ, ArrowUpAZ, DollarSign, Clock, AlertCircle, Flag, Sparkles } from 'lucide-react-native';
+import { Plus, Search, ShoppingCart, ChevronRight, Filter, Check, X, ArrowDownAZ, ArrowUpAZ, DollarSign, Clock, AlertCircle, Flag, Sparkles, ArrowRight } from 'lucide-react-native';
 import useFyllStore, { Order, Product, formatCurrency } from '@/lib/state/fyll-store';
 import useAuthStore from '@/lib/state/auth-store';
 import { collaborationData } from '@/lib/supabase/collaboration';
@@ -23,7 +23,7 @@ import * as Haptics from 'expo-haptics';
 import { useFonts, BricolageGrotesque_700Bold } from '@expo-google-fonts/bricolage-grotesque';
 import { SearchClearButton } from '@/components/SearchClearButton';
 import { supabaseData } from '@/lib/supabase/data';
-import { FYLL_LIME, FYLL_LIME_INK } from '@/components/payments/payments-ui';
+import { FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, usePaymentsPalette } from '@/components/payments/payments-ui';
 
 // Hairline separator colors
 const SEPARATOR_LIGHT = '#EEEEEE';
@@ -423,6 +423,7 @@ export default function OrdersScreen() {
   const [bricolageLoaded] = useFonts({ BricolageGrotesque_700Bold });
   const router = useRouter();
   const colors = useThemeColors();
+  const palette = usePaymentsPalette();
   const tabBarHeight = useTabBarHeight();
   const { isMobile, isDesktop } = useBreakpoint();
   const isDark = colors.bg.primary === '#111111';
@@ -468,9 +469,11 @@ export default function OrdersScreen() {
   const [selectedSource, setSelectedSource] = useState<string | null>(null);
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   const [showFyllAiModal, setShowFyllAiModal] = useState(false);
+  const [aiTextFocused, setAiTextFocused] = useState<boolean>(false);
   const [aiMessageText, setAiMessageText] = useState('');
   const [aiIsParsing, setAiIsParsing] = useState(false);
   const [aiParsedData, setAiParsedData] = useState<ParsedOrderData | null>(null);
+  const aiConfidenceTint = palette.tones[aiParsedData?.confidence === 'high' ? 'verified' : aiParsedData?.confidence === 'medium' ? 'awaiting' : 'rejected'];
   const [aiParseError, setAiParseError] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'name-asc' | 'name-desc' | 'amount-high' | 'amount-low'>('newest');
   const [visibleOrdersCount, setVisibleOrdersCount] = useState(ORDERS_PAGE_SIZE);
@@ -1281,187 +1284,176 @@ export default function OrdersScreen() {
           onRequestClose={() => setShowFyllAiModal(false)}
         >
           <Pressable
-            className="flex-1 items-center justify-center"
-            style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)' }}
+            style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20, backgroundColor: 'rgba(0, 0, 0, 0.55)' }}
             onPress={() => setShowFyllAiModal(false)}
           >
             <Pressable
               onPress={(event) => event.stopPropagation()}
               style={{
-                width: '92%',
-                maxWidth: 760,
-                maxHeight: '88%',
-                borderRadius: 20,
+                width: '100%',
+                maxWidth: 560,
+                maxHeight: '90%',
+                borderRadius: 26,
                 borderWidth: 1,
-                borderColor: colors.border.light,
-                backgroundColor: colors.bg.card,
-                padding: 18,
+                borderColor: palette.border,
+                backgroundColor: palette.card,
+                overflow: 'hidden',
               }}
             >
-              <View className="flex-row items-start justify-between">
-                <View style={{ flex: 1, marginRight: 10 }}>
-                  <Text style={{ color: colors.text.primary }} className="text-xl font-bold">
-                    Fyll AI
-                  </Text>
-                  <Text style={{ color: colors.text.tertiary }} className="text-sm mt-1">
-                    Paste a WhatsApp order message to parse and create a draft without leaving this screen.
+              <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingHorizontal: 22, paddingTop: 20, paddingBottom: 4, gap: 12 }}>
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Sparkles size={16} color={palette.limeOnSurface} strokeWidth={2.2} />
+                    <Text style={{ color: palette.text, fontSize: 16, fontWeight: '500' }}>Fyll AI</Text>
+                  </View>
+                  <Text style={{ color: palette.muted, fontSize: 12, marginTop: 4, lineHeight: 18 }}>
+                    Paste a WhatsApp order message and we'll draft the order for you.
                   </Text>
                 </View>
                 <Pressable
                   onPress={() => setShowFyllAiModal(false)}
-                  className="rounded-full items-center justify-center"
-                  style={{ backgroundColor: colors.bg.secondary, width: 40, height: 40 }}
+                  style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.softFill }}
                 >
-                  <X size={20} color={colors.text.tertiary} strokeWidth={2.5} />
+                  <X size={16} color={palette.textSoft} strokeWidth={2} />
                 </Pressable>
               </View>
 
               <ScrollView
-                className="mt-4"
+                style={{ paddingHorizontal: 22 }}
+                contentContainerStyle={{ paddingTop: 14, paddingBottom: 22 }}
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="handled"
               >
-                <View
-                  className="rounded-xl p-3.5 flex-row"
-                  style={{ backgroundColor: isDark ? '#1E1B4B' : '#EDE9FE' }}
-                >
-                  <AlertCircle size={18} color="#8B5CF6" strokeWidth={2} style={{ marginTop: 1 }} />
-                  <Text
-                    style={{ color: isDark ? '#C4B5FD' : '#6D28D9', flex: 1, marginLeft: 8, lineHeight: 18 }}
-                    className="text-xs font-medium"
-                  >
-                    Best results come when the message includes customer name, phone, address, items and quantities.
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, padding: 12, borderRadius: 14, backgroundColor: palette.nudgeBg, borderWidth: 1, borderColor: palette.nudgeBorder }}>
+                  <AlertCircle size={16} color={palette.limeOnSurface} strokeWidth={2.2} style={{ marginTop: 1 }} />
+                  <Text style={{ flex: 1, color: palette.textSoft, fontSize: 12, lineHeight: 18 }}>
+                    Best results come when the message includes the customer's name, phone, address, items and quantities.
                   </Text>
                 </View>
 
-                <View className="mt-4">
-                  <Text style={{ color: colors.text.primary }} className="text-sm font-semibold mb-2">
-                    Order message
-                  </Text>
-                  <View
-                    className="rounded-xl px-3 py-3"
-                    style={{
-                      minHeight: 170,
-                      borderWidth: 1,
-                      borderColor: colors.input.border,
-                      backgroundColor: colors.input.bg,
-                    }}
-                  >
-                    <TextInput
-                      placeholder={
-                        'Adaeze Okonkwo\n+234 803 555 0101\n15 Admiralty Way, Lekki, Lagos\n\n2 Aviator Gold\n1 Wayfarer Black'
-                      }
-                      placeholderTextColor={colors.input.placeholder}
-                      value={aiMessageText}
-                      onChangeText={setAiMessageText}
-                      multiline
-                      textAlignVertical="top"
-                      style={{ color: colors.input.text, fontSize: 14, minHeight: 140 }}
-                    />
-                  </View>
+                <Text style={{ color: palette.textSoft, fontSize: 14, marginTop: 16, marginBottom: 8 }}>Order message</Text>
+                <View
+                  style={{
+                    minHeight: 170,
+                    borderRadius: 14,
+                    borderWidth: 1,
+                    borderColor: aiTextFocused ? (palette.isDark ? FYLL_LIME : '#B8C43A') : palette.outline,
+                    backgroundColor: palette.inset,
+                    paddingHorizontal: 16,
+                    paddingVertical: 12,
+                  }}
+                >
+                  <TextInput
+                    placeholder={
+                      'Adaeze Okonkwo\n+234 803 555 0101\n15 Admiralty Way, Lekki, Lagos\n\n2 Aviator Gold\n1 Wayfarer Black'
+                    }
+                    placeholderTextColor={palette.faint}
+                    value={aiMessageText}
+                    onChangeText={setAiMessageText}
+                    onFocus={() => setAiTextFocused(true)}
+                    onBlur={() => setAiTextFocused(false)}
+                    multiline
+                    textAlignVertical="top"
+                    selectionColor={palette.text}
+                    style={[
+                      { color: palette.text, fontSize: 14, minHeight: 144 },
+                      Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null,
+                    ]}
+                  />
                 </View>
 
                 {aiParseError ? (
-                  <View
-                    className="mt-3 rounded-xl px-3 py-2.5"
-                    style={{ borderWidth: 1, borderColor: '#EF4444', backgroundColor: isDark ? 'rgba(239,68,68,0.1)' : '#FEE2E2' }}
-                  >
-                    <Text style={{ color: isDark ? '#FCA5A5' : '#B91C1C' }} className="text-xs font-medium">
-                      {aiParseError}
-                    </Text>
+                  <View style={{ marginTop: 12, flexDirection: 'row', gap: 10, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: palette.dangerBorder, backgroundColor: palette.dangerBg }}>
+                    <AlertCircle size={16} color={palette.danger} strokeWidth={2.2} style={{ marginTop: 1 }} />
+                    <Text style={{ flex: 1, color: palette.danger, fontSize: 14 }}>{aiParseError}</Text>
                   </View>
                 ) : null}
 
-                <View className="mt-4" style={{ gap: 10 }}>
-                  <FyllAiButton
-                    label={aiIsParsing ? 'Parsing with Fyll AI...' : 'Parse Order Message'}
-                    onPress={handleParseOrderWithAi}
-                    disabled={aiIsParsing || !aiMessageText.trim()}
-                    height={48}
-                    borderRadius={999}
-                    textSize={14}
-                  />
+                <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
                   <Pressable
                     onPress={handleResetOrderAiModal}
-                    className="rounded-full items-center justify-center active:opacity-80"
-                    style={{ height: 42, borderWidth: 1, borderColor: colors.border.light }}
+                    style={{ flex: 1, height: 48, borderRadius: 999, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: palette.outline }}
                   >
-                    <Text style={{ color: colors.text.secondary }} className="text-sm font-semibold">
-                      Clear
-                    </Text>
+                    <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>Clear</Text>
                   </Pressable>
+                  <View style={{ flex: 2 }}>
+                    {aiIsParsing ? (
+                      <View style={{ height: 48, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: palette.softFill }}>
+                        <ActivityIndicator size="small" color={palette.textSoft} />
+                        <Text style={{ color: palette.textSoft, fontSize: 14, fontWeight: '600' }}>Reading the order…</Text>
+                      </View>
+                    ) : (
+                      <FyllAiButton
+                        label="Parse order"
+                        onPress={handleParseOrderWithAi}
+                        disabled={!aiMessageText.trim()}
+                        height={48}
+                        borderRadius={999}
+                        textSize={14}
+                        style={{ opacity: aiMessageText.trim() ? 1 : 0.45 }}
+                      />
+                    )}
+                  </View>
                 </View>
 
-                {aiIsParsing ? (
-                  <View className="mt-4 flex-row items-center">
-                    <ActivityIndicator size="small" color={colors.text.tertiary} />
-                    <Text style={{ color: colors.text.tertiary }} className="text-xs ml-2">
-                      Parsing customer details...
-                    </Text>
-                  </View>
-                ) : null}
-
                 {aiParsedData ? (
-                  <View
-                    className="mt-4 rounded-xl p-4"
-                    style={{ borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.secondary }}
-                  >
-                    <View className="flex-row items-center justify-between">
-                      <Text style={{ color: colors.text.primary }} className="text-sm font-bold">
-                        Parsed Draft
-                      </Text>
-                      <View className="px-2 py-1 rounded-full" style={{ backgroundColor: 'rgba(34,197,94,0.15)' }}>
-                        <Text style={{ color: '#16A34A' }} className="text-[10px] font-semibold">
-                          {aiParsedData.confidence.toUpperCase()} CONFIDENCE
-                        </Text>
+                  <View style={{ marginTop: 18, padding: 16, borderRadius: 20, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.inset, gap: 14 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                      <View style={{ width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: FYLL_LIME }}>
+                        <Check size={14} color={FYLL_LIME_INK} strokeWidth={2.6} />
+                      </View>
+                      <Text style={{ flex: 1, color: palette.text, fontSize: 14, fontWeight: '500' }}>Here's what we found</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, height: 26, borderRadius: 13, backgroundColor: aiConfidenceTint.bg }}>
+                        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: aiConfidenceTint.dot }} />
+                        <Text style={{ color: aiConfidenceTint.ink, fontSize: 12, fontWeight: '600' }}>{aiParsedData.confidence} confidence</Text>
                       </View>
                     </View>
 
-                    <View className="mt-3" style={{ gap: 6 }}>
-                      <Text style={{ color: colors.text.secondary }} className="text-xs">
-                        Customer: <Text style={{ color: colors.text.primary }}>{aiParsedData.customerName || 'Not found'}</Text>
-                      </Text>
-                      <Text style={{ color: colors.text.secondary }} className="text-xs">
-                        Phone: <Text style={{ color: colors.text.primary }}>{aiParsedData.customerPhone || 'Not found'}</Text>
-                      </Text>
-                      <Text style={{ color: colors.text.secondary }} className="text-xs">
-                        State: <Text style={{ color: colors.text.primary }}>{aiParsedData.deliveryState || 'Not found'}</Text>
-                      </Text>
-                      <Text style={{ color: colors.text.secondary }} className="text-xs">
-                        Items: <Text style={{ color: colors.text.primary }}>{aiParsedData.items.length}</Text>
-                      </Text>
+                    <View style={{ gap: 8 }}>
+                      {[
+                        { label: 'Customer', value: aiParsedData.customerName },
+                        { label: 'Phone', value: aiParsedData.customerPhone },
+                        { label: 'State', value: aiParsedData.deliveryState },
+                      ].map((row) => (
+                        <View key={row.label} style={{ flexDirection: 'row', gap: 12 }}>
+                          <Text style={{ width: 72, color: palette.muted, fontSize: 12 }}>{row.label}</Text>
+                          <Text style={{ flex: 1, color: row.value ? palette.text : palette.faint, fontSize: 14, fontStyle: row.value ? 'normal' : 'italic' }}>
+                            {row.value || 'Not found'}
+                          </Text>
+                        </View>
+                      ))}
                     </View>
 
                     {aiParsedData.items.length > 0 ? (
-                      <View className="mt-3" style={{ gap: 6 }}>
+                      <View style={{ gap: 8 }}>
                         {aiParsedData.items.slice(0, 4).map((item, index) => (
-                          <View key={`${item.productName}-${index}`} className="flex-row items-center justify-between">
-                            <Text style={{ color: colors.text.secondary, flex: 1 }} className="text-xs" numberOfLines={1}>
-                              {item.quantity}x {item.productName}
+                          <View key={`${item.productName}-${index}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 10, borderRadius: 14, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.hairline }}>
+                            <View style={{ minWidth: 30, height: 30, paddingHorizontal: 8, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: FYLL_LIME }}>
+                              <Text style={{ color: FYLL_LIME_INK, fontSize: 12, fontWeight: '600' }}>{item.quantity}×</Text>
+                            </View>
+                            <Text style={{ flex: 1, color: palette.text, fontSize: 14, fontWeight: '500' }} numberOfLines={1}>
+                              {item.productName}
                             </Text>
                             {item.unitPrice ? (
-                              <Text style={{ color: colors.text.primary }} className="text-xs font-semibold ml-3">
-                                ₦{item.unitPrice.toLocaleString()}
-                              </Text>
+                              <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>{formatCurrency(item.unitPrice * item.quantity)}</Text>
                             ) : null}
                           </View>
                         ))}
+                        {aiParsedData.items.length > 4 ? (
+                          <Text style={{ color: palette.muted, fontSize: 12 }}>+{aiParsedData.items.length - 4} more items</Text>
+                        ) : null}
                       </View>
                     ) : null}
 
-                    <View className="mt-4">
-                      <FyllAiButton
-                        label="Create Draft Order"
-                        onPress={handleCreateDraftFromParsedOrder}
-                        height={46}
-                        borderRadius={999}
-                        textSize={14}
-                      />
-                    </View>
+                    <Pressable
+                      onPress={handleCreateDraftFromParsedOrder}
+                      style={({ pressed }) => ({ height: 48, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: pressed ? FYLL_LIME_HOVER : FYLL_LIME })}
+                    >
+                      <Text style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '600' }}>Review draft order</Text>
+                      <ArrowRight size={16} color={FYLL_LIME_INK} strokeWidth={2.4} />
+                    </Pressable>
                   </View>
                 ) : null}
-
-                <View className="h-3" />
               </ScrollView>
             </Pressable>
           </Pressable>

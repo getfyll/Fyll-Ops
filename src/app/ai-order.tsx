@@ -1,17 +1,15 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, ActivityIndicator, Alert, Platform, Image } from 'react-native';
+import { View, Text, TextInput, Pressable, ScrollView, ActivityIndicator, Platform, Image } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, Sparkles, AlertCircle, ImagePlus, Plus, X } from 'lucide-react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { ArrowRight, Check, Sparkles, AlertCircle, ImagePlus, Plus, X } from 'lucide-react-native';
 import { parseOrderFromText, ParsedOrderData } from '@/lib/ai-order-parser';
-import { useThemeColors } from '@/lib/theme';
+import { BackButton, FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, MoneyText, usePaymentsPalette, type StatusTone } from '@/components/payments/payments-ui';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import * as Haptics from 'expo-haptics';
-import { cn } from '@/lib/cn';
 import { FyllAiButton } from '@/components/FyllAiButton';
-import useFyllStore from '@/lib/state/fyll-store';
+import useFyllStore, { formatCurrency } from '@/lib/state/fyll-store';
 import { normalizeProductType } from '@/lib/product-utils';
 import { useImagePicker } from '@/hooks/useImagePicker';
 
@@ -50,9 +48,8 @@ async function toDataUrlFromImageSource(imageSource: string): Promise<string> {
 
 export default function AIOrderScreen() {
   const router = useRouter();
-  const colors = useThemeColors();
+  const palette = usePaymentsPalette();
   const imagePicker = useImagePicker();
-  const isDark = colors.bg.primary === '#111111';
   const { isDesktop } = useBreakpoint();
   const isWebDesktop = Platform.OS === 'web' && isDesktop;
   const products = useFyllStore((s) => s.products);
@@ -60,6 +57,8 @@ export default function AIOrderScreen() {
 
   const [messageText, setMessageText] = useState('');
   const [imageDataUrls, setImageDataUrls] = useState<string[]>([]);
+  const [textFocused, setTextFocused] = useState<boolean>(false);
+  const [errorText, setErrorText] = useState<string>('');
   const [isParsing, setIsParsing] = useState(false);
   const [parsedData, setParsedData] = useState<ParsedOrderData | null>(null);
 
@@ -82,6 +81,7 @@ export default function AIOrderScreen() {
   }, [products, customServices]);
 
   const handlePickImage = async () => {
+    setErrorText('');
     const picked = await imagePicker.pickImage({
       allowsEditing: false,
       quality: 0.85,
@@ -101,14 +101,11 @@ export default function AIOrderScreen() {
       });
 
       if (hitLimit) {
-        Alert.alert(
-          'Upload limit reached',
-          `You can attach up to ${MAX_ORDER_SCREENSHOTS} screenshots for one order parse.`
-        );
+        setErrorText(`You can attach up to ${MAX_ORDER_SCREENSHOTS} screenshots for one order.`);
       }
     } catch (error) {
       console.error('Image conversion failed:', error);
-      Alert.alert('Image error', 'Could not process this screenshot. Please try another one.');
+      setErrorText('Could not process this screenshot. Please try another one.');
     }
   };
 
@@ -118,12 +115,13 @@ export default function AIOrderScreen() {
 
   const handleParse = async () => {
     if (!messageText.trim() && imageDataUrls.length === 0) {
-      Alert.alert('No input', 'Paste a message or add screenshot(s) first.');
+      setErrorText('Paste a message or add a screenshot first.');
       return;
     }
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setIsParsing(true);
+    setErrorText('');
     setParsedData(null);
 
     try {
@@ -135,20 +133,14 @@ export default function AIOrderScreen() {
       });
 
       if (!result) {
-        Alert.alert(
-          'Could Not Parse',
-          'Unable to extract order information. Please add clearer details or another screenshot.'
-        );
+        setErrorText('We could not read an order from that. Add clearer details or another screenshot.');
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setParsedData(result);
       }
     } catch (error: any) {
       console.error('Parse error:', error);
-      Alert.alert(
-        'Parsing Failed',
-        error?.message || 'An error occurred while parsing the message. Please try again.'
-      );
+      setErrorText(error?.message || 'An error occurred while parsing the message. Please try again.');
     } finally {
       setIsParsing(false);
     }
@@ -177,107 +169,128 @@ export default function AIOrderScreen() {
     });
   };
 
-  const confidenceColor = parsedData?.confidence === 'high'
-    ? '#10B981'
+  const confidenceTone: StatusTone = parsedData?.confidence === 'high'
+    ? 'verified'
     : parsedData?.confidence === 'medium'
-      ? '#F59E0B'
-      : '#EF4444';
+      ? 'awaiting'
+      : 'rejected';
+  const confidenceTint = palette.tones[confidenceTone];
+  const hasInput = messageText.trim().length > 0 || imageDataUrls.length > 0;
+  const accent = palette.isDark ? FYLL_LIME : '#B8C43A';
+  const cardPad = isWebDesktop ? 20 : 16;
+
+  const detailRows: { label: string; value: string }[] = parsedData ? [
+    { label: 'Name', value: parsedData.customerName },
+    { label: 'Phone', value: parsedData.customerPhone },
+    { label: 'Email', value: parsedData.customerEmail },
+    { label: 'State', value: parsedData.deliveryState },
+    { label: 'Address', value: parsedData.deliveryAddress },
+    { label: 'Order ref', value: parsedData.websiteOrderReference || '' },
+  ] : [];
+
+  const lineList = (
+    lines: { key: string; qty: number; title: string; sub?: string; price?: number }[],
+    empty: string,
+  ) => (
+    lines.length === 0 ? (
+      <Text style={{ color: palette.faint, fontSize: 14 }}>{empty}</Text>
+    ) : (
+      <View style={{ gap: 8 }}>
+        {lines.map((line) => (
+          <View key={line.key} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 14, backgroundColor: palette.inset, borderWidth: 1, borderColor: palette.hairline }}>
+            <View style={{ minWidth: 30, height: 30, paddingHorizontal: 8, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: FYLL_LIME }}>
+              <Text style={{ color: FYLL_LIME_INK, fontSize: 12, fontWeight: '600' }}>{line.qty}×</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: palette.text, fontSize: 14, fontWeight: '500' }}>{line.title}</Text>
+              {line.sub ? <Text style={{ color: palette.muted, fontSize: 12, marginTop: 2 }}>{line.sub}</Text> : null}
+            </View>
+            {line.price ? <MoneyText style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>{formatCurrency(line.price * line.qty)}</MoneyText> : null}
+          </View>
+        ))}
+      </View>
+    )
+  );
 
   return (
-    <View className="flex-1" style={{ backgroundColor: colors.bg.primary }}>
-      <SafeAreaView className="flex-1" edges={['top']}>
-        <View
-          className="flex-row items-center justify-between px-5 py-4"
-          style={{ borderBottomWidth: 0.5, borderBottomColor: isDark ? '#333' : '#E5E5E5' }}
-        >
-          <Pressable
-            onPress={() => router.back()}
-            className="w-10 h-10 rounded-xl items-center justify-center active:opacity-50"
-            style={{ backgroundColor: colors.bg.secondary }}
-          >
-            <ArrowLeft size={20} color={colors.text.primary} strokeWidth={2} />
-          </Pressable>
-          <View className="flex-row items-center">
-            <Sparkles size={20} color="#8B5CF6" strokeWidth={2} />
-            <Text style={{ color: colors.text.primary }} className="text-lg font-bold ml-2">
-              ✨ Fyll AI Order Parser
-            </Text>
+    <View style={{ flex: 1, backgroundColor: palette.page }}>
+      <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: palette.hairline }}>
+          <BackButton onPress={() => router.back()} palette={palette} />
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Sparkles size={16} color={palette.limeOnSurface} strokeWidth={2.2} />
+              <Text style={{ color: palette.text, fontSize: 16, fontWeight: '500' }}>Create order with Fyll AI</Text>
+            </View>
+            <Text style={{ color: palette.muted, fontSize: 12, marginTop: 2 }}>Paste a chat or add screenshots. We'll draft the order.</Text>
           </View>
-          <View className="w-10" />
         </View>
 
         <ScrollView
-          className="flex-1"
+          style={{ flex: 1 }}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
           contentContainerStyle={{
-            paddingHorizontal: isWebDesktop ? 0 : 20,
-            maxWidth: isWebDesktop ? 640 : undefined,
+            paddingHorizontal: isWebDesktop ? 0 : 16,
+            paddingTop: 16,
+            paddingBottom: 40,
+            maxWidth: isWebDesktop ? 720 : undefined,
             alignSelf: isWebDesktop ? 'center' : undefined,
             width: isWebDesktop ? '100%' : undefined,
+            gap: 14,
           }}
         >
-          <View
-            className="rounded-xl p-4 mt-4 flex-row"
-            style={{ backgroundColor: isDark ? '#1E1B4B' : '#EDE9FE' }}
-          >
-            <AlertCircle size={20} color="#8B5CF6" strokeWidth={2} style={{ marginTop: 2 }} />
-            <View className="flex-1 ml-3">
-              <Text style={{ color: isDark ? '#C4B5FD' : '#6D28D9' }} className="text-sm font-semibold mb-1">
-                How it works
-              </Text>
-              <Text style={{ color: isDark ? '#A78BFA' : '#7C3AED' }} className="text-xs leading-5">
-                Paste order text and/or upload screenshots. Fyll AI extracts customers, products, and service lines, then creates a draft order for review.
-              </Text>
+          <View style={{ borderRadius: 20, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, padding: cardPad, gap: 12 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <View style={{ width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: FYLL_LIME }}>
+                <Text style={{ color: FYLL_LIME_INK, fontSize: 12, fontWeight: '600' }}>1</Text>
+              </View>
+              <Text style={{ flex: 1, color: palette.text, fontSize: isWebDesktop ? 16 : 14, fontWeight: '500' }}>Paste the order message</Text>
+              {messageText ? (
+                <Pressable onPress={() => setMessageText('')} hitSlop={8}>
+                  <Text style={{ color: palette.muted, fontSize: 12, fontWeight: '600' }}>Clear</Text>
+                </Pressable>
+              ) : null}
             </View>
-          </View>
-
-          <View className="mt-6">
-            <Text style={{ color: colors.text.primary }} className="text-sm font-semibold mb-2">
-              Paste WhatsApp Message (optional if screenshot is added)
-            </Text>
-            <View
-              className="rounded-xl p-4"
-              style={{
-                backgroundColor: colors.input.bg,
-                borderWidth: 1,
-                borderColor: colors.input.border,
-                minHeight: 200,
-              }}
-            >
+            <View style={{ borderRadius: 14, backgroundColor: palette.inset, borderWidth: 1, borderColor: textFocused ? accent : palette.outline, paddingHorizontal: 16, paddingVertical: 12, minHeight: 180 }}>
               <TextInput
-                placeholder="Example:&#10;&#10;Adaeze Okonkwo&#10;+234 803 555 0101&#10;15 Admiralty Way, Lekki, Lagos&#10;&#10;2 Aviator Gold frames&#10;1 Anti-blue lens service"
-                placeholderTextColor={colors.input.placeholder}
+                placeholder={'Example:\n\nAdaeze Okonkwo\n+234 803 555 0101\n15 Admiralty Way, Lekki, Lagos\n\n2 Aviator Gold frames\n1 Anti-blue lens service'}
+                placeholderTextColor={palette.faint}
                 value={messageText}
                 onChangeText={setMessageText}
+                onFocus={() => setTextFocused(true)}
+                onBlur={() => setTextFocused(false)}
                 multiline
                 textAlignVertical="top"
-                style={{
-                  color: colors.input.text,
-                  fontSize: 14,
-                  minHeight: 180,
-                }}
+                selectionColor={palette.text}
+                style={[
+                  { color: palette.text, fontSize: 14, minHeight: 156 },
+                  Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null,
+                ]}
               />
             </View>
           </View>
 
-          <View className="mt-6">
-            <Text style={{ color: colors.text.primary }} className="text-sm font-semibold mb-2">
-              Screenshots (optional)
-            </Text>
+          <View style={{ borderRadius: 20, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, padding: cardPad, gap: 12 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <View style={{ width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: FYLL_LIME }}>
+                <Text style={{ color: FYLL_LIME_INK, fontSize: 12, fontWeight: '600' }}>2</Text>
+              </View>
+              <Text style={{ flex: 1, color: palette.text, fontSize: isWebDesktop ? 16 : 14, fontWeight: '500' }}>Add screenshots</Text>
+              <Text style={{ color: palette.faint, fontSize: 12 }}>Optional · {imageDataUrls.length}/{MAX_ORDER_SCREENSHOTS}</Text>
+            </View>
             {imageDataUrls.length > 0 ? (
-              <View>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }}>
+                <View style={{ flexDirection: 'row', gap: 10 }}>
                   {imageDataUrls.map((imageDataUrl, index) => (
                     <View
                       key={`${imageDataUrl.slice(0, 32)}-${index}`}
-                      className="rounded-xl overflow-hidden mr-3"
-                      style={{ borderWidth: 1, borderColor: colors.border.light, width: 160, height: 120 }}
+                      style={{ width: 120, height: 120, borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: palette.border }}
                     >
                       <Image source={{ uri: imageDataUrl }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
                       <Pressable
                         onPress={() => handleRemoveImage(index)}
-                        className="absolute top-2 right-2 w-7 h-7 rounded-full items-center justify-center"
-                        style={{ backgroundColor: 'rgba(0,0,0,0.65)' }}
+                        style={{ position: 'absolute', top: 6, right: 6, width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.65)' }}
                       >
                         <X size={14} color="#FFFFFF" strokeWidth={2.4} />
                       </Pressable>
@@ -286,285 +299,143 @@ export default function AIOrderScreen() {
                   {imageDataUrls.length < MAX_ORDER_SCREENSHOTS ? (
                     <Pressable
                       onPress={handlePickImage}
-                      className="rounded-xl items-center justify-center"
-                      style={{
-                        width: 160,
-                        height: 120,
-                        borderWidth: 1,
-                        borderStyle: 'dashed',
-                        borderColor: colors.border.light,
-                        backgroundColor: colors.bg.secondary,
-                      }}
+                      style={{ width: 120, height: 120, borderRadius: 14, alignItems: 'center', justifyContent: 'center', gap: 4, borderWidth: 1, borderStyle: 'dashed', borderColor: palette.outline, backgroundColor: palette.inset }}
                     >
-                      <Plus size={22} color={colors.text.tertiary} strokeWidth={2.4} />
-                      <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1">
-                        Add
-                      </Text>
+                      <Plus size={20} color={palette.textSoft} strokeWidth={2} />
+                      <Text style={{ color: palette.textSoft, fontSize: 12, fontWeight: '500' }}>Add</Text>
                     </Pressable>
                   ) : null}
-                </ScrollView>
-              </View>
+                </View>
+              </ScrollView>
             ) : (
               <Pressable
                 onPress={handlePickImage}
-                className="rounded-xl p-4 flex-row items-center justify-center"
-                style={{
-                  borderWidth: 1,
-                  borderStyle: 'dashed',
-                  borderColor: colors.border.light,
-                  backgroundColor: colors.bg.secondary,
-                }}
+                style={{ height: 76, borderRadius: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1, borderStyle: 'dashed', borderColor: palette.outline, backgroundColor: palette.inset }}
               >
-                <ImagePlus size={18} color={colors.text.tertiary} strokeWidth={2.2} />
-                <Text style={{ color: colors.text.tertiary }} className="text-sm ml-2 font-medium">
-                  Upload screenshot
-                </Text>
+                <ImagePlus size={18} color={palette.textSoft} strokeWidth={1.9} />
+                <Text style={{ color: palette.textSoft, fontSize: 14, fontWeight: '500' }}>Upload screenshot</Text>
               </Pressable>
             )}
           </View>
 
-          <Pressable
-            onPress={handleParse}
-            disabled={isParsing || (!messageText.trim() && imageDataUrls.length === 0)}
-            className="mt-4 rounded-full overflow-hidden active:opacity-80"
-            style={{ height: 52 }}
-          >
-            {isParsing ? (
-              <View
-                className="h-full flex-row items-center justify-center"
-                style={{ backgroundColor: colors.border.light }}
-              >
-                <ActivityIndicator color="#FFFFFF" />
-                <Text className="text-white font-semibold ml-2">Parsing with Fyll AI...</Text>
-              </View>
-            ) : (!messageText.trim() && imageDataUrls.length === 0) ? (
-              <View
-                className="h-full flex-row items-center justify-center"
-                style={{ backgroundColor: colors.border.light }}
-              >
-                <Sparkles size={18} color="#FFFFFF" strokeWidth={2} />
-                <Text className="text-white font-semibold ml-2">Parse Order</Text>
-              </View>
-            ) : (
-              <LinearGradient
-                colors={['#8B5CF6', '#A855F7', '#C084FC']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={{ height: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
-              >
-                <Sparkles size={18} color="#FFFFFF" strokeWidth={2} />
-                <Text className="text-white font-semibold ml-2">Parse Order</Text>
-              </LinearGradient>
-            )}
-          </Pressable>
+          {errorText ? (
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, padding: 14, borderRadius: 14, backgroundColor: palette.dangerBg, borderWidth: 1, borderColor: palette.dangerBorder }}>
+              <AlertCircle size={16} color={palette.danger} strokeWidth={2.2} style={{ marginTop: 1 }} />
+              <Text style={{ flex: 1, color: palette.danger, fontSize: 14 }}>{errorText}</Text>
+            </View>
+          ) : null}
+
+          {isParsing ? (
+            <View style={{ height: 52, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: palette.softFill }}>
+              <ActivityIndicator color={palette.textSoft} />
+              <Text style={{ color: palette.textSoft, fontSize: 14, fontWeight: '600' }}>Reading the order…</Text>
+            </View>
+          ) : (
+            <FyllAiButton
+              label={parsedData ? 'Parse again' : 'Parse order'}
+              onPress={handleParse}
+              disabled={!hasInput}
+              height={52}
+              borderRadius={999}
+              iconSize={18}
+              textSize={14}
+              style={{ opacity: hasInput ? 1 : 0.45 }}
+            />
+          )}
 
           {parsedData && (
-            <View className="mt-6">
-              <View className="flex-row items-center justify-between mb-3">
-                <Text style={{ color: colors.text.primary }} className="text-base font-bold">
-                  Extracted Information
-                </Text>
-                <View
-                  className="px-3 py-1 rounded-full"
-                  style={{ backgroundColor: `${confidenceColor}20` }}
-                >
-                  <Text style={{ color: confidenceColor }} className="text-xs font-semibold">
-                    {parsedData.confidence.toUpperCase()} CONFIDENCE
-                  </Text>
+            <View style={{ borderRadius: 20, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, padding: cardPad, gap: 16 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <View style={{ width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: FYLL_LIME }}>
+                  <Check size={14} color={FYLL_LIME_INK} strokeWidth={2.6} />
+                </View>
+                <Text style={{ flex: 1, color: palette.text, fontSize: isWebDesktop ? 16 : 14, fontWeight: '500' }}>Here's what we found</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, height: 26, borderRadius: 13, backgroundColor: confidenceTint.bg }}>
+                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: confidenceTint.dot }} />
+                  <Text style={{ color: confidenceTint.ink, fontSize: 12, fontWeight: '600' }}>{parsedData.confidence} confidence</Text>
                 </View>
               </View>
 
-              <View
-                className="rounded-xl p-4"
-                style={{
-                  backgroundColor: colors.bg.card,
-                  borderWidth: 0.5,
-                  borderColor: isDark ? '#333' : '#E5E5E5',
-                }}
-              >
-                <Text style={{ color: colors.text.primary }} className="font-semibold mb-2">
-                  Customer Information
-                </Text>
-                <InfoRow label="Name" value={parsedData.customerName || 'Not found'} colors={colors} />
-                <InfoRow label="Phone" value={parsedData.customerPhone || 'Not found'} colors={colors} />
-                <InfoRow label="Email" value={parsedData.customerEmail || 'Not found'} colors={colors} />
-                <InfoRow label="State" value={parsedData.deliveryState || 'Not found'} colors={colors} />
-                <InfoRow
-                  label="Address"
-                  value={parsedData.deliveryAddress || 'Not found'}
-                  colors={colors}
-                />
-                {parsedData.websiteOrderReference ? (
-                  <InfoRow label="Order Ref" value={parsedData.websiteOrderReference} colors={colors} isLast />
-                ) : (
-                  <InfoRow label="Order Ref" value="Not found" colors={colors} isLast />
-                )}
-
-                <Text style={{ color: colors.text.primary }} className="font-semibold mt-4 mb-2">
-                  Products
-                </Text>
-                {parsedData.items.length > 0 ? (
-                  parsedData.items.map((item, idx) => (
-                    <View
-                      key={`item-${idx}`}
-                      className="flex-row items-center py-2"
-                      style={{
-                        borderBottomWidth: idx < parsedData.items.length - 1 ? 0.5 : 0,
-                        borderBottomColor: isDark ? '#333' : '#E5E5E5',
-                      }}
-                    >
-                      <View
-                        className="w-6 h-6 rounded-full items-center justify-center mr-3"
-                        style={{ backgroundColor: '#8B5CF6' }}
-                      >
-                        <Text className="text-white text-xs font-bold">{item.quantity}</Text>
-                      </View>
-                      <View className="flex-1">
-                        <Text style={{ color: colors.text.primary }} className="text-sm font-medium">
-                          {item.productName}
-                        </Text>
-                        {item.variantInfo ? (
-                          <Text style={{ color: colors.text.tertiary }} className="text-xs">
-                            {item.variantInfo}
-                          </Text>
-                        ) : null}
-                        {item.unitPrice ? (
-                          <Text style={{ color: colors.text.tertiary }} className="text-xs">
-                            ₦{item.unitPrice.toLocaleString()} · {item.quantity}x
-                          </Text>
-                        ) : null}
-                      </View>
-                    </View>
-                  ))
-                ) : (
-                  <Text style={{ color: colors.text.tertiary }} className="text-sm">
-                    No products found
-                  </Text>
-                )}
-
-                <Text style={{ color: colors.text.primary }} className="font-semibold mt-4 mb-2">
-                  Services
-                </Text>
-                {parsedData.services.length > 0 ? (
-                  parsedData.services.map((service, idx) => (
-                    <View
-                      key={`service-${idx}`}
-                      className="flex-row items-center py-2"
-                      style={{
-                        borderBottomWidth: idx < parsedData.services.length - 1 ? 0.5 : 0,
-                        borderBottomColor: isDark ? '#333' : '#E5E5E5',
-                      }}
-                    >
-                      <View
-                        className="w-6 h-6 rounded-full items-center justify-center mr-3"
-                        style={{ backgroundColor: '#14B8A6' }}
-                      >
-                        <Text className="text-white text-xs font-bold">{service.quantity}</Text>
-                      </View>
-                      <View className="flex-1">
-                        <Text style={{ color: colors.text.primary }} className="text-sm font-medium">
-                          {service.serviceName}
-                        </Text>
-                        {service.notes ? (
-                          <Text style={{ color: colors.text.tertiary }} className="text-xs">
-                            {service.notes}
-                          </Text>
-                        ) : null}
-                        {service.unitPrice ? (
-                          <Text style={{ color: colors.text.tertiary }} className="text-xs">
-                            ₦{service.unitPrice.toLocaleString()} · {service.quantity}x
-                          </Text>
-                        ) : null}
-                      </View>
-                    </View>
-                  ))
-                ) : (
-                  <Text style={{ color: colors.text.tertiary }} className="text-sm">
-                    No services found
-                  </Text>
-                )}
-
-                {(parsedData.deliveryFee || parsedData.orderTotal) ? (
-                  <View className="mt-4">
-                    {parsedData.deliveryFee ? (
-                      <InfoRow
-                        label="Delivery Fee"
-                        value={`₦${parsedData.deliveryFee.toLocaleString()}`}
-                        colors={colors}
-                      />
-                    ) : null}
-                    {parsedData.orderTotal ? (
-                      <InfoRow
-                        label="Order Total"
-                        value={`₦${parsedData.orderTotal.toLocaleString()}`}
-                        colors={colors}
-                        isLast
-                      />
-                    ) : null}
+              <View style={{ borderRadius: 14, backgroundColor: palette.inset, borderWidth: 1, borderColor: palette.hairline, paddingHorizontal: 14 }}>
+                {detailRows.map((row, index) => (
+                  <View
+                    key={row.label}
+                    style={{ flexDirection: 'row', gap: 12, paddingVertical: 11, borderBottomWidth: index < detailRows.length - 1 ? 1 : 0, borderBottomColor: palette.hairline }}
+                  >
+                    <Text style={{ width: 76, color: palette.muted, fontSize: 12, paddingTop: 1 }}>{row.label}</Text>
+                    <Text style={{ flex: 1, color: row.value ? palette.text : palette.faint, fontSize: 14, fontStyle: row.value ? 'normal' : 'italic' }}>
+                      {row.value || 'Not found'}
+                    </Text>
                   </View>
-                ) : null}
-
-                {parsedData.notes ? (
-                  <>
-                    <Text style={{ color: colors.text.primary }} className="font-semibold mt-4 mb-2">
-                      Special Notes
-                    </Text>
-                    <Text style={{ color: colors.text.secondary }} className="text-sm">
-                      {parsedData.notes}
-                    </Text>
-                  </>
-                ) : null}
+                ))}
               </View>
 
-              <View className="mt-4">
-                <FyllAiButton
-                  label="Create Draft Order"
-                  onPress={handleCreateDraft}
-                  height={52}
-                  borderRadius={999}
-                  iconSize={18}
-                  textSize={16}
-                />
+              <View style={{ gap: 10 }}>
+                <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>Products</Text>
+                {lineList(
+                  parsedData.items.map((item, idx) => ({
+                    key: `item-${idx}`,
+                    qty: item.quantity,
+                    title: item.productName,
+                    sub: item.variantInfo || undefined,
+                    price: item.unitPrice || undefined,
+                  })),
+                  'No products found',
+                )}
               </View>
+
+              <View style={{ gap: 10 }}>
+                <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>Services</Text>
+                {lineList(
+                  parsedData.services.map((service, idx) => ({
+                    key: `service-${idx}`,
+                    qty: service.quantity,
+                    title: service.serviceName,
+                    sub: service.notes || undefined,
+                    price: service.unitPrice || undefined,
+                  })),
+                  'No services found',
+                )}
+              </View>
+
+              {(parsedData.deliveryFee || parsedData.orderTotal) ? (
+                <View style={{ gap: 8 }}>
+                  {parsedData.deliveryFee ? (
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                      <Text style={{ color: palette.muted, fontSize: 14 }}>Delivery fee</Text>
+                      <MoneyText style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>{formatCurrency(parsedData.deliveryFee)}</MoneyText>
+                    </View>
+                  ) : null}
+                  {parsedData.orderTotal ? (
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={{ color: palette.text, fontSize: 14, fontWeight: '500' }}>Order total</Text>
+                      <MoneyText style={{ color: palette.text, fontSize: 18, fontWeight: '600' }}>{formatCurrency(parsedData.orderTotal)}</MoneyText>
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
+
+              {parsedData.notes ? (
+                <View style={{ padding: 14, borderRadius: 14, backgroundColor: palette.nudgeBg, borderWidth: 1, borderColor: palette.nudgeBorder, gap: 4 }}>
+                  <Text style={{ color: palette.limeOnSurface, fontSize: 12, fontWeight: '600' }}>Special notes</Text>
+                  <Text style={{ color: palette.textSoft, fontSize: 14, lineHeight: 20 }}>{parsedData.notes}</Text>
+                </View>
+              ) : null}
+
+              <Pressable
+                onPress={handleCreateDraft}
+                style={({ pressed }) => ({ height: 52, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: pressed ? FYLL_LIME_HOVER : FYLL_LIME })}
+              >
+                <Text style={{ color: FYLL_LIME_INK, fontSize: 16, fontWeight: '600' }}>Review draft order</Text>
+                <ArrowRight size={18} color={FYLL_LIME_INK} strokeWidth={2.4} />
+              </Pressable>
+              <Text style={{ color: palette.faint, fontSize: 12, textAlign: 'center', marginTop: -6 }}>
+                You can still edit everything on the next screen.
+              </Text>
             </View>
           )}
-
-          <View className="h-8" />
         </ScrollView>
       </SafeAreaView>
-    </View>
-  );
-}
-
-function InfoRow({
-  label,
-  value,
-  colors,
-  isLast = false,
-}: {
-  label: string;
-  value: string;
-  colors: any;
-  isLast?: boolean;
-}) {
-  const isDark = colors.bg.primary === '#111111';
-  return (
-    <View
-      className="flex-row py-2"
-      style={{
-        borderBottomWidth: isLast ? 0 : 0.5,
-        borderBottomColor: isDark ? '#333' : '#E5E5E5',
-      }}
-    >
-      <Text style={{ color: colors.text.tertiary }} className="text-sm w-20">
-        {label}:
-      </Text>
-      <Text
-        style={{ color: value === 'Not found' ? colors.text.muted : colors.text.primary }}
-        className={cn('text-sm flex-1', value === 'Not found' && 'italic')}
-      >
-        {value}
-      </Text>
     </View>
   );
 }

@@ -10,6 +10,7 @@ import {
   Platform,
   Image,
   Alert,
+  useWindowDimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { X, ChevronDown, Check,
@@ -33,6 +34,8 @@ import * as Haptics from 'expo-haptics';
 import { useThemeColors } from '@/lib/theme';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { FyllAiButton } from '@/components/FyllAiButton';
+import { CaseAiSheet } from '@/components/cases/CaseAiSheet';
+import { BackButton, FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, usePaymentsPalette } from '@/components/payments/payments-ui';
 import useFyllStore, {
   Case,
   CaseType,
@@ -121,6 +124,36 @@ interface CaseFormProps {
   enableReturnDetails?: boolean;
 }
 
+// A text field whose border turns lime while you are typing in it.
+function FieldInput({ style, onFocus, onBlur, ...props }: React.ComponentProps<typeof TextInput>) {
+  const palette = usePaymentsPalette();
+  const [focused, setFocused] = useState<boolean>(false);
+  return (
+    <TextInput
+      {...props}
+      onFocus={(event) => { setFocused(true); onFocus?.(event); }}
+      onBlur={(event) => { setFocused(false); onBlur?.(event); }}
+      style={[style, focused ? { borderColor: palette.isDark ? FYLL_LIME : '#B8C43A' } : null]}
+    />
+  );
+}
+
+// A numbered card, like on the New Order screen. `raised` lifts it above its neighbours while one of
+// its dropdowns is open so the list is not hidden behind the next card.
+function CaseStepCard({ n, title, compact, palette, raised, children }: { n: number; title: string; compact: boolean; palette: ReturnType<typeof usePaymentsPalette>; raised?: boolean; children: React.ReactNode }) {
+  return (
+    <View style={{ position: 'relative', zIndex: raised ? 500 : 1, borderRadius: 20, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, padding: compact ? 16 : 20, gap: 14 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <View style={{ width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: FYLL_LIME }}>
+          <Text style={{ color: FYLL_LIME_INK, fontSize: 12, fontWeight: '600' }}>{n}</Text>
+        </View>
+        <Text style={{ flex: 1, color: palette.text, fontSize: compact ? 14 : 16, fontWeight: '500' }}>{title}</Text>
+      </View>
+      {children}
+    </View>
+  );
+}
+
 export function CaseForm({
   visible,
   onClose,
@@ -135,17 +168,22 @@ export function CaseForm({
   enableReturnDetails,
 }: CaseFormProps) {
   const colors = useThemeColors();
+  const palette = usePaymentsPalette();
   const { isMobile } = useBreakpoint();
+  const { width: windowWidth } = useWindowDimensions();
+  const isWide = windowWidth >= 1024;
   const router = useRouter();
   const isEditing = !!existingCase;
   const isWeb = Platform.OS === 'web';
   const isDark = colors.bg.primary === '#111111';
-  const useDesktopCanvas = isWeb && !isDark;
-  const canvasBg = useDesktopCanvas ? '#F3F3F5' : colors.bg.primary;
-  const panelBg = useDesktopCanvas ? '#FFFFFF' : colors.bg.primary;
-  const formBg = isWeb ? (isDark ? colors.bg.secondary : (useDesktopCanvas ? '#F8F8FA' : '#FFFFFF')) : colors.bg.secondary;
-  const formBorder = isWeb ? (isDark ? colors.border.light : '#E5E7EB') : colors.border.light;
+  const useDesktopCanvas = false;
+  const canvasBg = palette.page;
+  const panelBg = palette.page;
+  const formBg = palette.inset;
+  const formBorder = palette.outline;
+  const focusBorder = palette.isDark ? FYLL_LIME : '#B8C43A';
 
+  const [showAiSheet, setShowAiSheet] = useState<boolean>(false);
   const [caseType, setCaseType] = useState<CaseType>('Other');
   const [status, setStatus] = useState<CaseStatus>('Open');
   const [priority, setPriority] = useState<CasePriority>('Medium');
@@ -533,18 +571,7 @@ export function CaseForm({
 
   const handleOpenAICase = () => {
     Haptics.selectionAsync();
-    const linkedCustomer = standaloneCustomerName.trim() || customerName || '';
-    onClose();
-    setTimeout(() => {
-      router.push({
-        pathname: '/ai-case',
-        params: {
-          orderId: orderId ?? '',
-          orderNumber: orderNumber ?? '',
-          customerName: linkedCustomer,
-        },
-      });
-    }, 0);
+    setShowAiSheet(true);
   };
 
   const renderDropdown = (
@@ -566,7 +593,7 @@ export function CaseForm({
     style={{
       backgroundColor: formBg,
       borderWidth: 1,
-      borderColor: show ? colors.accent.primary : formBorder,
+      borderColor: show ? focusBorder : formBorder,
     }}
   >
         <View className="flex-row items-center gap-2">
@@ -588,9 +615,9 @@ export function CaseForm({
         <View
           className="rounded-xl overflow-hidden absolute left-0 right-0 top-[58px]"
           style={{
-            backgroundColor: formBg,
+            backgroundColor: palette.card,
             borderWidth: 1,
-            borderColor: formBorder,
+            borderColor: palette.outline,
             zIndex: 1000,
             shadowColor: '#000000',
             shadowOpacity: 0.12,
@@ -610,7 +637,7 @@ export function CaseForm({
               className="flex-row items-center justify-between py-3 px-4"
               style={{
                 backgroundColor: item === selected
-                  ? (isWeb ? (isDark ? colors.bg.card : '#F9FAFB') : colors.bg.secondary)
+                  ? palette.softFill
                   : 'transparent',
               }}
             >
@@ -625,7 +652,7 @@ export function CaseForm({
                 <Text style={{ color: colors.text.primary }}>{item}</Text>
               </View>
               {item === selected && (
-                <Check size={18} color={colors.accent.primary} strokeWidth={2} />
+                <Check size={18} color={palette.limeOnSurface} strokeWidth={2} />
               )}
             </Pressable>
           ))}
@@ -635,77 +662,36 @@ export function CaseForm({
   );
 
   return (
+    <>
     <Modal
-      visible={visible}
+      visible={visible && !showAiSheet}
       transparent={false}
-      animationType="slide"
+      animationType="none"
       presentationStyle="fullScreen"
+      onRequestClose={onClose}
     >
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        className="flex-1"
-        style={{ backgroundColor: canvasBg }}
+        style={{ flex: 1, backgroundColor: palette.page }}
       >
-        <View
-          style={[
-            { flex: 1, backgroundColor: panelBg },
-            useDesktopCanvas
-              ? {
-                  width: '100%',
-                  maxWidth: 980,
-                  alignSelf: 'center',
-                  borderWidth: 1,
-                  borderColor: '#E6E6E6',
-                  borderRadius: 18,
-                  overflow: 'visible',
-                  marginTop: 0,
-                  marginBottom: 12,
-                }
-              : null,
-          ]}
-        >
-        <View
-          className="flex-1"
-          style={{
-            backgroundColor: panelBg,
-          }}
-        >
-          {/* Header */}
-          <View
-            className="flex-row items-center justify-between px-5 py-4"
-            style={{
-              backgroundColor: colors.bg.card,
-              borderBottomWidth: 1,
-              borderBottomColor: colors.border.light,
-            }}
-          >
-            <View className="flex-row items-center gap-3">
-              <Pressable
-                onPress={() => {
-                  Haptics.selectionAsync();
-                  onClose();
-                }}
-                className="p-2 -ml-2 active:opacity-70"
-              >
-                <X size={24} color={colors.text.primary} strokeWidth={1.5} />
-              </Pressable>
-              <Text style={{ color: colors.text.primary }} className="text-xl font-bold">
-                {isEditing ? 'Edit Case' : 'New Case'}
-              </Text>
-            </View>
-            <View style={{ width: 40 }} />
+        <View style={{ flex: 1, backgroundColor: palette.page }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: palette.hairline, backgroundColor: palette.page }}>
+            <BackButton onPress={() => { Haptics.selectionAsync(); onClose(); }} palette={palette} label="Close" />
+            <Text style={{ color: palette.text, fontSize: 16, fontWeight: '500' }}>
+              {isEditing ? 'Edit case' : 'New case'}
+            </Text>
           </View>
 
           <ScrollView
-            className="flex-1"
-            style={{ backgroundColor: panelBg }}
+            style={{ flex: 1 }}
             showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
             contentContainerStyle={{
-              paddingHorizontal: 20,
+              paddingHorizontal: isMobile ? 16 : 24,
               paddingTop: 20,
-              paddingBottom: 24,
+              paddingBottom: 32,
               width: '100%',
-              maxWidth: 1040,
+              maxWidth: 1180,
               alignSelf: 'center',
             }}
           >
@@ -736,26 +722,17 @@ export function CaseForm({
                 </Text>
               </View>
             )}
-            {/* AI Case Shortcut */}
-            {!isEditing && (
-              <View
-                className="mb-4"
-              >
-                <FyllAiButton
-                  label="Fyll AI Case"
-                  onPress={handleOpenAICase}
-                  height={52}
-                  borderRadius={999}
-                  iconSize={18}
-                  textSize={16}
-                />
-              </View>
-            )}
-
+            {(() => {
+              let step = 3;
+              const returnStep = showReturnDetails ? step++ : 0;
+              const resolutionStep = showResolution ? step++ : 0;
+              const detailsStep = step;
+              const customerCard = (
+                <CaseStepCard n={1} title="Customer" compact={isMobile} palette={palette} raised={Boolean(linkSearchQuery.trim())}>
             {/* Order Info + Customer Name */}
             {orderId && orderNumber && (
               <View className="mb-4">
-                <Text style={{ color: colors.text.secondary }} className="text-xs uppercase font-semibold mb-2">
+                <Text style={{ color: palette.textSoft, fontSize: 14, marginBottom: 8 }}>
                   Linked Order
                 </Text>
                 <View
@@ -770,7 +747,7 @@ export function CaseForm({
             )}
             {canSearchCaseLink && (
               <View className="mb-4" style={{ position: 'relative', zIndex: 260, overflow: 'visible' }}>
-                <Text style={{ color: colors.text.secondary }} className="text-xs uppercase font-semibold mb-2">
+                <Text style={{ color: palette.textSoft, fontSize: 14, marginBottom: 8 }}>
                   Link Customer or Order
                 </Text>
                 {selectedLinkLabel ? (
@@ -781,7 +758,7 @@ export function CaseForm({
                     <View className="flex-row items-center justify-between gap-3">
                       <View className="flex-1">
                         <View className="flex-row items-center gap-2">
-                          <Link2 size={16} color={colors.accent.primary} strokeWidth={2} />
+                          <Link2 size={16} color={palette.limeOnSurface} strokeWidth={2} />
                           <Text style={{ color: colors.text.primary }} className="font-semibold" numberOfLines={1}>
                             {selectedLinkLabel}
                           </Text>
@@ -815,7 +792,7 @@ export function CaseForm({
                       }}
                     >
                       <Search size={17} color={colors.text.muted} strokeWidth={2} />
-                      <TextInput
+                      <FieldInput
                         value={linkSearchQuery}
                         onChangeText={setLinkSearchQuery}
                         placeholder="Search order number, customer, phone, email..."
@@ -869,16 +846,17 @@ export function CaseForm({
               </View>
             )}
             <View className="mb-6">
-              <Text style={{ color: colors.text.secondary }} className="text-xs uppercase font-semibold mb-2">
+              <Text style={{ color: palette.textSoft, fontSize: 14, marginBottom: 8 }}>
                 Customer Name *
               </Text>
-              <TextInput
+              <FieldInput
                 value={standaloneCustomerName}
                 onChangeText={setStandaloneCustomerName}
                 placeholder="Enter customer name..."
                 placeholderTextColor={colors.text.muted}
-                className="py-3 px-4 rounded-xl"
+                className="py-3 px-4"
                 style={{
+                  borderRadius: 14,
                   backgroundColor: formBg,
                   color: colors.text.primary,
                   borderWidth: 1,
@@ -888,206 +866,24 @@ export function CaseForm({
               />
             </View>
 
-          {/* Priority Selection */}
-          <View className="mb-5" style={{ position: 'relative', zIndex: 1 }}>
-            <Text style={{ color: colors.text.secondary }} className="text-xs uppercase font-semibold mb-3">
-              Priority
-            </Text>
-            <View
-              className="flex-row p-1.5 rounded-xl"
-              style={{ backgroundColor: formBg, borderWidth: 1, borderColor: formBorder }}
-            >
-              {CASE_PRIORITIES.map((p) => {
-                const isSelected = priority === p;
-                const priorityColor = CASE_PRIORITY_COLORS[p];
-                return (
-                  <Pressable
-                    key={p}
-                    onPress={() => {
-                      Haptics.selectionAsync();
-                      setPriority(p);
-                    }}
-                    className="flex-1 flex-row items-center justify-center gap-1.5 py-3 rounded-full active:opacity-80"
-                    style={{
-                      backgroundColor: isSelected ? priorityColor : 'transparent',
-                      borderWidth: 0,
-                      borderColor: 'transparent',
-                    }}
-                  >
-                    {isSelected && <Flag size={12} color="#FFFFFF" strokeWidth={2} />}
-                    <Text
-                      style={{ color: isSelected ? '#FFFFFF' : colors.text.muted }}
-                      className="text-[10px] font-bold uppercase tracking-tighter"
-                    >
-                      {p}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
 
-          {/* Source Channel */}
-          <View className="mb-5" style={{ position: 'relative', zIndex: showSourceDropdown ? 240 : 1, overflow: 'visible' }}>
-            <Text style={{ color: colors.text.secondary }} className="text-xs uppercase font-semibold mb-3">
-              Source Channel
-            </Text>
-            {renderDropdown(
-              sourceOptions,
-              source,
-              (item) => setSource(item as CaseSource),
-              showSourceDropdown,
-              setShowSourceDropdown,
-              undefined,
-              (item, isSelected) => getCaseSourceIcon(item as CaseSource, isSelected ? colors.text.primary : colors.text.muted, 16),
-            )}
-          </View>
-
-          {/* Status */}
-          <View className="mb-5" style={{ position: 'relative', zIndex: showStatusDropdown ? 230 : 1, overflow: 'visible' }}>
-            <Text style={{ color: colors.text.secondary }} className="text-xs uppercase font-semibold mb-2">
-              Status
-            </Text>
-            {renderDropdown(
-              statusOptions,
-              status,
-              setStatus,
-              showStatusDropdown,
-              setShowStatusDropdown,
-              statusColorMap,
-            )}
-            {selectedStatusOption?.description ? (
-              <Text style={{ color: colors.text.tertiary, marginTop: 4, fontSize: 12 }}>
-                {selectedStatusOption.description}
-              </Text>
-            ) : null}
-            <Pressable
-              onPress={() => {
-                router.push('/settings?section=case-statuses');
-              }}
-              className="mt-2"
-            >
-              <Text style={{ color: colors.accent.primary }} className="text-xs font-semibold">
-                Customize case statuses in Settings
-              </Text>
-            </Pressable>
-          </View>
-
-          {/* Case Type */}
-          <View className="mb-5" style={{ position: 'relative', zIndex: showCaseTypeDropdown ? 220 : 1, overflow: 'visible' }}>
-            <Text style={{ color: colors.text.secondary }} className="text-xs uppercase font-semibold mb-3">
-              Case Type
-            </Text>
-            {renderDropdown(
-              caseTypeOptions,
-              caseType,
-              (item) => setCaseType(item as CaseType),
-              showCaseTypeDropdown,
-              setShowCaseTypeDropdown,
-              undefined,
-              (item, isSelected) => getCaseTypeIcon(item as CaseType, isSelected ? colors.text.primary : colors.text.muted, 16),
-            )}
-          </View>
-
-            {showReturnDetails ? (
-              <View
-                className="mb-5 rounded-2xl p-4"
-                style={{
-                  backgroundColor: formBg,
-                  borderWidth: 1,
-                  borderColor: formBorder,
-                  position: 'relative',
-                  zIndex: showReturnReasonDropdown || showReturnResolutionDropdown || showReturnShippingDropdown ? 210 : 2,
-                  overflow: 'visible',
-                }}
-              >
-                <View className="mb-4">
-                  <Text style={{ color: colors.text.primary }} className="text-base font-semibold">
-                    Return details
-                  </Text>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1">
-                    Choose these manually for business-created returns.
-                  </Text>
-                </View>
-
-                <View className="mb-4" style={{ position: 'relative', zIndex: showReturnReasonDropdown ? 90 : 3 }}>
-                  <Text style={{ color: colors.text.secondary }} className="text-xs uppercase font-semibold mb-2">
-                    Return Reason
-                  </Text>
-                  {renderDropdown(
-                    RETURN_REASONS.map((item) => item.label),
-                    selectedReturnReasonLabel,
-                    (label) => {
-                      const reason = RETURN_REASONS.find((item) => item.label === label);
-                      if (reason) setReturnReason(reason.value);
-                    },
-                    showReturnReasonDropdown,
-                    setShowReturnReasonDropdown,
-                  )}
-                  {returnReason === 'other' ? (
-                    <TextInput
-                      value={returnOtherReason}
-                      onChangeText={setReturnOtherReason}
-                      placeholder="Write the return reason..."
-                      placeholderTextColor={colors.text.muted}
-                      className="py-3 px-4 rounded-xl mt-3"
-                      style={{
-                        backgroundColor: colors.bg.primary,
-                        color: colors.text.primary,
-                        borderWidth: 1,
-                        borderColor: formBorder,
-                        outlineStyle: 'none' as any,
-                      }}
-                    />
-                  ) : null}
-                </View>
-
-                <View className="mb-4" style={{ position: 'relative', zIndex: showReturnResolutionDropdown ? 80 : 2 }}>
-                  <Text style={{ color: colors.text.secondary }} className="text-xs uppercase font-semibold mb-2">
-                    Refund or Exchange
-                  </Text>
-                  {renderDropdown(
-                    RETURN_RESOLUTIONS.map((item) => item.label),
-                    selectedReturnResolutionLabel,
-                    (label) => {
-                      const resolution = RETURN_RESOLUTIONS.find((item) => item.label === label);
-                      if (resolution) setReturnResolution(resolution.value);
-                    },
-                    showReturnResolutionDropdown,
-                    setShowReturnResolutionDropdown,
-                  )}
-                </View>
-
-                <View style={{ position: 'relative', zIndex: showReturnShippingDropdown ? 70 : 1 }}>
-                  <Text style={{ color: colors.text.secondary }} className="text-xs uppercase font-semibold mb-2">
-                    Return Shipping
-                  </Text>
-                  {renderDropdown(
-                    returnShippingOptions.map((item) => item.label),
-                    selectedReturnShippingLabel,
-                    (label) => {
-                      const payer = returnShippingOptions.find((item) => item.label === label);
-                      if (payer) setReturnShippingPayer(payer.value);
-                    },
-                    showReturnShippingDropdown,
-                    setShowReturnShippingDropdown,
-                  )}
-                </View>
-              </View>
-            ) : null}
-
+                </CaseStepCard>
+              );
+              const issueCard = (
+                <CaseStepCard n={2} title="Issue" compact={isMobile} palette={palette}>
           {/* Issue Summary */}
           <View className="mb-4">
-            <Text style={{ color: colors.text.secondary }} className="text-xs uppercase font-semibold mb-2">
+            <Text style={{ color: palette.textSoft, fontSize: 14, marginBottom: 8 }}>
               Issue Summary *
             </Text>
-            <TextInput
+            <FieldInput
               value={issueSummary}
               onChangeText={setIssueSummary}
               placeholder="Brief description of the issue..."
               placeholderTextColor={colors.text.muted}
-              className="py-3 px-4 rounded-xl"
+              className="py-3 px-4"
               style={{
+                borderRadius: 14,
                 backgroundColor: formBg,
                 color: colors.text.primary,
                 borderWidth: 1,
@@ -1098,18 +894,19 @@ export function CaseForm({
 
           {/* Original Customer Message */}
           <View className="mb-4">
-            <Text style={{ color: colors.text.secondary }} className="text-xs uppercase font-semibold mb-2">
+            <Text style={{ color: palette.textSoft, fontSize: 14, marginBottom: 8 }}>
               Original Customer Message
             </Text>
-            <TextInput
+            <FieldInput
               value={originalMessage}
               onChangeText={setOriginalMessage}
               placeholder="Paste the customer's original complaint or message..."
               placeholderTextColor={colors.text.muted}
               multiline
               numberOfLines={4}
-              className="py-3 px-4 rounded-xl"
+              className="py-3 px-4"
               style={{
+                borderRadius: 14,
                 backgroundColor: formBg,
                 color: colors.text.primary,
                 borderWidth: 1,
@@ -1122,7 +919,7 @@ export function CaseForm({
 
           {/* Proof Attachments */}
           <View className="mb-4">
-            <Text style={{ color: colors.text.secondary }} className="text-xs uppercase font-semibold mb-2">
+            <Text style={{ color: palette.textSoft, fontSize: 14, marginBottom: 8 }}>
               Proof Images
             </Text>
             <Pressable
@@ -1175,26 +972,94 @@ export function CaseForm({
             )}
           </View>
 
+
+                </CaseStepCard>
+              );
+              const returnCard = showReturnDetails ? (
+                <CaseStepCard n={returnStep} title="Return details" compact={isMobile} palette={palette} raised={showReturnReasonDropdown || showReturnResolutionDropdown || showReturnShippingDropdown}>
+            {showReturnDetails ? (
+              <View style={{ position: 'relative', zIndex: showReturnReasonDropdown || showReturnResolutionDropdown || showReturnShippingDropdown ? 210 : 2, overflow: 'visible' }}>
+                <Text style={{ color: palette.muted, fontSize: 12, marginBottom: 14 }}>Choose these manually for business-created returns.</Text>
+
+                <View className="mb-4" style={{ position: 'relative', zIndex: showReturnReasonDropdown ? 90 : 3 }}>
+                  <Text style={{ color: palette.textSoft, fontSize: 14, marginBottom: 8 }}>
+                    Return Reason
+                  </Text>
+                  {renderDropdown(
+                    RETURN_REASONS.map((item) => item.label),
+                    selectedReturnReasonLabel,
+                    (label) => {
+                      const reason = RETURN_REASONS.find((item) => item.label === label);
+                      if (reason) setReturnReason(reason.value);
+                    },
+                    showReturnReasonDropdown,
+                    setShowReturnReasonDropdown,
+                  )}
+                  {returnReason === 'other' ? (
+                    <FieldInput
+                      value={returnOtherReason}
+                      onChangeText={setReturnOtherReason}
+                      placeholder="Write the return reason..."
+                      placeholderTextColor={colors.text.muted}
+                      className="py-3 px-4 mt-3"
+                      style={{
+                        borderRadius: 14,
+                        backgroundColor: formBg,
+                        color: colors.text.primary,
+                        borderWidth: 1,
+                        borderColor: formBorder,
+                        outlineStyle: 'none' as any,
+                      }}
+                    />
+                  ) : null}
+                </View>
+
+                <View className="mb-4" style={{ position: 'relative', zIndex: showReturnResolutionDropdown ? 80 : 2 }}>
+                  <Text style={{ color: palette.textSoft, fontSize: 14, marginBottom: 8 }}>
+                    Refund or Exchange
+                  </Text>
+                  {renderDropdown(
+                    RETURN_RESOLUTIONS.map((item) => item.label),
+                    selectedReturnResolutionLabel,
+                    (label) => {
+                      const resolution = RETURN_RESOLUTIONS.find((item) => item.label === label);
+                      if (resolution) setReturnResolution(resolution.value);
+                    },
+                    showReturnResolutionDropdown,
+                    setShowReturnResolutionDropdown,
+                  )}
+                </View>
+
+                <View style={{ position: 'relative', zIndex: showReturnShippingDropdown ? 70 : 1 }}>
+                  <Text style={{ color: palette.textSoft, fontSize: 14, marginBottom: 8 }}>
+                    Return Shipping
+                  </Text>
+                  {renderDropdown(
+                    returnShippingOptions.map((item) => item.label),
+                    selectedReturnShippingLabel,
+                    (label) => {
+                      const payer = returnShippingOptions.find((item) => item.label === label);
+                      if (payer) setReturnShippingPayer(payer.value);
+                    },
+                    showReturnShippingDropdown,
+                    setShowReturnShippingDropdown,
+                  )}
+                </View>
+              </View>
+            ) : null}
+
+
+                </CaseStepCard>
+              ) : null;
+              const resolutionCard = showResolution ? (
+                <CaseStepCard n={resolutionStep} title="Resolution details" compact={isMobile} palette={palette} raised={showResolutionTypeDropdown}>
           {/* Resolution Section */}
           {showResolution && (
-            <View
-              className="p-4 rounded-xl mb-4"
-              style={{
-                backgroundColor: formBg,
-                borderWidth: 1,
-                borderColor: formBorder,
-                position: 'relative',
-                zIndex: showResolutionTypeDropdown ? 250 : 1,
-                overflow: 'visible',
-              }}
-            >
-              <Text style={{ color: colors.text.primary }} className="font-semibold mb-4">
-                Resolution Details
-              </Text>
+            <View style={{ position: 'relative', zIndex: showResolutionTypeDropdown ? 250 : 1, overflow: 'visible' }}>
 
               {/* Resolution Type */}
               <View className="mb-4" style={{ position: 'relative', zIndex: 260 }}>
-                <Text style={{ color: colors.text.secondary }} className="text-xs uppercase font-semibold mb-2">
+                <Text style={{ color: palette.textSoft, fontSize: 14, marginBottom: 8 }}>
                   Resolution Type
                 </Text>
                 {renderDropdown(
@@ -1209,18 +1074,19 @@ export function CaseForm({
               {/* Resolution Value (for refunds/credits) */}
               {(resolutionType === 'Refund Issued' || resolutionType === 'Credit Applied') && (
                 <View className="mb-4" style={{ position: 'relative', zIndex: 1 }}>
-                  <Text style={{ color: colors.text.secondary }} className="text-xs uppercase font-semibold mb-2">
+                  <Text style={{ color: palette.textSoft, fontSize: 14, marginBottom: 8 }}>
                     Resolution Value
                   </Text>
-                  <TextInput
+                  <FieldInput
                     value={resolutionValue}
                     onChangeText={setResolutionValue}
                     placeholder="0"
                     placeholderTextColor={colors.text.muted}
                     keyboardType="numeric"
-                    className="py-3 px-4 rounded-xl"
+                    className="py-3 px-4"
                     style={{
-                      backgroundColor: colors.bg.primary,
+                      borderRadius: 14,
+                      backgroundColor: formBg,
                       color: colors.text.primary,
                       borderWidth: 1,
                       borderColor: formBorder,
@@ -1231,19 +1097,20 @@ export function CaseForm({
 
               {/* Resolution Notes */}
               <View style={{ position: 'relative', zIndex: 1 }}>
-                <Text style={{ color: colors.text.secondary }} className="text-xs uppercase font-semibold mb-2">
+                <Text style={{ color: palette.textSoft, fontSize: 14, marginBottom: 8 }}>
                   Resolution Notes
                 </Text>
-                <TextInput
+                <FieldInput
                   value={resolutionNotes}
                   onChangeText={setResolutionNotes}
                   placeholder="How was this case resolved..."
                   placeholderTextColor={colors.text.muted}
                   multiline
                   numberOfLines={3}
-                  className="py-3 px-4 rounded-xl"
+                  className="py-3 px-4"
                   style={{
-                    backgroundColor: colors.bg.primary,
+                    borderRadius: 14,
+                    backgroundColor: formBg,
                     color: colors.text.primary,
                     borderWidth: 1,
                     borderColor: formBorder,
@@ -1255,23 +1122,171 @@ export function CaseForm({
             </View>
           )}
 
-          <Pressable
-            onPress={handleSave}
-            className="h-14 rounded-full items-center justify-center active:opacity-80 mt-2"
-            style={{ backgroundColor: isDark ? '#FFFFFF' : '#111111' }}
-          >
-            <Text style={{ color: isDark ? '#111111' : '#FFFFFF' }} className="font-semibold text-base">
-              {isEditing ? 'Update Case' : 'Create Case'}
-            </Text>
-          </Pressable>
 
-          {/* Spacer for keyboard */}
-          <View className="h-8" />
+                </CaseStepCard>
+              ) : null;
+              const detailsCard = (
+                <CaseStepCard n={detailsStep} title="Case details" compact={isMobile} palette={palette} raised={showSourceDropdown || showStatusDropdown || showCaseTypeDropdown}>
+          {/* Priority Selection */}
+          <View className="mb-5" style={{ position: 'relative', zIndex: 1 }}>
+            <Text style={{ color: palette.textSoft, fontSize: 14, marginBottom: 8 }}>
+              Priority
+            </Text>
+            <View
+              className="flex-row p-1.5 rounded-xl"
+              style={{ backgroundColor: formBg, borderWidth: 1, borderColor: formBorder }}
+            >
+              {CASE_PRIORITIES.map((p) => {
+                const isSelected = priority === p;
+                const priorityColor = CASE_PRIORITY_COLORS[p];
+                return (
+                  <Pressable
+                    key={p}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setPriority(p);
+                    }}
+                    className="flex-1 flex-row items-center justify-center gap-1.5 py-3 rounded-full active:opacity-80"
+                    style={{
+                      backgroundColor: isSelected ? priorityColor : 'transparent',
+                      borderWidth: 0,
+                      borderColor: 'transparent',
+                    }}
+                  >
+                    {isSelected && <Flag size={12} color="#FFFFFF" strokeWidth={2} />}
+                    <Text
+                      style={{ color: isSelected ? '#FFFFFF' : colors.text.muted, fontSize: 12, fontWeight: '600' }}
+                    >
+                      {p}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* Source Channel */}
+          <View className="mb-5" style={{ position: 'relative', zIndex: showSourceDropdown ? 240 : 1, overflow: 'visible' }}>
+            <Text style={{ color: palette.textSoft, fontSize: 14, marginBottom: 8 }}>
+              Source Channel
+            </Text>
+            {renderDropdown(
+              sourceOptions,
+              source,
+              (item) => setSource(item as CaseSource),
+              showSourceDropdown,
+              setShowSourceDropdown,
+              undefined,
+              (item, isSelected) => getCaseSourceIcon(item as CaseSource, isSelected ? colors.text.primary : colors.text.muted, 16),
+            )}
+          </View>
+
+          {/* Status */}
+          <View className="mb-5" style={{ position: 'relative', zIndex: showStatusDropdown ? 230 : 1, overflow: 'visible' }}>
+            <Text style={{ color: palette.textSoft, fontSize: 14, marginBottom: 8 }}>
+              Status
+            </Text>
+            {renderDropdown(
+              statusOptions,
+              status,
+              setStatus,
+              showStatusDropdown,
+              setShowStatusDropdown,
+              statusColorMap,
+            )}
+            {selectedStatusOption?.description ? (
+              <Text style={{ color: colors.text.tertiary, marginTop: 4, fontSize: 12 }}>
+                {selectedStatusOption.description}
+              </Text>
+            ) : null}
+            <Pressable
+              onPress={() => {
+                router.push('/settings?section=case-statuses');
+              }}
+              className="mt-2"
+            >
+              <Text style={{ color: palette.limeOnSurface }} className="text-xs font-semibold">
+                Customize case statuses in Settings
+              </Text>
+            </Pressable>
+          </View>
+
+          {/* Case Type */}
+          <View className="mb-5" style={{ position: 'relative', zIndex: showCaseTypeDropdown ? 220 : 1, overflow: 'visible' }}>
+            <Text style={{ color: palette.textSoft, fontSize: 14, marginBottom: 8 }}>
+              Case Type
+            </Text>
+            {renderDropdown(
+              caseTypeOptions,
+              caseType,
+              (item) => setCaseType(item as CaseType),
+              showCaseTypeDropdown,
+              setShowCaseTypeDropdown,
+              undefined,
+              (item, isSelected) => getCaseTypeIcon(item as CaseType, isSelected ? colors.text.primary : colors.text.muted, 16),
+            )}
+          </View>
+
+
+                </CaseStepCard>
+              );
+              return (
+                <View style={{ flexDirection: isWide ? 'row' : 'column', alignItems: isWide ? 'flex-start' : 'stretch', gap: 16 }}>
+                  <View style={{ flex: isWide ? 1.5 : undefined, gap: 16, zIndex: 2 }}>
+                    {customerCard}
+                    {issueCard}
+                    {returnCard}
+                    {resolutionCard}
+                  </View>
+                  <View style={{ flex: isWide ? 1 : undefined, minWidth: isWide ? 340 : undefined, gap: 16, zIndex: 1 }}>
+                    {!isEditing ? (
+                      <View style={{ borderRadius: 20, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, padding: 16, gap: 12 }}>
+                        <Text style={{ color: palette.text, fontSize: isMobile ? 14 : 16, fontWeight: '500' }}>Draft with Fyll AI</Text>
+                        <Text style={{ color: palette.muted, fontSize: 12, lineHeight: 18 }}>
+                          Upload screenshots of the issue and Fyll AI writes the case for you.
+                        </Text>
+                        <FyllAiButton label="Fyll AI Case" onPress={handleOpenAICase} height={48} borderRadius={999} iconSize={18} textSize={14} />
+                      </View>
+                    ) : null}
+                    {detailsCard}
+                    {isWide ? (
+                      <Pressable
+                        onPress={handleSave}
+                        style={({ pressed }) => ({ height: 52, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? FYLL_LIME_HOVER : FYLL_LIME })}
+                      >
+                        <Text style={{ color: FYLL_LIME_INK, fontSize: 16, fontWeight: '600' }}>
+                          {isEditing ? 'Update case' : 'Create case'}
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                </View>
+              );
+            })()}
           </ScrollView>
-        </View>
+
+          {!isWide ? (
+            <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 20, borderTopWidth: 1, borderTopColor: palette.hairline, backgroundColor: palette.page }}>
+              <Pressable
+                onPress={handleSave}
+                style={({ pressed }) => ({ height: 52, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? FYLL_LIME_HOVER : FYLL_LIME })}
+              >
+                <Text style={{ color: FYLL_LIME_INK, fontSize: 16, fontWeight: '600' }}>
+                  {isEditing ? 'Update case' : 'Create case'}
+                </Text>
+              </Pressable>
+            </View>
+          ) : null}
         </View>
       </KeyboardAvoidingView>
     </Modal>
+    <CaseAiSheet
+      visible={visible && showAiSheet}
+      onClose={() => setShowAiSheet(false)}
+      onCreated={() => { setShowAiSheet(false); onClose(); }}
+      prefill={{ customerName: standaloneCustomerName.trim() || customerName || '', orderNumber: orderNumber ?? '', orderId }}
+    />
+    </>
   );
 }
 
