@@ -77,6 +77,22 @@ const getAppId = () => {
       ?? '';
   }
 
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname.toLowerCase();
+    if (hostname === 'fyll.app') {
+      return Constants.expoConfig?.extra?.fyllOnesignalAppId
+        ?? process.env.EXPO_PUBLIC_ONESIGNAL_FYLL_APP_ID
+        ?? '';
+    }
+    if (hostname === 'www.fyll.app') {
+      return Constants.expoConfig?.extra?.wwwOnesignalAppId
+        ?? process.env.EXPO_PUBLIC_ONESIGNAL_WWW_APP_ID
+        ?? Constants.expoConfig?.extra?.onesignalAppId
+        ?? process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID
+        ?? '';
+    }
+  }
+
   return Constants.expoConfig?.extra?.onesignalAppId ?? process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID ?? '';
 };
 
@@ -85,6 +101,22 @@ const getSafariWebId = () => {
     return Constants.expoConfig?.extra?.partnerOnesignalSafariWebId
       ?? process.env.EXPO_PUBLIC_PARTNER_ONESIGNAL_SAFARI_WEB_ID
       ?? '';
+  }
+
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname.toLowerCase();
+    if (hostname === 'fyll.app') {
+      return Constants.expoConfig?.extra?.fyllOnesignalSafariWebId
+        ?? process.env.EXPO_PUBLIC_ONESIGNAL_FYLL_SAFARI_WEB_ID
+        ?? '';
+    }
+    if (hostname === 'www.fyll.app') {
+      return Constants.expoConfig?.extra?.wwwOnesignalSafariWebId
+        ?? process.env.EXPO_PUBLIC_ONESIGNAL_WWW_SAFARI_WEB_ID
+        ?? Constants.expoConfig?.extra?.onesignalSafariWebId
+        ?? process.env.EXPO_PUBLIC_ONESIGNAL_SAFARI_WEB_ID
+        ?? '';
+    }
   }
 
   return Constants.expoConfig?.extra?.onesignalSafariWebId ?? process.env.EXPO_PUBLIC_ONESIGNAL_SAFARI_WEB_ID ?? '';
@@ -104,10 +136,8 @@ const isAlreadyInitializedError = (error: unknown) => {
   return message.toLowerCase().includes('already initialized');
 };
 
-// The OneSignal app is locked in its dashboard to these production origins —
-// init() throws "Can only be used on: https://www.fyll.app" on any other
-// origin (localhost, preview URLs, etc). That failure is permanent for a
-// given origin, so there's no point attempting (and retrying) it there.
+// Each browser origin uses its own OneSignal web app. Web push subscriptions,
+// permissions, and service workers cannot be shared between fyll.app and www.
 const ONESIGNAL_AUTHORIZED_HOSTNAMES = new Set(['fyll.app', 'www.fyll.app', 'partner.fyll.app']);
 
 const isOneSignalAuthorizedOrigin = () => {

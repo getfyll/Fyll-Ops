@@ -22,7 +22,12 @@ export default function DebugInfoScreen() {
   const isAdmin = currentUser?.role === 'admin';
   const { isReady, promptForPermission, getDebugState, forceResync, sendDirectSubscriptionTest } = useWebPushNotifications();
 
-  const onesignalAppId = process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID ?? '';
+  const onesignalHostname = Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.hostname.toLowerCase() : '';
+  const onesignalAppId = onesignalHostname === 'fyll.app'
+    ? (process.env.EXPO_PUBLIC_ONESIGNAL_FYLL_APP_ID ?? '')
+    : onesignalHostname === 'www.fyll.app'
+      ? (process.env.EXPO_PUBLIC_ONESIGNAL_WWW_APP_ID ?? process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID ?? '')
+      : (process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID ?? '');
 
   const [isSendingPush, setIsSendingPush] = useState(false);
   const [pushResult, setPushResult] = useState<string | null>(null);

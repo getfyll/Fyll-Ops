@@ -1450,9 +1450,9 @@ export default function PaymentsScreen() {
                           backgroundColor: isActive ? palette.inverseBg : isHovered(state) ? (palette.isDark ? 'rgba(255,255,255,0.05)' : '#F6F6F6') : 'transparent',
                         })}
                       >
-                        <Text style={{ color: isActive ? palette.inverseText : palette.textSoft, fontSize: isMobile ? 12 : 14, fontWeight: '600' }}>{chip.label}</Text>
+                        <Text style={{ color: isActive ? palette.inverseText : palette.textSoft, fontSize: 12, fontWeight: '600' }}>{chip.label}</Text>
                         {chip.count > 0 ? (
-                          <Text style={{ color: isActive ? palette.inverseText : palette.textSoft, opacity: 0.55, fontSize: isMobile ? 12 : 14, fontWeight: '600' }}>{chip.count}</Text>
+                          <Text style={{ color: isActive ? palette.inverseText : palette.textSoft, opacity: 0.55, fontSize: 12, fontWeight: '600' }}>{chip.count}</Text>
                         ) : null}
                       </Pressable>
                     );

@@ -31,12 +31,13 @@ import { X, ChevronDown, Check, Sparkles,
   Search,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
+import { useFonts, BricolageGrotesque_500Medium, BricolageGrotesque_700Bold } from '@expo-google-fonts/bricolage-grotesque';
 import { useThemeColors } from '@/lib/theme';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { LinearGradient } from 'expo-linear-gradient';
 import { FyllAiButton } from '@/components/FyllAiButton';
 import { CaseAiSheet } from '@/components/cases/CaseAiSheet';
-import { BackButton, FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, usePaymentsPalette } from '@/components/payments/payments-ui';
+import { BackButton, isHovered, FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, usePaymentsPalette } from '@/components/payments/payments-ui';
 import useFyllStore, {
   Case,
   CaseType,
@@ -141,14 +142,14 @@ function FieldInput({ style, onFocus, onBlur, ...props }: React.ComponentProps<t
 
 // A numbered card, like on the New Order screen. `raised` lifts it above its neighbours while one of
 // its dropdowns is open so the list is not hidden behind the next card.
-function CaseStepCard({ n, title, compact, palette, raised, children }: { n: number; title: string; compact: boolean; palette: ReturnType<typeof usePaymentsPalette>; raised?: boolean; children: React.ReactNode }) {
+function CaseStepCard({ n, title, compact, palette, raised, titleFontLoaded, children }: { n: number; title: string; compact: boolean; palette: ReturnType<typeof usePaymentsPalette>; raised?: boolean; titleFontLoaded: boolean; children: React.ReactNode }) {
   return (
     <View style={{ position: 'relative', zIndex: raised ? 500 : 1, borderRadius: 20, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, padding: 18, gap: 14 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
         <View style={{ width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.nudgeBg }}>
           <Text style={{ color: palette.limeOnSurface, fontSize: 12.5, fontWeight: '700' }}>{n}</Text>
         </View>
-        <Text style={{ flex: 1, color: palette.text, fontSize: 17, fontWeight: '700' }}>{title}</Text>
+        <Text style={{ flex: 1, color: palette.text, fontSize: 17, fontWeight: '500', fontFamily: titleFontLoaded ? 'BricolageGrotesque_500Medium' : undefined }}>{title}</Text>
       </View>
       <View style={{ marginBottom: -14 }}>{children}</View>
     </View>
@@ -168,9 +169,10 @@ export function CaseForm({
   initialCaseType,
   enableReturnDetails,
 }: CaseFormProps) {
+  const [bricolageLoaded] = useFonts({ BricolageGrotesque_500Medium, BricolageGrotesque_700Bold });
   const colors = useThemeColors();
   const palette = usePaymentsPalette();
-  const { isMobile } = useBreakpoint();
+  const { isMobile, isDesktop } = useBreakpoint();
   const { width: windowWidth } = useWindowDimensions();
   const isWide = windowWidth >= 1024;
   const router = useRouter();
@@ -231,6 +233,7 @@ export function CaseForm({
   const [linkSearchQuery, setLinkSearchQuery] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [nameFocused, setNameFocused] = useState<boolean>(false);
   const [returnReason, setReturnReason] = useState<ReturnReason | null>(null);
   const [returnResolution, setReturnResolution] = useState<ReturnResolution | null>(null);
   const [returnShippingPayer, setReturnShippingPayer] = useState<ReturnShippingPayer | null>(null);
@@ -321,6 +324,15 @@ export function CaseForm({
     : selectedCustomer
       ? selectedCustomer.fullName
       : null;
+  // Typing in the Customer Name field suggests matching customers (name, phone or email).
+  const nameSuggestions = useMemo<Customer[]>(() => {
+    const query = standaloneCustomerName.trim().toLowerCase();
+    if (!nameFocused || !query || selectedCustomer?.fullName === standaloneCustomerName) return [];
+    return customers
+      .filter((item) => [item.fullName, item.phone, item.email].join(' ').toLowerCase().includes(query))
+      .slice(0, 6);
+  }, [customers, nameFocused, selectedCustomer, standaloneCustomerName]);
+
   const linkSearchResults = useMemo<CaseLinkSearchResult[]>(() => {
     const query = linkSearchQuery.trim().toLowerCase();
     if (!query) return [];
@@ -664,23 +676,42 @@ export function CaseForm({
     </View>
   );
 
+  // On desktop web the form fills the content area next to the left nav instead of covering the whole
+  // screen. Everywhere else it is a full-screen modal with no slide animation.
+  const inline = isWeb && isDesktop;
+  const wrapShell = (children: React.ReactNode) => {
+    if (inline) {
+      if (!visible || showAiSheet) return null;
+      return (
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 100, backgroundColor: palette.page }}>
+          {children}
+        </View>
+      );
+    }
+    return (
+      <Modal
+        visible={visible && !showAiSheet}
+        transparent={false}
+        animationType="none"
+        presentationStyle="fullScreen"
+        onRequestClose={onClose}
+      >
+        {children}
+      </Modal>
+    );
+  };
+
   return (
     <>
-    <Modal
-      visible={visible && !showAiSheet}
-      transparent={false}
-      animationType="none"
-      presentationStyle="fullScreen"
-      onRequestClose={onClose}
-    >
+    {wrapShell(
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1, backgroundColor: palette.page }}
       >
         <View style={{ flex: 1, backgroundColor: palette.page }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: palette.hairline, backgroundColor: palette.page }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: inline ? 28 : 20, paddingTop: inline ? 28 : 14, paddingBottom: 14, backgroundColor: palette.page }}>
             <BackButton onPress={() => { Haptics.selectionAsync(); onClose(); }} palette={palette} label="Close" />
-            <Text style={{ color: palette.text, fontSize: 22, fontWeight: '700', letterSpacing: -0.4 }}>
+            <Text style={{ color: palette.text, fontSize: inline ? 28 : 22, fontWeight: bricolageLoaded ? '400' : '700', fontFamily: bricolageLoaded ? 'BricolageGrotesque_700Bold' : undefined, letterSpacing: -0.8 }}>
               {isEditing ? 'Edit case' : 'New case'}
             </Text>
           </View>
@@ -690,12 +721,10 @@ export function CaseForm({
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={{
-              paddingHorizontal: isMobile ? 16 : 24,
+              paddingHorizontal: inline ? 28 : isMobile ? 16 : 24,
               paddingTop: 20,
               paddingBottom: 32,
-              width: '100%',
-              maxWidth: 1180,
-              alignSelf: 'center',
+              ...(inline ? { width: '100%' as const, maxWidth: 1456, alignSelf: 'flex-start' as const } : null),
             }}
           >
             {toastMessage && (
@@ -731,7 +760,7 @@ export function CaseForm({
               const resolutionStep = showResolution ? step++ : 0;
               const detailsStep = step;
               const customerCard = (
-                <CaseStepCard n={1} title="Customer" compact={isMobile} palette={palette} raised={Boolean(linkSearchQuery.trim())}>
+                <CaseStepCard n={1} title="Customer" compact={isMobile} palette={palette} titleFontLoaded={bricolageLoaded} raised={Boolean(linkSearchQuery.trim()) || nameSuggestions.length > 0}>
             {/* Order Info + Customer Name */}
             {orderId && orderNumber && (
               <View className="mb-3.5">
@@ -848,14 +877,19 @@ export function CaseForm({
                 )}
               </View>
             )}
-            <View className="mb-3.5">
+            <View className="mb-3.5" style={{ position: 'relative', zIndex: nameSuggestions.length > 0 ? 270 : 1, overflow: 'visible' }}>
               <Text style={{ color: palette.textSoft, fontSize: 13, fontWeight: '600', marginBottom: 7 }}>
                 Customer Name <Text style={{ color: palette.danger }}>*</Text>
               </Text>
               <FieldInput
                 value={standaloneCustomerName}
-                onChangeText={setStandaloneCustomerName}
-                placeholder="Enter customer name..."
+                onChangeText={(text) => {
+                  setStandaloneCustomerName(text);
+                  if (selectedCustomer && selectedCustomer.fullName !== text) setSelectedCustomer(null);
+                }}
+                onFocus={() => setNameFocused(true)}
+                onBlur={() => setTimeout(() => setNameFocused(false), 150)}
+                placeholder="Search or enter customer name..."
                 placeholderTextColor={colors.text.muted}
                 className="py-3 px-4"
                 style={{
@@ -867,13 +901,55 @@ export function CaseForm({
                   height: 46,
                 }}
               />
+              {nameSuggestions.length > 0 ? (
+                <View
+                  style={{
+                    position: 'absolute',
+                    left: 0,
+                    right: 0,
+                    top: 78,
+                    zIndex: 1000,
+                    borderRadius: 14,
+                    overflow: 'hidden',
+                    backgroundColor: palette.card,
+                    borderWidth: 1,
+                    borderColor: palette.outline,
+                    shadowColor: '#000000',
+                    shadowOpacity: 0.18,
+                    shadowRadius: 14,
+                    shadowOffset: { width: 0, height: 6 },
+                    elevation: 30,
+                  }}
+                >
+                  {nameSuggestions.map((item, index) => (
+                    <Pressable
+                      key={item.id}
+                      onPress={() => selectCustomerForCase(item)}
+                      style={(state) => ({
+                        paddingHorizontal: 16,
+                        paddingVertical: 11,
+                        borderTopWidth: index === 0 ? 0 : 1,
+                        borderTopColor: palette.hairline,
+                        backgroundColor: state.pressed || isHovered(state) ? palette.softFill : 'transparent',
+                      })}
+                    >
+                      <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }} numberOfLines={1}>{item.fullName}</Text>
+                      {item.phone || item.email ? (
+                        <Text style={{ color: palette.muted, fontSize: 12, marginTop: 2 }} numberOfLines={1}>
+                          {[item.phone, item.email].filter(Boolean).join(' · ')}
+                        </Text>
+                      ) : null}
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
             </View>
 
 
                 </CaseStepCard>
               );
               const issueCard = (
-                <CaseStepCard n={2} title="Issue" compact={isMobile} palette={palette}>
+                <CaseStepCard n={2} title="Issue" compact={isMobile} palette={palette} titleFontLoaded={bricolageLoaded}>
           {/* Issue Summary */}
           <View className="mb-3.5">
             <Text style={{ color: palette.textSoft, fontSize: 13, fontWeight: '600', marginBottom: 7 }}>
@@ -979,7 +1055,7 @@ export function CaseForm({
                 </CaseStepCard>
               );
               const returnCard = showReturnDetails ? (
-                <CaseStepCard n={returnStep} title="Return details" compact={isMobile} palette={palette} raised={showReturnReasonDropdown || showReturnResolutionDropdown || showReturnShippingDropdown}>
+                <CaseStepCard n={returnStep} title="Return details" compact={isMobile} palette={palette} titleFontLoaded={bricolageLoaded} raised={showReturnReasonDropdown || showReturnResolutionDropdown || showReturnShippingDropdown}>
             {showReturnDetails ? (
               <View style={{ position: 'relative', zIndex: showReturnReasonDropdown || showReturnResolutionDropdown || showReturnShippingDropdown ? 210 : 2, overflow: 'visible' }}>
                 <Text style={{ color: palette.muted, fontSize: 12, marginBottom: 14 }}>Choose these manually for business-created returns.</Text>
@@ -1055,7 +1131,7 @@ export function CaseForm({
                 </CaseStepCard>
               ) : null;
               const resolutionCard = showResolution ? (
-                <CaseStepCard n={resolutionStep} title="Resolution details" compact={isMobile} palette={palette} raised={showResolutionTypeDropdown}>
+                <CaseStepCard n={resolutionStep} title="Resolution details" compact={isMobile} palette={palette} titleFontLoaded={bricolageLoaded} raised={showResolutionTypeDropdown}>
           {/* Resolution Section */}
           {showResolution && (
             <View style={{ position: 'relative', zIndex: showResolutionTypeDropdown ? 250 : 1, overflow: 'visible' }}>
@@ -1129,14 +1205,14 @@ export function CaseForm({
                 </CaseStepCard>
               ) : null;
               const detailsCard = (
-                <CaseStepCard n={detailsStep} title="Case details" compact={isMobile} palette={palette} raised={showSourceDropdown || showStatusDropdown || showCaseTypeDropdown}>
+                <CaseStepCard n={detailsStep} title="Case details" compact={isMobile} palette={palette} titleFontLoaded={bricolageLoaded} raised={showSourceDropdown || showStatusDropdown || showCaseTypeDropdown}>
           {/* Priority Selection */}
           <View className="mb-3.5" style={{ position: 'relative', zIndex: 1 }}>
             <Text style={{ color: palette.textSoft, fontSize: 13, fontWeight: '600', marginBottom: 7 }}>
               Priority
             </Text>
             <View
-              style={{ flexDirection: 'row', gap: 2, padding: 3, borderRadius: 12, backgroundColor: palette.page, borderWidth: 1, borderColor: palette.hairline }}
+              style={{ flexDirection: 'row', gap: 2, padding: 3, borderRadius: 999, backgroundColor: palette.page, borderWidth: 1, borderColor: palette.hairline }}
             >
               {CASE_PRIORITIES.map((p) => {
                 const isSelected = priority === p;
@@ -1148,7 +1224,7 @@ export function CaseForm({
                       Haptics.selectionAsync();
                       setPriority(p);
                     }}
-                    style={{ flex: 1, height: 38, borderRadius: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: isSelected ? (p === 'Low' ? palette.softFill : `${priorityColor}2E`) : 'transparent' }}
+                    style={{ flex: 1, height: 38, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: isSelected ? (p === 'Low' ? palette.softFill : `${priorityColor}2E`) : 'transparent' }}
                   >
                     {isSelected ? <Flag size={13} color={priorityColor} strokeWidth={2.4} /> : null}
                     <Text style={{ color: isSelected ? priorityColor : palette.muted, fontSize: 13, fontWeight: '600' }}>{p}</Text>
@@ -1158,19 +1234,19 @@ export function CaseForm({
             </View>
           </View>
 
-          {/* Source Channel */}
-          <View className="mb-3.5" style={{ position: 'relative', zIndex: showSourceDropdown ? 240 : 1, overflow: 'visible' }}>
+          {/* Case Type */}
+          <View className="mb-3.5" style={{ position: 'relative', zIndex: showCaseTypeDropdown ? 240 : 1, overflow: 'visible' }}>
             <Text style={{ color: palette.textSoft, fontSize: 13, fontWeight: '600', marginBottom: 7 }}>
-              Source Channel
+              Case Type
             </Text>
             {renderDropdown(
-              sourceOptions,
-              source,
-              (item) => setSource(item as CaseSource),
-              showSourceDropdown,
-              setShowSourceDropdown,
+              caseTypeOptions,
+              caseType,
+              (item) => setCaseType(item as CaseType),
+              showCaseTypeDropdown,
+              setShowCaseTypeDropdown,
               undefined,
-              (item, isSelected) => getCaseSourceIcon(item as CaseSource, isSelected ? colors.text.primary : colors.text.muted, 16),
+              (item, isSelected) => getCaseTypeIcon(item as CaseType, isSelected ? colors.text.primary : colors.text.muted, 16),
             )}
           </View>
 
@@ -1204,22 +1280,21 @@ export function CaseForm({
             </Pressable>
           </View>
 
-          {/* Case Type */}
-          <View className="mb-3.5" style={{ position: 'relative', zIndex: showCaseTypeDropdown ? 220 : 1, overflow: 'visible' }}>
+          {/* Source Channel */}
+          <View className="mb-3.5" style={{ position: 'relative', zIndex: showSourceDropdown ? 220 : 1, overflow: 'visible' }}>
             <Text style={{ color: palette.textSoft, fontSize: 13, fontWeight: '600', marginBottom: 7 }}>
-              Case Type
+              Source Channel
             </Text>
             {renderDropdown(
-              caseTypeOptions,
-              caseType,
-              (item) => setCaseType(item as CaseType),
-              showCaseTypeDropdown,
-              setShowCaseTypeDropdown,
+              sourceOptions,
+              source,
+              (item) => setSource(item as CaseSource),
+              showSourceDropdown,
+              setShowSourceDropdown,
               undefined,
-              (item, isSelected) => getCaseTypeIcon(item as CaseType, isSelected ? colors.text.primary : colors.text.muted, 16),
+              (item, isSelected) => getCaseSourceIcon(item as CaseSource, isSelected ? colors.text.primary : colors.text.muted, 16),
             )}
           </View>
-
 
                 </CaseStepCard>
               );
@@ -1290,7 +1365,7 @@ export function CaseForm({
 
         </View>
       </KeyboardAvoidingView>
-    </Modal>
+    )}
     <CaseAiSheet
       visible={visible && showAiSheet}
       onClose={() => setShowAiSheet(false)}

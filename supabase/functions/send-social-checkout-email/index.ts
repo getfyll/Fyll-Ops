@@ -12,8 +12,16 @@ const SUPABASE_URL = sanitizeEnvValue(Deno.env.get('SUPABASE_URL'))
 const SUPABASE_SERVICE_ROLE_KEY = sanitizeEnvValue(Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))
 const RESEND_API_KEY = sanitizeEnvValue(Deno.env.get('RESEND_API_KEY'))
 const RESEND_FROM_EMAIL = sanitizeEnvValue(Deno.env.get('RESEND_FROM_EMAIL'))
-const ONESIGNAL_APP_ID = sanitizeEnvValue(Deno.env.get('ONESIGNAL_APP_ID'))
-const ONESIGNAL_REST_API_KEY = sanitizeEnvValue(Deno.env.get('ONESIGNAL_REST_API_KEY'))
+const FYLL_ONESIGNAL_APP_ID = sanitizeEnvValue(Deno.env.get('FYLL_ONESIGNAL_APP_ID'))
+const FYLL_ONESIGNAL_REST_API_KEY = sanitizeEnvValue(Deno.env.get('FYLL_ONESIGNAL_REST_API_KEY'))
+const WWW_ONESIGNAL_APP_ID = sanitizeEnvValue(Deno.env.get('WWW_ONESIGNAL_APP_ID') ?? Deno.env.get('ONESIGNAL_APP_ID'))
+const WWW_ONESIGNAL_REST_API_KEY = sanitizeEnvValue(Deno.env.get('WWW_ONESIGNAL_REST_API_KEY') ?? Deno.env.get('ONESIGNAL_REST_API_KEY'))
+const MAIN_ONESIGNAL_CONFIGS = [
+  { origin: 'https://fyll.app', appId: FYLL_ONESIGNAL_APP_ID, restApiKey: FYLL_ONESIGNAL_REST_API_KEY },
+  { origin: 'https://www.fyll.app', appId: WWW_ONESIGNAL_APP_ID, restApiKey: WWW_ONESIGNAL_REST_API_KEY },
+]
+  .filter((config) => config.appId && config.restApiKey)
+  .filter((config, index, configs) => configs.findIndex((candidate) => candidate.appId === config.appId) === index)
 const APP_BASE_URL = sanitizeEnvValue(Deno.env.get('APP_BASE_URL'))
 const TRACKING_BASE_URL = 'https://track.fyll.app'
 const ALLOWED_ORIGIN = sanitizeEnvValue(Deno.env.get('ALLOWED_ORIGIN')) || '*'
@@ -958,41 +966,48 @@ const sendEmail = async ({
   }
 }
 
-const sendOneSignalNotification = async ({
+const sendOneSignalNotificationForApp = async ({
   recipients,
   heading,
   content,
   data,
   collapseId,
+  origin,
+  appId,
+  restApiKey,
 }: {
   recipients: string[]
   heading: string
   content: string
   data: Record<string, unknown>
   collapseId?: string
+  origin: string
+  appId: string
+  restApiKey: string
 }) => {
-  if (!ONESIGNAL_APP_ID || !ONESIGNAL_REST_API_KEY || recipients.length === 0) {
+  if (recipients.length === 0) {
     return {
+      origin,
       mode: 'skipped',
-      reason: !ONESIGNAL_APP_ID || !ONESIGNAL_REST_API_KEY ? 'missing-onesignal-config' : 'no-recipients',
+      reason: 'no-recipients',
       deliveredCount: 0,
     }
   }
 
-  const isV2Key = ONESIGNAL_REST_API_KEY.startsWith('os_v2_')
+  const isV2Key = restApiKey.startsWith('os_v2_')
   const authHeader = isV2Key
-    ? `Key ${ONESIGNAL_REST_API_KEY}`
-    : `Basic ${ONESIGNAL_REST_API_KEY}`
+    ? `Key ${restApiKey}`
+    : `Basic ${restApiKey}`
 
   const response = await fetch('https://api.onesignal.com/notifications', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': authHeader,
-      'Idempotency-Key': `social-checkout-payment:${String(data.checkoutCode ?? '')}:${recipients.slice().sort().join(',')}`,
+      'Idempotency-Key': `social-checkout-payment:${appId}:${String(data.checkoutCode ?? '')}:${recipients.slice().sort().join(',')}`,
     },
     body: JSON.stringify({
-      app_id: ONESIGNAL_APP_ID,
+      app_id: appId,
       headings: { en: heading },
       contents: { en: content },
       data,
@@ -1007,11 +1022,39 @@ const sendOneSignalNotification = async ({
     const deliveredCount = typeof (result as { recipients?: unknown }).recipients === 'number'
       ? ((result as { recipients?: number }).recipients ?? recipients.length)
       : recipients.length
-    return { mode: 'pushed', deliveredCount, result }
+    return { origin, mode: 'pushed', deliveredCount, result }
   }
 
-  console.warn('Social checkout OneSignal notification failed:', result)
-  return { mode: 'failed', deliveredCount: 0, result }
+  console.warn(`Social checkout OneSignal notification failed for ${origin}:`, result)
+  return { origin, mode: 'failed', deliveredCount: 0, result }
+}
+
+const sendOneSignalNotification = async (args: {
+  recipients: string[]
+  heading: string
+  content: string
+  data: Record<string, unknown>
+  collapseId?: string
+}) => {
+  if (args.recipients.length === 0 || MAIN_ONESIGNAL_CONFIGS.length === 0) {
+    return {
+      mode: 'skipped',
+      reason: args.recipients.length === 0 ? 'no-recipients' : 'missing-onesignal-config',
+      deliveredCount: 0,
+      deliveries: [],
+    }
+  }
+
+  const deliveries = await Promise.all(MAIN_ONESIGNAL_CONFIGS.map((config) => (
+    sendOneSignalNotificationForApp({ ...args, ...config })
+  )))
+  const deliveredCount = deliveries.reduce((total, delivery) => total + delivery.deliveredCount, 0)
+
+  return {
+    mode: deliveries.some((delivery) => delivery.mode === 'pushed') ? 'pushed' : 'failed',
+    deliveredCount,
+    deliveries,
+  }
 }
 
 const listBusinessNotificationRecipientIds = async (

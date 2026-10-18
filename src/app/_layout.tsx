@@ -16,7 +16,7 @@ import { useSupabaseSync } from '@/hooks/useSupabaseSync';
 import { Platform, Pressable, Text, View } from 'react-native';
 import { SafeAreaProvider, initialWindowMetrics, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
-import { LayoutDashboard, Package, ShoppingCart, MoreHorizontal, MessageSquare } from 'lucide-react-native';
+import { Bell, LayoutDashboard, Package, ShoppingCart, MoreHorizontal, MessageSquare, X } from 'lucide-react-native';
 import { useWebPushNotifications } from '@/hooks/useWebPushNotifications';
 import { useExpoPushRegistration } from '@/hooks/useExpoPushNotifications';
 import NetInfo from '@react-native-community/netinfo';
@@ -698,6 +698,8 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | null>(null);
+  const [notificationPromptDismissed, setNotificationPromptDismissed] = useState(false);
   const segments = useSegments();
   const inPublicRoute = PUBLIC_ROUTE_SEGMENTS.has(segments[0] ?? '');
   const isPartnerPortalNotificationContext = Platform.OS === 'web' && (
@@ -760,9 +762,35 @@ export default function RootLayout() {
     if (businessId) {
       tagWithBusinessId(businessId);
     }
-    // Request push permission — no-op if already granted/denied
-    promptForPermission();
-  }, [isReady, isAuthenticated, businessId, currentUserId, isPartnerPortalNotificationContext, promptForPermission, setUserTag, tagWithBusinessId, loginUser, logoutUser]);
+  }, [isReady, isAuthenticated, businessId, currentUserId, isPartnerPortalNotificationContext, setUserTag, tagWithBusinessId, loginUser, logoutUser]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined' || !('Notification' in window)) return;
+    setNotificationPermission(window.Notification.permission);
+    setNotificationPromptDismissed(window.sessionStorage.getItem('fyll-notification-prompt-dismissed') === '1');
+  }, [isAuthenticated, isReady]);
+
+  const showNotificationPrompt = Platform.OS === 'web'
+    && isAuthenticated
+    && isReady
+    && !inPublicRoute
+    && !isPartnerPortalNotificationContext
+    && notificationPermission === 'default'
+    && !notificationPromptDismissed;
+
+  const handleEnableNotifications = async () => {
+    const granted = await promptForPermission();
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      setNotificationPermission(window.Notification.permission);
+    } else if (granted) {
+      setNotificationPermission('granted');
+    }
+  };
+
+  const dismissNotificationPrompt = () => {
+    setNotificationPromptDismissed(true);
+    if (typeof window !== 'undefined') window.sessionStorage.setItem('fyll-notification-prompt-dismissed', '1');
+  };
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -773,6 +801,49 @@ export default function RootLayout() {
             <RootLayoutNav colorScheme={colorScheme} />
           </KeyboardProvider>
         </GestureHandlerRootView>
+        {showNotificationPrompt ? (
+          <View
+            style={{
+              position: 'absolute',
+              right: 20,
+              bottom: 24,
+              width: 360,
+              maxWidth: '90%',
+              padding: 16,
+              borderRadius: 18,
+              backgroundColor: colorScheme === 'dark' ? '#1C1C1C' : '#FFFFFF',
+              borderWidth: 1,
+              borderColor: colorScheme === 'dark' ? 'rgba(255,255,255,0.10)' : '#E7E7E2',
+              shadowColor: '#000000',
+              shadowOpacity: 0.18,
+              shadowRadius: 28,
+              shadowOffset: { width: 0, height: 12 },
+              elevation: 20,
+              zIndex: 1000,
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+              <View style={{ width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#DCEC3F' }}>
+                <Bell size={19} color="#252900" strokeWidth={2.3} />
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ color: colorScheme === 'dark' ? '#F4F4EF' : '#171717', fontSize: 15, fontWeight: '700' }}>Never miss an update</Text>
+                <Text style={{ color: colorScheme === 'dark' ? '#A9A9A2' : '#6F706A', fontSize: 13, lineHeight: 18, marginTop: 4 }}>Enable alerts for new orders, payments, tasks and team activity.</Text>
+              </View>
+              <Pressable accessibilityLabel="Dismiss notification prompt" onPress={dismissNotificationPrompt} hitSlop={8} style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }}>
+                <X size={16} color={colorScheme === 'dark' ? '#A9A9A2' : '#6F706A'} strokeWidth={2.2} />
+              </Pressable>
+            </View>
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
+              <Pressable onPress={dismissNotificationPrompt} style={{ height: 38, paddingHorizontal: 14, borderRadius: 999, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ color: colorScheme === 'dark' ? '#C7C7C0' : '#555650', fontSize: 13, fontWeight: '600' }}>Not now</Text>
+              </Pressable>
+              <Pressable onPress={() => { void handleEnableNotifications(); }} style={{ height: 38, paddingHorizontal: 16, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: '#DCEC3F' }}>
+                <Text style={{ color: '#252900', fontSize: 13, fontWeight: '700' }}>Enable notifications</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
       </SafeAreaProvider>
     </QueryClientProvider>
   );

@@ -1,10 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, Text, View, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Box, Briefcase, Check, ClipboardCheck, Menu, Package } from 'lucide-react-native';
+import { Box, Briefcase, Check, ClipboardCheck, Menu, Package, X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useThemeColors } from '@/lib/theme';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
+import { FYLL_LIME, FYLL_LIME_INK, usePaymentsPalette } from '@/components/payments/payments-ui';
 
 type InventorySection = 'products' | 'services' | 'warehouse';
 type InventoryMenuOption = InventorySection | 'audit';
@@ -28,10 +29,11 @@ export function InventoryMobileFab({
 }: InventoryMobileFabProps) {
   const router = useRouter();
   const colors = useThemeColors();
+  const palette = usePaymentsPalette();
   const tabBarHeight = useTabBarHeight();
   const [open, setOpen] = useState(false);
-  const menuBottom = Math.max(12, tabBarHeight - 4 - lowerBy);
   const fabBottom = Math.max(12, tabBarHeight - 30 - lowerBy);
+  const menuBottom = fabBottom + 70;
 
   const options = useMemo(
     () => [
@@ -94,7 +96,7 @@ export function InventoryMobileFab({
         onRequestClose={() => setOpen(false)}
       >
         <Pressable
-          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.28)' }}
+          style={{ flex: 1, backgroundColor: 'rgba(17,17,17,0.24)' }}
           onPress={() => setOpen(false)}
         >
           <View
@@ -102,68 +104,91 @@ export function InventoryMobileFab({
               position: 'absolute',
               right: 16,
               bottom: menuBottom,
-              width: 268,
+              width: 288,
               maxHeight: '78%',
-              borderRadius: 22,
+              borderRadius: 24,
               borderWidth: 1,
-              borderColor: colors.border.light,
-              backgroundColor: colors.bg.card,
+              borderColor: palette.border,
+              backgroundColor: palette.card,
               overflow: 'hidden',
-              shadowColor: '#000000',
-              shadowOpacity: 0.18,
-              shadowRadius: 18,
-              shadowOffset: { width: 0, height: 10 },
-              elevation: 8,
             }}
           >
             <Pressable onPress={(event) => event.stopPropagation()}>
-              <View className="px-4 py-3" style={{ borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
-                <Text style={{ color: colors.text.primary, fontSize: 15, fontWeight: '700' }}>Inventory Menu</Text>
-                <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 2 }}>{activeLabel}</Text>
+              <View style={{ minHeight: 70, paddingHorizontal: 16, justifyContent: 'center', borderBottomWidth: 1, borderBottomColor: palette.hairline }}>
+                <View style={{ minWidth: 0 }}>
+                  <Text style={{ color: palette.text, fontSize: 14, fontWeight: '500' }}>Inventory</Text>
+                  <Text style={{ color: palette.faint, fontSize: 12.5, marginTop: 3 }} numberOfLines={1}>{activeLabel} selected</Text>
+                </View>
               </View>
-              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 6 }}>
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 8 }}>
                 {options.map((option) => {
                   const Icon = option.icon;
                   const isActive = currentSection === option.key;
                   const isAudit = option.key === 'audit';
-                  const rowBg = isAudit ? '#8B5CF6' : isActive ? colors.bg.secondary : 'transparent';
-                  const iconColor = isAudit ? '#FFFFFF' : isActive ? colors.text.primary : colors.text.tertiary;
-                  const textColor = isAudit ? '#FFFFFF' : isActive ? colors.text.primary : colors.text.secondary;
+                  const rowBg = isActive ? palette.nudgeBg : 'transparent';
+                  const iconBg = isActive ? FYLL_LIME : palette.softFill;
+                  const iconColor = isActive ? FYLL_LIME_INK : palette.muted;
                   return (
-                    <Pressable
+                    <View
                       key={option.key}
-                      onPress={() => handleSelect(option.key)}
-                      className="flex-row items-center px-4"
-                      style={{
-                        minHeight: isAudit ? 48 : 44,
-                        marginHorizontal: isAudit ? 8 : 0,
-                        marginVertical: isAudit ? 6 : 0,
-                        borderRadius: isAudit ? 16 : 0,
-                        backgroundColor: rowBg,
-                        borderLeftWidth: !isAudit && isActive ? 3 : 0,
-                        borderLeftColor: colors.text.primary,
-                      }}
+                      style={isAudit ? { marginTop: 5, paddingTop: 8, borderTopWidth: 1, borderTopColor: palette.hairline } : undefined}
                     >
-                      <Icon size={17} color={iconColor} strokeWidth={2.2} />
-                      <Text
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Open ${option.label}`}
+                        accessibilityState={{ selected: isActive }}
+                        onPress={() => handleSelect(option.key)}
+                        className="active:opacity-70"
                         style={{
-                          color: textColor,
-                          fontSize: 14,
-                          fontWeight: isAudit || isActive ? '700' : '600',
-                          marginLeft: 10,
-                          flex: 1,
+                          minHeight: 52,
+                          borderRadius: 14,
+                          paddingHorizontal: 10,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          backgroundColor: rowBg,
                         }}
-                        numberOfLines={1}
                       >
-                        {option.label}
-                      </Text>
-                      {isActive ? <Check size={15} color={colors.text.primary} strokeWidth={2.5} /> : null}
-                    </Pressable>
+                        <View style={{ width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: iconBg }}>
+                          <Icon size={17} color={iconColor} strokeWidth={2.1} />
+                        </View>
+                        <Text
+                          style={{ color: isActive ? palette.text : palette.textSoft, fontSize: 14, fontWeight: '500', marginLeft: 11, flex: 1 }}
+                          numberOfLines={1}
+                        >
+                          {option.label}
+                        </Text>
+                        {isActive ? (
+                          <View style={{ width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: FYLL_LIME }}>
+                            <Check size={13} color={FYLL_LIME_INK} strokeWidth={2.8} />
+                          </View>
+                        ) : null}
+                      </Pressable>
+                    </View>
                   );
                 })}
               </ScrollView>
             </Pressable>
           </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Close inventory menu"
+            onPress={() => setOpen(false)}
+            className="active:opacity-80"
+            style={{
+              position: 'absolute',
+              right: 18,
+              bottom: fabBottom,
+              width: 58,
+              height: 58,
+              borderRadius: 29,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: palette.inverseBg,
+              zIndex: 60,
+            }}
+          >
+            <X size={23} color={palette.inverseText} strokeWidth={2.6} />
+          </Pressable>
         </Pressable>
       </Modal>
 
@@ -172,8 +197,10 @@ export function InventoryMobileFab({
           if (Platform.OS !== 'web') {
             void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           }
-          setOpen(true);
+          setOpen((previous) => !previous);
         }}
+        accessibilityRole="button"
+        accessibilityLabel={open ? 'Close inventory menu' : 'Open inventory menu'}
         style={{
           position: 'absolute',
           right: 18,
@@ -192,7 +219,7 @@ export function InventoryMobileFab({
           zIndex: 50,
         }}
       >
-        <Menu size={24} color={colors.bg.primary} strokeWidth={2.6} />
+        {open ? <X size={23} color={colors.bg.primary} strokeWidth={2.6} /> : <Menu size={24} color={colors.bg.primary} strokeWidth={2.6} />}
       </Pressable>
     </>
   );

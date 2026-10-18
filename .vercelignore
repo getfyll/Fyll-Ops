@@ -1,0 +1,12 @@
+.git
+.vercel
+.expo
+.claude
+node_modules
+dist
+web-build
+.env
+.env.*
+backup-*.json
+backup-*.sql
+supabase/.temp

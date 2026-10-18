@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { Camera, Check, ChevronDown, Plus, Trash2, X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
+import { useFonts, BricolageGrotesque_500Medium } from '@expo-google-fonts/bricolage-grotesque';
 import useFyllStore, { generateProductId, generateVariantBarcode, type ProductVariant } from '@/lib/state/fyll-store';
 import useAuthStore from '@/lib/state/auth-store';
 import { useImagePicker } from '@/hooks/useImagePicker';
@@ -12,9 +13,10 @@ import { prepareProductMediaForPersistence } from '@/lib/product-media';
 import { storage } from '@/lib/storage';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { ResolvedAttachmentImage } from '@/components/ResolvedAttachmentImage';
-import { BackButton, FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, isHovered, usePaymentsPalette } from '@/components/payments/payments-ui';
+import { BackButton, FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, MoneyText, isHovered, usePaymentsPalette } from '@/components/payments/payments-ui';
 import { formatCompactNaira, formatNaira, swatchForName } from '@/components/inventory/inventory-ui';
 import { formatCurrencyInput, parseCurrencyInput } from '@/lib/money-input';
+import { DesktopSidebar } from '@/components/DesktopSidebar';
 
 const DRAFT_KEY = 'new-product-draft-v1';
 
@@ -67,10 +69,12 @@ const buildCombos = (options: ProductOption[]) => {
 };
 
 export default function NewProductScreen() {
+  const [bricolageMediumLoaded] = useFonts({ BricolageGrotesque_500Medium });
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const palette = usePaymentsPalette();
-  const { isMobile, width } = useBreakpoint();
+  const { isMobile, isDesktop, width } = useBreakpoint();
+  const isDesktopWeb = Platform.OS === 'web' && isDesktop;
   const isWide = Platform.OS === 'web' && width >= 1100;
   const imagePicker = useImagePicker();
 
@@ -362,7 +366,12 @@ export default function NewProductScreen() {
   // ── Styles ─────────────────────────────────────────────────────────────────
   const webNoOutline = Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null;
   const card = { borderRadius: 18, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border } as const;
-  const h2 = { color: palette.text, fontSize: 16, fontWeight: '600' as const };
+  const h2 = {
+    color: palette.text,
+    fontSize: 16,
+    fontWeight: '500' as const,
+    fontFamily: bricolageMediumLoaded ? 'BricolageGrotesque_500Medium' : undefined,
+  };
   const sub = { color: palette.faint, fontSize: isMobile ? 12 : 13 };
   const lab = { color: palette.textSoft, fontSize: isMobile ? 12 : 13, fontWeight: '600' as const };
   const th = { color: palette.faint, fontSize: 11.5, fontWeight: '600' as const, letterSpacing: 0.6, textTransform: 'uppercase' as const };
@@ -731,12 +740,13 @@ export default function NewProductScreen() {
   const editingRow = rows.find((row) => row.key === editingKey) ?? null;
 
   return (
-    <View style={{ flex: 1, backgroundColor: palette.page }}>
+    <View style={{ flex: 1, flexDirection: 'row', backgroundColor: palette.page }}>
+      {isDesktop ? <DesktopSidebar /> : null}
       <SafeAreaView style={{ flex: 1 }} edges={['top']}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: isMobile ? 12 : 14, paddingHorizontal: isMobile ? 16 : 28, paddingVertical: isMobile ? 10 : 22, borderBottomWidth: 1, borderBottomColor: palette.hairline }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: isMobile ? 12 : 14, paddingHorizontal: isMobile ? 16 : 28, paddingVertical: isMobile ? 10 : 22 }}>
           <BackButton onPress={() => (router.canGoBack() ? router.back() : router.replace('/inventory' as never))} palette={palette} label="Back to inventory" />
           <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-            <Text style={{ color: palette.text, fontSize: isMobile ? 16 : 22, fontWeight: isMobile ? '600' : '700' }}>New product</Text>
+            <MoneyText style={{ color: palette.text, fontSize: isDesktopWeb ? 28 : 22, letterSpacing: -0.8 }} numberOfLines={1}>New product</MoneyText>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <Text style={{ color: palette.faint, fontSize: isMobile ? 12 : 13 }}>{draftRestored ? 'Draft restored' : 'Saved as a draft as you go'}</Text>
               {draftRestored ? (

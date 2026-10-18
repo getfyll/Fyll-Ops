@@ -17,9 +17,15 @@ import { InventoryMobileFab } from '@/components/InventoryMobileFab';
 import { ResolvedAttachmentImage } from '@/components/ResolvedAttachmentImage';
 import { capitalizeDisplayLabel } from '@/lib/display-format';
 import { SearchClearButton } from '@/components/SearchClearButton';
+import { useFonts, BricolageGrotesque_700Bold } from '@expo-google-fonts/bricolage-grotesque';
+import { FYLL_LIME, FYLL_LIME_INK, isHovered, usePaymentsPalette } from '@/components/payments/payments-ui';
+
+const SERVICE_TABLE_COLUMNS = { price: 110, added: 120, status: 120, trail: 28, gap: 16 } as const;
 
 export default function ServicesScreen() {
+  const [bricolageLoaded] = useFonts({ BricolageGrotesque_700Bold });
   const colors = useThemeColors();
+  const palette = usePaymentsPalette();
   const router = useRouter();
   const { from } = useLocalSearchParams<{ from?: string }>();
   const { isMobile, isDesktop } = useBreakpoint();
@@ -33,7 +39,8 @@ export default function ServicesScreen() {
   const desktopHeaderMinHeight = DESKTOP_PAGE_HEADER_MIN_HEIGHT;
   const openedFromSettings = from === 'settings';
   const panelStyles = getSettingsWebPanelStyles(openedFromSettings, colors.bg.primary, colors.border.light);
-  const separatorColor = isDark ? 'rgba(255,255,255,0.08)' : '#E5E7EB';
+  const separatorColor = palette.border;
+  const tableHeadStyle = { color: palette.faint, fontSize: 10, fontWeight: '600' as const, letterSpacing: 0.6, textTransform: 'uppercase' as const };
 
   const products = useFyllStore((s) => s.products);
   const isServiceProduct = (product: Product) => {
@@ -49,6 +56,15 @@ export default function ServicesScreen() {
     () => products.filter((p) => isServiceProduct(p)),
     [products]
   );
+  const serviceSummary = useMemo(() => {
+    const active = services.filter((service) => !service.isDiscontinued).length;
+    const totalPrice = services.reduce((sum, service) => sum + (service.variants[0]?.sellingPrice ?? 0), 0);
+    return {
+      active,
+      inactive: services.length - active,
+      averagePrice: services.length ? totalPrice / services.length : 0,
+    };
+  }, [services]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
@@ -104,7 +120,7 @@ export default function ServicesScreen() {
     const category = service.serviceTags?.[0] ?? '—';
     const price = service.variants[0]?.sellingPrice ?? 0;
     const statusLabel = service.isDiscontinued ? 'Inactive' : 'Active';
-    const statusColor = service.isDiscontinued ? '#9CA3AF' : '#10B981';
+    const statusColor = service.isDiscontinued ? palette.faint : '#97A91E';
     const dateLabel = new Date(service.createdAt).toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
@@ -116,44 +132,44 @@ export default function ServicesScreen() {
       <Pressable
         key={service.id}
         onPress={() => handleOpenService(service.id)}
-        className="active:opacity-70"
-        style={{
-          backgroundColor: colors.bg.card,
+        style={(state) => ({
+          height: 66,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: SERVICE_TABLE_COLUMNS.gap,
+          paddingHorizontal: 22,
+          backgroundColor: isSelected
+            ? (isDark ? 'rgba(244,244,239,0.04)' : 'rgba(17,17,17,0.03)')
+            : isHovered(state)
+              ? (isDark ? 'rgba(255,255,255,0.025)' : '#FAFAF7')
+              : 'transparent',
           borderBottomWidth: index === filteredServices.length - 1 ? 0 : 1,
-          borderBottomColor: separatorColor,
-          borderLeftWidth: 0,
-          borderLeftColor: 'transparent',
+          borderBottomColor: palette.hairline,
           ...getActiveSplitCardStyle({ isSelected, showSplitView, isDark, colors }),
-        }}
+        })}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 14 }}>
-          <Text style={{ color: colors.text.primary, flex: 1.6 }} className="text-sm font-semibold" numberOfLines={1}>
-            {capitalizeDisplayLabel(service.name)}
-          </Text>
-          <Text style={{ color: colors.text.secondary, flex: 1 }} className="text-sm" numberOfLines={1}>
-            {category}
-          </Text>
-          <Text style={{ color: colors.text.primary, width: 140 }} className="text-sm font-semibold" numberOfLines={1}>
-            {formatCurrency(price)}
-          </Text>
-          <Text style={{ color: colors.text.tertiary, width: 140 }} className="text-sm" numberOfLines={1}>
-            {dateLabel}
-          </Text>
-          <View style={{ flex: 1, alignItems: 'flex-end', flexDirection: 'row', justifyContent: 'flex-end' }}>
-            <View
-              className="px-3 py-1 rounded-full"
-              style={{ backgroundColor: statusColor + '20', borderWidth: 1, borderColor: statusColor + '30' }}
-            >
-              <Text style={{ color: statusColor }} className="text-xs font-semibold">
-                {statusLabel}
-              </Text>
-            </View>
-            {showSplitView && (
-              <View style={{ marginLeft: 10 }}>
-                <ChevronRight size={16} color={colors.text.muted} strokeWidth={2} />
-              </View>
+        <View style={{ flex: 2.4, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <View style={{ width: 38, height: 38, borderRadius: 10, overflow: 'hidden', flexShrink: 0, backgroundColor: palette.softFill, alignItems: 'center', justifyContent: 'center' }}>
+            {service.imageUrl ? (
+              <ResolvedAttachmentImage imageUrl={service.imageUrl} style={{ width: 38, height: 38 }} resizeMode="cover" />
+            ) : (
+              <Briefcase size={17} color={palette.faint} strokeWidth={1.7} />
             )}
           </View>
+          <View style={{ minWidth: 0, flex: 1 }}>
+            <Text style={{ color: palette.text, fontSize: 13.5, fontWeight: '600' }} numberOfLines={1}>{capitalizeDisplayLabel(service.name)}</Text>
+            <Text style={{ color: palette.faint, fontSize: 11.5, marginTop: 2 }} numberOfLines={1}>Service</Text>
+          </View>
+        </View>
+        <Text style={{ color: palette.textSoft, flex: 1, fontSize: 13 }} numberOfLines={1}>{category}</Text>
+        <Text style={{ color: palette.text, width: SERVICE_TABLE_COLUMNS.price, textAlign: 'right', fontSize: 13, fontWeight: '600', fontVariant: ['tabular-nums'] }} numberOfLines={1}>{formatCurrency(price)}</Text>
+        <Text style={{ color: palette.faint, width: SERVICE_TABLE_COLUMNS.added, fontSize: 13 }} numberOfLines={1}>{dateLabel}</Text>
+        <View style={{ width: SERVICE_TABLE_COLUMNS.status, flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+          <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: service.isDiscontinued ? 'transparent' : statusColor, borderWidth: service.isDiscontinued ? 1.5 : 0, borderColor: palette.faint }} />
+          <Text style={{ color: service.isDiscontinued ? palette.faint : palette.text, fontSize: 13, fontWeight: '600' }}>{statusLabel}</Text>
+        </View>
+        <View style={{ width: SERVICE_TABLE_COLUMNS.trail, alignItems: 'flex-end' }}>
+          <ChevronRight size={16} color={palette.faint} strokeWidth={2.2} />
         </View>
       </Pressable>
     );
@@ -165,8 +181,6 @@ export default function ServicesScreen() {
         className="px-5 pb-2"
         style={{
           paddingTop: openedFromSettings ? 24 : 16,
-          borderBottomWidth: 1,
-          borderBottomColor: separatorColor,
         }}
       >
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
@@ -182,29 +196,53 @@ export default function ServicesScreen() {
 
           <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <View>
-              <Text style={{ color: colors.text.primary, ...mobileSectionHeadingStyle }}>
+              <Text style={{ color: palette.text, ...mobileSectionHeadingStyle, fontWeight: bricolageLoaded ? '400' : '700', fontFamily: bricolageLoaded ? 'BricolageGrotesque_700Bold' : undefined, letterSpacing: -0.6 }}>
                 Services
               </Text>
-              <Text style={{ color: colors.text.muted }} className="text-sm mt-1">
-                {services.length} service{services.length !== 1 ? 's' : ''}
+              <Text style={{ color: palette.faint }} className="text-sm mt-1">
+                Manage what your business offers
               </Text>
             </View>
             <Pressable
               onPress={handleAddService}
               className="rounded-full items-center justify-center active:opacity-80"
-              style={{ paddingHorizontal: 14, height: 44, flexDirection: 'row', backgroundColor: colors.accent.primary }}
+              style={{ paddingHorizontal: 16, height: 40, flexDirection: 'row', gap: 6, backgroundColor: FYLL_LIME }}
             >
-              <Plus size={18} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={2.5} />
-              <Text style={{ color: isDark ? '#000000' : '#FFFFFF' }} className="font-semibold ml-1.5 text-sm">Add Service</Text>
+              <Plus size={15} color={FYLL_LIME_INK} strokeWidth={2.6} />
+              <Text style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '600' }}>New service</Text>
             </Pressable>
           </View>
+        </View>
+      </View>
+
+      <View style={{ marginHorizontal: 20, marginTop: 10, borderRadius: 20, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, padding: 18, gap: 14 }}>
+        <View style={{ gap: 4 }}>
+          <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>Service catalogue</Text>
+          <Text style={{ color: palette.text, fontSize: 30, lineHeight: 34, fontWeight: bricolageLoaded ? '400' : '700', fontFamily: bricolageLoaded ? 'BricolageGrotesque_700Bold' : undefined, letterSpacing: -0.9 }}>{services.length} services</Text>
+          <Text style={{ color: palette.muted, fontSize: 13 }}>{serviceSummary.active} currently available</Text>
+        </View>
+        <View style={{ height: 1, backgroundColor: palette.hairline }} />
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          {[
+            ['Active', serviceSummary.active, '#97A91E'],
+            ['Inactive', serviceSummary.inactive, palette.faint],
+            ['Avg. price', formatCurrency(serviceSummary.averagePrice), FYLL_LIME],
+          ].map(([label, value, dot]) => (
+            <View key={String(label)} style={{ flex: 1, gap: 3 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: String(dot) }} />
+                <Text style={{ color: palette.faint, fontSize: 11 }}>{label}</Text>
+              </View>
+              <Text style={{ color: palette.text, fontSize: 17, fontWeight: '600' }} numberOfLines={1}>{value}</Text>
+            </View>
+          ))}
         </View>
       </View>
 
       <View className="px-5 pt-3">
         <View
           className="flex-row items-center rounded-full px-4"
-          style={{ height: 52, backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light }}
+          style={{ height: 48, backgroundColor: palette.inputBg, borderWidth: 1, borderColor: palette.outline }}
         >
           <Search size={18} color={colors.text.muted} strokeWidth={2} />
           <TextInput
@@ -247,13 +285,11 @@ export default function ServicesScreen() {
                 className="active:opacity-70"
                 style={{
                   backgroundColor: colors.bg.card,
-                  borderRadius: 16,
+                  borderRadius: 18,
                   overflow: 'hidden',
                   marginBottom: 12,
-                  borderWidth: 0.5,
-                  borderColor: separatorColor,
-                  borderLeftWidth: 0.5,
-                  borderLeftColor: separatorColor,
+                  borderWidth: 1,
+                  borderColor: palette.border,
                   ...getActiveSplitCardStyle({ isSelected, showSplitView, isDark, colors }),
                 }}
               >
@@ -314,17 +350,17 @@ export default function ServicesScreen() {
       <SafeAreaView className="flex-1" edges={isWebDesktop ? [] : ['top']}>
         {isWebDesktop ? (
           <View style={{ flex: 1 }}>
-            <View style={{ borderBottomWidth: 1, borderBottomColor: separatorColor }}>
+            <View>
               <View
                 style={{
                   width: '100%',
-                  maxWidth: 1400,
+                  maxWidth: 1456,
                   alignSelf: 'flex-start',
                   minHeight: desktopHeaderMinHeight,
-                  paddingLeft: 20,
-                  paddingRight: 20,
-                  paddingTop: 20,
-                  paddingBottom: 16,
+                  paddingLeft: 28,
+                  paddingRight: 28,
+                  paddingTop: 28,
+                  paddingBottom: 14,
                   flexDirection: 'row',
                   alignItems: 'center',
                   gap: 12,
@@ -342,21 +378,21 @@ export default function ServicesScreen() {
 
                 <View style={{ flex: 1, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
                   <View>
-                    <Text style={{ color: colors.text.primary, ...pageHeadingStyle }}>
+                    <Text style={{ color: palette.text, ...pageHeadingStyle, fontWeight: bricolageLoaded ? '400' : '700', fontFamily: bricolageLoaded ? 'BricolageGrotesque_700Bold' : undefined, letterSpacing: -0.6 }}>
                       Services
                     </Text>
-                    <Text style={{ color: colors.text.muted, fontSize: 14, marginTop: 4 }}>
-                      {services.length} service{services.length !== 1 ? 's' : ''} available.
+                    <Text style={{ color: palette.faint, fontSize: 14, marginTop: 4 }}>
+                      Manage pricing, availability and service options.
                     </Text>
                   </View>
                   <Pressable
                     onPress={handleAddService}
                     className="flex-row items-center px-4 rounded-full active:opacity-80"
-                    style={{ backgroundColor: colors.text.primary, height: 42 }}
+                    style={{ backgroundColor: FYLL_LIME, height: 40, gap: 6 }}
                   >
-                    <Plus size={18} color={colors.bg.primary} strokeWidth={2.5} />
-                    <Text style={{ color: colors.bg.primary }} className="font-semibold ml-1.5 text-sm">
-                      New Service
+                    <Plus size={15} color={FYLL_LIME_INK} strokeWidth={2.6} />
+                    <Text style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '600' }}>
+                      New service
                     </Text>
                   </Pressable>
                 </View>
@@ -367,15 +403,33 @@ export default function ServicesScreen() {
               style={{ flex: 1 }}
               contentContainerStyle={{
                 width: '100%',
-                maxWidth: 1400,
+                maxWidth: 1456,
                 alignSelf: 'flex-start',
-                paddingLeft: 20,
-                paddingRight: 20,
-                paddingTop: 24,
+                paddingLeft: 28,
+                paddingRight: 28,
+                paddingTop: 18,
                 paddingBottom: 40,
               }}
               showsVerticalScrollIndicator={false}
             >
+              <View style={{ flexDirection: 'row', borderRadius: 20, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, overflow: 'hidden', marginBottom: 18 }}>
+                {[
+                  ['Services', `${services.length} total`, 'Catalogue size', 1.3, null],
+                  ['Active', String(serviceSummary.active), 'Available to sell', 1, '#97A91E'],
+                  ['Inactive', String(serviceSummary.inactive), 'Hidden from sale', 1, palette.faint],
+                  ['Avg. price', formatCurrency(serviceSummary.averagePrice), 'Across services', 1, FYLL_LIME],
+                ].map(([label, value, caption, flex, dot], index) => (
+                  <View key={String(label)} style={{ flex: Number(flex), paddingHorizontal: 22, paddingVertical: 18, gap: 4, borderLeftWidth: index ? 1 : 0, borderLeftColor: palette.hairline }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      {dot ? <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: String(dot) }} /> : null}
+                      <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{label}</Text>
+                    </View>
+                    <Text style={{ color: palette.text, fontSize: index ? 22 : 28, fontWeight: index ? '600' : bricolageLoaded ? '400' : '700', fontFamily: !index && bricolageLoaded ? 'BricolageGrotesque_700Bold' : undefined, letterSpacing: index ? -0.5 : -0.9 }} numberOfLines={1}>{value}</Text>
+                    <Text style={{ color: palette.muted, fontSize: 13 }}>{caption}</Text>
+                  </View>
+                ))}
+              </View>
+
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                 <View
                   className="flex-row items-center rounded-full px-4"
@@ -384,9 +438,9 @@ export default function ServicesScreen() {
                     width: '30%',
                     maxWidth: 420,
                     minWidth: 320,
-                    backgroundColor: colors.input.bg,
+                    backgroundColor: palette.inputBg,
                     borderWidth: 1,
-                    borderColor: colors.border.light,
+                    borderColor: palette.outline,
                   }}
                 >
                   <Search size={18} color={colors.text.muted} strokeWidth={2} />
@@ -406,29 +460,18 @@ export default function ServicesScreen() {
                   marginTop: 16,
                   borderWidth: 1,
                   borderColor: separatorColor,
-                  borderRadius: 16,
+                  borderRadius: 20,
                   overflow: 'hidden',
-                  backgroundColor: colors.bg.card,
+                  backgroundColor: palette.card,
                 }}
               >
-                <View style={{ backgroundColor: colors.bg.card, borderBottomWidth: 1, borderBottomColor: separatorColor }}>
-                  <View style={{ flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 12 }}>
-                    <Text style={{ color: colors.text.muted, flex: 1.6 }} className="text-xs font-semibold">
-                      SERVICE
-                    </Text>
-                    <Text style={{ color: colors.text.muted, flex: 1 }} className="text-xs font-semibold">
-                      TAG
-                    </Text>
-                    <Text style={{ color: colors.text.muted, width: 140 }} className="text-xs font-semibold">
-                      PRICE
-                    </Text>
-                    <Text style={{ color: colors.text.muted, width: 140 }} className="text-xs font-semibold">
-                      ADDED
-                    </Text>
-                    <Text style={{ color: colors.text.muted, flex: 1, textAlign: 'right' }} className="text-xs font-semibold">
-                      STATUS
-                    </Text>
-                  </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: SERVICE_TABLE_COLUMNS.gap, paddingHorizontal: 22, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: palette.hairline }}>
+                  <Text style={[tableHeadStyle, { flex: 2.4 }]}>Service</Text>
+                  <Text style={[tableHeadStyle, { flex: 1 }]}>Tag</Text>
+                  <Text style={[tableHeadStyle, { width: SERVICE_TABLE_COLUMNS.price, textAlign: 'right' }]}>Price</Text>
+                  <Text style={[tableHeadStyle, { width: SERVICE_TABLE_COLUMNS.added }]}>Added</Text>
+                  <Text style={[tableHeadStyle, { width: SERVICE_TABLE_COLUMNS.status }]}>Status</Text>
+                  <View style={{ width: SERVICE_TABLE_COLUMNS.trail }} />
                 </View>
 
                 {filteredServices.length === 0 ? (

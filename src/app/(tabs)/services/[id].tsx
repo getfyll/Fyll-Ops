@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Switch, Platform, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, ChevronDown, Plus, X, Tag, Check, Edit2, Trash2, List, TrendingUp, Camera, Image as ImageIcon } from 'lucide-react-native';
+import { ArrowLeft, ChevronDown, Plus, X, Tag, Check, Edit2, Trash2, List, TrendingUp, Camera, Image as ImageIcon, MoreHorizontal } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import useFyllStore, {
   ServiceField,
@@ -19,6 +19,8 @@ import useAuthStore from '@/lib/state/auth-store';
 import { useImagePicker } from '@/hooks/useImagePicker';
 import { prepareProductMediaForPersistence } from '@/lib/product-media';
 import { ResolvedAttachmentImage } from '@/components/ResolvedAttachmentImage';
+import { ServiceDetailPanel } from '@/components/ServiceDetailPanel';
+import { BackButton, FYLL_LIME, FYLL_LIME_INK, usePaymentsPalette } from '@/components/payments/payments-ui';
 
 const VARIABLE_TYPES: ServiceVariableType[] = ['Select', 'Number', 'Toggle', 'Text'];
 const FIELD_TYPES: ServiceFieldType[] = ['Text', 'Date', 'Time', 'Number', 'Price', 'Select'];
@@ -38,6 +40,7 @@ export default function ServiceDetailScreen() {
   const { id, from } = useLocalSearchParams<{ id: string; from?: string }>();
   const router = useRouter();
   const colors = useThemeColors();
+  const palette = usePaymentsPalette();
   const { isMobile, isDesktop, width } = useBreakpoint();
   const isWebDesktop = Platform.OS === 'web' && isDesktop;
   const isMobileWeb = Platform.OS === 'web' && isMobile;
@@ -76,6 +79,8 @@ export default function ServiceDetailScreen() {
   const [serviceActive, setServiceActive] = useState(!(service?.isDiscontinued ?? false));
   const [isStatusSaving, setIsStatusSaving] = useState(false);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [showMobileHeaderMenu, setShowMobileHeaderMenu] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const totalServices = useMemo(
@@ -349,6 +354,7 @@ export default function ServiceDetailScreen() {
       }, businessId);
       setServiceImageUrl(preparedMedia.imageUrl ?? null);
       showToast('success', businessId ? 'Service updated.' : 'Saved locally.');
+      setIsEditing(false);
     } catch (error) {
       console.warn('Service save failed:', error);
       showToast('error', 'Could not save. Please try again.');
@@ -389,6 +395,118 @@ export default function ServiceDetailScreen() {
   const rightRailOptionValueSize = isTabletSizedWebPanel ? 10 : 11;
   const rightRailIconWrapSize = isTabletSizedWebPanel ? 38 : 48;
   const rightRailIconSize = isTabletSizedWebPanel ? 14 : 18;
+  const openSharedServiceEditor = () => {
+    router.push({
+      pathname: '/new-service',
+      params: { serviceId: service.id, ...(from ? { from } : {}) },
+    });
+  };
+
+  if (!isEditing) {
+    return (
+      <SafeAreaView className="flex-1" style={{ backgroundColor: palette.page }} edges={['top']}>
+        {isWebDesktop ? (
+          <View style={{ paddingHorizontal: 28, paddingTop: 28, paddingBottom: 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+              <BackButton onPress={() => from === 'inventory' ? router.replace('/inventory') : router.back()} palette={palette} label="Back to services" />
+              <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <Text style={{ color: palette.text, fontSize: 30, fontWeight: '700', letterSpacing: -0.6, flexShrink: 1 }} numberOfLines={1}>{service.name}</Text>
+                  <View style={{ height: 28, paddingHorizontal: 10, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: palette.softFill, borderWidth: 1, borderColor: palette.border }}>
+                    <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: service.isDiscontinued ? palette.faint : palette.tones.verified.dot }} />
+                    <Text style={{ color: service.isDiscontinued ? palette.faint : palette.tones.verified.ink, fontSize: 12, fontWeight: '600' }}>{service.isDiscontinued ? 'Inactive' : 'Active'}</Text>
+                  </View>
+                </View>
+                <Text style={{ color: palette.faint, fontSize: 14 }} numberOfLines={1}>{service.serviceTags?.join(' · ') || 'Service'}</Text>
+              </View>
+              <Pressable
+                onPress={openSharedServiceEditor}
+                className="active:opacity-80"
+                style={{ height: 40, paddingHorizontal: 16, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: FYLL_LIME }}
+              >
+                <Edit2 size={15} color={FYLL_LIME_INK} strokeWidth={2.2} />
+                <Text style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '600' }}>Edit service</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: palette.hairline, backgroundColor: palette.page, zIndex: 50 }}>
+            <BackButton onPress={() => from === 'inventory' ? router.replace('/inventory') : router.back()} palette={palette} label="Back" />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={{ color: palette.text, fontSize: 16, fontWeight: '600' }} numberOfLines={1}>{service.name}</Text>
+              <Text style={{ color: palette.faint, fontSize: 12.5 }} numberOfLines={1}>
+                {[service.serviceTags?.join(' · ') || 'Service', service.isDiscontinued ? 'Inactive' : 'Active'].join(' · ')}
+              </Text>
+            </View>
+            <View style={{ position: 'relative', zIndex: 60 }}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="More actions"
+                onPress={() => setShowMobileHeaderMenu((previous) => !previous)}
+                style={{ width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' }}
+              >
+                <MoreHorizontal size={18} color={palette.text} strokeWidth={2.4} />
+              </Pressable>
+              {showMobileHeaderMenu ? (
+                <>
+                  <Pressable onPress={() => setShowMobileHeaderMenu(false)} style={{ position: 'absolute', top: -3000, left: -3000, width: 8000, height: 8000 }} />
+                  <View style={{ position: 'absolute', top: 48, right: 0, minWidth: 200, paddingVertical: 6, borderRadius: 14, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}>
+                    <Pressable
+                      onPress={() => {
+                        setShowMobileHeaderMenu(false);
+                        openSharedServiceEditor();
+                      }}
+                      className="active:opacity-70"
+                      style={{ height: 40, paddingHorizontal: 14, justifyContent: 'center' }}
+                    >
+                      <Text style={{ color: palette.text, fontSize: 14, fontWeight: '500' }}>Edit service</Text>
+                    </Pressable>
+                    <Pressable
+                      disabled={isStatusSaving}
+                      onPress={() => {
+                        setShowMobileHeaderMenu(false);
+                        void handleToggleServiceActive(!serviceActive);
+                      }}
+                      className="active:opacity-70"
+                      style={{ height: 40, paddingHorizontal: 14, justifyContent: 'center', opacity: isStatusSaving ? 0.5 : 1 }}
+                    >
+                      <Text style={{ color: serviceActive ? palette.danger : palette.tones.verified.ink, fontSize: 14, fontWeight: '500' }}>
+                        {isStatusSaving ? 'Saving…' : serviceActive ? 'Deactivate service' : 'Activate service'}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => {
+                        setShowMobileHeaderMenu(false);
+                        handleDelete();
+                      }}
+                      className="active:opacity-70"
+                      style={{ height: 40, paddingHorizontal: 14, justifyContent: 'center' }}
+                    >
+                      <Text style={{ color: palette.danger, fontSize: 14, fontWeight: '500' }}>Delete service</Text>
+                    </Pressable>
+                  </View>
+                </>
+              ) : null}
+              </View>
+          </View>
+        )}
+        <ScrollView
+          style={{ flex: 1, backgroundColor: palette.page }}
+          contentContainerStyle={{
+            width: '100%',
+            maxWidth: isWebDesktop ? 1456 : 720,
+            alignSelf: isWebDesktop ? 'flex-start' : 'stretch',
+            paddingHorizontal: isWebDesktop ? 28 : 0,
+            paddingTop: isWebDesktop ? 4 : 0,
+            paddingBottom: 60,
+          }}
+          showsVerticalScrollIndicator={false}
+        >
+          <ServiceDetailPanel serviceId={service.id} from={from === 'inventory' ? 'inventory' : 'services'} onEdit={openSharedServiceEditor} />
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView className="flex-1" style={{ backgroundColor: isMobile ? colors.bg.secondary : colors.bg.primary }} edges={['top']}>

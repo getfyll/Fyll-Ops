@@ -12,8 +12,16 @@ const SUPABASE_URL = sanitizeEnvValue(Deno.env.get('SUPABASE_URL'))
 const SUPABASE_SERVICE_ROLE_KEY = sanitizeEnvValue(Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))
 const RESEND_API_KEY = sanitizeEnvValue(Deno.env.get('RESEND_API_KEY'))
 const RESEND_FROM_EMAIL = sanitizeEnvValue(Deno.env.get('RESEND_FROM_EMAIL'))
-const ONESIGNAL_APP_ID = sanitizeEnvValue(Deno.env.get('ONESIGNAL_APP_ID'))
-const ONESIGNAL_REST_API_KEY = sanitizeEnvValue(Deno.env.get('ONESIGNAL_REST_API_KEY'))
+const FYLL_ONESIGNAL_APP_ID = sanitizeEnvValue(Deno.env.get('FYLL_ONESIGNAL_APP_ID'))
+const FYLL_ONESIGNAL_REST_API_KEY = sanitizeEnvValue(Deno.env.get('FYLL_ONESIGNAL_REST_API_KEY'))
+const WWW_ONESIGNAL_APP_ID = sanitizeEnvValue(Deno.env.get('WWW_ONESIGNAL_APP_ID') ?? Deno.env.get('ONESIGNAL_APP_ID'))
+const WWW_ONESIGNAL_REST_API_KEY = sanitizeEnvValue(Deno.env.get('WWW_ONESIGNAL_REST_API_KEY') ?? Deno.env.get('ONESIGNAL_REST_API_KEY'))
+const MAIN_ONESIGNAL_CONFIGS = [
+  { origin: 'https://fyll.app', appId: FYLL_ONESIGNAL_APP_ID, restApiKey: FYLL_ONESIGNAL_REST_API_KEY },
+  { origin: 'https://www.fyll.app', appId: WWW_ONESIGNAL_APP_ID, restApiKey: WWW_ONESIGNAL_REST_API_KEY },
+]
+  .filter((config) => config.appId && config.restApiKey)
+  .filter((config, index, configs) => configs.findIndex((candidate) => candidate.appId === config.appId) === index)
 const APP_BASE_URL = sanitizeEnvValue(Deno.env.get('APP_BASE_URL'))
 const ALLOWED_ORIGIN = sanitizeEnvValue(Deno.env.get('ALLOWED_ORIGIN')) || '*'
 const CRON_SECRET = sanitizeEnvValue(Deno.env.get('CRON_SECRET'))
@@ -154,31 +162,38 @@ const buildDeliveryConfirmationNotificationPayload = ({
   }
 }
 
-const sendOneSignalNotification = async ({
+const sendOneSignalNotificationForApp = async ({
   recipients,
   heading,
   content,
   data,
   collapseId,
+  origin,
+  appId,
+  restApiKey,
 }: {
   recipients: string[]
   heading: string
   content: string
   data: Record<string, unknown>
   collapseId?: string
+  origin: string
+  appId: string
+  restApiKey: string
 }) => {
-  if (!ONESIGNAL_APP_ID || !ONESIGNAL_REST_API_KEY || recipients.length === 0) {
+  if (recipients.length === 0) {
     return {
+      origin,
       mode: 'skipped',
-      reason: !ONESIGNAL_APP_ID || !ONESIGNAL_REST_API_KEY ? 'missing-onesignal-config' : 'no-recipients',
+      reason: 'no-recipients',
       deliveredCount: 0,
     }
   }
 
-  const isV2Key = ONESIGNAL_REST_API_KEY.startsWith('os_v2_')
+  const isV2Key = restApiKey.startsWith('os_v2_')
   const authHeader = isV2Key
-    ? `Key ${ONESIGNAL_REST_API_KEY}`
-    : `Basic ${ONESIGNAL_REST_API_KEY}`
+    ? `Key ${restApiKey}`
+    : `Basic ${restApiKey}`
 
   const requestOneSignal = async (
     payload: Record<string, unknown>,
@@ -224,7 +239,7 @@ const sendOneSignalNotification = async ({
   }
 
   const sharedPayload: Record<string, unknown> = {
-    app_id: ONESIGNAL_APP_ID,
+    app_id: appId,
     headings: { en: heading },
     contents: { en: content },
     data,
@@ -246,6 +261,7 @@ const sendOneSignalNotification = async ({
   const aliasHasInvalidAliases = Boolean((aliasAttempt.result as { errors?: { invalid_aliases?: unknown } })?.errors?.invalid_aliases)
   if (aliasAttempt.ok && !aliasHasInvalidAliases && (aliasRecipients === null || aliasRecipients > 0)) {
     return {
+      origin,
       mode: 'pushed',
       status: aliasAttempt.status,
       deliveredCount: aliasRecipients ?? recipients.length,
@@ -278,6 +294,7 @@ const sendOneSignalNotification = async ({
 
   if (tagSuccesses.length > 0) {
     return {
+      origin,
       mode: 'tag_fallback',
       deliveredCount: tagSuccesses.length,
       failedCount: tagFailures.length,
@@ -295,22 +312,56 @@ const sendOneSignalNotification = async ({
     && tagFailures.every((failure) => failure.status === 200 && isZeroRecipientResult(failure.result))
 
   if (aliasWasZeroRecipients && tagWasZeroRecipients) {
-    return { mode: 'no_subscribers', deliveredCount: 0, failedCount: 0 }
+    return { origin, mode: 'no_subscribers', deliveredCount: 0, failedCount: 0 }
   }
 
-  console.warn('Delivery confirmation OneSignal push failed:', {
+  console.warn(`Delivery confirmation OneSignal push failed for ${origin}:`, {
     aliasStatus: aliasAttempt.status,
     aliasResult: aliasAttempt.result,
     tagFailures,
   })
 
   return {
+    origin,
     mode: 'failed',
     deliveredCount: 0,
     failedCount: recipients.length,
     result: aliasAttempt.result,
   }
 }
+
+const sendOneSignalNotification = async (args: {
+  recipients: string[]
+  heading: string
+  content: string
+  data: Record<string, unknown>
+  collapseId?: string
+}) => {
+  if (args.recipients.length === 0 || MAIN_ONESIGNAL_CONFIGS.length === 0) {
+    return {
+      mode: 'skipped',
+      reason: args.recipients.length === 0 ? 'no-recipients' : 'missing-onesignal-config',
+      deliveredCount: 0,
+      deliveries: [],
+    }
+  }
+
+  const deliveries = await Promise.all(MAIN_ONESIGNAL_CONFIGS.map((config) => (
+    sendOneSignalNotificationForApp({ ...args, ...config })
+  )))
+  const deliveredCount = deliveries.reduce((total, delivery) => total + delivery.deliveredCount, 0)
+  const hasDelivery = deliveries.some((delivery) => (
+    delivery.mode === 'pushed' || delivery.mode === 'tag_fallback'
+  ))
+  const noSubscribers = deliveries.every((delivery) => delivery.mode === 'no_subscribers')
+
+  return {
+    mode: hasDelivery ? 'pushed' : noSubscribers ? 'no_subscribers' : 'failed',
+    deliveredCount,
+    deliveries,
+  }
+}
+
 const normalizeImageUrl = (value: unknown) => {
   const trimmed = toTrimmedString(value)
   if (!trimmed) return ''

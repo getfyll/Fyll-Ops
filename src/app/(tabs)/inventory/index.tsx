@@ -822,16 +822,16 @@ export default function InventoryScreen() {
           <Pressable
             accessibilityRole="button"
             onPress={inventoryTab === 'services' ? handleAddService : handleAddProduct}
-            style={(state) => ({
+            className="active:opacity-80"
+            style={{
               height: 40,
               paddingHorizontal: 16,
               borderRadius: 999,
               flexDirection: 'row',
               alignItems: 'center',
               gap: 6,
-              backgroundColor: isHovered(state) ? FYLL_LIME_HOVER : FYLL_LIME,
-              opacity: state.pressed ? 0.85 : 1,
-            })}
+              backgroundColor: FYLL_LIME,
+            }}
           >
             <Plus size={15} color={FYLL_LIME_INK} strokeWidth={2.6} />
             <Text style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '600' }}>

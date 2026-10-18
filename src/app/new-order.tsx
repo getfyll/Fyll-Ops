@@ -1596,7 +1596,7 @@ export default function NewOrderScreen() {
           className="flex-1"
         >
         {/* Header */}
-        <View style={{ backgroundColor: palette.page, borderBottomWidth: 1, borderBottomColor: palette.hairline }}>
+        <View style={{ backgroundColor: palette.page }}>
           <View
             style={{
               flexDirection: 'row',

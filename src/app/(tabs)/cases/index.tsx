@@ -348,9 +348,10 @@ export default function CasesScreen() {
                       }}
                     >
                       <Text
-                        className="text-xs font-semibold"
                         style={{
                           color: isSelected ? (isDark ? '#000000' : '#FFFFFF') : colors.text.primary,
+                          fontSize: 12,
+                          fontWeight: '600',
                         }}
                       >
                         {status}

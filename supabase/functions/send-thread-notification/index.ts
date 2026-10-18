@@ -10,8 +10,18 @@ const sanitizeEnvValue = (value: string | undefined | null) => (
 
 const ONESIGNAL_APP_ID = sanitizeEnvValue(Deno.env.get('ONESIGNAL_APP_ID'))
 const ONESIGNAL_REST_API_KEY = sanitizeEnvValue(Deno.env.get('ONESIGNAL_REST_API_KEY'))
+const FYLL_ONESIGNAL_APP_ID = sanitizeEnvValue(Deno.env.get('FYLL_ONESIGNAL_APP_ID'))
+const FYLL_ONESIGNAL_REST_API_KEY = sanitizeEnvValue(Deno.env.get('FYLL_ONESIGNAL_REST_API_KEY'))
+const WWW_ONESIGNAL_APP_ID = sanitizeEnvValue(Deno.env.get('WWW_ONESIGNAL_APP_ID')) || ONESIGNAL_APP_ID
+const WWW_ONESIGNAL_REST_API_KEY = sanitizeEnvValue(Deno.env.get('WWW_ONESIGNAL_REST_API_KEY')) || ONESIGNAL_REST_API_KEY
 const PARTNER_ONESIGNAL_APP_ID = sanitizeEnvValue(Deno.env.get('PARTNER_ONESIGNAL_APP_ID'))
 const PARTNER_ONESIGNAL_REST_API_KEY = sanitizeEnvValue(Deno.env.get('PARTNER_ONESIGNAL_REST_API_KEY'))
+const MAIN_ONESIGNAL_CONFIGS = [
+  { origin: 'https://www.fyll.app', appId: WWW_ONESIGNAL_APP_ID, restApiKey: WWW_ONESIGNAL_REST_API_KEY },
+  { origin: 'https://fyll.app', appId: FYLL_ONESIGNAL_APP_ID, restApiKey: FYLL_ONESIGNAL_REST_API_KEY },
+]
+  .filter((config) => config.appId && config.restApiKey)
+  .filter((config, index, configs) => configs.findIndex((candidate) => candidate.appId === config.appId) === index)
 const SUPABASE_URL = sanitizeEnvValue(Deno.env.get('SUPABASE_URL'))
 const SUPABASE_SERVICE_ROLE_KEY = sanitizeEnvValue(Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))
 const ALLOWED_ORIGIN = sanitizeEnvValue(Deno.env.get('ALLOWED_ORIGIN')) || '*'
@@ -400,14 +410,15 @@ const resolvePartnerCaller = async (
   return null
 }
 
-const sendOneSignalNotification = async ({
+const sendOneSignalNotificationForApp = async ({
   recipients,
   heading,
   content,
   data,
   idempotencyKey,
   collapseId,
-  channel = 'main',
+  appId,
+  restApiKey,
 }: {
   recipients: string[]
   heading: string
@@ -415,14 +426,9 @@ const sendOneSignalNotification = async ({
   data: Record<string, unknown>
   idempotencyKey?: string
   collapseId?: string
-  channel?: 'main' | 'partner'
+  appId: string
+  restApiKey: string
 }) => {
-  const appId = channel === 'partner' && PARTNER_ONESIGNAL_APP_ID && PARTNER_ONESIGNAL_REST_API_KEY
-    ? PARTNER_ONESIGNAL_APP_ID
-    : ONESIGNAL_APP_ID
-  const restApiKey = channel === 'partner' && PARTNER_ONESIGNAL_APP_ID && PARTNER_ONESIGNAL_REST_API_KEY
-    ? PARTNER_ONESIGNAL_REST_API_KEY
-    : ONESIGNAL_REST_API_KEY
   const isV2Key = restApiKey.startsWith('os_v2_')
   const authHeader = isV2Key
     ? `Key ${restApiKey}`
@@ -569,6 +575,35 @@ const sendOneSignalNotification = async ({
   return { mode: 'failed', deliveredCount: 0, failedCount: recipients.length }
 }
 
+const sendOneSignalNotification = async (args: {
+  recipients: string[]
+  heading: string
+  content: string
+  data: Record<string, unknown>
+  idempotencyKey?: string
+  collapseId?: string
+  channel?: 'main' | 'partner'
+}) => {
+  if (args.channel === 'partner' && PARTNER_ONESIGNAL_APP_ID && PARTNER_ONESIGNAL_REST_API_KEY) {
+    return await sendOneSignalNotificationForApp({
+      ...args,
+      appId: PARTNER_ONESIGNAL_APP_ID,
+      restApiKey: PARTNER_ONESIGNAL_REST_API_KEY,
+    })
+  }
+
+  if (MAIN_ONESIGNAL_CONFIGS.length === 0) {
+    return { mode: 'not_configured', deliveredCount: 0, failedCount: args.recipients.length }
+  }
+
+  const deliveries = await Promise.all(MAIN_ONESIGNAL_CONFIGS.map(async (config) => ({
+    origin: config.origin,
+    result: await sendOneSignalNotificationForApp({ ...args, appId: config.appId, restApiKey: config.restApiKey }),
+  })))
+
+  return { mode: MAIN_ONESIGNAL_CONFIGS.length > 1 ? 'multi_origin' : 'single_origin', deliveries }
+}
+
 // Delivers push notifications to the native iOS/Android app via Expo's push
 // service, for recipients who have registered a device in expo_push_tokens.
 // This runs alongside OneSignal (web) so team members get alerts on whichever
@@ -669,43 +704,31 @@ const sendOneSignalDirectSubscriptionNotification = async ({
   content: string
   data: Record<string, unknown>
 }) => {
-  const isV2Key = ONESIGNAL_REST_API_KEY.startsWith('os_v2_')
-  const authHeader = isV2Key
-    ? `Key ${ONESIGNAL_REST_API_KEY}`
-    : `Basic ${ONESIGNAL_REST_API_KEY}`
-
-  const response = await fetch('https://api.onesignal.com/notifications', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': authHeader,
-    },
-    body: JSON.stringify({
-      app_id: ONESIGNAL_APP_ID,
-      include_subscription_ids: [subscriptionId],
-      target_channel: 'push',
-      headings: { en: heading },
-      contents: { en: content },
-      data,
-    }),
-  })
-
-  const result = await response.json().catch(() => ({}))
-  if (!response.ok) {
-    console.error('OneSignal direct subscription delivery failed', {
-      subscriptionId,
-      status: response.status,
-      result,
+  const deliveries = await Promise.all(MAIN_ONESIGNAL_CONFIGS.map(async (config) => {
+    const isV2Key = config.restApiKey.startsWith('os_v2_')
+    const authHeader = isV2Key ? `Key ${config.restApiKey}` : `Basic ${config.restApiKey}`
+    const response = await fetch('https://api.onesignal.com/notifications', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': authHeader },
+      body: JSON.stringify({
+        app_id: config.appId,
+        include_subscription_ids: [subscriptionId],
+        target_channel: 'push',
+        headings: { en: heading },
+        contents: { en: content },
+        data,
+      }),
     })
-    return { mode: 'failed', status: response.status, result }
-  }
+    return {
+      origin: config.origin,
+      ok: response.ok,
+      status: response.status,
+      result: await response.json().catch(() => ({})),
+    }
+  }))
 
-  console.log('OneSignal direct subscription delivery result', {
-    subscriptionId,
-    status: response.status,
-    result,
-  })
-  return { mode: 'direct_subscription', status: response.status, result }
+  console.log('OneSignal direct subscription delivery results', { subscriptionId, deliveries })
+  return { mode: 'direct_subscription', deliveries }
 }
 
 const sendBusinessWideOrderNotification = async (
@@ -953,6 +976,26 @@ const notifyPaymentReceived = async (
     idempotencyKey: collapseId,
     collapseId,
   })
+}
+
+const handleStorefrontOrderCreated = async (
+  admin: ReturnType<typeof getAdminClient>,
+  storefrontPayload: StorefrontOrderCreatedPayload,
+) => {
+  const businessId = typeof storefrontPayload.businessId === 'string' ? storefrontPayload.businessId.trim() : ''
+  const orderNumber = typeof storefrontPayload.orderNumber === 'string' ? storefrontPayload.orderNumber.trim() : ''
+  if (!businessId || !orderNumber) {
+    return jsonResponse(400, { error: 'Missing businessId or orderNumber.' })
+  }
+  const result = await notifyStorefrontOrder(
+    admin,
+    businessId,
+    orderNumber,
+    typeof storefrontPayload.customerName === 'string' ? storefrontPayload.customerName.trim() : '',
+    typeof storefrontPayload.totalAmount === 'string' ? storefrontPayload.totalAmount.trim() : '0',
+    typeof storefrontPayload.trackingCode === 'string' ? storefrontPayload.trackingCode.trim() : undefined,
+  )
+  return jsonResponse(200, { success: true, type: 'storefront_order_created', result })
 }
 
 const notifyQuoteUpdate = async (
@@ -1892,7 +1935,8 @@ serve(async (req: Request) => {
     return jsonResponse(405, { error: 'Method not allowed' })
   }
 
-  if (!ONESIGNAL_APP_ID || !ONESIGNAL_REST_API_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  const hasMainOneSignalConfig = MAIN_ONESIGNAL_CONFIGS.length > 0
+  if (!hasMainOneSignalConfig || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     return jsonResponse(500, { error: 'Notification service is not configured.' })
   }
 
@@ -1912,28 +1956,17 @@ serve(async (req: Request) => {
         const result = await notifyPaymentReceived(admin, payload as PaymentReceivedPayload)
         return jsonResponse(200, { success: true, type: 'payment_received', result })
       }
-      return jsonResponse(403, { error: 'This secret only sends quote and payment notifications.' })
+      if (payload?.type === 'storefront_order_created') {
+        return await handleStorefrontOrderCreated(admin, payload as StorefrontOrderCreatedPayload)
+      }
+      return jsonResponse(403, { error: 'This secret only sends quote, payment and new order notifications.' })
     }
 
     if (CRON_SECRET.length >= 16 && rawToken === CRON_SECRET) {
       const payload = await req.json()
 
       if (payload?.type === 'storefront_order_created') {
-        const storefrontPayload = payload as StorefrontOrderCreatedPayload
-        const businessId = typeof storefrontPayload.businessId === 'string' ? storefrontPayload.businessId.trim() : ''
-        const orderNumber = typeof storefrontPayload.orderNumber === 'string' ? storefrontPayload.orderNumber.trim() : ''
-        if (!businessId || !orderNumber) {
-          return jsonResponse(400, { error: 'Missing businessId or orderNumber.' })
-        }
-        const result = await notifyStorefrontOrder(
-          admin,
-          businessId,
-          orderNumber,
-          typeof storefrontPayload.customerName === 'string' ? storefrontPayload.customerName.trim() : '',
-          typeof storefrontPayload.totalAmount === 'string' ? storefrontPayload.totalAmount.trim() : '0',
-          typeof storefrontPayload.trackingCode === 'string' ? storefrontPayload.trackingCode.trim() : undefined,
-        )
-        return jsonResponse(200, { success: true, type: 'storefront_order_created', result })
+        return await handleStorefrontOrderCreated(admin, payload as StorefrontOrderCreatedPayload)
       }
 
       if (payload?.type === 'payment_received') {

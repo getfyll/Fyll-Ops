@@ -1,8 +1,8 @@
-import React, { useMemo, useState } from 'react';
-import { View, Text, TextInput, Pressable, Platform, Switch, Image, useWindowDimensions } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, TextInput, Pressable, Platform, Image, useWindowDimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
-import { ArrowLeft, ChevronDown, Plus, X, Check, Camera, ImageIcon, Trash2 } from 'lucide-react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { ChevronDown, Plus, X, Check, Camera, Trash2 } from 'lucide-react-native';
 import useFyllStore, {
   generateProductId,
   generateVariantBarcode,
@@ -21,7 +21,11 @@ import * as Haptics from 'expo-haptics';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { useImagePicker } from '@/hooks/useImagePicker';
 import { prepareProductMediaForPersistence } from '@/lib/product-media';
-import { Button, StickyButtonContainer } from '@/components/Button';
+import { StickyButtonContainer } from '@/components/Button';
+import { useBreakpoint } from '@/lib/useBreakpoint';
+import { DesktopSidebar } from '@/components/DesktopSidebar';
+import { BackButton, FYLL_LIME, FYLL_LIME_INK, MoneyText, usePaymentsPalette } from '@/components/payments/payments-ui';
+import { useFonts, BricolageGrotesque_500Medium } from '@expo-google-fonts/bricolage-grotesque';
 
 const SERVICE_VARIABLE_TYPES: ServiceVariableType[] = ['Select', 'Number', 'Toggle', 'Text'];
 const SERVICE_FIELD_TYPES: ServiceFieldType[] = ['Text', 'Date', 'Time', 'Number', 'Price', 'Select'];
@@ -38,25 +42,38 @@ const formatOptionAmount = (amount?: number) => (
 );
 
 export default function NewServiceScreen() {
+  const [bricolageMediumLoaded] = useFonts({ BricolageGrotesque_500Medium });
   const router = useRouter();
+  const { serviceId } = useLocalSearchParams<{ serviceId?: string }>();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const colors = useThemeColors();
+  const palette = usePaymentsPalette();
+  const { isMobile, isDesktop } = useBreakpoint();
   const isDark = useResolvedThemeMode() === 'dark';
   const isWeb = Platform.OS === 'web';
   const isCompactLayout = width < 768;
   const isMobileWeb = isWeb && isCompactLayout;
-  const shouldCenterForm = isWeb && !isCompactLayout;
-  const useDesktopCanvas = shouldCenterForm && !isDark;
-  const canvasBg = useDesktopCanvas ? '#F3F3F5' : colors.bg.primary;
-  const panelBg = useDesktopCanvas ? '#FFFFFF' : colors.bg.primary;
-  const cardClass = cn('rounded-2xl p-4 border', isDark ? 'bg-[#1A1A1A] border-[#333333]' : 'bg-white border-gray-200');
-  const softSurfaceClass = cn('rounded-2xl p-4 border', isDark ? 'bg-[#151515] border-[#2C2C2C]' : 'bg-gray-50 border-gray-200');
-  const sectionTitleClass = 'font-semibold text-[15px]';
+  const isDesktopWeb = isWeb && isDesktop;
+  const canvasBg = palette.page;
+  const panelBg = palette.page;
+  const cardClass = cn('rounded-[18px] p-4 border', isDark ? 'bg-[#1C1C1C] border-white/[0.07]' : 'bg-white border-[#ECECEC]');
+  const sectionTitleStyle = { color: palette.text, fontSize: 16, fontWeight: '500' as const, fontFamily: bricolageMediumLoaded ? 'BricolageGrotesque_500Medium' : undefined };
+  const configPanelStyle = { borderRadius: 18, padding: 14, backgroundColor: palette.inset, borderWidth: 1, borderColor: palette.border } as const;
+  const configControlStyle = { height: CONTROL_HEIGHT, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.outline, borderRadius: 14, paddingHorizontal: 14, color: palette.text, fontSize: 14 } as const;
+  const configLabelStyle = { color: palette.textSoft, fontSize: 12, fontWeight: '600' as const, marginBottom: 7 };
   const fieldLabelClass = 'text-xs font-semibold uppercase tracking-wider';
   const addProduct = useFyllStore((s) => s.addProduct);
+  const updateProduct = useFyllStore((s) => s.updateProduct);
+  const products = useFyllStore((s) => s.products);
   const currentUser = useAuthStore((s) => s.currentUser);
   const businessId = useAuthStore((s) => s.businessId);
+  const editingService = useMemo(
+    () => serviceId ? products.find((product) => product.id === serviceId) : undefined,
+    [products, serviceId]
+  );
+  const isEditing = Boolean(editingService);
+  const editingDurationField = editingService?.serviceFields?.find((field) => field.id === 'duration' || field.label.trim().toLowerCase() === 'duration');
 
   const imagePicker = useImagePicker();
   const [serviceImageUrl, setServiceImageUrl] = useState<string | null>(null);
@@ -73,10 +90,29 @@ export default function NewServiceScreen() {
   const [variableOptionInputs, setVariableOptionInputs] = useState<Record<string, { value: string; amount: string }>>({});
   const [fieldOptionInputs, setFieldOptionInputs] = useState<Record<string, { value: string; amount: string }>>({});
   const [openVariableTypeId, setOpenVariableTypeId] = useState<string | null>(null);
+  const [expandedVariableId, setExpandedVariableId] = useState<string | null>(null);
+  const [expandedFieldId, setExpandedFieldId] = useState<string | null>(null);
   const [openFieldTypeId, setOpenFieldTypeId] = useState<string | null>(null);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccessToast, setShowSuccessToast] = useState(false);
+
+  useEffect(() => {
+    if (!editingService) return;
+    setServiceImageUrl(editingService.imageUrl ?? null);
+    setName(editingService.name ?? '');
+    setDescription(editingService.description ?? '');
+    setPrice(String(editingService.variants[0]?.sellingPrice ?? ''));
+    setDuration(editingDurationField?.defaultValue ?? '');
+    setServiceUsesGlobalPricing(editingService.serviceUsesGlobalPricing ?? true);
+    setServiceTags(editingService.serviceTags ?? []);
+    setServiceVariables(editingService.serviceVariables ?? []);
+    setServiceFields((editingService.serviceFields ?? []).filter((field) => field.id !== 'duration' && field.label.trim().toLowerCase() !== 'duration'));
+    setServiceActive(!(editingService.isDiscontinued ?? false));
+    setExpandedVariableId(editingService.serviceVariables?.[0]?.id ?? null);
+    const editableFields = (editingService.serviceFields ?? []).filter((field) => field.id !== 'duration' && field.label.trim().toLowerCase() !== 'duration');
+    setExpandedFieldId(editableFields[0]?.id ?? null);
+  }, [editingService?.id]);
 
   const handlePickServiceImage = async () => {
     const uri = await imagePicker.pickImage();
@@ -99,10 +135,11 @@ export default function NewServiceScreen() {
   };
 
   const handleAddServiceVariable = () => {
+    const variableId = `var-${Date.now()}`;
     setServiceVariables((prev) => [
       ...prev,
       {
-        id: `var-${Date.now()}`,
+        id: variableId,
         name: '',
         type: 'Select',
         options: [],
@@ -110,6 +147,7 @@ export default function NewServiceScreen() {
         defaultValue: '',
       },
     ]);
+    setExpandedVariableId(variableId);
   };
 
   const handleUpdateServiceVariable = (idToUpdate: string, updates: Partial<ServiceVariable>) => {
@@ -119,7 +157,13 @@ export default function NewServiceScreen() {
   };
 
   const handleRemoveServiceVariable = (idToRemove: string) => {
-    setServiceVariables((prev) => prev.filter((variable) => variable.id !== idToRemove));
+    setServiceVariables((prev) => {
+      const nextVariables = prev.filter((variable) => variable.id !== idToRemove);
+      if (expandedVariableId === idToRemove) {
+        setExpandedVariableId(nextVariables.at(-1)?.id ?? null);
+      }
+      return nextVariables;
+    });
   };
 
   const handleAddServiceVariableOption = (idToUpdate: string) => {
@@ -158,10 +202,11 @@ export default function NewServiceScreen() {
   };
 
   const handleAddServiceField = () => {
+    const fieldId = `field-${Date.now()}`;
     setServiceFields((prev) => [
       ...prev,
       {
-        id: `field-${Date.now()}`,
+        id: fieldId,
         label: '',
         type: 'Text',
         options: [],
@@ -169,6 +214,7 @@ export default function NewServiceScreen() {
         defaultValue: '',
       },
     ]);
+    setExpandedFieldId(fieldId);
   };
 
   const handleUpdateServiceField = (idToUpdate: string, updates: Partial<ServiceField>) => {
@@ -178,7 +224,11 @@ export default function NewServiceScreen() {
   };
 
   const handleRemoveServiceField = (idToRemove: string) => {
-    setServiceFields((prev) => prev.filter((field) => field.id !== idToRemove));
+    setServiceFields((prev) => {
+      const nextFields = prev.filter((field) => field.id !== idToRemove);
+      if (expandedFieldId === idToRemove) setExpandedFieldId(nextFields.at(-1)?.id ?? null);
+      return nextFields;
+    });
   };
 
   const handleAddServiceFieldOption = (idToUpdate: string) => {
@@ -234,93 +284,117 @@ export default function NewServiceScreen() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
 
-      const serviceId = generateProductId();
+      const targetServiceId = editingService?.id ?? generateProductId();
       const baseServicePrice = serviceUsesGlobalPricing ? (parseFloat(price) || 0) : 0;
-      const productVariants: ProductVariant[] = [{
-        id: `${serviceId}-1`,
-        sku: `${name.substring(0, 3).toUpperCase()}-SRV`,
-        barcode: generateVariantBarcode(),
-        variableValues: {},
-        stock: 0,
-        sellingPrice: baseServicePrice,
-      }];
+      const productVariants: ProductVariant[] = editingService?.variants.length
+        ? editingService.variants.map((variant, index) => index === 0 ? { ...variant, sellingPrice: baseServicePrice } : variant)
+        : [{
+          id: `${targetServiceId}-1`,
+          sku: `${name.substring(0, 3).toUpperCase()}-SRV`,
+          barcode: generateVariantBarcode(),
+          variableValues: {},
+          stock: 0,
+          sellingPrice: baseServicePrice,
+        }];
 
       const preparedMedia = await prepareProductMediaForPersistence({
         businessId,
-        productId: serviceId,
+        productId: targetServiceId,
         imageUrl: serviceImageUrl,
         variants: productVariants,
       });
 
-      await addProduct({
-        id: serviceId,
+      const servicePayload = {
         name: name.trim(),
         description: description.trim(),
-        categories: [],
+        categories: [] as string[],
         variants: preparedMedia.variants,
         lowStockThreshold: 0,
-        createdAt: new Date().toISOString(),
-        productType: 'service',
+        productType: 'service' as const,
         imageUrl: preparedMedia.imageUrl,
-        createdBy: currentUser?.name,
         serviceTags,
         serviceUsesGlobalPricing,
         serviceVariables,
         serviceFields: mergedServiceFields,
         isDiscontinued: !serviceActive,
-      }, businessId);
+        discontinuedAt: serviceActive ? undefined : (editingService?.discontinuedAt ?? new Date().toISOString()),
+      };
+
+      if (editingService) {
+        await updateProduct(editingService.id, servicePayload, businessId);
+      } else {
+        await addProduct({
+          ...servicePayload,
+          id: targetServiceId,
+          createdAt: new Date().toISOString(),
+          createdBy: currentUser?.name,
+        }, businessId);
+      }
 
       setShowSuccessToast(true);
       setTimeout(() => {
         router.back();
       }, 800);
     } catch (error) {
-      console.error('❌ Failed to create service:', error);
+      console.error(`❌ Failed to ${isEditing ? 'update' : 'create'} service:`, error);
       setIsSubmitting(false);
       if (Platform.OS !== 'web') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       }
-      alert('Failed to create service. Please check your internet connection and try again.');
+      alert(`Failed to ${isEditing ? 'update' : 'create'} service. Please check your internet connection and try again.`);
     }
   };
 
+  const createButton = (height: number) => (
+    <Pressable
+      onPress={handleSubmit}
+      disabled={!isValid || isSubmitting}
+      className="rounded-full items-center justify-center active:opacity-80"
+      style={{ height, backgroundColor: FYLL_LIME, opacity: isValid && !isSubmitting ? 1 : 0.45 }}
+    >
+      <Text style={{ color: FYLL_LIME_INK, fontSize: 15, fontWeight: '600' }}>
+        {isSubmitting ? (isEditing ? 'Saving…' : 'Creating…') : (isEditing ? 'Save changes' : 'Create service')}
+      </Text>
+    </Pressable>
+  );
+
+  const renderThemeToggle = (on: boolean, onPress: () => void, label: string) => (
+    <Pressable
+      accessibilityRole="switch"
+      accessibilityLabel={label}
+      accessibilityState={{ checked: on }}
+      onPress={onPress}
+      className="active:opacity-80"
+      style={{ width: 44, height: 26, borderRadius: 999, backgroundColor: on ? palette.tones.verified.dot : palette.outline, flexShrink: 0 }}
+    >
+      <View style={{ position: 'absolute', top: 3, left: on ? 21 : 3, width: 20, height: 20, borderRadius: 10, backgroundColor: palette.page }} />
+    </Pressable>
+  );
+
+  const renderStepTitle = (step: number, title: string) => (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+      <View style={{ width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.nudgeBg }}>
+        <Text style={{ color: palette.limeOnSurface, fontSize: 12.5, fontWeight: '700' }}>{step}</Text>
+      </View>
+      <Text style={[sectionTitleStyle, { flex: 1 }]}>{title}</Text>
+    </View>
+  );
+
   return (
-    <View className="flex-1" style={{ backgroundColor: canvasBg }}>
-      <View
-        style={[
-          { flex: 1, backgroundColor: panelBg },
-          useDesktopCanvas
-            ? {
-                width: '100%',
-                maxWidth: 1160,
-                alignSelf: 'center',
-                borderWidth: 1,
-                borderColor: '#E6E6E6',
-                borderRadius: 18,
-                overflow: 'hidden',
-                marginVertical: 12,
-              }
-            : null,
-        ]}
-      >
+    <View className="flex-1 flex-row" style={{ backgroundColor: canvasBg }}>
+      {isDesktop ? <DesktopSidebar /> : null}
+      <View style={{ flex: 1, backgroundColor: panelBg }}>
       <SafeAreaView className="flex-1" edges={['top']} style={{ backgroundColor: panelBg }}>
         <View
-          className="flex-row items-center justify-between px-5 py-4 border-b"
-          style={{ backgroundColor: colors.bg.primary, borderBottomColor: colors.border.light }}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: isDesktopWeb ? 28 : 16, paddingTop: isDesktopWeb ? 20 : 12, paddingBottom: 12, backgroundColor: palette.page }}
         >
-          <Pressable
-            onPress={() => router.back()}
-            className="w-10 h-10 rounded-xl items-center justify-center active:opacity-50"
-            style={{ backgroundColor: colors.bg.secondary }}
-          >
-            <ArrowLeft size={20} color={colors.text.primary} strokeWidth={2} />
-          </Pressable>
-          <View className="items-center">
-            <Text style={{ color: colors.text.primary }} className="text-lg font-semibold">
-              New Service
-            </Text>
+          <BackButton onPress={() => router.back()} palette={palette} label="Back to services" />
+          <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+            <MoneyText style={{ color: palette.text, fontSize: isDesktopWeb ? 28 : 22, letterSpacing: -0.8 }} numberOfLines={1}>
+              {isEditing ? 'Edit service' : 'New service'}
+            </MoneyText>
+            <Text style={{ color: palette.faint, fontSize: isMobile ? 12 : 13 }}>Details, pricing and customer options.</Text>
           </View>
-          <View className="w-10 h-10" />
         </View>
 
         <KeyboardAwareScrollView
@@ -330,70 +404,65 @@ export default function NewServiceScreen() {
           enableOnAndroid={true}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{
-            paddingHorizontal: 20,
-            paddingBottom: 24,
+            paddingHorizontal: isDesktopWeb ? 28 : 16,
+            paddingTop: isDesktopWeb ? 8 : 4,
+            paddingBottom: 32,
             width: '100%',
-            maxWidth: isWeb ? 1120 : undefined,
-            alignSelf: isWeb ? 'center' : 'stretch',
+            maxWidth: isDesktopWeb ? 1456 : 760,
+            alignSelf: isDesktopWeb ? 'flex-start' : 'center',
           }}
         >
+          <View style={{ flexDirection: isDesktopWeb ? 'row' : 'column', gap: isDesktopWeb ? 20 : 0, alignItems: isDesktopWeb ? 'flex-start' : 'stretch' }}>
+          <View style={{ flex: isDesktopWeb ? 1 : undefined, minWidth: 0 }}>
           {/* Service Details */}
           <View className="mt-4">
             <View className={cardClass}>
               <View className="mb-4">
-                <Text style={{ color: colors.text.primary }} className={sectionTitleClass}>Core Details</Text>
+                {renderStepTitle(1, 'Core details')}
                 <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1">Main service details and pricing.</Text>
               </View>
 
               <View className="gap-4">
-                <View>
-                  <Text style={{ color: colors.text.secondary }} className={cn(fieldLabelClass, 'mb-1.5')}>Service Image</Text>
+                <View style={{ width: isDesktopWeb ? 180 : '100%' }}>
+                  <Text style={{ color: colors.text.secondary }} className={cn(fieldLabelClass, 'mb-1.5')}>Service image</Text>
                   {imagePicker.error ? (
                     <View className="mb-2 p-3 rounded-xl" style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)' }}>
                       <Text className="text-red-500 text-sm text-center">{imagePicker.error}</Text>
                     </View>
                   ) : null}
-                  {serviceImageUrl ? (
-                    <View className="flex-row items-start">
-                      <View className="rounded-xl overflow-hidden" style={{ borderWidth: 1, borderColor: colors.border.light }}>
-                        <Image source={{ uri: serviceImageUrl }} style={{ width: 80, height: 80 }} resizeMode="cover" />
+                  <Pressable
+                    onPress={handlePickServiceImage}
+                    disabled={imagePicker.isLoading}
+                    className="active:opacity-80"
+                    style={{ width: '100%', height: isDesktopWeb ? 150 : 220, borderRadius: 14, overflow: 'hidden', backgroundColor: serviceImageUrl ? '#F4F4EF' : palette.softFill, alignItems: 'center', justifyContent: 'center', borderWidth: serviceImageUrl ? 0 : 1, borderStyle: 'dashed', borderColor: palette.outline, opacity: imagePicker.isLoading ? 0.55 : 1 }}
+                  >
+                    {serviceImageUrl ? (
+                      <>
+                        <Image source={{ uri: serviceImageUrl }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                        <View style={{ position: 'absolute', left: 8, top: 8, height: 22, paddingHorizontal: 8, borderRadius: 999, backgroundColor: 'rgba(20,20,20,0.7)', justifyContent: 'center' }}>
+                          <Text style={{ color: '#F4F4EF', fontSize: 11, fontWeight: '600' }}>Cover</Text>
+                        </View>
+                      </>
+                    ) : (
+                      <View style={{ alignItems: 'center', gap: 6 }}>
+                        <Camera size={22} color={palette.faint} strokeWidth={1.8} />
+                        <Text style={{ color: palette.faint, fontSize: 12.5 }}>{imagePicker.isLoading ? 'Opening…' : 'Add a service photo'}</Text>
                       </View>
-                      <View className="ml-3 flex-1">
-                        <Pressable
-                          onPress={handlePickServiceImage}
-                          disabled={imagePicker.isLoading}
-                          className="flex-row items-center px-3 py-2 rounded-lg mb-2 active:opacity-70"
-                          style={{ backgroundColor: colors.bg.secondary, opacity: imagePicker.isLoading ? 0.5 : 1 }}
-                        >
-                          <Camera size={16} color={colors.text.primary} strokeWidth={2} />
-                          <Text style={{ color: colors.text.primary }} className="text-xs font-medium ml-2">Change</Text>
-                        </Pressable>
-                        <Pressable
-                          onPress={handleRemoveServiceImage}
-                          className="flex-row items-center px-3 py-2 rounded-lg active:opacity-70"
-                          style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)' }}
-                        >
-                          <Trash2 size={16} color="#EF4444" strokeWidth={2} />
-                          <Text className="text-red-500 text-xs font-medium ml-2">Remove</Text>
-                        </Pressable>
-                      </View>
-                    </View>
-                  ) : (
-                    <Pressable
-                      onPress={handlePickServiceImage}
-                      disabled={imagePicker.isLoading}
-                      className="rounded-xl p-4 items-center active:opacity-70"
-                      style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light, borderStyle: 'dashed', opacity: imagePicker.isLoading ? 0.5 : 1 }}
-                    >
-                      <View className="w-12 h-12 rounded-full items-center justify-center mb-2" style={{ backgroundColor: colors.bg.card }}>
-                        <ImageIcon size={24} color={colors.text.muted} strokeWidth={1.5} />
-                      </View>
-                      <Text style={{ color: colors.text.secondary }} className="text-sm font-medium">
-                        {imagePicker.isLoading ? 'Opening...' : 'Add Service Image'}
-                      </Text>
-                      <Text style={{ color: colors.text.muted }} className="text-xs mt-0.5">Optional thumbnail shown in your services list</Text>
+                    )}
+                  </Pressable>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                    <Pressable onPress={handlePickServiceImage} disabled={imagePicker.isLoading} className="active:opacity-70" style={{ height: 34, paddingHorizontal: 13, borderRadius: 999, borderWidth: 1, borderColor: palette.outline, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Camera size={14} color={palette.textSoft} strokeWidth={2} />
+                      <Text style={{ color: palette.textSoft, fontSize: 12, fontWeight: '600' }}>{serviceImageUrl ? 'Change photo' : 'Choose photo'}</Text>
                     </Pressable>
-                  )}
+                    {serviceImageUrl ? (
+                      <Pressable onPress={handleRemoveServiceImage} className="active:opacity-70" style={{ height: 34, paddingHorizontal: 13, borderRadius: 999, borderWidth: 1, borderColor: palette.dangerBorder, backgroundColor: palette.dangerBg, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Trash2 size={14} color={palette.danger} strokeWidth={2} />
+                        <Text style={{ color: palette.danger, fontSize: 12, fontWeight: '600' }}>Remove</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                  <Text style={{ color: palette.faint, fontSize: isMobile ? 10 : 12, lineHeight: 17, marginTop: 7 }}>Optional thumbnail shown in your services list.</Text>
                 </View>
 
                 <View>
@@ -436,139 +505,85 @@ export default function NewServiceScreen() {
                   />
                 </View>
 
-                <View className="border-t pt-4" style={{ borderTopColor: colors.border.light, borderTopWidth: 1 }}>
-                  <View
+                <View style={{ minWidth: 0 }}>
+                  <Text style={{ color: colors.text.secondary }} className={cn(fieldLabelClass, 'mb-1.5')}>Duration</Text>
+                  <TextInput
+                    value={duration}
+                    onChangeText={setDuration}
+                    placeholder="2-4 hours"
+                    placeholderTextColor={colors.input.placeholder}
                     style={{
-                      flexDirection: isCompactLayout ? 'column' : 'row',
-                      alignItems: isCompactLayout ? 'stretch' : 'center',
-                      gap: 12,
+                      backgroundColor: colors.input.bg,
+                      borderWidth: 1,
+                      borderColor: colors.border.light,
+                      borderRadius: 14,
+                      paddingHorizontal: 14,
+                      color: colors.input.text,
+                      height: CONTROL_HEIGHT,
                     }}
-                  >
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={{ color: colors.text.primary }} className={sectionTitleClass}>
-                        Global Pricing
-                      </Text>
-                      <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1">
-                        One fixed service price for all variable selections.
-                      </Text>
-                    </View>
-                    <Switch
-                      value={serviceUsesGlobalPricing}
-                      onValueChange={setServiceUsesGlobalPricing}
-                      trackColor={{ false: '#767577', true: '#D1D5DB' }}
-                      thumbColor={serviceUsesGlobalPricing ? '#374151' : '#FFFFFF'}
-                    />
-                  </View>
-                </View>
-
-                <View style={{ flexDirection: isCompactLayout ? 'column' : 'row', gap: 12 }}>
-                  {serviceUsesGlobalPricing && (
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={{ color: colors.text.secondary }} className={cn(fieldLabelClass, 'mb-1.5')}>Price</Text>
-                      <TextInput
-                        value={price}
-                        onChangeText={setPrice}
-                        placeholder="₦150/hr"
-                        placeholderTextColor={colors.input.placeholder}
-                        keyboardType="numeric"
-                        style={{
-                          backgroundColor: colors.input.bg,
-                          borderWidth: 1,
-                          borderColor: colors.border.light,
-                          borderRadius: 14,
-                          paddingHorizontal: 14,
-                          color: colors.input.text,
-                          height: CONTROL_HEIGHT,
-                        }}
-                      />
-                    </View>
-                  )}
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={{ color: colors.text.secondary }} className={cn(fieldLabelClass, 'mb-1.5')}>Duration</Text>
-                    <TextInput
-                      value={duration}
-                      onChangeText={setDuration}
-                      placeholder="2-4 hours"
-                      placeholderTextColor={colors.input.placeholder}
-                      style={{
-                        backgroundColor: colors.input.bg,
-                        borderWidth: 1,
-                        borderColor: colors.border.light,
-                        borderRadius: 14,
-                        paddingHorizontal: 14,
-                        color: colors.input.text,
-                        height: CONTROL_HEIGHT,
-                      }}
-                    />
-                  </View>
+                  />
                 </View>
               </View>
             </View>
           </View>
 
-          {/* Tags */}
+          {/* Pricing */}
           <View className={cn('mt-4', cardClass)}>
-            <View className="flex-row items-center justify-between mb-3">
-              <Text style={{ color: colors.text.primary }} className={sectionTitleClass}>Tags</Text>
+            <View className="mb-4">
+              {renderStepTitle(2, 'Pricing method')}
+              <Text style={{ color: palette.faint, fontSize: 12, marginTop: 5 }}>Choose one price or set amounts against customer options.</Text>
             </View>
-            <View className="flex-row flex-wrap gap-2">
-              {serviceTags.map((tag) => (
-                <View
-                  key={tag}
-                  className={cn('flex-row items-center px-3 py-1.5 rounded-full', isDark ? 'bg-[#222222]' : 'bg-gray-100')}
-                >
-                  <Text style={{ color: colors.text.secondary }} className="text-xs font-semibold">{tag}</Text>
-                  <Pressable onPress={() => handleRemoveServiceTag(tag)} className="ml-2 active:opacity-70">
-                    <X size={12} color="#9CA3AF" strokeWidth={2} />
+            <View style={{ flexDirection: 'row', gap: 2, padding: 3, borderRadius: 999, backgroundColor: palette.segmentBg, borderWidth: 1, borderColor: palette.border }}>
+              {[
+                { label: 'One fixed price', value: true },
+                { label: 'Varies by option', value: false },
+              ].map((option) => {
+                const selected = serviceUsesGlobalPricing === option.value;
+                return (
+                  <Pressable
+                    key={option.label}
+                    onPress={() => setServiceUsesGlobalPricing(option.value)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected }}
+                    className="active:opacity-80"
+                    style={{ flex: 1, height: 38, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: selected ? FYLL_LIME : 'transparent' }}
+                  >
+                    <Text style={{ color: selected ? FYLL_LIME_INK : palette.muted, fontSize: 12, fontWeight: '600' }}>{option.label}</Text>
                   </Pressable>
-                </View>
-              ))}
-              <View className="flex-row items-center gap-2">
-                <TextInput
-                  value={serviceTagInput}
-                  onChangeText={setServiceTagInput}
-                  placeholder="Add tag"
-                  placeholderTextColor={colors.input.placeholder}
-                  style={{
-                    backgroundColor: colors.input.bg,
-                    borderWidth: 1,
-                    borderColor: colors.border.light,
-                    borderRadius: 999,
-                    paddingHorizontal: 12,
-                    paddingVertical: 8,
-                    color: colors.input.text,
-                    minWidth: 120,
-                  }}
-                />
-                <Pressable
-                  onPress={handleAddServiceTag}
-                  className="active:opacity-70"
-                  style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: 16,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: colors.text.primary,
-                  }}
-                >
-                  <Plus size={14} color={colors.bg.primary} strokeWidth={2} />
-                </Pressable>
-              </View>
+                );
+              })}
             </View>
+            {serviceUsesGlobalPricing ? (
+              <View style={{ marginTop: 14 }}>
+                <Text style={configLabelStyle}>Service price</Text>
+                <TextInput
+                  value={price}
+                  onChangeText={setPrice}
+                  placeholder="₦150/hr"
+                  placeholderTextColor={colors.input.placeholder}
+                  keyboardType="numeric"
+                  style={configControlStyle}
+                />
+              </View>
+            ) : (
+              <View style={{ marginTop: 14, borderRadius: 14, padding: 13, backgroundColor: palette.nudgeBg, borderWidth: 1, borderColor: palette.nudgeBorder }}>
+                <Text style={{ color: palette.limeOnSurface, fontSize: 12, fontWeight: '600' }}>Set prices inside Variables</Text>
+                <Text style={{ color: palette.nudgeSub, fontSize: 12, lineHeight: 17, marginTop: 3 }}>Each Select option can have its own amount.</Text>
+              </View>
+            )}
           </View>
 
           {/* Variables */}
           <View className={cn('mt-4', cardClass)}>
             <View className="flex-row items-center justify-between mb-3">
-              <Text style={{ color: colors.text.primary }} className={sectionTitleClass}>Variables</Text>
+              {renderStepTitle(3, 'Variables')}
               <Pressable
                 onPress={handleAddServiceVariable}
                 className="flex-row items-center px-3 rounded-full active:opacity-80"
-                style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light, height: 34 }}
+                style={{ backgroundColor: 'transparent', borderWidth: 1, borderColor: palette.outline, height: 34, gap: 5 }}
               >
-                <Plus size={14} color={colors.text.primary} strokeWidth={2} />
-                <Text style={{ color: colors.text.primary }} className="text-xs font-semibold ml-1.5">Add Variable</Text>
+                <Plus size={14} color={palette.text} strokeWidth={2} />
+                <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }}>Add variable</Text>
               </Pressable>
             </View>
 
@@ -576,12 +591,30 @@ export default function NewServiceScreen() {
               {serviceVariables.map((variable) => {
                 const normalizedOptions = (variable.options ?? []).map(normalizeVariableOption);
                 const optionDraft = variableOptionInputs[variable.id] ?? { value: '', amount: '' };
+                const isCollapsed = serviceVariables.length > 1 && expandedVariableId !== variable.id;
 
                 return (
                   <View
                     key={variable.id}
-                    className={cn('rounded-2xl p-3 border', softSurfaceClass)}
+                    style={configPanelStyle}
                   >
+                    {isCollapsed ? (
+                      <Pressable
+                        onPress={() => setExpandedVariableId(variable.id)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Expand ${variable.name.trim() || 'variable'}`}
+                        style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 10 }}
+                      >
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }} numberOfLines={1}>
+                            {variable.name.trim() || 'Untitled variable'}
+                          </Text>
+                          <Text style={{ color: palette.faint, fontSize: 12, marginTop: 3 }}>{variable.type}</Text>
+                        </View>
+                        <ChevronDown size={16} color={palette.muted} strokeWidth={2} />
+                      </Pressable>
+                    ) : (
+                    <>
                     <View style={{ width: '100%', gap: 8 }}>
                     {isMobileWeb ? (
                       <>
@@ -617,60 +650,45 @@ export default function NewServiceScreen() {
                               justifyContent: 'space-between',
                             }}
                           >
-                            <Text style={{ color: colors.text.secondary }} className="text-xs font-semibold uppercase tracking-wide">
-                              Type
+                            <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '500' }}>
+                              {variable.type}
                             </Text>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                              <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">
-                                {variable.type}
-                              </Text>
-                              <ChevronDown size={14} color={colors.text.muted} strokeWidth={2} />
-                            </View>
+                            <ChevronDown size={14} color={colors.text.muted} strokeWidth={2} />
                           </Pressable>
                         </>
                       ) : (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, width: '100%' }}>
-                          <View style={{ flex: 1, minWidth: 0 }}>
+                        <View style={{ gap: 12, width: '100%' }}>
+                          <View style={{ minWidth: 0 }}>
+                            <Text style={configLabelStyle}>Variable name</Text>
                             <TextInput
                               value={variable.name}
                               onChangeText={(value) => handleUpdateServiceVariable(variable.id, { name: value })}
                               placeholder="Variable name"
                               placeholderTextColor={colors.input.placeholder}
-                              style={{
-                                backgroundColor: colors.input.bg,
-                                borderWidth: 1,
-                                borderColor: colors.border.light,
-                                borderRadius: 12,
-                                paddingHorizontal: 12,
-                                color: colors.input.text,
-                                height: CONTROL_HEIGHT,
-                              }}
+                              style={configControlStyle}
                             />
                           </View>
-                          <View style={{ flex: 1, minWidth: 0 }}>
+                          <View style={{ minWidth: 0 }}>
+                            <Text style={configLabelStyle}>Variable type</Text>
                             <Pressable
                               onPress={() => setOpenVariableTypeId((current) => (current === variable.id ? null : variable.id))}
                               className="active:opacity-80"
                               style={{
-                                backgroundColor: colors.input.bg,
-                                borderWidth: 1,
-                                borderColor: colors.border.light,
-                                borderRadius: 12,
-                                paddingHorizontal: 12,
-                                height: CONTROL_HEIGHT,
+                                ...configControlStyle,
                                 flexDirection: 'row',
                                 alignItems: 'center',
                                 justifyContent: 'space-between',
                               }}
                             >
-                              <Text style={{ color: colors.text.primary }} className="text-xs font-semibold">
+                              <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '500' }}>
                                 {variable.type}
                               </Text>
                               <ChevronDown size={14} color={colors.text.muted} strokeWidth={2} />
                             </Pressable>
                           </View>
-                          <Pressable onPress={() => handleRemoveServiceVariable(variable.id)} className="active:opacity-70" style={{ paddingHorizontal: 2 }}>
-                            <X size={16} color="#9CA3AF" strokeWidth={2} />
+                          <Pressable onPress={() => handleRemoveServiceVariable(variable.id)} className="active:opacity-70" style={{ height: 36, paddingHorizontal: 13, borderRadius: 999, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: palette.dangerBg, borderWidth: 1, borderColor: palette.dangerBorder }}>
+                            <Trash2 size={14} color={palette.danger} strokeWidth={2} />
+                            <Text style={{ color: palette.danger, fontSize: 12, fontWeight: '600' }}>Remove variable</Text>
                           </Pressable>
                         </View>
                       )}
@@ -702,7 +720,7 @@ export default function NewServiceScreen() {
                               backgroundColor: variable.type === type ? colors.input.bg : colors.bg.card,
                             }}
                           >
-                            <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '700' }}>{type}</Text>
+                            <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '500' }}>{type}</Text>
                           </Pressable>
                         ))}
                       </View>
@@ -801,11 +819,8 @@ export default function NewServiceScreen() {
                           justifyContent: 'space-between',
                         }}
                       >
-                        <Text style={{ color: colors.text.primary }} className="text-sm font-medium">Required</Text>
-                        <Switch
-                          value={Boolean(variable.required)}
-                          onValueChange={(value) => handleUpdateServiceVariable(variable.id, { required: value })}
-                        />
+                        <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '500' }}>Required</Text>
+                        {renderThemeToggle(Boolean(variable.required), () => handleUpdateServiceVariable(variable.id, { required: !variable.required }), 'Required variable')}
                       </View>
                       <TextInput
                         value={variable.defaultValue ?? ''}
@@ -828,6 +843,8 @@ export default function NewServiceScreen() {
                         <Text style={{ color: '#EF4444', fontSize: 12, fontWeight: '600' }}>Delete Variable</Text>
                       </Pressable>
                     )}
+                    </>
+                    )}
                   </View>
                 );
               })}
@@ -837,17 +854,53 @@ export default function NewServiceScreen() {
             </View>
           </View>
 
+          </View>
+          <View
+            style={isDesktopWeb
+              ? { flex: 1, minWidth: 0, alignSelf: 'flex-start', position: 'sticky' as const, top: 12 }
+              : { width: '100%' }}
+          >
+
+          {/* Tags */}
+          <View className={cn('mt-4', cardClass)}>
+            <View className="flex-row items-center justify-between mb-3">
+              {renderStepTitle(4, 'Tags')}
+            </View>
+            <View className="flex-row flex-wrap gap-2">
+              {serviceTags.map((tag) => (
+                <View key={tag} className={cn('flex-row items-center px-3 py-1.5 rounded-full', isDark ? 'bg-[#222222]' : 'bg-gray-100')}>
+                  <Text style={{ color: colors.text.secondary }} className="text-xs font-semibold">{tag}</Text>
+                  <Pressable onPress={() => handleRemoveServiceTag(tag)} className="ml-2 active:opacity-70">
+                    <X size={12} color="#9CA3AF" strokeWidth={2} />
+                  </Pressable>
+                </View>
+              ))}
+              <View className="flex-row items-center gap-2">
+                <TextInput
+                  value={serviceTagInput}
+                  onChangeText={setServiceTagInput}
+                  placeholder="Add tag"
+                  placeholderTextColor={colors.input.placeholder}
+                  style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8, color: colors.input.text, minWidth: 120 }}
+                />
+                <Pressable onPress={handleAddServiceTag} className="active:opacity-70" style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.text.primary }}>
+                  <Plus size={14} color={colors.bg.primary} strokeWidth={2} />
+                </Pressable>
+              </View>
+            </View>
+          </View>
+
           {/* Additional Fields */}
           <View className={cn('mt-4', cardClass)}>
             <View className="flex-row items-center justify-between mb-3">
-              <Text style={{ color: colors.text.primary }} className={sectionTitleClass}>Additional Fields</Text>
+              {renderStepTitle(5, 'Additional fields')}
               <Pressable
                 onPress={handleAddServiceField}
                 className="flex-row items-center px-3 rounded-full active:opacity-80"
-                style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light, height: 34 }}
+                style={{ backgroundColor: 'transparent', borderWidth: 1, borderColor: palette.outline, height: 34, gap: 5 }}
               >
-                <Plus size={14} color={colors.text.primary} strokeWidth={2} />
-                <Text style={{ color: colors.text.primary }} className="text-xs font-semibold ml-1.5">Add Field</Text>
+                <Plus size={14} color={palette.text} strokeWidth={2} />
+                <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }}>Add field</Text>
               </Pressable>
             </View>
             <View className="gap-3">
@@ -855,8 +908,24 @@ export default function NewServiceScreen() {
                 const normalizedFieldOptions = (field.options ?? []).map(normalizeVariableOption);
                 const fieldOptionDraft = fieldOptionInputs[field.id] ?? { value: '', amount: '' };
                 const fieldType = field.type ?? 'Text';
+                const isFieldCollapsed = serviceFields.length > 1 && expandedFieldId !== field.id;
                 return (
-                <View key={field.id} className={cn('rounded-2xl p-3 border', softSurfaceClass)}>
+                <View key={field.id} style={configPanelStyle}>
+                  {isFieldCollapsed ? (
+                    <Pressable
+                      onPress={() => setExpandedFieldId(field.id)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Expand ${field.label.trim() || 'field'}`}
+                      style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 10 }}
+                    >
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }} numberOfLines={1}>{field.label.trim() || 'Untitled field'}</Text>
+                        <Text style={{ color: palette.faint, fontSize: 12, marginTop: 3 }}>{fieldType} · {field.required ? 'Required' : 'Optional'}</Text>
+                      </View>
+                      <ChevronDown size={16} color={palette.muted} strokeWidth={2} />
+                    </Pressable>
+                  ) : (
+                  <>
                   <View style={{ width: '100%', gap: 8 }}>
                     {isMobileWeb ? (
                       <>
@@ -892,60 +961,45 @@ export default function NewServiceScreen() {
                             justifyContent: 'space-between',
                           }}
                         >
-                          <Text style={{ color: colors.text.secondary }} className="text-xs font-semibold uppercase tracking-wide">
-                            Field Type
+                          <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '500' }}>
+                            {fieldType}
                           </Text>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                            <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">
-                              {fieldType}
-                            </Text>
-                            <ChevronDown size={14} color={colors.text.muted} strokeWidth={2} />
-                          </View>
+                          <ChevronDown size={14} color={colors.text.muted} strokeWidth={2} />
                         </Pressable>
                       </>
                     ) : (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, width: '100%' }}>
-                        <View style={{ flex: 1, minWidth: 0 }}>
+                      <View style={{ gap: 12, width: '100%' }}>
+                        <View style={{ minWidth: 0 }}>
+                          <Text style={configLabelStyle}>Field label</Text>
                           <TextInput
                             value={field.label}
                             onChangeText={(value) => handleUpdateServiceField(field.id, { label: value })}
                             placeholder="Field label (e.g., Test Date)"
                             placeholderTextColor={colors.input.placeholder}
-                            style={{
-                              backgroundColor: colors.input.bg,
-                              borderWidth: 1,
-                              borderColor: colors.border.light,
-                              borderRadius: 12,
-                              paddingHorizontal: 12,
-                              color: colors.input.text,
-                              height: CONTROL_HEIGHT,
-                            }}
+                            style={configControlStyle}
                           />
                         </View>
-                        <View style={{ flex: 1, minWidth: 0 }}>
+                        <View style={{ minWidth: 0 }}>
+                          <Text style={configLabelStyle}>Field type</Text>
                           <Pressable
                             onPress={() => setOpenFieldTypeId((current) => (current === field.id ? null : field.id))}
                             className="active:opacity-80"
                             style={{
-                              backgroundColor: colors.input.bg,
-                              borderWidth: 1,
-                              borderColor: colors.border.light,
-                              borderRadius: 12,
-                              paddingHorizontal: 12,
-                              height: CONTROL_HEIGHT,
+                              ...configControlStyle,
                               flexDirection: 'row',
                               alignItems: 'center',
                               justifyContent: 'space-between',
                             }}
                           >
-                            <Text style={{ color: colors.text.primary }} className="text-xs font-semibold">
+                            <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '500' }}>
                               {fieldType}
                             </Text>
                             <ChevronDown size={14} color={colors.text.muted} strokeWidth={2} />
                           </Pressable>
                         </View>
-                        <Pressable onPress={() => handleRemoveServiceField(field.id)} className="active:opacity-70" style={{ paddingHorizontal: 2 }}>
-                          <X size={16} color="#EF4444" strokeWidth={2} />
+                        <Pressable onPress={() => handleRemoveServiceField(field.id)} className="active:opacity-70" style={{ height: 36, paddingHorizontal: 13, borderRadius: 999, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: palette.dangerBg, borderWidth: 1, borderColor: palette.dangerBorder }}>
+                          <Trash2 size={14} color={palette.danger} strokeWidth={2} />
+                          <Text style={{ color: palette.danger, fontSize: 12, fontWeight: '600' }}>Remove field</Text>
                         </Pressable>
                       </View>
                     )}
@@ -977,7 +1031,7 @@ export default function NewServiceScreen() {
                             backgroundColor: fieldType === type ? colors.input.bg : colors.bg.card,
                           }}
                         >
-                          <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '700' }}>{type}</Text>
+                          <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '500' }}>{type}</Text>
                         </Pressable>
                       ))}
                     </View>
@@ -1067,11 +1121,8 @@ export default function NewServiceScreen() {
                         justifyContent: 'space-between',
                       }}
                     >
-                      <Text style={{ color: colors.text.primary }} className="text-sm font-medium">Required</Text>
-                      <Switch
-                        value={Boolean(field.required)}
-                        onValueChange={(value) => handleUpdateServiceField(field.id, { required: value })}
-                      />
+                      <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '500' }}>Required</Text>
+                      {renderThemeToggle(Boolean(field.required), () => handleUpdateServiceField(field.id, { required: !field.required }), 'Required field')}
                     </View>
                       <TextInput
                         value={field.defaultValue ?? field.value ?? ''}
@@ -1101,6 +1152,8 @@ export default function NewServiceScreen() {
                       <Text style={{ color: '#EF4444', fontSize: 12, fontWeight: '600' }}>Delete Field</Text>
                     </Pressable>
                   )}
+                  </>
+                  )}
                 </View>
                 );
               })}
@@ -1114,37 +1167,29 @@ export default function NewServiceScreen() {
           <View className={cn('mt-4', cardClass)}>
             <View className="flex-row items-center justify-between">
               <View className="flex-1 pr-4">
-                <Text style={{ color: colors.text.primary }} className={sectionTitleClass}>Mark as Inactive</Text>
+                {renderStepTitle(6, 'Availability')}
                 <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1">
                   Hide this service from new order pickers.
                 </Text>
               </View>
-              <Switch
-                value={!serviceActive}
-                onValueChange={(value) => setServiceActive(!value)}
-                trackColor={{ false: '#767577', true: '#9CA3AF' }}
-                thumbColor="#FFFFFF"
-              />
+              {renderThemeToggle(!serviceActive, () => setServiceActive((value) => !value), 'Mark service as inactive')}
             </View>
           </View>
 
-          <View className="h-28" />
+          {!isMobile ? <View style={{ marginTop: 16 }}>{createButton(48)}</View> : null}
+          {isMobile ? <View className="h-28" /> : <View className="h-6" />}
+          </View>
+          </View>
         </KeyboardAwareScrollView>
       </SafeAreaView>
-      </View>
 
-      <StickyButtonContainer bottomInset={insets.bottom}>
-        <View style={{ width: '100%', maxWidth: 1120, alignSelf: 'center' }}>
-          <Button
-            onPress={handleSubmit}
-            disabled={!isValid}
-            loading={isSubmitting}
-            loadingText="Creating..."
-          >
-            Create Service
-          </Button>
-        </View>
-      </StickyButtonContainer>
+      {isMobile ? (
+        <StickyButtonContainer bottomInset={insets.bottom} backgroundColor={palette.page} borderColor={palette.hairline}>
+          <View style={{ width: '100%', maxWidth: 760, alignSelf: 'center' }}>
+            {createButton(52)}
+          </View>
+        </StickyButtonContainer>
+      ) : null}
 
       {showSuccessToast && (
         <View
@@ -1164,6 +1209,7 @@ export default function NewServiceScreen() {
           </View>
         </View>
       )}
+      </View>
     </View>
   );
 }

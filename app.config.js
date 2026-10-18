@@ -58,6 +58,10 @@ export default {
       firebaseDatabaseId: process.env.EXPO_PUBLIC_FIREBASE_DATABASE_ID,
       onesignalAppId: process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID,
       onesignalSafariWebId: process.env.EXPO_PUBLIC_ONESIGNAL_SAFARI_WEB_ID,
+      fyllOnesignalAppId: process.env.EXPO_PUBLIC_ONESIGNAL_FYLL_APP_ID,
+      fyllOnesignalSafariWebId: process.env.EXPO_PUBLIC_ONESIGNAL_FYLL_SAFARI_WEB_ID,
+      wwwOnesignalAppId: process.env.EXPO_PUBLIC_ONESIGNAL_WWW_APP_ID,
+      wwwOnesignalSafariWebId: process.env.EXPO_PUBLIC_ONESIGNAL_WWW_SAFARI_WEB_ID,
       partnerOnesignalAppId: process.env.EXPO_PUBLIC_PARTNER_ONESIGNAL_APP_ID,
       partnerOnesignalSafariWebId: process.env.EXPO_PUBLIC_PARTNER_ONESIGNAL_SAFARI_WEB_ID,
     }

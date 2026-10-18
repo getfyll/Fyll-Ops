@@ -22192,7 +22192,7 @@ const buildExpenseDescription = (
                 style={{
                   position: 'absolute',
                   right: 16,
-                  bottom: Math.max(12, tabBarHeight - 4),
+                  bottom: Math.max(12, tabBarHeight - 30) + 70,
                   width: 268,
                   maxHeight: '78%',
                   borderRadius: 22,
@@ -22209,7 +22209,7 @@ const buildExpenseDescription = (
               >
                 <Pressable onPress={(event) => event.stopPropagation()}>
                   <View className="px-4 py-3" style={{ borderBottomWidth: 1, borderBottomColor: colors.divider }}>
-                    <Text style={{ color: colors.text.primary, fontSize: 15, fontWeight: '700' }}>Finance Menu</Text>
+                    <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '500' }}>Finance Menu</Text>
                     <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 2 }}>{activeTabLabel}</Text>
                   </View>
                   <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 6 }}>
@@ -22243,7 +22243,7 @@ const buildExpenseDescription = (
                         >
                           <Icon size={17} color={isActive ? colors.text.primary : colors.text.tertiary} strokeWidth={2.2} />
                           <Text
-                            style={{ color: isActive ? colors.text.primary : colors.text.secondary, fontSize: 14, fontWeight: isActive ? '700' : '600', marginLeft: 10, flex: 1 }}
+                            style={{ color: isActive ? colors.text.primary : colors.text.secondary, fontSize: 14, fontWeight: '500', marginLeft: 10, flex: 1 }}
                             numberOfLines={1}
                           >
                             {item.label}
@@ -22256,14 +22256,36 @@ const buildExpenseDescription = (
                   </ScrollView>
                 </Pressable>
               </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Close finance menu"
+                onPress={() => setShowMobileFinanceMenu(false)}
+                className="active:opacity-80"
+                style={{
+                  position: 'absolute',
+                  right: 18,
+                  bottom: Math.max(12, tabBarHeight - 30),
+                  width: 58,
+                  height: 58,
+                  borderRadius: 29,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: colors.bar,
+                  zIndex: 60,
+                }}
+              >
+                <X size={23} color={colors.bg.screen} strokeWidth={2.6} />
+              </Pressable>
             </Pressable>
           </Modal>
 
           <Pressable
             onPress={() => {
               void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              setShowMobileFinanceMenu(true);
+              setShowMobileFinanceMenu((previous) => !previous);
             }}
+            accessibilityRole="button"
+            accessibilityLabel={showMobileFinanceMenu ? 'Close finance menu' : 'Open finance menu'}
             style={{
               position: 'absolute',
               right: 18,
@@ -22282,7 +22304,7 @@ const buildExpenseDescription = (
               zIndex: 50,
             }}
           >
-            <Menu size={24} color={colors.bg.screen} strokeWidth={2.6} />
+            {showMobileFinanceMenu ? <X size={23} color={colors.bg.screen} strokeWidth={2.6} /> : <Menu size={24} color={colors.bg.screen} strokeWidth={2.6} />}
           </Pressable>
         </>
       ) : null}
