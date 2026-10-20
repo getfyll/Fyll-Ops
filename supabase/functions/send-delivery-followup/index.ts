@@ -14,9 +14,12 @@ const RESEND_API_KEY = sanitizeEnvValue(Deno.env.get('RESEND_API_KEY'))
 const RESEND_FROM_EMAIL = sanitizeEnvValue(Deno.env.get('RESEND_FROM_EMAIL'))
 const FYLL_ONESIGNAL_APP_ID = sanitizeEnvValue(Deno.env.get('FYLL_ONESIGNAL_APP_ID'))
 const FYLL_ONESIGNAL_REST_API_KEY = sanitizeEnvValue(Deno.env.get('FYLL_ONESIGNAL_REST_API_KEY'))
+const DASHBOARD_ONESIGNAL_APP_ID = sanitizeEnvValue(Deno.env.get('DASHBOARD_ONESIGNAL_APP_ID')) || FYLL_ONESIGNAL_APP_ID
+const DASHBOARD_ONESIGNAL_REST_API_KEY = sanitizeEnvValue(Deno.env.get('DASHBOARD_ONESIGNAL_REST_API_KEY')) || FYLL_ONESIGNAL_REST_API_KEY
 const WWW_ONESIGNAL_APP_ID = sanitizeEnvValue(Deno.env.get('WWW_ONESIGNAL_APP_ID') ?? Deno.env.get('ONESIGNAL_APP_ID'))
 const WWW_ONESIGNAL_REST_API_KEY = sanitizeEnvValue(Deno.env.get('WWW_ONESIGNAL_REST_API_KEY') ?? Deno.env.get('ONESIGNAL_REST_API_KEY'))
 const MAIN_ONESIGNAL_CONFIGS = [
+  { origin: 'https://dashboard.fyll.app', appId: DASHBOARD_ONESIGNAL_APP_ID, restApiKey: DASHBOARD_ONESIGNAL_REST_API_KEY },
   { origin: 'https://fyll.app', appId: FYLL_ONESIGNAL_APP_ID, restApiKey: FYLL_ONESIGNAL_REST_API_KEY },
   { origin: 'https://www.fyll.app', appId: WWW_ONESIGNAL_APP_ID, restApiKey: WWW_ONESIGNAL_REST_API_KEY },
 ]

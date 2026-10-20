@@ -25,7 +25,7 @@ import { supabase } from '@/lib/supabase';
 import { isStorefrontHostname } from '@/lib/storefront-url';
 import { isPlatformAdminHostname } from '@/lib/platform-admin-url';
 import { isPartnerPortalHostname } from '@/lib/partner-host';
-import { FYLL_PUBLIC_APP_ORIGIN } from '@/lib/fyll-app-url';
+import { FYLL_DASHBOARD_APP_ORIGIN } from '@/lib/fyll-app-url';
 import {
   isCustomerPortalHostname,
   isCustomerPortalRoute,
@@ -61,6 +61,7 @@ const webInitialMetrics = {
   insets: { top: 0, left: 0, right: 0, bottom: 0 },
 };
 const PUBLIC_ROUTE_SEGMENTS = new Set(['login', 'welcome', 'start', 'request-invite', 'track', 'order-tracking', 'confirm-delivery', 'start-return', 'checkout', 'platform-admin-login', 'partner', 'partner-login', 'partner-invite', 'q', 'quotes']);
+const LEGACY_PUBLIC_ROUTE_SEGMENTS = new Set(['track', 'order-tracking', 'confirm-delivery', 'start-return', 'checkout', 'partner', 'partner-login', 'partner-invite', 'q', 'quotes']);
 const WOO_CONNECT_SESSION_KEY = 'fyll_woocommerce_connect_params';
 const ROUTE_FEATURES: Record<string, BusinessFeatureKey> = {
   payments: 'socialCheckout',
@@ -262,6 +263,16 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
   const isPartnerPortalHost = Platform.OS === 'web' && typeof window !== 'undefined'
     ? isPartnerPortalHostname(window.location.hostname)
     : false;
+  const isLegacyMainAppHost = Platform.OS === 'web' && typeof window !== 'undefined'
+    ? ['fyll.app', 'www.fyll.app'].includes(window.location.hostname.toLowerCase())
+    : false;
+  const isLegacyPublicRoute = LEGACY_PUBLIC_ROUTE_SEGMENTS.has(firstSegment)
+    || secondSegment === 'confirm-delivery'
+    || secondSegment === 'order-tracking'
+    || secondSegment === 'start-return'
+    || secondSegment === 'track'
+    || secondSegment === 'checkout'
+    || secondSegment === 'quotes';
   const inPublicRoute = PUBLIC_ROUTE_SEGMENTS.has(firstSegment)
     || secondSegment === 'confirm-delivery'
     || secondSegment === 'order-tracking'
@@ -470,6 +481,15 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
     // Wait for the navigation to be ready before attempting navigation
     if (!isNavigationReady) return;
 
+    // Keep customer-facing links on fyll.app, but move every dashboard/login
+    // route to the dashboard subdomain while preserving its path and query.
+    if (isLegacyMainAppHost && !isLegacyPublicRoute && typeof window !== 'undefined') {
+      window.location.replace(
+        `${FYLL_DASHBOARD_APP_ORIGIN}${window.location.pathname}${window.location.search}${window.location.hash}`
+      );
+      return;
+    }
+
     if (isCustomerPortalHost) {
       const routeName = firstSegment === '[businessSlug]' && routeSegments.length === 1
         ? '[businessSlug]/index' : routeSegments.join('/');
@@ -507,7 +527,7 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
           // must never be swallowed into the platform-admin login — bounce
           // it back to the real app domain with the full path/query intact,
           // rather than silently forcing the visitor into an admin-only screen.
-          window.location.href = `${FYLL_PUBLIC_APP_ORIGIN}${window.location.pathname}${window.location.search}`;
+          window.location.href = `${FYLL_DASHBOARD_APP_ORIGIN}${window.location.pathname}${window.location.search}`;
         }
       } else if (isAuthenticated && firstSegment === 'platform-admin-login') {
         router.replace('/platform-admin');
@@ -571,7 +591,7 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
         router.replace('/settings');
       }
     }
-  }, [featureAccess, firstSegment, inPublicRoute, isAuthenticated, isCustomerPortalHost, isDeliveryConfirmationHost, isLoadingBusinessSettings, isNavigationReady, isPartnerPortalHost, isPlatformAdminHost, isReturnsHost, isStorefrontHost, router, secondSegment, segments]);
+  }, [featureAccess, firstSegment, inPublicRoute, isAuthenticated, isCustomerPortalHost, isDeliveryConfirmationHost, isLegacyMainAppHost, isLegacyPublicRoute, isLoadingBusinessSettings, isNavigationReady, isPartnerPortalHost, isPlatformAdminHost, isReturnsHost, isStorefrontHost, router, secondSegment, segments]);
 
   if (!isHydrated || !hasHiddenNativeSplash) {
     return null;

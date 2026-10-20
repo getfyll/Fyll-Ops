@@ -23,7 +23,9 @@ export default function DebugInfoScreen() {
   const { isReady, promptForPermission, getDebugState, forceResync, sendDirectSubscriptionTest } = useWebPushNotifications();
 
   const onesignalHostname = Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.hostname.toLowerCase() : '';
-  const onesignalAppId = onesignalHostname === 'fyll.app'
+  const onesignalAppId = onesignalHostname === 'dashboard.fyll.app'
+    ? (process.env.EXPO_PUBLIC_ONESIGNAL_DASHBOARD_APP_ID ?? process.env.EXPO_PUBLIC_ONESIGNAL_FYLL_APP_ID ?? '')
+    : onesignalHostname === 'fyll.app'
     ? (process.env.EXPO_PUBLIC_ONESIGNAL_FYLL_APP_ID ?? '')
     : onesignalHostname === 'www.fyll.app'
       ? (process.env.EXPO_PUBLIC_ONESIGNAL_WWW_APP_ID ?? process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID ?? '')

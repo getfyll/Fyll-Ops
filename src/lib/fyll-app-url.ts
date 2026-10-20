@@ -1,6 +1,7 @@
 import { PLATFORM_ADMIN_HOSTNAME } from '@/lib/platform-admin-url';
 
 export const FYLL_PUBLIC_APP_ORIGIN = 'https://fyll.app';
+export const FYLL_DASHBOARD_APP_ORIGIN = 'https://dashboard.fyll.app';
 
 const stripTrailingSlash = (value: string) => value.replace(/\/$/, '');
 
@@ -33,10 +34,15 @@ export const getFyllPublicAppOrigin = () => {
   return normalizedUrl;
 };
 
+export const getFyllDashboardAppOrigin = () => {
+  const configuredUrl = (process.env.EXPO_PUBLIC_FYLL_DASHBOARD_URL ?? '').trim();
+  return configuredUrl ? stripTrailingSlash(configuredUrl) : FYLL_DASHBOARD_APP_ORIGIN;
+};
+
 export const buildFounderAccessLink = (inviteCode: string) => (
-  `${getFyllPublicAppOrigin()}/login?access=${encodeURIComponent(inviteCode)}`
+  `${getFyllDashboardAppOrigin()}/login?access=${encodeURIComponent(inviteCode)}`
 );
 
 export const buildTeamInviteLink = (inviteCode: string) => (
-  `${getFyllPublicAppOrigin()}/login?invite=${encodeURIComponent(inviteCode)}`
+  `${getFyllDashboardAppOrigin()}/login?invite=${encodeURIComponent(inviteCode)}`
 );

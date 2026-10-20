@@ -1,17 +1,20 @@
-# OneSignal dual-origin rollout
+# OneSignal multi-origin rollout
 
-Fyll serves both `https://fyll.app` and `https://www.fyll.app`. Browsers treat
-these as separate origins, so each origin requires its own OneSignal Web Push
-configuration and its own subscriber list.
+Fyll's authenticated application lives at `https://dashboard.fyll.app`. The
+existing FYLL OneSignal Web Push app was moved from `https://fyll.app` to the
+dashboard origin as part of that migration. Browsers treat these as separate
+origins, so subscriptions created on the old origin do not move automatically.
 
 ## OneSignal dashboard
 
-Keep the existing OneSignal web app for `https://www.fyll.app`. Create a second
-Web Push app whose exact Site URL is `https://fyll.app` and whose default launch
-URL is also on `https://fyll.app`.
+The FYLL web app's exact Site URL and default launch URL must both be
+`https://dashboard.fyll.app`. Users who subscribed on `fyll.app` must grant
+notification permission again on the dashboard; OneSignal cannot transfer a
+browser push subscription between origins.
 
-Use the same icons and permission-prompt wording for both apps. Do not reuse the
-same App ID for both Site URLs.
+If notifications are later needed on `fyll.app` or `www.fyll.app` as well,
+create a separate OneSignal Web Push app for each origin. One App ID must not be
+used on multiple origins at the same time.
 
 ## Vercel variables
 
@@ -20,14 +23,22 @@ Add these production and preview variables:
 ```text
 EXPO_PUBLIC_ONESIGNAL_FYLL_APP_ID=
 EXPO_PUBLIC_ONESIGNAL_FYLL_SAFARI_WEB_ID=
+EXPO_PUBLIC_ONESIGNAL_DASHBOARD_APP_ID=
+EXPO_PUBLIC_ONESIGNAL_DASHBOARD_SAFARI_WEB_ID=
 EXPO_PUBLIC_ONESIGNAL_WWW_APP_ID=
 EXPO_PUBLIC_ONESIGNAL_WWW_SAFARI_WEB_ID=
 
 FYLL_ONESIGNAL_APP_ID=
 FYLL_ONESIGNAL_REST_API_KEY=
+DASHBOARD_ONESIGNAL_APP_ID=
+DASHBOARD_ONESIGNAL_REST_API_KEY=
 WWW_ONESIGNAL_APP_ID=
 WWW_ONESIGNAL_REST_API_KEY=
 ```
+
+The dashboard variables are optional during the migration. When absent, the
+application deliberately falls back to the existing `FYLL_*` values because
+that OneSignal app is now configured for `dashboard.fyll.app`.
 
 The existing `EXPO_PUBLIC_ONESIGNAL_APP_ID`,
 `EXPO_PUBLIC_ONESIGNAL_SAFARI_WEB_ID`, `ONESIGNAL_APP_ID`, and
@@ -40,6 +51,8 @@ Set these secrets for the notification Edge Functions:
 ```text
 FYLL_ONESIGNAL_APP_ID=
 FYLL_ONESIGNAL_REST_API_KEY=
+DASHBOARD_ONESIGNAL_APP_ID=
+DASHBOARD_ONESIGNAL_REST_API_KEY=
 WWW_ONESIGNAL_APP_ID=
 WWW_ONESIGNAL_REST_API_KEY=
 ```

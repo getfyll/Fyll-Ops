@@ -79,6 +79,13 @@ const getAppId = () => {
 
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname.toLowerCase();
+    if (hostname === 'dashboard.fyll.app') {
+      return Constants.expoConfig?.extra?.dashboardOnesignalAppId
+        ?? process.env.EXPO_PUBLIC_ONESIGNAL_DASHBOARD_APP_ID
+        ?? Constants.expoConfig?.extra?.fyllOnesignalAppId
+        ?? process.env.EXPO_PUBLIC_ONESIGNAL_FYLL_APP_ID
+        ?? '';
+    }
     if (hostname === 'fyll.app') {
       return Constants.expoConfig?.extra?.fyllOnesignalAppId
         ?? process.env.EXPO_PUBLIC_ONESIGNAL_FYLL_APP_ID
@@ -105,6 +112,13 @@ const getSafariWebId = () => {
 
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname.toLowerCase();
+    if (hostname === 'dashboard.fyll.app') {
+      return Constants.expoConfig?.extra?.dashboardOnesignalSafariWebId
+        ?? process.env.EXPO_PUBLIC_ONESIGNAL_DASHBOARD_SAFARI_WEB_ID
+        ?? Constants.expoConfig?.extra?.fyllOnesignalSafariWebId
+        ?? process.env.EXPO_PUBLIC_ONESIGNAL_FYLL_SAFARI_WEB_ID
+        ?? '';
+    }
     if (hostname === 'fyll.app') {
       return Constants.expoConfig?.extra?.fyllOnesignalSafariWebId
         ?? process.env.EXPO_PUBLIC_ONESIGNAL_FYLL_SAFARI_WEB_ID
@@ -137,8 +151,8 @@ const isAlreadyInitializedError = (error: unknown) => {
 };
 
 // Each browser origin uses its own OneSignal web app. Web push subscriptions,
-// permissions, and service workers cannot be shared between fyll.app and www.
-const ONESIGNAL_AUTHORIZED_HOSTNAMES = new Set(['fyll.app', 'www.fyll.app', 'partner.fyll.app']);
+// permissions, and service workers cannot be shared across origins.
+const ONESIGNAL_AUTHORIZED_HOSTNAMES = new Set(['dashboard.fyll.app', 'fyll.app', 'www.fyll.app', 'partner.fyll.app']);
 
 const isOneSignalAuthorizedOrigin = () => {
   if (typeof window === 'undefined') return false;

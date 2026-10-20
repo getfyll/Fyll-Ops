@@ -5,6 +5,8 @@ const ONESIGNAL_APP_ID = process.env.ONESIGNAL_APP_ID;
 const ONESIGNAL_REST_API_KEY = process.env.ONESIGNAL_REST_API_KEY;
 const FYLL_ONESIGNAL_APP_ID = process.env.FYLL_ONESIGNAL_APP_ID;
 const FYLL_ONESIGNAL_REST_API_KEY = process.env.FYLL_ONESIGNAL_REST_API_KEY;
+const DASHBOARD_ONESIGNAL_APP_ID = process.env.DASHBOARD_ONESIGNAL_APP_ID || FYLL_ONESIGNAL_APP_ID;
+const DASHBOARD_ONESIGNAL_REST_API_KEY = process.env.DASHBOARD_ONESIGNAL_REST_API_KEY || FYLL_ONESIGNAL_REST_API_KEY;
 const WWW_ONESIGNAL_APP_ID = process.env.WWW_ONESIGNAL_APP_ID || ONESIGNAL_APP_ID;
 const WWW_ONESIGNAL_REST_API_KEY = process.env.WWW_ONESIGNAL_REST_API_KEY || ONESIGNAL_REST_API_KEY;
 const INTERNAL_NOTIFICATIONS_TOKEN = process.env.INTERNAL_NOTIFICATIONS_TOKEN;
@@ -22,6 +24,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const { businessId, userId, threadTitle, message, url } = req.body;
     const oneSignalConfigs = [
+        { origin: 'https://dashboard.fyll.app', appId: DASHBOARD_ONESIGNAL_APP_ID, restApiKey: DASHBOARD_ONESIGNAL_REST_API_KEY },
         { origin: 'https://www.fyll.app', appId: WWW_ONESIGNAL_APP_ID, restApiKey: WWW_ONESIGNAL_REST_API_KEY },
         { origin: 'https://fyll.app', appId: FYLL_ONESIGNAL_APP_ID, restApiKey: FYLL_ONESIGNAL_REST_API_KEY },
     ].filter((config) => config.appId && config.restApiKey)

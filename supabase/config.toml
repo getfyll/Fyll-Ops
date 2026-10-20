@@ -1,3 +1,20 @@
+[auth]
+site_url = "https://dashboard.fyll.app"
+additional_redirect_urls = [
+  "https://dashboard.fyll.app",
+  "https://dashboard.fyll.app/**",
+  "https://www.fyll.app",
+  "https://dist-eosin-gamma-22.vercel.app",
+  "https://fyll-2-supabase-fylls-projects-91f1d30c.vercel.app/",
+  "https://fyll-2-supabase-fylls-projects-91f1d30c.vercel.app/**",
+  "https://fyll-*-2-supabase-fylls-projects-91f1d30c.vercel.app",
+  "https://fyll-*-2-supabase-fylls-projects-91f1d30c.vercel.app/**",
+  "https://fyll-2-supabase-getfyll-6143-fylls-projects-91f1d30c.vercel.app/",
+  "https://fyll-2-supabase-getfyll-6143-fylls-projects-91f1d30c.vercel.app/**",
+  "https://fyll-*-2-supabase-getfyll-6143-fylls-projects-91f1d30c.vercel.app",
+  "https://fyll-*-2-supabase-getfyll-6143-fylls-projects-91f1d30c.vercel.app/**",
+]
+
 [functions.send-thread-notification]
 verify_jwt = false
 
