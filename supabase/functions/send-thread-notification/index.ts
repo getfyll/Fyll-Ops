@@ -170,6 +170,7 @@ type PartnerJobEventPayload = {
   itemLabel?: string
   amount?: string
   statusLabel?: string
+  jobCount?: number
 }
 
 // Fired by the public.orders AFTER INSERT trigger (see
@@ -1415,6 +1416,7 @@ const notifyBusinessOfPartnerEvent = async ({
   itemLabel,
   amount,
   statusLabel,
+  jobCount,
 }: {
   admin: ReturnType<typeof getAdminClient>
   businessId: string
@@ -1426,6 +1428,7 @@ const notifyBusinessOfPartnerEvent = async ({
   itemLabel: string
   amount?: string
   statusLabel?: string
+  jobCount?: number
 }) => {
   const recipients = await listBusinessRecipientIds(admin, businessId)
   if (recipients.length === 0) return { mode: 'no_recipients', deliveredCount: 0 }
@@ -1435,10 +1438,10 @@ const notifyBusinessOfPartnerEvent = async ({
     : event === 'rejected'
       ? `${partnerName} rejected a job`
       : event === 'bill_submitted'
-        ? `${partnerName} submitted a bill`
+        ? `🧾 ${partnerName} sent a bill${amount ? ` · ${formatPaymentAmount(amount)}` : ''}`
         : `${partnerName} updated a job to ${statusLabel || 'a new status'}`
-  const content = event === 'bill_submitted' && amount
-    ? `${customerName} • ${itemLabel} • ₦${amount}`
+  const content = event === 'bill_submitted'
+    ? `${jobCount && jobCount > 0 ? `${jobCount} ${jobCount === 1 ? 'job' : 'jobs'}` : 'New bill'} · tap to review`
     : `${customerName} • ${itemLabel}`
   // For status_updated, event alone doesn't disambiguate which status —
   // fold statusLabel into the dedupe key so successive different statuses
@@ -2111,6 +2114,7 @@ serve(async (req: Request) => {
         itemLabel,
         amount: typeof eventPayload.amount === 'string' ? eventPayload.amount : undefined,
         statusLabel: typeof eventPayload.statusLabel === 'string' ? eventPayload.statusLabel : undefined,
+        jobCount: typeof eventPayload.jobCount === 'number' ? eventPayload.jobCount : undefined,
       })
 
       return jsonResponse(200, { success: true, type: mode, result })

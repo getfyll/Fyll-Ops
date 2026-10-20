@@ -115,6 +115,7 @@ type PartnerJobEventNotificationPayload = {
   itemLabel?: string;
   amount?: string;
   statusLabel?: string;
+  jobCount?: number;
 };
 
 const invokeNotificationFunction = async (payload: Record<string, unknown>) => {
@@ -682,8 +683,9 @@ export async function sendPartnerJobEventNotification(options: {
   itemLabel?: string;
   amount?: string;
   statusLabel?: string;
+  jobCount?: number;
 }): Promise<void> {
-  const { businessId, partnerToken, jobId, event, customerName, itemLabel, amount, statusLabel } = options;
+  const { businessId, partnerToken, jobId, event, customerName, itemLabel, amount, statusLabel, jobCount } = options;
   if (!businessId || !jobId || !event) return;
 
   const payload: PartnerJobEventNotificationPayload = {
@@ -696,6 +698,7 @@ export async function sendPartnerJobEventNotification(options: {
     itemLabel,
     amount,
     statusLabel,
+    jobCount,
   };
 
   try {

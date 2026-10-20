@@ -71,9 +71,10 @@ export function notifyBusinessOfPartnerJobEvent(options: {
   itemLabel?: string;
   amount?: string;
   statusLabel?: string;
+  jobCount?: number;
 }): void {
-  const { businessId, partnerToken, jobId, event, customerName, itemLabel, amount, statusLabel } = options;
+  const { businessId, partnerToken, jobId, event, customerName, itemLabel, amount, statusLabel, jobCount } = options;
   if (!businessId || !jobId) return;
 
-  void sendPartnerJobEventNotification({ businessId, partnerToken, jobId, event, customerName, itemLabel, amount, statusLabel });
+  void sendPartnerJobEventNotification({ businessId, partnerToken, jobId, event, customerName, itemLabel, amount, statusLabel, jobCount });
 }

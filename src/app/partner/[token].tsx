@@ -263,6 +263,7 @@ export default function PartnerPortalScreen() {
             customerName: job?.customerName,
             itemLabel: job?.itemLabel || job?.jobType || undefined,
             amount: String(result.total),
+            jobCount: result.jobCount,
           });
         }
       }
