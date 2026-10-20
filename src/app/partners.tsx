@@ -549,7 +549,10 @@ export default function PartnersScreen() {
     const pricedJobs = billPeriodFilteredBills.reduce((sum, bill) => sum + bill.jobCount, 0);
     const payablePartners = new Set(billPeriodFilteredBills.map((bill) => bill.partner.id)).size;
     const averageBill = billPeriodFilteredBills.length > 0 ? total / billPeriodFilteredBills.length : 0;
-    return { total, pricedJobs, payablePartners, averageBill };
+    // Submitted but not yet paid (rejected bills are not owed).
+    const unpaidBills = billPeriodFilteredBills.filter((bill) => bill.status !== 'paid' && bill.status !== 'rejected');
+    const pendingPayment = unpaidBills.reduce((sum, bill) => sum + bill.total, 0);
+    return { total, pricedJobs, payablePartners, averageBill, pendingPayment, pendingPaymentCount: unpaidBills.length };
   }, [billPeriodFilteredBills]);
 
   const activeBill = useMemo(() => submittedBills.find((bill) => bill.billId === activeBillId) ?? null, [submittedBills, activeBillId]);
@@ -1725,7 +1728,7 @@ export default function PartnersScreen() {
                     {[
                       ['Priced jobs', String(billStats.pricedJobs)],
                       ['Partners', String(billStats.payablePartners)],
-                      ['Average', formatCurrency(billStats.averageBill)],
+                      ['Pending payment', formatCurrency(billStats.pendingPayment)],
                     ].map(([label, value]) => (
                       <View key={label} style={{ flex: 1, gap: 3 }}>
                         <Text style={{ color: colors.text.tertiary, fontSize: 12 }}>{label}</Text>
@@ -1740,7 +1743,7 @@ export default function PartnersScreen() {
                     ['Total bills', formatCurrency(billStats.total), 'Submitted in this period', 1.3],
                     ['Priced jobs', String(billStats.pricedJobs), 'Jobs included in bills', 1],
                     ['Payable partners', String(billStats.payablePartners), 'Partners with a bill', 1],
-                    ['Average bill', formatCurrency(billStats.averageBill), 'Average submitted bill', 1],
+                    ['Pending payment', formatCurrency(billStats.pendingPayment), `${billStats.pendingPaymentCount} ${billStats.pendingPaymentCount === 1 ? 'bill' : 'bills'} not yet paid`, 1],
                   ].map(([label, value, caption, flex], index) => (
                     <View key={String(label)} style={{ flex: Number(flex), paddingHorizontal: 22, paddingVertical: 18, gap: 4, borderLeftWidth: index ? 1 : 0, borderLeftColor: separatorColor }}>
                       <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{label}</Text>

@@ -964,8 +964,11 @@ const notifyPaymentReceived = async (
   }
 
   const sourceLabel = notificationPayload.sourceLabel
-  const heading = `New ${sourceLabel} payment`
-  const content = `${notificationPayload.customerName || 'A customer'} paid ${notificationPayload.amount} — ${paymentReference}`
+  const isSocialCheckout = notificationPayload.source.toLowerCase() === 'social_checkout'
+  const heading = `${isSocialCheckout ? '🎉 ' : ''}New ${sourceLabel} payment`
+  const content = isSocialCheckout
+    ? `${notificationPayload.amount} · ${notificationPayload.customerName || 'A customer'}`
+    : `${notificationPayload.customerName || 'A customer'} paid ${notificationPayload.amount} — ${paymentReference}`
   const collapseId = `payment:${businessId}:${paymentReference}:${notificationPayload.status || 'received'}`
 
   return await sendPushNotification({
@@ -1440,9 +1443,13 @@ const notifyBusinessOfPartnerEvent = async ({
   // For status_updated, event alone doesn't disambiguate which status —
   // fold statusLabel into the dedupe key so successive different statuses
   // on the same job each notify instead of collapsing into one.
+  // bill_submitted: a voided bill can be resubmitted with the same first job,
+  // so make every submission unique or OneSignal drops it as a duplicate.
   const dedupeKeyBase = event === 'status_updated'
     ? `partner-job-event:${jobId}:${event}:${statusLabel || ''}`
-    : `partner-job-event:${jobId}:${event}`
+    : event === 'bill_submitted'
+      ? `partner-job-event:${jobId}:${event}:${Date.now()}`
+      : `partner-job-event:${jobId}:${event}`
 
   const [pushResult] = await Promise.all([
     sendPushNotification({

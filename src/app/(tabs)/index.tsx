@@ -710,13 +710,15 @@ function NotificationPanel({
       const customerName = typeof payload?.customerName === 'string' && payload.customerName.trim()
         ? payload.customerName.trim()
         : 'A customer';
-      const amount = typeof payload?.amount === 'string' && payload.amount.trim()
-        ? ` ${payload.amount.trim()}`
-        : '';
+      const amount = typeof payload?.amount === 'string' ? payload.amount.trim() : '';
+      const source = typeof payload?.source === 'string' ? payload.source.trim().toLowerCase() : '';
       const sourceLabel = typeof payload?.sourceLabel === 'string' && payload.sourceLabel.trim()
         ? payload.sourceLabel.trim()
         : 'payment';
-      return `${customerName} made a ${sourceLabel} payment${amount}`;
+      if (source === 'social_checkout') {
+        return `🎉 New Social Checkout payment${amount ? ` · ${amount}` : ''} · ${customerName}`;
+      }
+      return `${customerName} made a ${sourceLabel} payment${amount ? ` ${amount}` : ''}`;
     }
     if (payload?.type === 'quote_update') {
       const customerName = typeof payload?.customerName === 'string' && payload.customerName.trim()
