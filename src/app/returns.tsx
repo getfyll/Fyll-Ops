@@ -20,7 +20,7 @@ import useFyllStore, {
   type ReturnRequest,
   type ReturnStatus,
 } from '@/lib/state/fyll-store';
-import { DESKTOP_PAGE_HEADER_MIN_HEIGHT, getStandardPageHeadingStyle } from '@/lib/page-heading';
+import { DESKTOP_PAGE_HEADER_MIN_HEIGHT, usePageHeadingStyle } from '@/lib/page-heading';
 import { SearchClearButton } from '@/components/SearchClearButton';
 
 type ReturnDateFilter = '7d' | 'month' | '30d' | 'year';
@@ -80,7 +80,7 @@ export default function ReturnsScreen() {
   const colors = useThemeColors();
   const { isDesktop, isMobile } = useBreakpoint();
   const tabBarHeight = useTabBarHeight();
-  const headingStyle = getStandardPageHeadingStyle(isMobile);
+  const headingStyle = usePageHeadingStyle(isMobile);
   const returns = useFyllStore((s) => s.returns);
   const cases = useFyllStore((s) => s.cases);
   const addReturn = useFyllStore((s) => s.addReturn);
@@ -376,7 +376,7 @@ export default function ReturnsScreen() {
           }}
         >
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={isDesktop ? { color: colors.text.primary, fontSize: 26, fontWeight: '700', lineHeight: 32 } : [headingStyle, { color: colors.text.primary }]}>
+            <Text style={[headingStyle, { color: colors.text.primary }]}>
               Returns
             </Text>
             <Text style={{ color: colors.text.tertiary, fontSize: isMobile ? 10 : 12, fontWeight: '400', marginTop: 4, lineHeight: isMobile ? 14 : 18, maxWidth: 520 }} numberOfLines={isMobile ? 2 : undefined}>

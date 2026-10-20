@@ -15,7 +15,7 @@ import { useTabBarHeight } from '@/lib/useTabBarHeight';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { canShowFinanceNavigation, getDefaultFinanceSectionForRole } from '@/lib/finance-access';
 import { isOrderStatusException, ORDER_TRACKING_STAGE_OPTIONS, sortOrderStatusesForFulfillment, type OrderTrackingStage } from '@/lib/order-status';
-import { DESKTOP_PAGE_HEADER_MIN_HEIGHT, getStandardPageHeadingStyle } from '@/lib/page-heading';
+import { DESKTOP_PAGE_HEADER_MIN_HEIGHT, usePageHeadingStyle } from '@/lib/page-heading';
 import {
   buildCustomerTrackingHostUrl,
   buildDeliveryConfirmationHostUrl,
@@ -556,7 +556,7 @@ export default function SettingsScreen() {
   const tabBarHeight = useTabBarHeight();
   const { isDesktop, isMobile } = useBreakpoint();
   const isWebDesktop = Platform.OS === 'web' && isDesktop;
-  const pageHeadingStyle = getStandardPageHeadingStyle(isMobile);
+  const pageHeadingStyle = usePageHeadingStyle(isMobile);
   const desktopHeaderMinHeight = DESKTOP_PAGE_HEADER_MIN_HEIGHT;
   const orderStatuses = useFyllStore((s) => s.orderStatuses);
   const saleSources = useFyllStore((s) => s.saleSources);

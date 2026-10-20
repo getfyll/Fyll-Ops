@@ -6,6 +6,7 @@ import { Plus, Search, X, Check, ChevronDown, ChevronRight, ChevronLeft, ArrowDo
 import useFyllStore, { Customer, formatCurrency, NIGERIA_STATES, Order } from '@/lib/state/fyll-store';
 import useAuthStore from '@/lib/state/auth-store';
 import { useThemeColors } from '@/lib/theme';
+import { usePageHeadingStyle } from '@/lib/page-heading';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { getActiveSplitCardStyle } from '@/lib/selection-style';
 import { SplitViewLayout } from '@/components/SplitViewLayout';
@@ -25,6 +26,7 @@ export default function CustomersScreen() {
   const { from: globalFrom } = useGlobalSearchParams<{ from?: string }>();
   const colors = useThemeColors();
   const { isMobile, isDesktop } = useBreakpoint();
+  const pageHeadingStyle = usePageHeadingStyle(isMobile);
   const isWebDesktop = Platform.OS === 'web' && isDesktop;
   const showSplitView = !isMobile && !isWebDesktop;
   const palette = usePaymentsPalette();
@@ -438,7 +440,7 @@ export default function CustomersScreen() {
 
               <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                 <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
-                  <Text style={{ color: palette.text, fontSize: 30, fontWeight: '700', letterSpacing: -0.6 }} numberOfLines={1}>Customers</Text>
+                  <Text style={{ color: palette.text, ...pageHeadingStyle }} numberOfLines={1}>Customers</Text>
                   {isWebDesktop ? <Text style={{ color: palette.faint, fontSize: 14 }}>Customer relationships, order history and lifetime value.</Text> : null}
                   {isOfflineMode ? (
                     <View
@@ -627,25 +629,25 @@ export default function CustomersScreen() {
           >
             <View style={{ backgroundColor: palette.card, borderBottomWidth: 1, borderBottomColor: palette.hairline }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 22, paddingVertical: 14 }}>
-                <Text style={{ color: palette.faint, flex: 1.9, fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>
+                <Text style={{ color: colors.text.muted, flex: 1.9, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>
                   CUSTOMER
                 </Text>
-                <Text style={{ color: palette.faint, flex: 1.8, fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>
+                <Text style={{ color: colors.text.muted, flex: 1.8, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>
                   EMAIL
                 </Text>
-                <Text style={{ color: palette.faint, width: 150, fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>
+                <Text style={{ color: colors.text.muted, width: 150, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>
                   PHONE
                 </Text>
-                <Text style={{ color: palette.faint, flex: 1, fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>
+                <Text style={{ color: colors.text.muted, flex: 1, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>
                   STATE
                 </Text>
-                <Text style={{ color: palette.faint, width: 90, textAlign: 'center', fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>
+                <Text style={{ color: colors.text.muted, width: 90, textAlign: 'center', fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>
                   ORDERS
                 </Text>
-                <Text style={{ color: palette.faint, width: 150, textAlign: 'right', fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>
+                <Text style={{ color: colors.text.muted, width: 150, textAlign: 'right', fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>
                   TOTAL SPENT
                 </Text>
-                <Text style={{ color: palette.faint, width: 120, textAlign: 'right', fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>
+                <Text style={{ color: colors.text.muted, width: 120, textAlign: 'right', fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>
                   JOINED
                 </Text>
                 <View style={{ width: 24 }} />

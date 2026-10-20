@@ -29,6 +29,7 @@ import {
 } from 'lucide-react-native';
 import { AttachmentLink } from '@/components/AttachmentLink';
 import { DesktopSidebar } from '@/components/DesktopSidebar';
+import { PartnerBillDetail } from '@/components/PartnerBillDetail';
 import { PartnerJobFormModal } from '@/components/PartnerJobFormModal';
 import { ResolvedAttachmentImage } from '@/components/ResolvedAttachmentImage';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
@@ -36,7 +37,7 @@ import { useBreakpoint } from '@/lib/useBreakpoint';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
 import { useResolvedThemeMode, useThemeColors } from '@/lib/theme';
 import { FYLL_PARTNER_PORTAL_ORIGIN } from '@/lib/partner-host';
-import { DESKTOP_PAGE_HEADER_MIN_HEIGHT, getStandardPageHeadingStyle } from '@/lib/page-heading';
+import { DESKTOP_PAGE_HEADER_MIN_HEIGHT, usePageHeadingStyle } from '@/lib/page-heading';
 import useAuthStore from '@/lib/state/auth-store';
 import useFyllStore, {
   formatCurrency,
@@ -299,7 +300,7 @@ export default function PartnersScreen() {
   const { partnerSection } = useLocalSearchParams<{ partnerSection?: string | string[] }>();
   const { isDesktop, isMobile } = useBreakpoint();
   const tabBarHeight = useTabBarHeight();
-  const headingStyle = getStandardPageHeadingStyle(isMobile);
+  const headingStyle = usePageHeadingStyle(isMobile);
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
   const currentUserName = useAuthStore((s) => s.currentUser?.name ?? '');
   const statusBusinessName = businessName.trim() || companyName.trim() || 'business';
@@ -337,6 +338,8 @@ export default function PartnersScreen() {
   const [billPeriod, setBillPeriod] = useState<BillPeriod>('all');
   const [billStatusFilter, setBillStatusFilter] = useState<'all' | PartnerBillStatus>('all');
   const [activeBillId, setActiveBillId] = useState<string | null>(null);
+  // Desktop: the bill open in the right-hand panel on the Bills tab.
+  const [selectedBillId, setSelectedBillId] = useState<string | null>(null);
   const [billNoteDraft, setBillNoteDraft] = useState('');
   const [actionMenuJobId, setActionMenuJobId] = useState<string | null>(null);
   const [statusDropdownJobId, setStatusDropdownJobId] = useState<string | null>(null);
@@ -1042,6 +1045,10 @@ export default function PartnersScreen() {
 
   const openBillReview = (billId: string) => {
     closeJobMenus();
+    if (isDesktop) {
+      setSelectedBillId(billId);
+      return;
+    }
     router.push(`/partner-bills/${billId}` as never);
   };
 
@@ -1169,7 +1176,7 @@ export default function PartnersScreen() {
             }}
           >
             <View style={{ flex: 1, minWidth: 200 }}>
-              <Text style={isDesktop ? { color: colors.text.primary, fontSize: 26, fontWeight: '700', lineHeight: 32 } : [headingStyle, { color: colors.text.primary }]}>
+              <Text style={[headingStyle, { color: colors.text.primary }]}>
                 {activePartnerSection === 'jobs' ? 'Partner Jobs' : activePartnerSection === 'bills' ? 'Partner Bills' : activePartnerSection === 'issues' ? 'Issues' : 'Partners'}
               </Text>
               {activePartnerSection !== 'jobs' && activePartnerSection !== 'bills' ? (
@@ -1411,8 +1418,8 @@ export default function PartnersScreen() {
                 return (
                   <React.Fragment key={job.id}>
                   {isFirstInGroup ? (
-                    <View style={{ paddingHorizontal: 22, paddingTop: 10, paddingBottom: 8, backgroundColor: isDark ? '#101010' : '#E9E9E6', borderBottomWidth: 1, borderBottomColor: separatorColor }}>
-                      <Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{getPartnerJobDayLabel(job)}</Text>
+                    <View style={{ paddingHorizontal: 22, paddingTop: 10, paddingBottom: 8, backgroundColor: isDark ? '#101010' : '#F7F7F7', borderBottomWidth: 1, borderBottomColor: separatorColor }}>
+                      <Text style={{ color: colors.text.secondary, fontSize: 10, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{getPartnerJobDayLabel(job)}</Text>
                     </View>
                   ) : null}
                   <Pressable
@@ -1803,12 +1810,12 @@ export default function PartnersScreen() {
                 isDesktop ? (
                   <>
                     <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 22, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: separatorColor }}>
-                      <Text style={{ color: colors.text.muted, flex: 0.55, minWidth: 76, paddingRight: 10, fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>PARTNER</Text>
-                      <Text style={{ color: colors.text.muted, flex: 1.35, minWidth: 180, paddingRight: 10, fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>PARTNER NAME</Text>
-                      <Text style={{ color: colors.text.muted, flex: 1.1, minWidth: 140, paddingRight: 10, fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>JOBS</Text>
-                      <Text style={{ color: colors.text.muted, flex: 0.9, minWidth: 110, paddingRight: 10, fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>STATUS</Text>
-                      <Text style={{ color: colors.text.muted, flex: 0.95, minWidth: 132, paddingRight: 16, textAlign: 'right', fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>TOTAL</Text>
-                      <Text style={{ color: colors.text.muted, width: 110, paddingLeft: 10, textAlign: 'right', fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>ACTION</Text>
+                      <Text style={{ color: colors.text.muted, flex: 0.55, minWidth: 76, paddingRight: 10, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>PARTNER</Text>
+                      <Text style={{ color: colors.text.muted, flex: 1.35, minWidth: 180, paddingRight: 10, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>PARTNER NAME</Text>
+                      <Text style={{ color: colors.text.muted, flex: 1.1, minWidth: 140, paddingRight: 10, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>JOBS</Text>
+                      <Text style={{ color: colors.text.muted, flex: 0.9, minWidth: 110, paddingRight: 10, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>STATUS</Text>
+                      <Text style={{ color: colors.text.muted, flex: 0.95, minWidth: 132, paddingRight: 16, textAlign: 'right', fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>TOTAL</Text>
+                      <Text style={{ color: colors.text.muted, width: 110, paddingLeft: 10, textAlign: 'right', fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>ACTION</Text>
                     </View>
                     {visibleBills.map((bill, index) => {
                       const meta = BILL_STATUS_META[bill.status];
@@ -1817,8 +1824,8 @@ export default function PartnersScreen() {
                       return (
                         <React.Fragment key={bill.billId}>
                         {isFirstInGroup ? (
-                          <View style={{ paddingHorizontal: 22, paddingTop: 10, paddingBottom: 8, backgroundColor: isDark ? '#101010' : '#E9E9E6', borderBottomWidth: 1, borderBottomColor: separatorColor }}>
-                            <Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{getBillDayLabel(bill.submittedAt)}</Text>
+                          <View style={{ paddingHorizontal: 22, paddingTop: 10, paddingBottom: 8, backgroundColor: isDark ? '#101010' : '#F7F7F7', borderBottomWidth: 1, borderBottomColor: separatorColor }}>
+                            <Text style={{ color: colors.text.secondary, fontSize: 10, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{getBillDayLabel(bill.submittedAt)}</Text>
                           </View>
                         ) : null}
                         <Pressable
@@ -1831,6 +1838,7 @@ export default function PartnersScreen() {
                             paddingVertical: 8,
                             borderTopWidth: isFirstInGroup ? 0 : 1,
                             borderTopColor: separatorColor,
+                            backgroundColor: selectedBillId === bill.billId ? colors.bg.secondary : 'transparent',
                           }}
                         >
                           <View style={{ flex: 0.55, minWidth: 76, paddingRight: 10 }}>
@@ -1967,12 +1975,12 @@ export default function PartnersScreen() {
               ) : isDesktop ? (
                 <View style={{ borderRadius: 18, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card, overflow: 'hidden' }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 46, paddingHorizontal: 18, borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
-                    <Text style={{ color: colors.text.muted, flex: 1.1, minWidth: 140, paddingRight: 10, fontSize: 10, fontWeight: '600' }}>CUSTOMER NAME</Text>
-                    <Text style={{ color: colors.text.muted, flex: 0.9, minWidth: 110, paddingRight: 10, fontSize: 10, fontWeight: '600' }}>CATEGORY</Text>
-                    <Text style={{ color: colors.text.muted, flex: 0.9, minWidth: 110, paddingRight: 10, fontSize: 10, fontWeight: '600' }}>SERVICE</Text>
-                    <Text style={{ color: colors.text.muted, flex: 1.6, minWidth: 200, paddingRight: 10, fontSize: 10, fontWeight: '600' }}>ISSUE DESCRIPTION</Text>
-                    <Text style={{ color: colors.text.muted, flex: 0.8, minWidth: 100, paddingRight: 10, fontSize: 10, fontWeight: '600' }}>STATUS</Text>
-                    <Text style={{ color: colors.text.muted, width: 130, paddingLeft: 10, textAlign: 'right', fontSize: 10, fontWeight: '600' }}>ACTION</Text>
+                    <Text style={{ color: colors.text.muted, flex: 1.1, minWidth: 140, paddingRight: 10, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>CUSTOMER NAME</Text>
+                    <Text style={{ color: colors.text.muted, flex: 0.9, minWidth: 110, paddingRight: 10, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>CATEGORY</Text>
+                    <Text style={{ color: colors.text.muted, flex: 0.9, minWidth: 110, paddingRight: 10, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>SERVICE</Text>
+                    <Text style={{ color: colors.text.muted, flex: 1.6, minWidth: 200, paddingRight: 10, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>ISSUE DESCRIPTION</Text>
+                    <Text style={{ color: colors.text.muted, flex: 0.8, minWidth: 100, paddingRight: 10, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>STATUS</Text>
+                    <Text style={{ color: colors.text.muted, width: 130, paddingLeft: 10, textAlign: 'right', fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>ACTION</Text>
                   </View>
                   {[...partnerJobIssues]
                     .sort((a, b) => {
@@ -2138,14 +2146,14 @@ export default function PartnersScreen() {
                   {isDesktop ? (
                     <>
                       <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 46, paddingHorizontal: 18, borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
-                        <Text style={{ color: colors.text.muted, flex: 0.55, minWidth: 76, paddingRight: 10, fontSize: 10, fontWeight: '600' }}>PARTNER</Text>
-                        <Text style={{ color: colors.text.muted, flex: 1.35, minWidth: 180, paddingRight: 10, fontSize: 10, fontWeight: '600' }}>BUSINESS NAME</Text>
-                        <Text style={{ color: colors.text.muted, flex: 1.1, minWidth: 140, paddingRight: 10, fontSize: 10, fontWeight: '600' }}>CONTACT NAME</Text>
-                        <Text style={{ color: colors.text.muted, flex: 1.05, minWidth: 140, paddingRight: 10, fontSize: 10, fontWeight: '600' }}>PHONE</Text>
-                        <Text style={{ color: colors.text.muted, flex: 1.05, minWidth: 140, paddingRight: 10, fontSize: 10, fontWeight: '600' }}>EMAIL</Text>
-                        <Text style={{ color: colors.text.muted, flex: 0.75, minWidth: 92, paddingRight: 10, fontSize: 10, fontWeight: '600' }}>STATUS</Text>
-                        <Text style={{ color: colors.text.muted, flex: 0.85, minWidth: 105, paddingRight: 24, textAlign: 'right', fontSize: 10, fontWeight: '600' }}>CREATED</Text>
-                        <Text style={{ color: colors.text.muted, width: 140, paddingLeft: 18, textAlign: 'right', fontSize: 10, fontWeight: '600' }}>ACTION</Text>
+                        <Text style={{ color: colors.text.muted, flex: 0.55, minWidth: 76, paddingRight: 10, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>PARTNER</Text>
+                        <Text style={{ color: colors.text.muted, flex: 1.35, minWidth: 180, paddingRight: 10, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>BUSINESS NAME</Text>
+                        <Text style={{ color: colors.text.muted, flex: 1.1, minWidth: 140, paddingRight: 10, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>CONTACT NAME</Text>
+                        <Text style={{ color: colors.text.muted, flex: 1.05, minWidth: 140, paddingRight: 10, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>PHONE</Text>
+                        <Text style={{ color: colors.text.muted, flex: 1.05, minWidth: 140, paddingRight: 10, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>EMAIL</Text>
+                        <Text style={{ color: colors.text.muted, flex: 0.75, minWidth: 92, paddingRight: 10, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>STATUS</Text>
+                        <Text style={{ color: colors.text.muted, flex: 0.85, minWidth: 105, paddingRight: 24, textAlign: 'right', fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>CREATED</Text>
+                        <Text style={{ color: colors.text.muted, width: 140, paddingLeft: 18, textAlign: 'right', fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>ACTION</Text>
                       </View>
                       {partners.map((partner, index) => (
                         <Pressable
@@ -3320,6 +3328,34 @@ export default function PartnersScreen() {
       </Modal>
 
       {/* Job detail */}
+      <Modal
+        visible={isDesktop && activePartnerSection === 'bills' && Boolean(selectedBillId)}
+        transparent
+        animationType="none"
+        presentationStyle="overFullScreen"
+        onRequestClose={() => setSelectedBillId(null)}
+      >
+        <Pressable
+          onPress={() => setSelectedBillId(null)}
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.18)', alignItems: 'flex-end', justifyContent: 'flex-start' }}
+        >
+          <Pressable
+            onPress={(event) => event.stopPropagation()}
+            style={{
+              width: 460,
+              height: '100%',
+              maxWidth: 560,
+              overflow: 'hidden',
+              backgroundColor: colors.bg.primary,
+              borderLeftWidth: 1,
+              borderLeftColor: colors.border.light,
+            }}
+          >
+            <PartnerBillDetail billId={selectedBillId ?? undefined} embedded onClose={() => setSelectedBillId(null)} />
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       <Modal
         visible={!!activeMobileJob}
         transparent={!isMobile}

@@ -11,6 +11,7 @@ import {
   usePaymentsPalette,
 } from '@/components/payments/payments-ui';
 import { useBreakpoint } from '@/lib/useBreakpoint';
+import { usePageHeadingStyle } from '@/lib/page-heading';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
 import type { AuditLog, AuditLogActivity, AuditLogActivityChange, AuditLogItem } from '@/lib/state/fyll-store';
 import type { ThemeColors } from '@/lib/theme';
@@ -51,6 +52,7 @@ export function AuditDetailView({
   const palette = usePaymentsPalette();
   const tabBarHeight = useTabBarHeight();
   const { isMobile, width } = useBreakpoint();
+  const pageHeadingStyle = usePageHeadingStyle(isMobile);
   const isWide = Platform.OS === 'web' && width >= 1100;
   const fs = (size: number) => (isMobile && size < 16 ? (size >= 13 ? 12 : 10) : size);
 
@@ -394,7 +396,7 @@ export function AuditDetailView({
           <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 }}>
             <BackButton onPress={onBack} palette={palette} label="Back to audit" />
             <View style={{ marginLeft: 12, flex: 1 }}>
-              <Text style={{ color: palette.text, fontSize: isMobile ? 26 : 30, lineHeight: isMobile ? 31 : 36, fontWeight: '700', letterSpacing: -0.6 }}>{isWarehouseAudit ? 'Warehouse count' : 'Count details'}</Text>
+              <Text style={{ color: palette.text, ...pageHeadingStyle }}>{isWarehouseAudit ? 'Warehouse count' : 'Count details'}</Text>
               <Text style={{ color: palette.muted, fontSize: fs(13), marginTop: 3 }} numberOfLines={1}>
                 {log ? `${shortDateLabel} · ${log.performedBy ?? 'Team'} · ${items.length} ${itemLabel}` : 'Review a completed stock count'}
               </Text>

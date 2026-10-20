@@ -8,6 +8,7 @@ import { formatCompactNaira, formatNaira } from '@/components/inventory/inventor
 import { isAuditableProduct } from '@/components/inventory-audit/utils';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useBreakpoint } from '@/lib/useBreakpoint';
+import { usePageHeadingStyle } from '@/lib/page-heading';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -91,6 +92,7 @@ export function AuditOverview({
   const palette = usePaymentsPalette();
   const tabBarHeight = useTabBarHeight();
   const { isMobile, width } = useBreakpoint();
+  const pageHeadingStyle = usePageHeadingStyle(isMobile);
   const isWide = Platform.OS === 'web' && width >= 1100;
   const [dismissedReviews, setDismissedReviews] = useState<string[]>([]);
   const [showAllPicks, setShowAllPicks] = useState<boolean>(false);
@@ -307,7 +309,7 @@ export function AuditOverview({
           <BackButton onPress={onBack} palette={palette} label="Back to inventory" />
         ) : null}
         <View style={{ flex: 1, gap: 4 }}>
-          <Text style={{ color: palette.text, fontSize: isMobile ? 26 : 30, fontWeight: '700', letterSpacing: -0.6 }}>Stock audit</Text>
+          <Text style={{ color: palette.text, ...pageHeadingStyle }}>Stock audit</Text>
           <Text style={{ color: palette.faint, fontSize: fs(14) }}>
             {totalSkus} SKUs{latest ? ` · last count ${shortDate(latest.log.completedAt)}${latest.log.performedBy ? ` by ${latest.log.performedBy}` : ''}` : ' · no counts yet'}
           </Text>
@@ -395,7 +397,7 @@ export function AuditOverview({
             </View>
             <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
               <Text style={{ color: palette.text, fontSize: isMobile ? 12 : 14.5, fontWeight: '500' }} numberOfLines={1}>{pick.name}</Text>
-              <Text style={{ color: palette.faint, fontSize: isMobile ? 10 : 12.5 }} numberOfLines={1}>{pick.sku}{isMobile ? '' : ''}</Text>
+              <Text style={{ color: palette.faint, fontSize: 10 }} numberOfLines={1}>{pick.sku}{isMobile ? '' : ''}</Text>
               {isMobile ? (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                   <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: toneInk(pick.reason.tone) }} />

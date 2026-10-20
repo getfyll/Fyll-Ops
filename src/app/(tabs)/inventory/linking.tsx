@@ -9,6 +9,7 @@ import { useBusinessSettings } from '@/hooks/useBusinessSettings';
 import useAuthStore from '@/lib/state/auth-store';
 import useFyllStore, { formatCurrency, type Product, type ProductVariant } from '@/lib/state/fyll-store';
 import { useBreakpoint } from '@/lib/useBreakpoint';
+import { usePageHeadingStyle } from '@/lib/page-heading';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
 import { useThemeColors } from '@/lib/theme';
 import { SearchClearButton } from '@/components/SearchClearButton';
@@ -182,7 +183,8 @@ export default function InventoryLinkingScreen() {
   const router = useRouter();
   const colors = useThemeColors();
   const isDark = colors.bg.primary === '#111111';
-  const { isDesktop } = useBreakpoint();
+  const { isDesktop, isMobile } = useBreakpoint();
+  const pageHeadingStyle = usePageHeadingStyle(isMobile);
   const isWebDesktop = isDesktop && Platform.OS === 'web';
   const tabBarHeight = useTabBarHeight();
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
@@ -369,7 +371,7 @@ export default function InventoryLinkingScreen() {
             </Pressable>
           ) : null}
           <View className="flex-1">
-            <Text style={{ color: colors.text.primary, fontSize: isWebDesktop ? 28 : 24, lineHeight: isWebDesktop ? 34 : 30, fontWeight: '700' }}>
+            <Text style={{ color: colors.text.primary, ...pageHeadingStyle }}>
               Product Linking
             </Text>
             <Text style={{ color: colors.text.tertiary, fontSize: 13, marginTop: 4, fontWeight: '400' }}>
@@ -574,6 +576,7 @@ export default function InventoryLinkingScreen() {
                         color: colors.text.muted,
                         fontSize: 10,
                         fontWeight: '600',
+                        letterSpacing: 0.6,
                         textTransform: 'uppercase',
                       }}
                     >
@@ -622,7 +625,7 @@ export default function InventoryLinkingScreen() {
                           </View>
                           <View className="flex-1">
                             <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>{row.productName}</Text>
-                            <Text style={{ ...cellTextStyle(colors.text.secondary, 12), marginTop: 3 }} numberOfLines={1}>{row.variantName}</Text>
+                            <Text style={{ ...cellTextStyle(colors.text.secondary, 10), marginTop: 3 }} numberOfLines={1}>{row.variantName}</Text>
                           </View>
                         </View>
 

@@ -9,7 +9,7 @@ import useFyllStore, { formatCurrency, type Order } from '@/lib/state/fyll-store
 import { useThemeColors } from '@/lib/theme';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
-import { DESKTOP_PAGE_HEADER_MIN_HEIGHT, getStandardPageHeadingStyle } from '@/lib/page-heading';
+import { DESKTOP_PAGE_HEADER_MIN_HEIGHT, usePageHeadingStyle } from '@/lib/page-heading';
 import { bucketFulfillmentStatus, getCustomerTrackingCode, getOrderFulfillmentStage } from '@/lib/fulfillment';
 import { createOrderStatusColorMap, getOrderStatusChipColors } from '@/lib/order-status-colors';
 import useAuthStore from '@/lib/state/auth-store';
@@ -172,7 +172,7 @@ export default function DeliveriesScreen() {
   const colors = useThemeColors();
   const { isDesktop, isMobile } = useBreakpoint();
   const tabBarHeight = useTabBarHeight();
-  const pageHeadingStyle = getStandardPageHeadingStyle(isMobile);
+  const pageHeadingStyle = usePageHeadingStyle(isMobile);
   const desktopHeaderMinHeight = DESKTOP_PAGE_HEADER_MIN_HEIGHT;
   const isWeb = Platform.OS === 'web';
   const isWebDesktop = isWeb && isDesktop;
@@ -729,6 +729,7 @@ export default function DeliveriesScreen() {
                             flex: Number(flex),
                             fontSize: 10,
                             fontWeight: '600',
+                            letterSpacing: 0.6,
                           }}
                         >
                           {label}
@@ -744,8 +745,8 @@ export default function DeliveriesScreen() {
                       return (
                         <React.Fragment key={order.id}>
                         {isFirstInGroup ? (
-                          <View style={{ paddingHorizontal: 20, paddingTop: 10, paddingBottom: 8, backgroundColor: isDark ? '#101010' : '#E9E9E6', borderBottomWidth: 1, borderBottomColor: separatorColor }}>
-                            <Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{getDeliveryDayLabel(currentEntry.dispatchAt)}</Text>
+                          <View style={{ paddingHorizontal: 20, paddingTop: 10, paddingBottom: 8, backgroundColor: isDark ? '#101010' : '#F7F7F7', borderBottomWidth: 1, borderBottomColor: separatorColor }}>
+                            <Text style={{ color: colors.text.secondary, fontSize: 10, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{getDeliveryDayLabel(currentEntry.dispatchAt)}</Text>
                           </View>
                         ) : null}
                         <View

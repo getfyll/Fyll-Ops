@@ -9,7 +9,7 @@ import { supabase } from '@/lib/supabase';
 import { useThemeColors } from '@/lib/theme';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
-import { DESKTOP_PAGE_HEADER_MIN_HEIGHT, getStandardPageHeadingStyle } from '@/lib/page-heading';
+import { DESKTOP_PAGE_HEADER_MIN_HEIGHT, usePageHeadingStyle } from '@/lib/page-heading';
 import { storage } from '@/lib/storage';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
 
@@ -145,7 +145,7 @@ export default function AnnouncementsScreen() {
   const colors = useThemeColors();
   const { isDesktop, isMobile } = useBreakpoint();
   const tabBarHeight = useTabBarHeight();
-  const pageHeadingStyle = getStandardPageHeadingStyle(isMobile);
+  const pageHeadingStyle = usePageHeadingStyle(isMobile);
   const desktopHeaderMinHeight = DESKTOP_PAGE_HEADER_MIN_HEIGHT;
   const isWebDesktop = Platform.OS === 'web' && isDesktop;
 
@@ -470,7 +470,7 @@ export default function AnnouncementsScreen() {
               }}
             >
               <View style={isWebDesktop ? undefined : { flex: 1 }}>
-                <Text style={[pageHeadingStyle, { color: colors.text.primary, fontWeight: '700' }]}>Announcements</Text>
+                <Text style={[pageHeadingStyle, { color: colors.text.primary }]}>Announcements</Text>
                 <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 4, lineHeight: 18 }}>
                   Send a simple customer update by audience.
                 </Text>

@@ -13,7 +13,8 @@ import { useBreakpoint } from '@/lib/useBreakpoint';
 import { MOBILE_FILTER_SHEET } from '@/lib/mobile-filter-sheet';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
 import { useThemeColors } from '@/lib/theme';
-import { DESKTOP_PAGE_HEADER_MIN_HEIGHT, getStandardPageHeadingStyle } from '@/lib/page-heading';
+import { DESKTOP_PAGE_HEADER_MIN_HEIGHT, usePageHeadingStyle } from '@/lib/page-heading';
+import { FYLL_LIME, FYLL_LIME_INK } from '@/components/payments/payments-ui';
 import { collaborationData, type CollaborationThreadSummary } from '@/lib/supabase/collaboration';
 import { storage } from '@/lib/storage';
 import {
@@ -205,7 +206,7 @@ export default function ThreadsScreen() {
   const navigation = useNavigation();
   const { isMobile, isDesktop } = useBreakpoint();
   const tabBarHeight = useTabBarHeight();
-  const pageHeadingStyle = getStandardPageHeadingStyle(isMobile);
+  const pageHeadingStyle = usePageHeadingStyle(isMobile);
   const desktopHeaderMinHeight = DESKTOP_PAGE_HEADER_MIN_HEIGHT;
   const isDark = colors.bg.primary === '#111111';
   const isWebDesktop = Platform.OS === 'web' && isDesktop;
@@ -213,9 +214,17 @@ export default function ThreadsScreen() {
   const splitShellBackground = isDark ? '#101010' : '#F3F4F6';
   const leftPaneBackground = isDark ? '#111111' : '#FFFFFF';
   const rightPaneBackground = isDark ? '#161616' : '#F3F4F6';
-  const selectedRowBackground = isDark ? 'rgba(255,255,255,0.06)' : '#EEF0F3';
-  const hoverRowBackground = isDark ? 'rgba(255,255,255,0.03)' : '#F5F6F8';
-  const searchBackground = isDark ? '#161616' : '#FFFFFF';
+  // Selected / hovered thread rows get a soft Fyll-lime wash (no border).
+  const selectedRowBackground = isDark ? 'rgba(213,224,87,0.12)' : 'rgba(213,224,87,0.26)';
+  const hoverRowBackground = isDark ? 'rgba(213,224,87,0.05)' : 'rgba(213,224,87,0.12)';
+  const searchBackground = isDark ? '#1E1E1E' : '#FFFFFF';
+  // Threads list design tokens (cards, hints, dividers) — dark values come from the design mock.
+  const listCardBg = isDark ? '#1E1E1E' : colors.bg.card;
+  const listCardBorder = isDark ? 'rgba(255,255,255,0.07)' : colors.border.light;
+  const listHint = isDark ? '#8C8D84' : '#8A8A8A';
+  const listPreview = isDark ? '#9D9E94' : colors.text.secondary;
+  const listDivider = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.08)';
+  const listSectionLabel = { color: listHint, fontSize: 12, fontWeight: '600' as const, letterSpacing: 0.6, textTransform: 'uppercase' as const };
   const subtleDivider = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.10)';
   const companyCardBackground = isDark ? '#0D1A34' : '#0C1933';
   const companyCardBorder = isDark ? 'rgba(148,163,184,0.26)' : 'rgba(15,23,42,0.14)';
@@ -1079,7 +1088,7 @@ export default function ThreadsScreen() {
     const displayUnreadCount = hasManualUnread ? Math.max(item.unreadCount, 1) : item.unreadCount;
     const standardTextSize = 14;
     const standardTextWeight = '600' as const;
-    const orderTextSize = standardTextSize;
+    const orderTextSize = 14;
     const customerTextSize = isMobile ? 12 : 13;
     const previewTextWeight = '500' as const;
     const dateTextSize = isMobile ? 10 : 12;
@@ -1090,15 +1099,14 @@ export default function ThreadsScreen() {
     const rowStatusColorsRaw = getOrderStatusChipColors(item.orderStatus, orderStatusColorMap, isDark);
     const rowStatusColors = getThreadOrderStatusDisplay(item.orderStatus, rowStatusColorsRaw);
     const customerInitial = getCustomerInitials(item.customerName);
-    const avatarBackground = isDark ? '#D1D5DB' : '#0B0B0B';
-    const avatarTextColor = isDark ? '#0B0B0B' : '#FFFFFF';
+    const avatarBackground = isDark ? '#2A2B24' : colors.bg.secondary;
+    const avatarTextColor = isDark ? '#D5D6CC' : colors.text.secondary;
     return (
       <View
         style={{
-          marginHorizontal: 12,
-          marginBottom: 4,
-          borderBottomWidth: isDark ? 0 : 0.5,
-          borderBottomColor: isDark ? 'transparent' : 'rgba(15,23,42,0.08)',
+          marginHorizontal: showSplitView ? 12 : 20,
+          borderTopWidth: 1,
+          borderTopColor: listDivider,
         }}
       >
         <Pressable
@@ -1119,18 +1127,17 @@ export default function ThreadsScreen() {
           className="active:opacity-80 focus:outline-none"
           focusable={Platform.OS !== 'web'}
           style={{
-            paddingHorizontal: 14,
-            paddingTop: 10,
-            paddingBottom: 10,
-            borderRadius: 18,
-            borderWidth: 1,
-            borderColor: isSelected ? colors.border.light : 'transparent',
+            paddingHorizontal: showSplitView ? 14 : 0,
+            paddingTop: 14,
+            paddingBottom: 14,
+            borderRadius: 0,
+            borderWidth: 0,
             backgroundColor: isSelected
               ? selectedRowBackground
               : (isHovered ? hoverRowBackground : 'transparent'),
           }}
         >
-          <View className="flex-row items-center">
+          <View className="flex-row items-start">
             <View
               style={{
                 width: 44,
@@ -1139,10 +1146,10 @@ export default function ThreadsScreen() {
                 alignItems: 'center',
                 justifyContent: 'center',
                 backgroundColor: avatarBackground,
-                marginRight: 10,
+                marginRight: 12,
               }}
             >
-              <Text style={{ color: avatarTextColor, fontSize: 16, fontWeight: '700' }}>
+              <Text style={{ color: avatarTextColor, fontSize: 14, fontWeight: '600' }}>
                 {customerInitial}
               </Text>
             </View>
@@ -1151,7 +1158,7 @@ export default function ThreadsScreen() {
               <View className="flex-row items-center justify-between">
                 <View className="flex-row items-center flex-1 mr-2">
                   <Text
-                    style={{ color: colors.text.primary, fontSize: orderTextSize, fontWeight: standardTextWeight }}
+                    style={{ color: colors.text.primary, fontSize: orderTextSize, fontWeight: '700' }}
                     numberOfLines={1}
                   >
                     {item.customerName}
@@ -1189,11 +1196,11 @@ export default function ThreadsScreen() {
                   ) : null}
                   <View
                     style={{
+                      height: 24,
                       borderRadius: 999,
-                      paddingHorizontal: 7,
-                      paddingVertical: 3,
-                      borderWidth: 1,
-                      borderColor: rowStatusColors.border,
+                      paddingHorizontal: 10,
+                      alignItems: 'center',
+                      justifyContent: 'center',
                       backgroundColor: rowStatusColors.bg,
                       marginLeft: 8,
                     }}
@@ -1202,48 +1209,31 @@ export default function ThreadsScreen() {
                       style={{
                         color: rowStatusColors.text,
                         fontSize: 10,
-                        fontWeight: '700',
+                        fontWeight: '600',
                       }}
                       numberOfLines={1}
                     >
                       {rowStatusColors.label}
                     </Text>
                   </View>
-                  <Text style={{ color: colors.text.tertiary, fontSize: dateTextSize, fontWeight: standardTextWeight, marginLeft: 8 }}>
-                    {formatThreadTime(item.updatedAt)}
-                  </Text>
-                  {!showSplitView ? (
-                    <Pressable
-                      onPress={() => setThreadActionsTarget(item)}
-                      className="items-center justify-center active:opacity-70"
-                      style={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: 12,
-                        marginLeft: 6,
-                      }}
-                    >
-                      <ChevronDown size={18} color={colors.text.tertiary} strokeWidth={2.2} />
-                    </Pressable>
-                  ) : null}
                 </View>
               </View>
 
-              <Text
-                style={{
-                  color: colors.text.tertiary,
-                  fontSize: isMobile ? 12 : 13,
-                  fontWeight: '600',
-                  marginTop: 2,
-                }}
-                numberOfLines={1}
-              >
-                {orderReference}
-              </Text>
-
-              <View className="flex-row items-center justify-between mt-1">
+              <View className="flex-row items-center justify-between" style={{ marginTop: 3 }}>
                 <Text
-                  style={{ color: colors.text.secondary, fontSize: customerTextSize, fontWeight: previewTextWeight }}
+                  style={{ color: listHint, fontSize: 12.5 }}
+                  numberOfLines={1}
+                >
+                  {orderReference}
+                </Text>
+                <Text style={{ color: listHint, fontSize: 12, marginLeft: 10 }}>
+                  {formatThreadTime(item.updatedAt)}
+                </Text>
+              </View>
+
+              <View className="flex-row items-center justify-between" style={{ marginTop: 3 }}>
+                <Text
+                  style={{ color: listPreview, fontSize: 13.5 }}
                   className="flex-1 mr-2"
                   numberOfLines={1}
                 >
@@ -1264,16 +1254,6 @@ export default function ThreadsScreen() {
             </View>
           </View>
         </Pressable>
-        {isDark ? (
-          <View
-            style={{
-              height: 1,
-              backgroundColor: 'rgba(255,255,255,0.06)',
-              marginHorizontal: 12,
-              marginTop: 4,
-            }}
-          />
-        ) : null}
       </View>
     );
   };
@@ -1622,20 +1602,18 @@ export default function ThreadsScreen() {
               disabled={!businessId || isOfflineMode}
               className="active:opacity-80"
               style={{
-                height: 44,
-                paddingHorizontal: 16,
+                height: 42,
+                paddingHorizontal: 18,
                 borderRadius: 999,
                 flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'center',
-                backgroundColor: '#FFFFFF',
-                borderWidth: 1,
-                borderColor: colors.border.light,
+                backgroundColor: FYLL_LIME,
                 opacity: !businessId || isOfflineMode ? 0.5 : 1,
               }}
             >
-              <Plus size={18} color="#111111" strokeWidth={2.5} />
-              <Text style={{ color: '#111111', fontSize: 12, fontWeight: '600', marginLeft: 8 }}>
+              <Plus size={16} color={FYLL_LIME_INK} strokeWidth={2.4} />
+              <Text style={{ color: FYLL_LIME_INK, fontSize: 14.5, fontWeight: '600', marginLeft: 7 }}>
                 New thread
               </Text>
             </Pressable>
@@ -1654,16 +1632,16 @@ export default function ThreadsScreen() {
       >
         <View className="flex-row items-center">
           <View
-            className="flex-row items-center rounded-full px-4"
-            style={{ flex: 1, height: 46, backgroundColor: searchBackground, borderWidth: 1, borderColor: colors.border.light }}
+            className="flex-row items-center px-4"
+            style={{ flex: 1, height: 46, borderRadius: 14, backgroundColor: searchBackground, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.08)' : colors.border.light }}
           >
-            <Search size={18} color={colors.text.muted} strokeWidth={2} />
+            <Search size={18} color={listHint} strokeWidth={2} />
             <TextInput
               value={searchQuery}
               onChangeText={setSearchQuery}
               placeholder="Search by order or customer"
               placeholderTextColor={colors.input.placeholder}
-              style={{ flex: 1, marginLeft: 8, color: colors.input.text, fontSize: 14 }}
+              style={{ flex: 1, marginLeft: 8, color: colors.input.text, fontSize: 15 }}
               selectionColor={colors.text.primary}
             />
             <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
@@ -1675,10 +1653,8 @@ export default function ThreadsScreen() {
               width: 46,
               height: 46,
               borderRadius: 23,
-              backgroundColor: activeFilterCount > 0 ? colors.accent.primary : colors.bg.card,
-              borderWidth: activeFilterCount > 0 ? 0 : 1,
-              borderColor: colors.border.light,
-              marginLeft: 8,
+              backgroundColor: activeFilterCount > 0 ? colors.accent.primary : isDark ? 'rgba(255,255,255,0.06)' : colors.bg.secondary,
+              marginLeft: 10,
             }}
           >
             <Filter size={18} color={activeFilterCount > 0 ? (isDark ? '#000000' : '#FFFFFF') : colors.text.tertiary} strokeWidth={2} />
@@ -1712,16 +1688,8 @@ export default function ThreadsScreen() {
               className="active:opacity-80"
               style={{ flexDirection: 'row', alignItems: 'center' }}
             >
-              <Text
-                style={{
-                  color: colors.text.muted,
-                  fontSize: 11,
-                  fontWeight: '700',
-                  letterSpacing: 1.4,
-                  textTransform: 'uppercase',
-                }}
-              >
-                Team Threads
+              <Text style={listSectionLabel}>
+                Team threads
               </Text>
               {teamThreadUnreadTotal > 0 ? (
                 <View
@@ -1742,12 +1710,12 @@ export default function ThreadsScreen() {
                 </View>
               ) : null}
               {isTeamThreadsCollapsed ? (
-                <ChevronUp size={16} color={colors.text.muted} strokeWidth={2.2} style={{ marginLeft: 8 }} />
+                <ChevronUp size={13} color={listHint} strokeWidth={2.4} style={{ marginLeft: 6 }} />
               ) : (
-                <ChevronDown size={16} color={colors.text.muted} strokeWidth={2.2} style={{ marginLeft: 8 }} />
+                <ChevronDown size={13} color={listHint} strokeWidth={2.4} style={{ marginLeft: 6 }} />
               )}
             </Pressable>
-            <Text style={{ color: colors.text.muted, fontSize: 11, fontWeight: '700' }}>
+            <Text style={{ color: listHint, fontSize: 12 }}>
               {allTeamThreadItems.length} Thread{allTeamThreadItems.length === 1 ? '' : 's'}
             </Text>
           </View>
@@ -1765,105 +1733,49 @@ export default function ThreadsScreen() {
                       disabled={!businessId || isOfflineMode}
                       className="active:opacity-85"
                       style={{
-                        borderRadius: 24,
-                        paddingHorizontal: 14,
-                        paddingVertical: 12,
-                        minHeight: 86,
-                        backgroundColor: companyCardBackground,
+                        borderRadius: 16,
+                        paddingHorizontal: 16,
+                        paddingVertical: 14,
+                        backgroundColor: isSelected ? selectedRowBackground : listCardBg,
                         borderWidth: 1,
-                        borderColor: isSelected ? '#2563EB' : companyCardBorder,
-                        overflow: 'hidden',
-                        shadowColor: '#020617',
-                        shadowOpacity: isDark ? 0.26 : 0.1,
-                        shadowRadius: 14,
-                        shadowOffset: { width: 0, height: 8 },
-                        elevation: 8,
+                        borderColor: isSelected ? 'rgba(213,224,87,0.55)' : listCardBorder,
                         opacity: !businessId || isOfflineMode ? 0.55 : 1,
                       }}
                     >
-                      <View
-                        style={{
-                          position: 'absolute',
-                          right: -10,
-                          top: -8,
-                          width: 170,
-                          height: 120,
-                          pointerEvents: 'none',
-                        }}
-                      >
-                        <View
-                          style={{
-                            position: 'absolute',
-                            right: 14,
-                            top: 12,
-                            width: 90,
-                            height: 20,
-                            borderRadius: 999,
-                            backgroundColor: 'rgba(148,163,184,0.12)',
-                          }}
-                        />
-                        <View
-                          style={{
-                            position: 'absolute',
-                            right: -2,
-                            top: 40,
-                            width: 110,
-                            height: 16,
-                            borderRadius: 999,
-                            backgroundColor: 'rgba(148,163,184,0.09)',
-                          }}
-                        />
-                        <View
-                          style={{
-                            position: 'absolute',
-                            right: 40,
-                            top: -12,
-                            width: 14,
-                            height: 140,
-                            borderRadius: 999,
-                            backgroundColor: 'rgba(148,163,184,0.1)',
-                            transform: [{ rotate: '8deg' }],
-                          }}
-                        />
-                      </View>
-
                       <View className="flex-row items-center">
                         <View
                           style={{
-                            width: 56,
-                            height: 56,
-                            borderRadius: 28,
+                            width: 44,
+                            height: 44,
+                            borderRadius: 22,
                             alignItems: 'center',
                             justifyContent: 'center',
-                            backgroundColor: companyCardAvatar,
-                            borderWidth: 1,
-                            borderColor: 'rgba(148,163,184,0.24)',
+                            backgroundColor: 'rgba(213,224,87,0.14)',
                             marginRight: 12,
                           }}
                         >
-                          <Hash size={24} color={companyCardTextPrimary} strokeWidth={2.2} />
+                          <Hash size={19} color={isDark ? FYLL_LIME : '#5F6A00'} strokeWidth={2} />
                         </View>
 
-                        <View className="flex-1">
-                          <Text style={{ color: companyCardTextPrimary, fontSize: 18, fontWeight: '700' }} numberOfLines={1}>
+                        <View className="flex-1" style={{ gap: 2 }}>
+                          <Text style={{ color: colors.text.primary, fontSize: 15.5, fontWeight: '700' }} numberOfLines={1}>
                             {teamItem.name}
                           </Text>
-                          <Text style={{ color: companyCardTextSecondary, fontSize: 13, fontWeight: '500', marginTop: 3 }} numberOfLines={1}>
+                          <Text style={{ color: listHint, fontSize: 13 }} numberOfLines={1}>
                             {teamItem.preview}
                           </Text>
                         </View>
 
-                        <View style={{ alignItems: 'flex-end', marginLeft: 10 }}>
-                          <Text style={{ color: companyCardTextMuted, fontSize: 11, fontWeight: '700' }}>
+                        <View style={{ alignItems: 'flex-end', marginLeft: 10, gap: 6 }}>
+                          <Text style={{ color: listHint, fontSize: 12 }}>
                             {teamItem.updatedAt ? formatThreadTime(teamItem.updatedAt) : ''}
                           </Text>
                           {unreadCount > 0 ? (
                             <View
                               style={{
-                                marginTop: 6,
-                                minWidth: 24,
-                                height: 24,
-                                borderRadius: 12,
+                                minWidth: 22,
+                                height: 22,
+                                borderRadius: 11,
                                 backgroundColor: '#EF4444',
                                 alignItems: 'center',
                                 justifyContent: 'center',
@@ -1874,9 +1786,7 @@ export default function ThreadsScreen() {
                                 {unreadCount > 99 ? '99+' : unreadCount}
                               </Text>
                             </View>
-                          ) : (
-                            <View style={{ marginTop: 6, minWidth: 24, height: 24 }} />
-                          )}
+                          ) : null}
                         </View>
                       </View>
                     </Pressable>
@@ -1924,18 +1834,10 @@ export default function ThreadsScreen() {
           justifyContent: 'space-between',
         }}
       >
-        <Text
-          style={{
-            color: colors.text.muted,
-            fontSize: 11,
-            fontWeight: '700',
-            letterSpacing: 1.4,
-            textTransform: 'uppercase',
-          }}
-        >
-          Order Threads
+        <Text style={listSectionLabel}>
+          Order threads
         </Text>
-        <Text style={{ color: colors.text.muted, fontSize: 11, fontWeight: '700' }}>
+        <Text style={{ color: listHint, fontSize: 12 }}>
           {filteredThreadItems.length} Thread{filteredThreadItems.length === 1 ? '' : 's'}
         </Text>
       </View>

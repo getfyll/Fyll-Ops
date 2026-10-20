@@ -36,7 +36,7 @@ import useAuthStore from '@/lib/state/auth-store';
 import { useResolvedThemeMode, useStatsColors } from '@/lib/theme';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
 import { useBreakpoint } from '@/lib/useBreakpoint';
-import { getStandardPageHeadingStyle } from '@/lib/page-heading';
+import { usePageHeadingStyle } from '@/lib/page-heading';
 import { InteractiveLineChart, type LineChartDatum } from '@/components/stats/InteractiveLineChart';
 import { SalesBarChart } from '@/components/stats/SalesBarChart';
 import { BreakdownTable } from '@/components/stats/BreakdownTable';
@@ -1549,7 +1549,7 @@ export default function FinanceScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useTabBarHeight();
   const { isDesktop, isTablet, isMobile, width: viewportWidth } = useBreakpoint();
-  const pageHeadingStyle = getStandardPageHeadingStyle(isMobile);
+  const pageHeadingStyle = usePageHeadingStyle(isMobile);
 
   const products = useFyllStore((s) => s.products);
   const productVariables = useFyllStore((s) => s.productVariables);

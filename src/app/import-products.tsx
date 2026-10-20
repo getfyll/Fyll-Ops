@@ -7,6 +7,8 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
 import { useThemeColors } from '@/lib/theme';
+import { usePageHeadingStyle } from '@/lib/page-heading';
+import { useBreakpoint } from '@/lib/useBreakpoint';
 import useAuthStore from '@/lib/state/auth-store';
 import useFyllStore, { Product, ProductVariant, generateProductId, generateVariantBarcode } from '@/lib/state/fyll-store';
 import { parseCsv } from '@/lib/csv';
@@ -60,6 +62,7 @@ export default function ImportProductsScreen() {
   const { from } = useLocalSearchParams<{ from?: string | string[] }>();
   const goBack = useSettingsBack();
   const colors = useThemeColors();
+  const pageHeadingStyle = usePageHeadingStyle(useBreakpoint().isMobile);
   const openedFromSettings = isFromSettingsRoute(from);
   const panelStyles = getSettingsWebPanelStyles(openedFromSettings, colors.bg.primary, colors.border.light);
   const businessId = useAuthStore((s) => s.businessId);
@@ -234,14 +237,7 @@ export default function ImportProductsScreen() {
             >
               <ArrowLeft size={20} color={colors.text.primary} strokeWidth={2} />
             </Pressable>
-            <Text
-              style={{
-                color: colors.text.primary,
-                fontSize: Platform.OS === 'web' ? 14 : 20,
-                lineHeight: Platform.OS === 'web' ? 18 : 24,
-                fontWeight: '600',
-              }}
-            >
+            <Text style={{ color: colors.text.primary, ...pageHeadingStyle }}>
               Import Products
             </Text>
           </View>

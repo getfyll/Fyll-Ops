@@ -10,6 +10,7 @@ import * as Haptics from 'expo-haptics';
 import { useImagePicker } from '@/hooks/useImagePicker';
 import useAuthStore from '@/lib/state/auth-store';
 import { useBreakpoint } from '@/lib/useBreakpoint';
+import { usePageHeadingStyle } from '@/lib/page-heading';
 import { ResolvedAttachmentImage } from '@/components/ResolvedAttachmentImage';
 import { prepareProductMediaForPersistence, uploadProductMediaIfNeeded } from '@/lib/product-media';
 import { SearchClearButton } from '@/components/SearchClearButton';
@@ -42,7 +43,8 @@ export default function ProductDetailScreen() {
   const modalDropdownBg = isDark ? '#1C1C1C' : '#FFFFFF';
   const modalSectionTitleClass = 'font-semibold text-[15px]';
   const modalFieldLabelClass = 'text-xs font-semibold uppercase tracking-wider';
-  const { isDesktop, width } = useBreakpoint();
+  const { isDesktop, isMobile, width } = useBreakpoint();
+  const pageHeadingStyle = usePageHeadingStyle(isMobile);
   const isWebDesktop = Platform.OS === 'web' && isDesktop;
   const useFullscreenEditModal = Platform.OS !== 'web' || width < 768;
   const isNarrowWeb = Platform.OS === 'web' && width < 1280;
@@ -1198,7 +1200,7 @@ export default function ProductDetailScreen() {
         <BackButton onPress={() => (router.canGoBack() ? router.back() : router.replace('/inventory' as never))} palette={palette} label="Back to inventory" />
         <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-            <Text style={{ color: palette.text, fontSize: 30, fontWeight: '700', letterSpacing: -0.6, flexShrink: 1 }} numberOfLines={1}>{product.name}</Text>
+            <Text style={{ color: palette.text, ...pageHeadingStyle, flexShrink: 1 }} numberOfLines={1}>{product.name}</Text>
             {renderActiveToggle()}
           </View>
           <Text style={{ color: palette.faint, fontSize: 14 }} numberOfLines={1}>{headerSub}</Text>

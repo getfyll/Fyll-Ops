@@ -6,6 +6,7 @@ import { Plus, Search, Package, ChevronRight, ChevronDown, ChevronUp, Tag, Boxes
 import useFyllStore, { Product, ProductVariant, type Procurement, formatCurrency } from '@/lib/state/fyll-store';
 import { normalizeProductType } from '@/lib/product-utils';
 import { useThemeColors } from '@/lib/theme';
+import { usePageHeadingStyle } from '@/lib/page-heading';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { MOBILE_FILTER_SHEET } from '@/lib/mobile-filter-sheet';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
@@ -61,6 +62,7 @@ export default function InventoryScreen() {
   const colors = useThemeColors();
   const tabBarHeight = useTabBarHeight();
   const { isMobile, isDesktop } = useBreakpoint();
+  const pageHeadingStyle = usePageHeadingStyle(isMobile);
   const isDark = colors.bg.primary === '#111111';
   const separatorColor = isDark ? SEPARATOR_DARK : SEPARATOR_LIGHT;
   const isWeb = Platform.OS === 'web';
@@ -544,7 +546,7 @@ export default function InventoryScreen() {
   // Master pane content
   const horizontalPadding = isMobile ? 16 : isWebDesktop ? 28 : 20;
   const webNoOutline = Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null;
-  const tableHeadStyle = { color: palette.faint, fontSize: 10, fontWeight: '600' as const, letterSpacing: 0.6, textTransform: 'uppercase' as const };
+  const tableHeadStyle = { color: colors.text.muted, fontSize: 10, fontWeight: '600' as const, letterSpacing: 0.6, textTransform: 'uppercase' as const };
   const filterPills: { key: InventoryFilter; label: string }[] = [
     { key: 'all', label: 'All' },
     { key: 'low-stock', label: 'Low stock' },
@@ -758,7 +760,7 @@ export default function InventoryScreen() {
         }}
       >
         <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
-          <Text style={{ color: palette.text, fontSize: 30, lineHeight: 36, fontWeight: '700', letterSpacing: -0.6 }} numberOfLines={1}>
+          <Text style={{ color: palette.text, ...pageHeadingStyle }} numberOfLines={1}>
             {inventoryTab === 'services' ? 'Services' : 'Inventory'}
           </Text>
           {isWebDesktop ? (

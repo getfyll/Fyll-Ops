@@ -11,7 +11,7 @@ import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from '
 import { collaborationData, type CollaborationComment, type CollaborationThreadSummary } from '@/lib/supabase/collaboration';
 import { useResolvedThemeMode, useThemeColors } from '@/lib/theme';
 import { useBreakpoint } from '@/lib/useBreakpoint';
-import { DESKTOP_PAGE_HEADER_GUTTER, DESKTOP_PAGE_HEADER_MIN_HEIGHT, getStandardPageHeadingStyle } from '@/lib/page-heading';
+import { DESKTOP_PAGE_HEADER_GUTTER, DESKTOP_PAGE_HEADER_MIN_HEIGHT, usePageHeadingStyle } from '@/lib/page-heading';
 import useAuthStore, { type TeamMember, type TeamRole } from '@/lib/state/auth-store';
 import { supabase } from '@/lib/supabase';
 import { taskData, type CreateTaskInput, type Task, type TaskItemType, type TaskPriority, type TaskRecurrenceFrequency, type UpdateTaskInput, type CompleteTaskResult } from '@/lib/supabase/tasks';
@@ -4745,7 +4745,7 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
   };
   const queryClient = useQueryClient();
   const { isDesktop, isMobile, width } = useBreakpoint();
-  const pageHeadingStyle = getStandardPageHeadingStyle(isMobile);
+  const pageHeadingStyle = usePageHeadingStyle(isMobile);
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
   const currentUserId = useAuthStore((s) => s.currentUser?.id ?? null);
   const currentUser = useAuthStore((s) => s.currentUser);
@@ -5532,7 +5532,7 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
                 <View style={{ minWidth: 0 }}>
                   <Text
                     numberOfLines={1}
-                    style={{ color: colors.text.primary, ...(isTabletSplitView ? { fontSize: 32, lineHeight: 36, fontWeight: '700' as const } : pageHeadingStyle) }}
+                    style={{ color: colors.text.primary, ...pageHeadingStyle }}
                   >
                     Tasks
                   </Text>

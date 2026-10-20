@@ -19,6 +19,8 @@ import type { AuditStatusFilter, CategoryAuditSection, ProductAuditGroup } from 
 import { parseCount } from './utils';
 import { ProgressRing } from './ProgressRing';
 import { SearchClearButton } from '@/components/SearchClearButton';
+import { useBreakpoint } from '@/lib/useBreakpoint';
+import { usePageHeadingStyle } from '@/lib/page-heading';
 
 interface AuditCountViewProps {
   isDark: boolean;
@@ -94,6 +96,7 @@ export function AuditCountView({
   onPause,
   onSubmit,
 }: AuditCountViewProps) {
+  const pageHeadingStyle = usePageHeadingStyle(useBreakpoint().isMobile);
   const [showFilterMenu, setShowFilterMenu] = React.useState(false);
   const [blindCountEnabled, setBlindCountEnabled] = React.useState(true);
   const [collapsedSections, setCollapsedSections] = React.useState<Set<string>>(new Set());
@@ -248,7 +251,7 @@ export function AuditCountView({
         >
           <View className="flex-row items-start justify-between">
             <View>
-              <Text style={{ color: colors.text.primary }} className="text-2xl font-bold">{auditTitle}</Text>
+              <Text style={{ color: colors.text.primary, ...pageHeadingStyle }}>{auditTitle}</Text>
               <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1">
                 {catalogSkuCount} {itemLabel} ready{lastCompletedLabel ? ` · last completed ${lastCompletedLabel}` : ''}
               </Text>

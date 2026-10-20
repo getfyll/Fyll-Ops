@@ -3156,9 +3156,9 @@ export function CollaborationThreadPanel({
           paddingTop: 12,
           paddingHorizontal: 12,
           paddingBottom: (Platform.OS === 'web' ? 18 : 16) + (isPaneVariant ? insets.bottom : 0),
-          backgroundColor: 'rgba(34,34,38,0.76)',
+          backgroundColor: isDark ? 'rgba(34,34,38,0.76)' : 'rgba(255,255,255,0.86)',
           borderTopWidth: 0.5,
-          borderTopColor: 'rgba(255,255,255,0.06)',
+          borderTopColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.08)',
           position: 'relative',
           ...(Platform.OS === 'web' ? ({ backdropFilter: 'blur(24px)' } as any) : null),
         }}
@@ -3167,7 +3167,7 @@ export function CollaborationThreadPanel({
           <BlurView
             pointerEvents="none"
             intensity={44}
-            tint="dark"
+            tint={isDark ? 'dark' : 'light'}
             style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
           />
         ) : null}
@@ -3494,10 +3494,10 @@ export function CollaborationThreadPanel({
               borderRadius: 18,
               alignItems: 'center',
               justifyContent: 'center',
-              backgroundColor: showAttachmentMenu ? FYLL_LIME : 'rgba(255,255,255,0.1)',
+              backgroundColor: showAttachmentMenu ? FYLL_LIME : isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)',
             }}
           >
-            <Plus size={17} color={showAttachmentMenu ? FYLL_LIME_INK : 'rgba(255,255,255,0.78)'} strokeWidth={2.5} />
+            <Plus size={17} color={showAttachmentMenu ? FYLL_LIME_INK : isDark ? 'rgba(255,255,255,0.78)' : 'rgba(0,0,0,0.6)'} strokeWidth={2.5} />
           </Pressable>
 
           <View style={{ flex: 1, position: 'relative' }}>
@@ -3507,8 +3507,8 @@ export function CollaborationThreadPanel({
                 minHeight: isComposerEmpty ? 36 : 44,
                 borderRadius: isComposerEmpty ? 999 : 22,
                 borderWidth: 1,
-                borderColor: 'rgba(255,255,255,0.16)',
-                backgroundColor: 'rgba(48,48,52,0.72)',
+                borderColor: isDark ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.1)',
+                backgroundColor: isDark ? 'rgba(48,48,52,0.72)' : 'rgba(255,255,255,0.95)',
                 paddingLeft: 14,
                 paddingRight: 40,
                 paddingTop: isComposerEmpty ? 0 : 10,
@@ -3522,7 +3522,7 @@ export function CollaborationThreadPanel({
                 <BlurView
                   pointerEvents="none"
                   intensity={38}
-                  tint="dark"
+                  tint={isDark ? 'dark' : 'light'}
                   style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
                 />
               ) : null}
@@ -3535,7 +3535,7 @@ export function CollaborationThreadPanel({
                       ? `Reply to ${replyTarget.authorName}...`
                       : 'Start typing...'
                 }
-                placeholderTextColor="rgba(255,255,255,0.52)"
+                placeholderTextColor={isDark ? 'rgba(255,255,255,0.52)' : 'rgba(0,0,0,0.42)'}
                 value={composerText}
                 selection={controlledSelection}
                 onChangeText={handleComposerTextChange}
@@ -3561,7 +3561,7 @@ export function CollaborationThreadPanel({
                 returnKeyType="default"
                 blurOnSubmit={false}
                 style={{
-                  color: '#F5F5F5',
+                  color: isDark ? '#F5F5F5' : '#111111',
                   fontSize: 16,
                   lineHeight: 24,
                   fontWeight: 'normal',
@@ -3587,7 +3587,7 @@ export function CollaborationThreadPanel({
                   justifyContent: 'center',
                 }}
               >
-                <AtSign size={16} color={showMentionPicker ? FYLL_LIME : 'rgba(255,255,255,0.55)'} strokeWidth={2} />
+                <AtSign size={16} color={showMentionPicker ? FYLL_LIME : isDark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.45)'} strokeWidth={2} />
               </Pressable>
             )}
           </View>
@@ -3606,11 +3606,11 @@ export function CollaborationThreadPanel({
               borderRadius: 18,
               alignItems: 'center',
               justifyContent: 'center',
-              backgroundColor: canSend ? FYLL_LIME : 'rgba(255,255,255,0.1)',
+              backgroundColor: canSend ? FYLL_LIME : isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)',
               opacity: canSend ? 1 : 0.6,
             }}
           >
-            <Send size={15} color={canSend ? FYLL_LIME_INK : 'rgba(255,255,255,0.52)'} strokeWidth={2.25} />
+            <Send size={15} color={canSend ? FYLL_LIME_INK : isDark ? 'rgba(255,255,255,0.52)' : 'rgba(0,0,0,0.35)'} strokeWidth={2.25} />
           </Pressable>
         </View>
 

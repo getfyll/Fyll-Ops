@@ -7,6 +7,7 @@ import * as Haptics from 'expo-haptics';
 import useAuthStore from '@/lib/state/auth-store';
 import useFyllStore, { type WarehouseItem } from '@/lib/state/fyll-store';
 import { useThemeColors } from '@/lib/theme';
+import { usePageHeadingStyle } from '@/lib/page-heading';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
 import { useImagePicker } from '@/hooks/useImagePicker';
@@ -66,6 +67,7 @@ export default function WarehouseScreen() {
   const router = useRouter();
   const colors = useThemeColors();
   const { isDesktop, isMobile } = useBreakpoint();
+  const pageHeadingStyle = usePageHeadingStyle(isMobile);
   const isWeb = Platform.OS === 'web';
   const isWebDesktop = isDesktop && isWeb;
   const tabBarHeight = useTabBarHeight();
@@ -400,7 +402,7 @@ export default function WarehouseScreen() {
       >
         <View style={{ paddingTop: isWebDesktop ? 36 : 14, paddingBottom: isWebDesktop ? 6 : 0, flexDirection: 'row', alignItems: isWebDesktop ? 'flex-end' : 'center', justifyContent: 'space-between', gap: 12 }}>
           <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
-            <Text style={{ color: palette.text, fontSize: 30, fontWeight: '700', letterSpacing: -0.6 }} numberOfLines={1}>Warehouse</Text>
+            <Text style={{ color: palette.text, ...pageHeadingStyle }} numberOfLines={1}>Warehouse</Text>
             {isWebDesktop ? <Text style={{ color: palette.faint, fontSize: 14 }}>Supplies, materials and physical stock counts.</Text> : null}
           </View>
           <View style={{ flexDirection: 'row', gap: isWebDesktop ? 10 : 8, alignItems: 'center' }}>
@@ -642,11 +644,11 @@ export default function WarehouseScreen() {
                 <>
                   <View style={{ paddingHorizontal: 22, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: palette.hairline }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-                      <Text style={{ color: palette.faint, flex: 2.4, fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>ITEM</Text>
-                      <Text style={{ color: palette.faint, flex: 1.1, fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>CATEGORY</Text>
-                      <Text style={{ color: palette.faint, width: 110, textAlign: 'right', fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>STOCK</Text>
-                      <Text style={{ color: palette.faint, width: 110, fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>COUNT CYCLE</Text>
-                      <Text style={{ color: palette.faint, width: 120, fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>LAST COUNTED</Text>
+                      <Text style={{ color: colors.text.muted, flex: 2.4, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>ITEM</Text>
+                      <Text style={{ color: colors.text.muted, flex: 1.1, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>CATEGORY</Text>
+                      <Text style={{ color: colors.text.muted, width: 110, textAlign: 'right', fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>STOCK</Text>
+                      <Text style={{ color: colors.text.muted, width: 110, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>COUNT CYCLE</Text>
+                      <Text style={{ color: colors.text.muted, width: 120, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>LAST COUNTED</Text>
                       <View style={{ width: 36 }} />
                     </View>
                   </View>
@@ -692,15 +694,15 @@ export default function WarehouseScreen() {
                               </View>
                             )}
                             <View style={{ flex: 1, minWidth: 0 }}>
-                              <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }} numberOfLines={1}>{capitalizeDisplayLabel(item.name)}</Text>
-                              <Text style={{ color: palette.faint, fontSize: 12, marginTop: 2 }} numberOfLines={1}>{item.notes || `${item.currentStock} ${item.unit} on hand`}</Text>
+                              <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>{capitalizeDisplayLabel(item.name)}</Text>
+                              <Text style={{ color: palette.faint, fontSize: 10, marginTop: 2 }} numberOfLines={1}>{item.notes || `${item.currentStock} ${item.unit} on hand`}</Text>
                             </View>
                           </Pressable>
 
-                          <Text style={{ color: palette.textSoft, flex: 1.1, fontSize: 13 }} numberOfLines={1}>{item.category}</Text>
-                          <Text style={{ color: palette.text, width: 110, textAlign: 'right', fontSize: 14, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{item.currentStock} <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '400' }}>{item.unit}</Text></Text>
-                          <Text style={{ color: palette.textSoft, width: 110, fontSize: 13 }}>{item.countFrequency}</Text>
-                          <Text style={{ color: palette.textSoft, width: 120, fontSize: 13 }}>{formatDate(item.lastCountedAt)}</Text>
+                          <Text style={{ color: palette.textSoft, flex: 1.1, fontSize: 12 }} numberOfLines={1}>{item.category}</Text>
+                          <Text style={{ color: palette.text, width: 110, textAlign: 'right', fontSize: 12, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{item.currentStock} <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '400' }}>{item.unit}</Text></Text>
+                          <Text style={{ color: palette.textSoft, width: 110, fontSize: 12 }}>{item.countFrequency}</Text>
+                          <Text style={{ color: palette.textSoft, width: 120, fontSize: 12 }}>{formatDate(item.lastCountedAt)}</Text>
                           <View style={{ width: 36, flexDirection: 'row', justifyContent: 'flex-end' }}>
                             <Pressable
                               onPress={() => {

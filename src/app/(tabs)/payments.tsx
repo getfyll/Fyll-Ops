@@ -8,13 +8,14 @@ import { PaymentsCreateMenu } from '@/components/quotes/PaymentsCreateMenu';
 import { useQuotes } from '@/lib/quotes-api';
 import { QUOTE_STATUS_LABEL, QUOTE_STATUS_TONE, getQuoteEffectiveStatus, type QuoteStatus } from '@/lib/quotes';
 import useAuthStore from '@/lib/state/auth-store';
+import { useThemeColors } from '@/lib/theme';
 import { supabaseData } from '@/lib/supabase/data';
 import { notifyFyllCheckoutPaymentConfirmed, showFyllCheckoutSyncFailedNotice } from '@/lib/fyll-checkout-confirmation';
 import useFyllStore, { formatCurrency, generateOrderNumber, getSocialCheckoutEffectiveStatus, type Order, type OrderActivityEntry, type SocialCheckoutStatus } from '@/lib/state/fyll-store';
 import { FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, InitialsAvatar, MoneyText, StatusDot, isHovered, isUnsuccessfulTone, usePaymentsPalette, type PaymentsPalette, type StatusTone, useMobileFont } from '@/components/payments/payments-ui';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
-import { DESKTOP_PAGE_HEADER_MIN_HEIGHT, getStandardPageHeadingStyle } from '@/lib/page-heading';
+import { DESKTOP_PAGE_HEADER_MIN_HEIGHT, usePageHeadingStyle } from '@/lib/page-heading';
 import { PaymentListSkeleton } from '@/components/SkeletonLoader';
 import * as Haptics from 'expo-haptics';
 import { SearchClearButton } from '@/components/SearchClearButton';
@@ -635,8 +636,10 @@ export default function PaymentsScreen() {
   const tabBarHeight = useTabBarHeight();
   const { isDesktop, isMobile } = useBreakpoint();
   const isWebDesktop = Platform.OS === 'web' && isDesktop;
-  const pageHeadingStyle = getStandardPageHeadingStyle(isMobile);
+  const pageHeadingStyle = usePageHeadingStyle(isMobile);
   const palette = usePaymentsPalette();
+  // Table header colour is shared with the Orders / Cases / Partners tables.
+  const tableHeaderColor = useThemeColors().text.muted;
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
   const currentUserRole = useAuthStore((s) => s.currentUser?.role ?? 'staff');
   const currentUserName = useAuthStore((s) => s.currentUser?.name ?? 'Staff');
@@ -1497,7 +1500,7 @@ export default function PaymentsScreen() {
                     ] as const).map(([key, label]) => (
                       <Text
                         key={key}
-                        style={{ ...DESKTOP_COLUMNS[key], color: palette.faint, fontSize: 10, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', paddingRight: 10, textAlign: key === 'actions' ? 'right' : 'left' }}
+                        style={{ ...DESKTOP_COLUMNS[key], color: tableHeaderColor, fontSize: 10, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', paddingRight: 10, textAlign: key === 'actions' ? 'right' : 'left' }}
                       >
                         {label}
                       </Text>
@@ -1505,8 +1508,8 @@ export default function PaymentsScreen() {
                   </View>
                   {dayGroups.map((group, groupIndex) => (
                     <React.Fragment key={group.day}>
-                      <View style={{ paddingHorizontal: 20, paddingTop: 10, paddingBottom: 8, backgroundColor: palette.isDark ? '#101010' : '#E9E9E6', borderBottomWidth: 1, borderBottomColor: palette.hairline }}>
-                        <Text style={{ color: palette.textSoft, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{group.day}</Text>
+                      <View style={{ paddingHorizontal: 20, paddingTop: 10, paddingBottom: 8, backgroundColor: palette.isDark ? '#101010' : '#F7F7F7', borderBottomWidth: 1, borderBottomColor: palette.hairline }}>
+                        <Text style={{ color: palette.textSoft, fontSize: 10, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{group.day}</Text>
                       </View>
                       {group.rows.map((record, rowIndex) => (
                         <PaymentTableRow

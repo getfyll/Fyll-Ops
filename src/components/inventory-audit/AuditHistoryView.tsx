@@ -8,6 +8,7 @@ import { FilterPill, formatCompactNaira } from '@/components/inventory/inventory
 import { getLogStats } from '@/components/inventory-audit/AuditOverview';
 import { isAuditableProduct } from '@/components/inventory-audit/utils';
 import { useBreakpoint } from '@/lib/useBreakpoint';
+import { usePageHeadingStyle } from '@/lib/page-heading';
 
 const ACCURACY_TARGET = 95;
 
@@ -27,6 +28,7 @@ const timeOf = (iso: string) => new Date(iso).toLocaleTimeString('en-GB', { hour
 export function AuditHistoryView({ products, sortedAuditLogs, onBack, onSelectAudit }: AuditHistoryViewProps) {
   const palette = usePaymentsPalette();
   const { isMobile, width } = useBreakpoint();
+  const pageHeadingStyle = usePageHeadingStyle(isMobile);
   const isWide = Platform.OS === 'web' && width >= 1100;
   const [filter, setFilter] = useState<HistoryFilter>('all');
 
@@ -89,7 +91,7 @@ export function AuditHistoryView({ products, sortedAuditLogs, onBack, onSelectAu
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
           <BackButton onPress={onBack} palette={palette} label="Back to stock audit" />
           <View style={{ flex: 1, gap: 3 }}>
-            <Text style={{ color: palette.text, fontSize: isMobile ? 26 : 30, fontWeight: '700', letterSpacing: -0.6 }}>Audit history</Text>
+            <Text style={{ color: palette.text, ...pageHeadingStyle }}>Audit history</Text>
             <Text style={{ color: palette.faint, fontSize: isMobile ? 12 : 14 }}>Every completed count, newest first.</Text>
           </View>
         </View>

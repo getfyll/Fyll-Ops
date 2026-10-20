@@ -6,12 +6,15 @@ import { ArrowLeft, Package, Plus, Minus, Check } from 'lucide-react-native';
 import useFyllStore from '@/lib/state/fyll-store';
 import useAuthStore from '@/lib/state/auth-store';
 import { useThemeColors } from '@/lib/theme';
+import { usePageHeadingStyle } from '@/lib/page-heading';
+import { useBreakpoint } from '@/lib/useBreakpoint';
 import * as Haptics from 'expo-haptics';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 export default function RestockScreen() {
   const router = useRouter();
   const colors = useThemeColors();
+  const pageHeadingStyle = usePageHeadingStyle(useBreakpoint().isMobile);
   const { productId, variantId } = useLocalSearchParams<{ productId: string; variantId: string }>();
 
   const products = useFyllStore((s) => s.products);
@@ -93,7 +96,7 @@ export default function RestockScreen() {
               >
                 <ArrowLeft size={20} color={colors.text.primary} strokeWidth={2} />
               </Pressable>
-              <Text style={{ color: colors.text.primary }} className="text-xl font-bold">Restock</Text>
+              <Text style={{ color: colors.text.primary, ...pageHeadingStyle }}>Restock</Text>
             </View>
           </View>
 

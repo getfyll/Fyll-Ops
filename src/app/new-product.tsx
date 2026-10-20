@@ -12,6 +12,7 @@ import { useImagePicker } from '@/hooks/useImagePicker';
 import { prepareProductMediaForPersistence } from '@/lib/product-media';
 import { storage } from '@/lib/storage';
 import { useBreakpoint } from '@/lib/useBreakpoint';
+import { usePageHeadingStyle } from '@/lib/page-heading';
 import { ResolvedAttachmentImage } from '@/components/ResolvedAttachmentImage';
 import { BackButton, FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, MoneyText, isHovered, usePaymentsPalette } from '@/components/payments/payments-ui';
 import { formatCompactNaira, formatNaira, swatchForName } from '@/components/inventory/inventory-ui';
@@ -75,6 +76,7 @@ export default function NewProductScreen() {
   const palette = usePaymentsPalette();
   const { isMobile, isDesktop, width } = useBreakpoint();
   const isDesktopWeb = Platform.OS === 'web' && isDesktop;
+  const pageHeadingStyle = usePageHeadingStyle(isMobile);
   const isWide = Platform.OS === 'web' && width >= 1100;
   const imagePicker = useImagePicker();
 
@@ -746,7 +748,7 @@ export default function NewProductScreen() {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: isMobile ? 12 : 14, paddingHorizontal: isMobile ? 16 : 28, paddingVertical: isMobile ? 10 : 22 }}>
           <BackButton onPress={() => (router.canGoBack() ? router.back() : router.replace('/inventory' as never))} palette={palette} label="Back to inventory" />
           <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-            <MoneyText style={{ color: palette.text, fontSize: isDesktopWeb ? 28 : 22, letterSpacing: -0.8 }} numberOfLines={1}>New product</MoneyText>
+            <Text style={{ color: palette.text, ...pageHeadingStyle }} numberOfLines={1}>New product</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <Text style={{ color: palette.faint, fontSize: isMobile ? 12 : 13 }}>{draftRestored ? 'Draft restored' : 'Saved as a draft as you go'}</Text>
               {draftRestored ? (

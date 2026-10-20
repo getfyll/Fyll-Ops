@@ -302,26 +302,26 @@ export function ProductTableRow({
           </Pressable>
           <ProductThumb product={product} size={44} radius={10} palette={palette} />
           <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
-            <Text style={{ color: palette.text, fontSize: 15, fontWeight: '500' }} numberOfLines={1}>{product.name}</Text>
-            <Text style={{ color: palette.faint, fontSize: 12.5 }} numberOfLines={1}>
+            <Text style={{ color: palette.text, fontSize: 12, fontWeight: '500' }} numberOfLines={1}>{product.name}</Text>
+            <Text style={{ color: palette.faint, fontSize: 10 }} numberOfLines={1}>
               {variantCount} {variantCount === 1 ? 'variant' : 'variants'} · {sku}
             </Text>
           </View>
         </View>
         <Text
-          style={{ flex: 1, minWidth: 0, color: category ? palette.textSoft : palette.faint, fontSize: 14, fontStyle: category ? 'normal' : 'italic' }}
+          style={{ flex: 1, minWidth: 0, color: category ? palette.textSoft : palette.faint, fontSize: 12, fontStyle: category ? 'normal' : 'italic' }}
           numberOfLines={1}
         >
           {category || 'Add category'}
         </Text>
-        <Text style={{ width: C.stock, textAlign: 'right', color: stockInk, fontSize: 15, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{totalStock}</Text>
+        <Text style={{ width: C.stock, textAlign: 'right', color: stockInk, fontSize: 12, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{totalStock}</Text>
         {isOwner ? (
-          <Text style={{ width: C.price, textAlign: 'right', color: displayPrice ? palette.text : palette.warn, fontSize: 14.5, fontWeight: '600', fontVariant: ['tabular-nums'] }} numberOfLines={1}>
+          <Text style={{ width: C.price, textAlign: 'right', color: displayPrice ? palette.text : palette.warn, fontSize: 12, fontWeight: '600', fontVariant: ['tabular-nums'] }} numberOfLines={1}>
             {displayPrice ? formatNaira(displayPrice) : 'Set price'}
           </Text>
         ) : null}
         <View style={{ width: C.status }}>
-          <StockStatusLabel status={status} palette={palette} />
+          <StockStatusLabel status={status} palette={palette} size={12} />
         </View>
         <View style={{ width: C.trail, alignItems: 'flex-end' }}>
           <ChevronRight size={16} color={palette.isDark ? '#5D5E56' : '#BDBDBD'} strokeWidth={2.2} />
@@ -345,8 +345,8 @@ export function ProductTableRow({
                     <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: swatch ?? palette.softFill, borderWidth: 1, borderColor: palette.isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)' }} />
                   )}
                   <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
-                    <Text style={{ color: palette.textSoft, fontSize: 14 }} numberOfLines={1}>{getVariantName(variant)}</Text>
-                    <Text style={{ color: palette.faint, fontSize: 12 }} numberOfLines={1}>{variant.sku?.toUpperCase() || '—'}</Text>
+                    <Text style={{ color: palette.textSoft, fontSize: 12 }} numberOfLines={1}>{getVariantName(variant)}</Text>
+                    <Text style={{ color: palette.faint, fontSize: 10 }} numberOfLines={1}>{variant.sku?.toUpperCase() || '—'}</Text>
                   </View>
                 </View>
                 <View style={{ flex: 1 }} />
@@ -354,18 +354,18 @@ export function ProductTableRow({
                   <StepButton label="Remove one" disabled={variant.stock <= 0} onPress={() => onAdjustStock(variant.id, -1)} palette={palette}>
                     <Minus size={12} color={palette.textSoft} strokeWidth={2.4} />
                   </StepButton>
-                  <Text style={{ minWidth: 22, textAlign: 'center', color: variant.stock <= 0 ? palette.danger : palette.text, fontSize: 14.5, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{variant.stock}</Text>
+                  <Text style={{ minWidth: 22, textAlign: 'center', color: variant.stock <= 0 ? palette.danger : palette.text, fontSize: 12, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{variant.stock}</Text>
                   <StepButton label="Add one" onPress={() => onAdjustStock(variant.id, 1)} palette={palette}>
                     <Plus size={12} color={palette.textSoft} strokeWidth={2.4} />
                   </StepButton>
                 </View>
                 {isOwner ? (
-                  <Text style={{ width: C.price, textAlign: 'right', color: variant.sellingPrice ? palette.muted : palette.warn, fontSize: 14, fontVariant: ['tabular-nums'] }} numberOfLines={1}>
+                  <Text style={{ width: C.price, textAlign: 'right', color: variant.sellingPrice ? palette.muted : palette.warn, fontSize: 12, fontVariant: ['tabular-nums'] }} numberOfLines={1}>
                     {variant.sellingPrice ? formatNaira(variant.sellingPrice) : 'Set price'}
                   </Text>
                 ) : null}
                 <View style={{ width: C.status }}>
-                  <StockStatusLabel status={variantStatus} palette={palette} />
+                  <StockStatusLabel status={variantStatus} palette={palette} size={12} />
                 </View>
                 <View style={{ width: C.trail, flexDirection: 'row', justifyContent: 'flex-end', gap: 4 }}>
                   <IconAction label="Restock" onPress={() => onRestock(variant.id)} palette={palette}>

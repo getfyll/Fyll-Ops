@@ -9,7 +9,7 @@ import { useThemeColors } from '@/lib/theme';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { getActiveSplitCardStyle } from '@/lib/selection-style';
 import { normalizeProductType } from '@/lib/product-utils';
-import { DESKTOP_PAGE_HEADER_MIN_HEIGHT, getStandardPageHeadingStyle } from '@/lib/page-heading';
+import { DESKTOP_PAGE_HEADER_MIN_HEIGHT, usePageHeadingStyle } from '@/lib/page-heading';
 import { SplitViewLayout } from '@/components/SplitViewLayout';
 import { ServiceDetailPanel } from '@/components/ServiceDetailPanel';
 import { getSettingsWebPanelStyles } from '@/lib/settings-web-panel';
@@ -32,7 +32,7 @@ export default function ServicesScreen() {
   const isDark = colors.bg.primary === '#111111';
   const isWebDesktop = Platform.OS === 'web' && isDesktop;
   const showSplitView = !isMobile && !isWebDesktop;
-  const pageHeadingStyle = getStandardPageHeadingStyle(isMobile);
+  const pageHeadingStyle = usePageHeadingStyle(isMobile);
   const mobileSectionHeadingStyle = isMobile
     ? { ...pageHeadingStyle, fontWeight: '600' as const }
     : pageHeadingStyle;
@@ -40,7 +40,7 @@ export default function ServicesScreen() {
   const openedFromSettings = from === 'settings';
   const panelStyles = getSettingsWebPanelStyles(openedFromSettings, colors.bg.primary, colors.border.light);
   const separatorColor = palette.border;
-  const tableHeadStyle = { color: palette.faint, fontSize: 10, fontWeight: '600' as const, letterSpacing: 0.6, textTransform: 'uppercase' as const };
+  const tableHeadStyle = { color: colors.text.muted, fontSize: 10, fontWeight: '600' as const, letterSpacing: 0.6, textTransform: 'uppercase' as const };
 
   const products = useFyllStore((s) => s.products);
   const isServiceProduct = (product: Product) => {

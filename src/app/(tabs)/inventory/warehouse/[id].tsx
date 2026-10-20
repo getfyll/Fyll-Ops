@@ -7,6 +7,7 @@ import * as Haptics from 'expo-haptics';
 import useAuthStore from '@/lib/state/auth-store';
 import useFyllStore, { type WarehouseCountFrequency } from '@/lib/state/fyll-store';
 import { useBreakpoint } from '@/lib/useBreakpoint';
+import { usePageHeadingStyle } from '@/lib/page-heading';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
 import { ResolvedAttachmentImage } from '@/components/ResolvedAttachmentImage';
 import { capitalizeDisplayLabel } from '@/lib/display-format';
@@ -57,7 +58,8 @@ function FieldLabel({ children, palette }: { children: React.ReactNode; palette:
 export default function WarehouseItemDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { isDesktop } = useBreakpoint();
+  const { isDesktop, isMobile } = useBreakpoint();
+  const pageHeadingStyle = usePageHeadingStyle(isMobile);
   const palette = usePaymentsPalette();
   const tabBarHeight = useTabBarHeight();
   const isWebDesktop = isDesktop && Platform.OS === 'web';
@@ -179,7 +181,7 @@ export default function WarehouseItemDetailScreen() {
               {item.imageUrl ? <ResolvedAttachmentImage imageUrl={item.imageUrl} style={{ width: isWebDesktop ? 48 : 42, height: isWebDesktop ? 48 : 42 }} resizeMode="cover" /> : <Package size={isWebDesktop ? 21 : 19} color={palette.faint} strokeWidth={1.7} />}
             </View>
             <View style={{ flex: 1, minWidth: 0, marginLeft: 12 }}>
-              <Text style={{ color: palette.text, fontSize: isWebDesktop ? 30 : 20, lineHeight: isWebDesktop ? 36 : 25, fontWeight: '600', letterSpacing: isWebDesktop ? -0.6 : -0.2 }} numberOfLines={1}>{capitalizeDisplayLabel(item.name)}</Text>
+              <Text style={{ color: palette.text, ...pageHeadingStyle }} numberOfLines={1}>{capitalizeDisplayLabel(item.name)}</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 4 }}>
                 <Text style={{ color: palette.faint, fontSize: isWebDesktop ? 13 : 11 }} numberOfLines={1}>{item.category} · {item.countFrequency} count</Text>
                 <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: stockTone }} />

@@ -23,7 +23,7 @@ import useFyllStore, {
   generateCaseNumber,
 } from '@/lib/state/fyll-store';
 import { useBreakpoint } from '@/lib/useBreakpoint';
-import { DESKTOP_PAGE_HEADER_MIN_HEIGHT, getStandardPageHeadingStyle } from '@/lib/page-heading';
+import { DESKTOP_PAGE_HEADER_MIN_HEIGHT, usePageHeadingStyle } from '@/lib/page-heading';
 import { CaseForm } from '@/components/CaseForm';
 import useAuthStore from '@/lib/state/auth-store';
 import { collaborationData } from '@/lib/supabase/collaboration';
@@ -75,7 +75,7 @@ export default function CasesScreen() {
   const { isDesktop, isMobile } = useBreakpoint();
   const tabBarHeight = useTabBarHeight();
   const isWebDesktop = Platform.OS === 'web' && isDesktop;
-  const pageHeadingStyle = getStandardPageHeadingStyle(isMobile);
+  const pageHeadingStyle = usePageHeadingStyle(isMobile);
   const desktopHeaderMinHeight = DESKTOP_PAGE_HEADER_MIN_HEIGHT;
   const isDark = colors.bg.primary === '#111111';
   const openedFromSettings = Array.isArray(from) ? from[0] === 'settings' : from === 'settings';
@@ -375,11 +375,11 @@ export default function CasesScreen() {
             >
               <View style={{ backgroundColor: colors.bg.card, borderBottomWidth: 1, borderBottomColor: separatorColor }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 22, paddingVertical: 14, gap: 16 }}>
-                  <Text style={{ color: colors.text.muted, width: 150, fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>CASE</Text>
-                  <Text style={{ color: colors.text.muted, flex: 1.2, fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>CUSTOMER</Text>
-                  <Text style={{ color: colors.text.muted, flex: 1.6, fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>ISSUE</Text>
-                  <Text style={{ color: colors.text.muted, width: 100, fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>PRIORITY</Text>
-                  <Text style={{ color: colors.text.muted, width: 150, fontSize: 11.5, fontWeight: '600', letterSpacing: 0.6 }}>STATUS</Text>
+                  <Text style={{ color: colors.text.muted, width: 150, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>CASE</Text>
+                  <Text style={{ color: colors.text.muted, flex: 1.2, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>CUSTOMER</Text>
+                  <Text style={{ color: colors.text.muted, flex: 1.6, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>ISSUE</Text>
+                  <Text style={{ color: colors.text.muted, width: 100, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>PRIORITY</Text>
+                  <Text style={{ color: colors.text.muted, width: 150, fontSize: 10, fontWeight: '600', letterSpacing: 0.6 }}>STATUS</Text>
                   <View style={{ width: 18 }} />
                 </View>
               </View>
@@ -405,13 +405,13 @@ export default function CasesScreen() {
                   return (
                     <React.Fragment key={caseItem.id}>
                     {isFirstInGroup ? (
-                      <View style={{ paddingHorizontal: 22, paddingTop: 10, paddingBottom: 8, backgroundColor: isDark ? '#101010' : '#E9E9E6', borderBottomWidth: 1, borderBottomColor: separatorColor }}>
-                        <Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{getCaseDayLabel(caseItem)}</Text>
+                      <View style={{ paddingHorizontal: 22, paddingTop: 10, paddingBottom: 8, backgroundColor: isDark ? '#101010' : '#F7F7F7', borderBottomWidth: 1, borderBottomColor: separatorColor }}>
+                        <Text style={{ color: colors.text.secondary, fontSize: 10, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{getCaseDayLabel(caseItem)}</Text>
                       </View>
                     ) : null}
                     <Pressable
                       onPress={() => handleCasePress(caseItem.id)}
-                      style={({ pressed }) => ({ backgroundColor: pressed ? colors.bg.secondary : colors.bg.card, borderTopWidth: isFirstInGroup ? 0 : 1, borderTopColor: separatorColor })}
+                      style={({ pressed }) => ({ backgroundColor: pressed ? colors.bg.secondary : colors.bg.card, borderBottomWidth: index === filteredCases.length - 1 ? 0 : 1, borderBottomColor: separatorColor })}
                     >
                       <View style={{ minHeight: 58, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 22, paddingVertical: 9, gap: 16 }}>
                         <View style={{ width: 150, flexDirection: 'row', alignItems: 'center', gap: 6 }}>

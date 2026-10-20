@@ -41,7 +41,7 @@ import { computeInventoryAnalytics, calculateNewDesignAnalytics, calculateDiscon
 import { useStatsColors, type StatsColors } from '@/lib/theme';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
 import { useBreakpoint } from '@/lib/useBreakpoint';
-import { DESKTOP_PAGE_HEADER_MIN_HEIGHT, getStandardPageHeadingStyle } from '@/lib/page-heading';
+import { DESKTOP_PAGE_HEADER_MIN_HEIGHT, usePageHeadingStyle } from '@/lib/page-heading';
 import { getSettingsWebPanelStyles, isFromSettingsRoute } from '@/lib/settings-web-panel';
 import SalesInsight from '@/app/insights/sales';
 import OrdersInsight from '@/app/insights/orders';
@@ -306,7 +306,7 @@ export default function InsightsScreen() {
   const colors = useStatsColors();
   const tabBarHeight = useTabBarHeight();
   const { isDesktop, isMobile } = useBreakpoint();
-  const pageHeadingStyle = getStandardPageHeadingStyle(isMobile);
+  const pageHeadingStyle = usePageHeadingStyle(isMobile);
   const desktopHeaderMinHeight = DESKTOP_PAGE_HEADER_MIN_HEIGHT;
   const isWebDesktop = Platform.OS === 'web' && isDesktop;
   const panelStyles = getSettingsWebPanelStyles(isFromSettingsRoute(from), colors.bg.screen, colors.border);

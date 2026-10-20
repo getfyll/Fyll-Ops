@@ -8,6 +8,7 @@ import useFyllStore, { Order, Product, formatCurrency } from '@/lib/state/fyll-s
 import useAuthStore from '@/lib/state/auth-store';
 import { collaborationData } from '@/lib/supabase/collaboration';
 import { useThemeColors } from '@/lib/theme';
+import { usePageHeadingStyle } from '@/lib/page-heading';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { MOBILE_FILTER_SHEET } from '@/lib/mobile-filter-sheet';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
@@ -426,6 +427,7 @@ export default function OrdersScreen() {
   const palette = usePaymentsPalette();
   const tabBarHeight = useTabBarHeight();
   const { isMobile, isDesktop } = useBreakpoint();
+  const pageHeadingStyle = usePageHeadingStyle(isMobile);
   const isDark = colors.bg.primary === '#111111';
   const separatorColor = isDark ? SEPARATOR_DARK : SEPARATOR_LIGHT;
   const isWeb = Platform.OS === 'web';
@@ -717,7 +719,7 @@ export default function OrdersScreen() {
     <View style={{ paddingTop: isWebDesktop ? 28 : 14, paddingBottom: 12, width: '100%', gap: isWebDesktop ? 18 : 14 }}>
         <View className="flex-row items-start justify-between" style={{ gap: 12 }}>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: colors.text.primary, fontSize: 30, lineHeight: 36, fontWeight: '700', letterSpacing: -0.6 }}>Orders</Text>
+            <Text style={{ color: colors.text.primary, ...pageHeadingStyle }}>Orders</Text>
             {isWebDesktop ? <Text style={{ color: colors.text.muted, fontSize: 14, marginTop: 4 }}>Track customer orders, fulfilment and delivery.</Text> : null}
             {isOfflineMode ? <Text style={{ color: isDark ? '#FCA5A5' : '#B91C1C', fontSize: 12, fontWeight: '600', marginTop: 5 }}>Offline · Last synced {lastSyncLabel}</Text> : null}
           </View>
@@ -914,7 +916,7 @@ export default function OrdersScreen() {
 
             return isWebDesktop ? (
               <View>
-                {isFirstInGroup ? <View style={{ paddingHorizontal: 22, paddingTop: 10, paddingBottom: 8, backgroundColor: isDark ? '#101010' : '#E9E9E6', borderLeftWidth: 1, borderRightWidth: 1, borderBottomWidth: 1, borderColor: separatorColor }}><Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{groupLabel}</Text></View> : null}
+                {isFirstInGroup ? <View style={{ paddingHorizontal: 22, paddingTop: 10, paddingBottom: 8, backgroundColor: isDark ? '#101010' : '#F7F7F7', borderLeftWidth: 1, borderRightWidth: 1, borderBottomWidth: 1, borderColor: separatorColor }}><Text style={{ color: colors.text.secondary, fontSize: 10, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{groupLabel}</Text></View> : null}
                 <View style={{ borderLeftWidth: 1, borderRightWidth: 1, borderBottomWidth: isLast ? 1 : 0, borderColor: separatorColor, borderBottomLeftRadius: isLast ? 18 : 0, borderBottomRightRadius: isLast ? 18 : 0, overflow: 'hidden', backgroundColor: colors.bg.card }}>
                   <OrderRowWeb order={order} products={products} statusColor={getOrderStatusColor(order.status, statusColorMap, '#888888')} isSelected={selectedOrderId === order.id} onPress={() => handleOrderSelect(order.id)} separatorColor={separatorColor} isLast={isLast} unreadCount={unreadCounts[order.id] ?? 0} />
                 </View>

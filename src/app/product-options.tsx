@@ -9,12 +9,15 @@ import * as Haptics from 'expo-haptics';
 import { Button } from '@/components/Button';
 import { TagPillInput } from '@/components/TagPillInput';
 import { useThemeColors } from '@/lib/theme';
+import { usePageHeadingStyle } from '@/lib/page-heading';
+import { useBreakpoint } from '@/lib/useBreakpoint';
 import { getSettingsWebPanelStyles, isFromSettingsRoute } from '@/lib/settings-web-panel';
 import { useSettingsBack } from '@/lib/useSettingsBack';
 import { cn } from '@/lib/cn';
 
 export default function ProductOptionsScreen() {
   const colors = useThemeColors();
+  const pageHeadingStyle = usePageHeadingStyle(useBreakpoint().isMobile);
   const { from } = useLocalSearchParams<{ from?: string | string[] }>();
   const goBack = useSettingsBack();
   const openedFromSettings = isFromSettingsRoute(from);
@@ -213,14 +216,7 @@ export default function ProductOptionsScreen() {
             >
               <ArrowLeft size={20} color={colors.text.primary} strokeWidth={2} />
             </Pressable>
-            <Text
-              style={{
-                color: colors.text.primary,
-                fontSize: Platform.OS === 'web' ? 14 : 18,
-                lineHeight: Platform.OS === 'web' ? 18 : 22,
-                fontWeight: '600',
-              }}
-            >
+            <Text style={{ color: colors.text.primary, ...pageHeadingStyle }}>
               Product Options
             </Text>
             <View className="w-10" />
