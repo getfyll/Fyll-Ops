@@ -26,6 +26,7 @@ const MAIN_ONESIGNAL_CONFIGS = [
   .filter((config) => config.appId && config.restApiKey)
   .filter((config, index, configs) => configs.findIndex((candidate) => candidate.appId === config.appId) === index)
 const APP_BASE_URL = sanitizeEnvValue(Deno.env.get('APP_BASE_URL'))
+const PAYMENT_BASE_URL = sanitizeEnvValue(Deno.env.get('PAYMENT_BASE_URL')) || 'https://payment.fyll.app'
 const TRACKING_BASE_URL = 'https://track.fyll.app'
 const ALLOWED_ORIGIN = sanitizeEnvValue(Deno.env.get('ALLOWED_ORIGIN')) || '*'
 const FYLL_WORDMARK_URL = APP_BASE_URL
@@ -168,9 +169,11 @@ const buildCheckoutUrl = ({
   businessSlug?: string | null
 }) => {
   const normalizedBusinessSlug = normalizeSlug(businessSlug ?? '')
-  const pathname = normalizedBusinessSlug
-    ? `/${normalizedBusinessSlug}/checkout/${encodeURIComponent(code)}`
-    : '/checkout'
+  // Customers pay on payment.fyll.app/<business>/<code>, not the staff dashboard.
+  if (normalizedBusinessSlug) {
+    return new URL(`/${normalizedBusinessSlug}/${encodeURIComponent(code)}`, PAYMENT_BASE_URL).toString()
+  }
+  const pathname = '/checkout'
   const url = new URL(pathname, APP_BASE_URL)
   if (!normalizedBusinessSlug) {
     url.searchParams.set('code', code)

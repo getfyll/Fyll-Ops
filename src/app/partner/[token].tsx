@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Modal, Platform, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -190,6 +190,10 @@ export default function PartnerPortalScreen() {
   const [notifSeenAt, setNotifSeenAt] = useState('1970-01-01T00:00:00.000Z');
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
   const [notificationEnableStatus, setNotificationEnableStatus] = useState<'idle' | 'loading' | 'enabled' | 'blocked'>('idle');
+  // "Never miss an update" toast (same idea as the business app's), shown once per browser session.
+  const [browserNotificationPermission, setBrowserNotificationPermission] = useState<string | null>(null);
+  const [notificationToastDismissed, setNotificationToastDismissed] = useState(true);
+  const [isIosBrowserTab, setIsIosBrowserTab] = useState(false);
   const [testPushStatus, setTestPushStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [lightboxImageUrl, setLightboxImageUrl] = useState<string | null>(null);
 
@@ -310,6 +314,22 @@ export default function PartnerPortalScreen() {
 
   const notifStorageKey = data?.partnerId ? `partner_notif_seen_at:${data.partnerId}` : null;
 
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    setBrowserNotificationPermission('Notification' in window ? window.Notification.permission : null);
+    setNotificationToastDismissed(window.sessionStorage.getItem('fyll-partner-notification-prompt-dismissed') === '1');
+    // iOS only allows web push for pages installed to the Home Screen, not Safari tabs.
+    const isIos = /iPad|iPhone|iPod/.test(window.navigator.userAgent);
+    const isInstalled = Boolean((window.navigator as { standalone?: boolean }).standalone)
+      || (typeof window.matchMedia === 'function' && window.matchMedia('(display-mode: standalone)').matches);
+    setIsIosBrowserTab(isIos && !isInstalled);
+  }, []);
+
+  const dismissNotificationToast = () => {
+    setNotificationToastDismissed(true);
+    if (typeof window !== 'undefined') window.sessionStorage.setItem('fyll-partner-notification-prompt-dismissed', '1');
+  };
+
   const handleEnablePartnerNotifications = async () => {
     if (!isPushReady) {
       setNotificationEnableStatus('loading');
@@ -326,6 +346,9 @@ export default function PartnerPortalScreen() {
       }
       const granted = await promptForPushPermission();
       setNotificationEnableStatus(granted ? 'enabled' : 'blocked');
+      if (typeof window !== 'undefined' && 'Notification' in window) {
+        setBrowserNotificationPermission(window.Notification.permission);
+      }
     } catch (error) {
       console.warn('Partner notification permission failed:', error);
       setNotificationEnableStatus('blocked');
@@ -3218,6 +3241,73 @@ export default function PartnerPortalScreen() {
     </Modal>
   );
 
+  const showNotificationToast = Platform.OS === 'web'
+    && Boolean(data)
+    && !notificationToastDismissed
+    && notificationEnableStatus !== 'enabled'
+    && (browserNotificationPermission === 'default' || isIosBrowserTab);
+  const toastInk = isDarkMode ? '#F4F4EF' : '#171717';
+  const toastSoft = isDarkMode ? '#A9A9A2' : '#6F706A';
+  const notificationToast = showNotificationToast ? (
+    <View
+      style={{
+        position: 'absolute',
+        ...(isDesktop ? { right: 20, bottom: 24, width: 360 } : { left: 16, right: 16, bottom: 104 }),
+        padding: 16,
+        borderRadius: 18,
+        backgroundColor: isDarkMode ? '#1C1C1C' : '#FFFFFF',
+        borderWidth: 1,
+        borderColor: isDarkMode ? 'rgba(255,255,255,0.10)' : '#E7E7E2',
+        shadowColor: '#000000',
+        shadowOpacity: 0.18,
+        shadowRadius: 28,
+        shadowOffset: { width: 0, height: 12 },
+        elevation: 20,
+        zIndex: 1000,
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+        <View style={{ width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#DCEC3F' }}>
+          <Bell size={19} color="#252900" strokeWidth={2.3} />
+        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={{ color: toastInk, fontSize: 15, fontWeight: '700' }}>Never miss an update</Text>
+          <Text style={{ color: toastSoft, fontSize: 13, lineHeight: 18, marginTop: 4 }}>
+            {isIosBrowserTab
+              ? 'To get alerts on iPhone, tap Share, then Add to Home Screen, and open Fyll from that icon.'
+              : 'Get alerts for new jobs and when your bills are reviewed or paid.'}
+          </Text>
+        </View>
+        <Pressable accessibilityLabel="Dismiss notification prompt" onPress={dismissNotificationToast} hitSlop={8} style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }}>
+          <X size={16} color={toastSoft} strokeWidth={2.2} />
+        </Pressable>
+      </View>
+      <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
+        <Pressable onPress={dismissNotificationToast} style={{ height: 38, paddingHorizontal: 14, borderRadius: 999, alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ color: isDarkMode ? '#C7C7C0' : '#555650', fontSize: 13, fontWeight: '600' }}>{isIosBrowserTab ? 'Got it' : 'Not now'}</Text>
+        </Pressable>
+        {isIosBrowserTab ? null : (
+          <Pressable
+            onPress={() => { void handleEnablePartnerNotifications(); }}
+            disabled={notificationEnableStatus === 'loading'}
+            style={{ height: 38, paddingHorizontal: 16, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: '#DCEC3F', opacity: notificationEnableStatus === 'loading' ? 0.65 : 1 }}
+          >
+            {notificationEnableStatus === 'loading' ? (
+              <ActivityIndicator size="small" color="#252900" />
+            ) : (
+              <Text style={{ color: '#252900', fontSize: 13, fontWeight: '700' }}>Enable notifications</Text>
+            )}
+          </Pressable>
+        )}
+      </View>
+      {notificationEnableStatus === 'blocked' ? (
+        <Text style={{ color: '#DC2626', fontSize: 11, lineHeight: 15, marginTop: 10 }}>
+          Permission did not open or was blocked. Check this browser's notification settings, then try again.
+        </Text>
+      ) : null}
+    </View>
+  ) : null;
+
   if (isDesktop) {
     return (
       <Pressable onPress={() => setStatusMenuJobId(null)} style={{ flex: 1, flexDirection: 'row', backgroundColor: colors.bg.primary }}>
@@ -3330,6 +3420,7 @@ export default function PartnerPortalScreen() {
         {jobDetailsPanel}
         {imageLightbox}
         {voidBillConfirmModal}
+        {notificationToast}
       </Pressable>
     );
   }
@@ -3344,6 +3435,7 @@ export default function PartnerPortalScreen() {
       {imageLightbox}
       {voidBillConfirmModal}
       {mobileFloatingNav}
+      {notificationToast}
       </Pressable>
     </SafeAreaView>
   );

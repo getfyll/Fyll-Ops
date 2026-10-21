@@ -86,6 +86,17 @@
       ],
       "destination": "/confirm-delivery",
       "permanent": false
+    },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "payment.fyll.app"
+        }
+      ],
+      "destination": "https://fyll.app",
+      "permanent": false
     }
   ]
 }

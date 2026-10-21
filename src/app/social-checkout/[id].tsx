@@ -22,7 +22,7 @@ import { useBreakpoint } from '@/lib/useBreakpoint';
 import { DesktopSidebar } from '@/components/DesktopSidebar';
 import { formatDeliveryLocation } from '@/lib/format-address';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
-import { buildSocialCheckoutUrl } from '@/lib/tracking-url';
+import { buildSocialCheckoutUrl, getPaymentLinkOrigin } from '@/lib/tracking-url';
 import { PaymentDetailSkeleton } from '@/components/SkeletonLoader';
 import { SearchClearButton } from '@/components/SearchClearButton';
 import { FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, InitialsAvatar, MoneyText, SectionLabel, isHovered, usePaymentsPalette, type StatusTone, useMobileFont, BackButton } from '@/components/payments/payments-ui';
@@ -145,7 +145,7 @@ export default function SocialCheckoutDetailScreen() {
 
   const publicLink = useMemo(() => {
     if (!draft || Platform.OS !== 'web' || typeof window === 'undefined') return '';
-    return buildSocialCheckoutUrl({ origin: window.location.origin, businessName, businessSlug, code: draft.id });
+    return buildSocialCheckoutUrl({ origin: getPaymentLinkOrigin(), businessName, businessSlug, code: draft.id });
   }, [businessName, businessSlug, draft]);
 
   const resetEditForm = (source: SocialCheckoutDraft) => {

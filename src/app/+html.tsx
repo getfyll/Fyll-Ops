@@ -54,6 +54,18 @@ const partnerBrandingScript = `
 (function () {
   try {
     var hostname = window.location.hostname.replace(/^www\\./, '');
+
+    // Customer-facing sites (payment, tracking, returns, delivery confirmation) are not
+    // an app: no manifest / standalone hints, so browsers never offer "install" or
+    // "add to Home Screen as an app".
+    if (['payment.fyll.app', 'track.fyll.app', 'returns.fyll.app', 'confirm.fyll.app'].indexOf(hostname) !== -1) {
+      var manifest = document.querySelector('link[rel="manifest"]');
+      if (manifest && manifest.parentNode) manifest.parentNode.removeChild(manifest);
+      var capable = document.querySelectorAll('meta[name="apple-mobile-web-app-capable"], meta[name="mobile-web-app-capable"]');
+      for (var i = 0; i < capable.length; i++) capable[i].parentNode.removeChild(capable[i]);
+      return;
+    }
+
     if (hostname !== 'partner.fyll.app') return;
 
     document.title = 'Fyll Partner';
@@ -183,7 +195,21 @@ const pwaBootScript = `
     return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
   }
 
+  // Pages customers open from a link (payment, tracking, returns, delivery confirmation)
+  // never ask to be installed — on their own hosts, or on the main hosts at the same paths.
+  var CUSTOMER_HOSTS = ['payment.fyll.app', 'track.fyll.app', 'returns.fyll.app', 'confirm.fyll.app'];
+  var CUSTOMER_PAGE = '(checkout|track|order-tracking|start-return|confirm-delivery)';
+
+  function isCustomerPage() {
+    var host = window.location.hostname.replace(/^www\\./, '');
+    var path = window.location.pathname;
+    return CUSTOMER_HOSTS.indexOf(host) !== -1
+      || new RegExp('^/' + CUSTOMER_PAGE + '(/|$)').test(path)
+      || new RegExp('^/[^/]+/' + CUSTOMER_PAGE + '(/|$)').test(path);
+  }
+
   function shouldShowCoachMark() {
+    if (isCustomerPage()) return false;
     if (!isIosDevice() || isStandalone()) return false;
     try {
       var hiddenUntil = Number(window.localStorage.getItem(DISMISS_KEY) || '0');

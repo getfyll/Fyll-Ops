@@ -1,12 +1,13 @@
 import { Platform } from 'react-native';
 import ConfirmDeliveryScreen from '../confirm-delivery';
 import TrackOrderScreen from '../track';
-import { isDeliveryConfirmationHostname } from '@/lib/tracking-host';
+import CheckoutScreen from '../checkout';
+import { isDeliveryConfirmationHostname, isPaymentHostname } from '@/lib/tracking-host';
 
 export default function BusinessCodePublicRoute() {
-  const isConfirmHost = Platform.OS === 'web'
-    && typeof window !== 'undefined'
-    && isDeliveryConfirmationHostname(window.location.hostname);
+  const hostname = Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.hostname : '';
 
-  return isConfirmHost ? <ConfirmDeliveryScreen /> : <TrackOrderScreen />;
+  // payment.fyll.app/<business>/<code> is the public payment page.
+  if (isPaymentHostname(hostname)) return <CheckoutScreen />;
+  return isDeliveryConfirmationHostname(hostname) ? <ConfirmDeliveryScreen /> : <TrackOrderScreen />;
 }

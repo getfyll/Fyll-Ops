@@ -30,7 +30,9 @@ import {
   isCustomerPortalHostname,
   isCustomerPortalRoute,
   isDeliveryConfirmationHostname,
+  isPaymentHostname,
   isReturnsHostname,
+  PAYMENT_FALLBACK_REDIRECT,
 } from '@/lib/tracking-host';
 import { GlobalFloatingActions } from '@/components/GlobalFloatingActions';
 import { RootErrorBoundary } from '@/components/RootErrorBoundary';
@@ -260,6 +262,10 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
   const isDeliveryConfirmationHost = Platform.OS === 'web' && typeof window !== 'undefined'
     ? isDeliveryConfirmationHostname(window.location.hostname)
     : false;
+  const isPaymentHost = Platform.OS === 'web' && typeof window !== 'undefined'
+    ? isPaymentHostname(window.location.hostname)
+    : false;
+  const portalHostname = Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.hostname : null;
   const isPartnerPortalHost = Platform.OS === 'web' && typeof window !== 'undefined'
     ? isPartnerPortalHostname(window.location.hostname)
     : false;
@@ -493,8 +499,9 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
     if (isCustomerPortalHost) {
       const routeName = firstSegment === '[businessSlug]' && routeSegments.length === 1
         ? '[businessSlug]/index' : routeSegments.join('/');
-      if (!isCustomerPortalRoute(routeName)) {
-        router.replace(isReturnsHost ? '/start-return'
+      if (!isCustomerPortalRoute(routeName, portalHostname)) {
+        router.replace(isPaymentHost ? PAYMENT_FALLBACK_REDIRECT
+          : isReturnsHost ? '/start-return'
           : isDeliveryConfirmationHost ? '/confirm-delivery' : '/order-tracking');
       }
       return;
@@ -591,7 +598,7 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
         router.replace('/settings');
       }
     }
-  }, [featureAccess, firstSegment, inPublicRoute, isAuthenticated, isCustomerPortalHost, isDeliveryConfirmationHost, isLegacyMainAppHost, isLegacyPublicRoute, isLoadingBusinessSettings, isNavigationReady, isPartnerPortalHost, isPlatformAdminHost, isReturnsHost, isStorefrontHost, router, secondSegment, segments]);
+  }, [featureAccess, firstSegment, inPublicRoute, isAuthenticated, isCustomerPortalHost, isDeliveryConfirmationHost, isPaymentHost, portalHostname, isLegacyMainAppHost, isLegacyPublicRoute, isLoadingBusinessSettings, isNavigationReady, isPartnerPortalHost, isPlatformAdminHost, isReturnsHost, isStorefrontHost, router, secondSegment, segments]);
 
   if (!isHydrated || !hasHiddenNativeSplash) {
     return null;
@@ -602,7 +609,7 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
       <RootErrorBoundary>
         <Stack
           screenLayout={({ route, children }) =>
-            isSwitchingBusiness || (isCustomerPortalHost && !isCustomerPortalRoute(route.name))
+            isSwitchingBusiness || (isCustomerPortalHost && !isCustomerPortalRoute(route.name, portalHostname))
               ? <View style={{ flex: 1, backgroundColor: colors.bg.primary, alignItems: 'center', justifyContent: 'center' }}>
                   {isSwitchingBusiness && <Text style={{ color: colors.text.primary }}>Switching business…</Text>}
                 </View>

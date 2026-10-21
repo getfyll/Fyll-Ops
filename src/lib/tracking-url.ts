@@ -1,7 +1,9 @@
 import {
   FYLL_DELIVERY_CONFIRMATION_ORIGIN,
+  FYLL_PAYMENT_ORIGIN,
   FYLL_RETURNS_ORIGIN,
   FYLL_TRACKING_ORIGIN,
+  PAYMENT_PRIMARY_DOMAIN,
 } from '@/lib/tracking-host';
 
 export const slugifyBusinessName = (value: string) => value
@@ -141,7 +143,35 @@ export const buildSocialCheckoutUrl = ({
   businessName?: string | null;
   businessSlug?: string | null;
   code: string;
-}) => `${origin}${buildSocialCheckoutPath({ businessName, businessSlug, code })}`;
+}) => {
+  // On the payment host the link is the short /<business>/<code>; the dashboard
+  // host (and local dev) keep the older /<business>/checkout/<code> shape.
+  if (hostnameOf(origin) === PAYMENT_PRIMARY_DOMAIN) {
+    const slug = slugifyBusinessName(businessSlug || businessName || '');
+    const normalizedCode = code.trim().toUpperCase();
+    return slug
+      ? `${origin}/${slug}/${encodeURIComponent(normalizedCode)}`
+      : `${origin}/checkout?code=${encodeURIComponent(normalizedCode)}`;
+  }
+  return `${origin}${buildSocialCheckoutPath({ businessName, businessSlug, code })}`;
+};
+
+const hostnameOf = (value: string) => {
+  try {
+    return new URL(value).hostname.replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+};
+
+// Customers open payment links on payment.fyll.app, never the staff dashboard.
+// Local dev / preview deployments keep their own origin so links stay testable.
+export const getPaymentLinkOrigin = () => {
+  if (typeof window === 'undefined') return FYLL_PAYMENT_ORIGIN;
+  const host = window.location.hostname.toLowerCase();
+  const isFyllHost = host === 'fyll.app' || host.endsWith('.fyll.app');
+  return isFyllHost ? FYLL_PAYMENT_ORIGIN : window.location.origin;
+};
 
 export const buildStartReturnPath = ({
   businessName,

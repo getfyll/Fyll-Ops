@@ -12,7 +12,7 @@ import { useBusinessSettings } from '@/hooks/useBusinessSettings';
 import { supabaseSettings } from '@/lib/supabase/settings';
 import { supabaseData } from '@/lib/supabase/data';
 import { generateCheckoutCode } from '@/lib/generateCheckoutCode';
-import { buildSocialCheckoutUrl } from '@/lib/tracking-url';
+import { buildSocialCheckoutUrl, getPaymentLinkOrigin } from '@/lib/tracking-url';
 import { formatCurrency, SOCIAL_CHECKOUT_EXPIRY_MS, type BankAccount, type SocialCheckoutDraft } from '@/lib/state/fyll-store';
 import { FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, MoneyText, isHovered, usePaymentsPalette } from '@/components/payments/payments-ui';
 
@@ -172,7 +172,7 @@ export default function NewSocialCheckoutScreen() {
 
       const url =
         Platform.OS === 'web' && typeof window !== 'undefined'
-          ? buildSocialCheckoutUrl({ origin: window.location.origin, businessName, businessSlug, code })
+          ? buildSocialCheckoutUrl({ origin: getPaymentLinkOrigin(), businessName, businessSlug, code })
           : buildSocialCheckoutUrl({ origin: '', businessName, businessSlug, code });
 
       setCreated({ code, url, expiresAtMs });
