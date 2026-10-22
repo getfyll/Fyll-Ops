@@ -9,6 +9,7 @@ import * as Haptics from 'expo-haptics';
 import { AuthField, AuthHeader, AuthNote, AuthPrimaryButton, AuthShell } from '@/components/auth/AuthShell';
 import { FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, usePaymentsPalette } from '@/components/payments/payments-ui';
 import { supabase } from '@/lib/supabase';
+import { getFyllDashboardAppOrigin } from '@/lib/fyll-app-url';
 import { isPartnerPortalHostname } from '@/lib/partner-host';
 import PartnerLoginScreen from './partner-login';
 
@@ -143,7 +144,10 @@ export default function LoginScreen() {
 
     try {
       const normalizedEmail = email.trim().toLowerCase();
-      const { error: resetError } = await supabase.auth.resetPasswordForEmail(normalizedEmail);
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
+        // The email link lands on the dashboard's set-new-password page.
+        redirectTo: `${getFyllDashboardAppOrigin()}/reset-password`,
+      });
       if (resetError) {
         throw resetError;
       }

@@ -62,7 +62,7 @@ const webInitialMetrics = {
   frame: { x: 0, y: 0, width: 0, height: 0 },
   insets: { top: 0, left: 0, right: 0, bottom: 0 },
 };
-const PUBLIC_ROUTE_SEGMENTS = new Set(['login', 'welcome', 'start', 'request-invite', 'track', 'order-tracking', 'confirm-delivery', 'start-return', 'checkout', 'platform-admin-login', 'partner', 'partner-login', 'partner-invite', 'q', 'quotes']);
+const PUBLIC_ROUTE_SEGMENTS = new Set(['login', 'reset-password', 'welcome', 'start', 'request-invite', 'track', 'order-tracking', 'confirm-delivery', 'start-return', 'checkout', 'platform-admin-login', 'partner', 'partner-login', 'partner-invite', 'q', 'quotes']);
 const LEGACY_PUBLIC_ROUTE_SEGMENTS = new Set(['track', 'order-tracking', 'confirm-delivery', 'start-return', 'checkout', 'partner', 'partner-login', 'partner-invite', 'q', 'quotes']);
 const WOO_CONNECT_SESSION_KEY = 'fyll_woocommerce_connect_params';
 const ROUTE_FEATURES: Record<string, BusinessFeatureKey> = {
@@ -637,6 +637,7 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
           <Stack.Screen name="[businessSlug]/[code]" options={{ headerShown: false }} />
           <Stack.Screen name="[businessSlug]/start-return" options={{ headerShown: false }} />
           <Stack.Screen name="checkout" options={{ headerShown: false }} />
+          <Stack.Screen name="reset-password" options={{ headerShown: false }} />
           <Stack.Screen name="[businessSlug]/checkout/[code]" options={{ headerShown: false }} />
           <Stack.Screen name="social-checkout/new" options={{ headerShown: false, presentation: 'transparentModal', animation: 'fade', contentStyle: { backgroundColor: 'transparent' } }} />
           <Stack.Screen name="social-checkout/[id]" options={{ headerShown: false }} />
