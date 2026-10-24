@@ -41,6 +41,8 @@ export function InteractiveLineChart({
   tooltipTextColor = '#FFFFFF',
   maxXLabels = 8,
   paddingLeft = 52,
+  paddingRight = 12,
+  showYLabels = true,
 }: {
   data: LineChartDatum[];
   height?: number;
@@ -55,6 +57,8 @@ export function InteractiveLineChart({
   tooltipTextColor?: string;
   maxXLabels?: number;
   paddingLeft?: number;
+  paddingRight?: number;
+  showYLabels?: boolean;
 }) {
   const [width, setWidth] = useState<number>(0);
 
@@ -66,7 +70,6 @@ export function InteractiveLineChart({
   const chart = useMemo(() => {
     if (!width || data.length < 2) return null;
 
-    const paddingRight = 12;
     const paddingTop = 18;
     const paddingBottom = 30;
     const chartWidth = Math.max(1, width - paddingLeft - paddingRight);
@@ -108,7 +111,7 @@ export function InteractiveLineChart({
       pathData,
       areaPath,
     };
-  }, [data, formatYLabel, height, width, paddingLeft]);
+  }, [data, formatYLabel, height, width, paddingLeft, paddingRight]);
 
   if (data.length < 2) return null;
 
@@ -133,22 +136,24 @@ export function InteractiveLineChart({
                 <Line
                   x1={chart.paddingLeft}
                   y1={y}
-                  x2={width - 12}
+                  x2={width - paddingRight}
                   y2={y}
                   stroke={gridColor}
                   strokeWidth={1}
                   strokeDasharray="4,4"
                 />
-                <SvgText
-                  x={chart.paddingLeft - 10}
-                  y={y + 4}
-                  fill={textColor}
-                  fontSize={11}
-                  fontWeight="500"
-                  textAnchor="end"
-                >
-                  {label}
-                </SvgText>
+                {showYLabels ? (
+                  <SvgText
+                    x={chart.paddingLeft - 10}
+                    y={y + 4}
+                    fill={textColor}
+                    fontSize={11}
+                    fontWeight="500"
+                    textAnchor="end"
+                  >
+                    {label}
+                  </SvgText>
+                ) : null}
               </React.Fragment>
             );
           })}

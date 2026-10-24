@@ -3,7 +3,7 @@ import { Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-na
 import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ArrowDownUp, ChevronRight, Filter, Plus, RotateCcw, Search } from 'lucide-react-native';
+import { ArrowDownUp, ChevronRight, Filter, Plus, RotateCcw, Search, X } from 'lucide-react-native';
 import { CaseForm, type CaseReturnDetails } from '@/components/CaseForm';
 import { DesktopSidebar } from '@/components/DesktopSidebar';
 import { useBreakpoint } from '@/lib/useBreakpoint';
@@ -22,6 +22,8 @@ import useFyllStore, {
 } from '@/lib/state/fyll-store';
 import { DESKTOP_PAGE_HEADER_MIN_HEIGHT, usePageHeadingStyle } from '@/lib/page-heading';
 import { SearchClearButton } from '@/components/SearchClearButton';
+import { EmptyState } from '@/components/EmptyState';
+import { FYLL_LIME, FYLL_LIME_INK } from '@/components/payments/payments-ui';
 
 type ReturnDateFilter = '7d' | 'month' | '30d' | 'year';
 type ReturnSort = 'newest' | 'oldest';
@@ -359,18 +361,18 @@ export default function ReturnsScreen() {
   const body = (
     <View style={{ flex: 1, backgroundColor: colors.bg.primary }}>
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg.primary }} edges={isDesktop ? [] : ['top']}>
-      <View style={{ borderBottomWidth: 0.5, borderBottomColor: separatorColor }}>
+      <View>
         <View
           style={{
             width: '100%',
             maxWidth: contentMaxWidth,
             alignSelf: isDesktop ? 'flex-start' : 'stretch',
             minHeight: isDesktop ? DESKTOP_PAGE_HEADER_MIN_HEIGHT : undefined,
-            paddingHorizontal: 20,
-            paddingTop: isDesktop ? 20 : 16,
-            paddingBottom: isDesktop ? 16 : 12,
+            paddingHorizontal: isMobile ? 16 : isDesktop ? 28 : 20,
+            paddingTop: isDesktop ? 28 : 14,
+            paddingBottom: 14,
             flexDirection: 'row',
-            alignItems: 'center',
+            alignItems: isMobile ? 'center' : 'flex-start',
             justifyContent: 'space-between',
             gap: 16,
           }}
@@ -379,7 +381,7 @@ export default function ReturnsScreen() {
             <Text style={[headingStyle, { color: colors.text.primary }]}>
               Returns
             </Text>
-            <Text style={{ color: colors.text.tertiary, fontSize: isMobile ? 10 : 12, fontWeight: '400', marginTop: 4, lineHeight: isMobile ? 14 : 18, maxWidth: 520 }} numberOfLines={isMobile ? 2 : undefined}>
+            <Text style={{ color: colors.text.muted, fontSize: isMobile ? 13 : 14, fontWeight: '400', marginTop: 4, lineHeight: 20, maxWidth: 520 }} numberOfLines={isMobile ? 2 : undefined}>
               Track return cases, customer shipping responsibility, and refund or exchange progress.
             </Text>
           </View>
@@ -387,18 +389,18 @@ export default function ReturnsScreen() {
             <Pressable
               onPress={openNewReturnForm}
               style={{
-                height: isMobile ? 40 : 44,
+                height: 40,
                 borderRadius: 999,
-                paddingHorizontal: isMobile ? 14 : 18,
-                backgroundColor: colors.text.primary,
+                paddingHorizontal: 16,
+                backgroundColor: FYLL_LIME,
                 alignItems: 'center',
                 justifyContent: 'center',
                 flexDirection: 'row',
                 gap: 8,
               }}
             >
-              <Plus size={15} color={colors.bg.primary} strokeWidth={2.4} />
-              <Text style={{ color: colors.bg.primary, fontSize: 13, fontWeight: '600' }}>
+              <Plus size={16} color={FYLL_LIME_INK} strokeWidth={2.6} />
+              <Text style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '600' }}>
                 {isMobile ? 'New' : 'New return'}
               </Text>
             </Pressable>
@@ -410,6 +412,7 @@ export default function ReturnsScreen() {
         style={{ flex: 1 }}
         contentContainerStyle={{
           paddingBottom: contentPaddingBottom,
+          flexGrow: 1,
         }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
@@ -419,15 +422,22 @@ export default function ReturnsScreen() {
           width: '100%',
             maxWidth: contentMaxWidth,
             alignSelf: isDesktop ? 'flex-start' : 'stretch',
-            paddingHorizontal: 20,
+            paddingHorizontal: isMobile ? 16 : isDesktop ? 28 : 20,
+            flexGrow: filteredReturns.length === 0 ? 1 : undefined,
           }}
         >
-          <View style={{ paddingTop: 16 }}>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={{ marginBottom: 16 }}
-              contentContainerStyle={{ flexGrow: 0, gap: 8, paddingRight: 4 }}
+          <View style={{ paddingTop: 0, flexGrow: filteredReturns.length === 0 ? 1 : undefined }}>
+            <View
+              style={{
+                flexDirection: 'row',
+                padding: 4,
+                borderRadius: 999,
+                backgroundColor: colors.bg.secondary,
+                borderWidth: 1,
+                borderColor: separatorColor,
+                width: isMobile ? '100%' : 460,
+                marginBottom: 14,
+              }}
             >
               {returnDateFilters.map((option) => {
                 const active = dateFilter === option.key;
@@ -436,23 +446,21 @@ export default function ReturnsScreen() {
                     key={option.key}
                     onPress={() => setDateFilter(option.key)}
                     style={{
-                      height: isMobile ? 34 : 38,
+                      flex: 1,
+                      height: 34,
                       borderRadius: 999,
-                      paddingHorizontal: isMobile ? 12 : 14,
                       alignItems: 'center',
                       justifyContent: 'center',
-                      backgroundColor: active ? colors.accent.primary : colors.bg.card,
-                      borderWidth: active ? 0 : 1,
-                      borderColor: separatorColor,
+                      backgroundColor: active ? FYLL_LIME : 'transparent',
                     }}
                   >
-                    <Text style={{ color: active ? (isDark ? '#000000' : '#FFFFFF') : colors.text.primary, fontSize: 10, fontWeight: '600' }}>
+                    <Text style={{ color: active ? FYLL_LIME_INK : colors.text.muted, fontSize: 12, fontWeight: '600' }}>
                       {option.label}
                     </Text>
                   </Pressable>
                 );
               })}
-            </ScrollView>
+            </View>
 
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -6, marginBottom: 12 }}>
               {stats.map((item) => (
@@ -469,9 +477,9 @@ export default function ReturnsScreen() {
                       backgroundColor: colors.bg.card,
                       borderWidth: 1,
                       borderColor: colors.border.light,
-                      borderRadius: 24,
+                      borderRadius: 20,
                       padding: isMobile ? 14 : 18,
-                      minHeight: isMobile ? 104 : 138,
+                      minHeight: isMobile ? 96 : 116,
                     }}
                   >
                     <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 1 }}>
@@ -536,12 +544,12 @@ export default function ReturnsScreen() {
                           paddingHorizontal: 16,
                           alignItems: 'center',
                           justifyContent: 'center',
-                          backgroundColor: active ? colors.accent.primary : colors.bg.card,
+                          backgroundColor: active ? FYLL_LIME : colors.bg.card,
                           borderWidth: active ? 0 : 1,
                           borderColor: separatorColor,
                         }}
                       >
-                        <Text style={{ color: active ? (isDark ? '#000000' : '#FFFFFF') : colors.text.primary, fontSize: 12, fontWeight: '600' }}>
+                        <Text style={{ color: active ? FYLL_LIME_INK : colors.text.primary, fontSize: 12, fontWeight: '600' }}>
                           {option.label}
                         </Text>
                       </Pressable>
@@ -585,14 +593,15 @@ export default function ReturnsScreen() {
 
             <View
               style={{
-                backgroundColor: isDesktop ? colors.bg.card : 'transparent',
-                borderWidth: isDesktop ? 1 : 0,
+                backgroundColor: isDesktop && filteredReturns.length > 0 ? colors.bg.card : 'transparent',
+                borderWidth: isDesktop && filteredReturns.length > 0 ? 1 : 0,
                 borderColor: colors.border.light,
-                borderRadius: isDesktop ? 16 : 0,
+                borderRadius: isDesktop ? 20 : 0,
                 overflow: isDesktop ? 'hidden' : 'visible',
+                flexGrow: filteredReturns.length === 0 ? 1 : undefined,
               }}
             >
-              {!isMobile && (
+              {!isMobile && filteredReturns.length > 0 && (
                 <View style={{ minHeight: 44, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 0.5, borderBottomColor: colors.border.light }}>
                   {['RETURN', 'REASON', 'STATUS', 'UPDATED'].map((heading, index) => (
                     <Text
@@ -613,13 +622,20 @@ export default function ReturnsScreen() {
               {filteredReturns.length > 0 ? (
                 filteredReturns.map(renderReturnRow)
               ) : (
-                <View style={{ padding: 34, alignItems: 'center' }}>
-                  <RotateCcw size={28} color={colors.text.tertiary} strokeWidth={1.8} />
-                  <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600', marginTop: 12 }}>No returns found</Text>
-                  <Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '400', textAlign: 'center', marginTop: 6, maxWidth: 280 }}>
-                    Try another date range or status filter.
-                  </Text>
-                </View>
+                // Same empty state as Orders: first-run copy, a way out of filters, centred in the space left.
+                <EmptyState
+                  fill
+                  icon={RotateCcw}
+                  title={returns.length === 0 ? 'Your first return starts here' : 'No matching returns'}
+                  description={returns.length === 0
+                    ? 'Log customer returns here to track the item, the reason and the refund or exchange from start to finish.'
+                    : 'Try clearing your search and filters to see every return again.'}
+                  actionLabel={returns.length === 0 ? 'Create first return' : 'Clear filters'}
+                  actionIcon={returns.length === 0 ? Plus : X}
+                  onAction={returns.length === 0
+                    ? openNewReturnForm
+                    : () => { setSearchQuery(''); setStatusFilter('all'); setDateFilter('year'); }}
+                />
               )}
             </View>
           </View>

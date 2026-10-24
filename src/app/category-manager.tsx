@@ -10,6 +10,7 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view
 import * as Haptics from 'expo-haptics';
 import { getSettingsWebPanelStyles, isFromSettingsRoute } from '@/lib/settings-web-panel';
 import { useSettingsBack } from '@/lib/useSettingsBack';
+import { EmptyState } from '@/components/EmptyState';
 
 // Hairline separator colors
 const SEPARATOR_LIGHT = '#EEEEEE';
@@ -171,18 +172,11 @@ export default function CategoryManagerScreen() {
           </Text>
 
           {categories.length === 0 ? (
-            <View className="rounded-xl p-6 items-center" style={{ backgroundColor: colors.bg.card, borderWidth: 0.5, borderColor: separatorColor }}>
-              <View
-                className="w-16 h-16 rounded-2xl items-center justify-center mb-4"
-                style={{ backgroundColor: 'rgba(59, 130, 246, 0.15)' }}
-              >
-                <Tag size={32} color="#3B82F6" strokeWidth={1.5} />
-              </View>
-              <Text style={{ color: colors.text.tertiary }} className="text-base mb-1">No categories yet</Text>
-              <Text style={{ color: colors.text.muted }} className="text-sm text-center px-4">
-                Add your first category above to organize your products
-              </Text>
-            </View>
+            <EmptyState
+              icon={Tag}
+              title="No categories yet"
+              description="Add your first category above to organize your products."
+            />
           ) : (
             categories.map((category) => (
               <View

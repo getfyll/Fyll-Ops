@@ -11,3 +11,6 @@ cp web/onesignal/OneSignalSDKUpdaterWorker.js dist/onesignal/OneSignalSDKUpdater
 cp web/OneSignalSDKWorker.js dist/OneSignalSDKWorker.js
 cp web/OneSignalSDKUpdaterWorker.js dist/OneSignalSDKUpdaterWorker.js
 cp web/OneSignalSDK.sw.js dist/OneSignalSDK.sw.js
+
+# Publish the release notes so open tabs can detect a new version and offer a refresh.
+cp src/data/release-notes.json dist/release-notes.json

@@ -14,6 +14,7 @@ import { useBreakpoint } from '@/lib/useBreakpoint';
 import { getSettingsWebPanelStyles, isFromSettingsRoute } from '@/lib/settings-web-panel';
 import { useSettingsBack } from '@/lib/useSettingsBack';
 import { cn } from '@/lib/cn';
+import { EmptyState } from '@/components/EmptyState';
 
 export default function ProductOptionsScreen() {
   const colors = useThemeColors();
@@ -249,20 +250,12 @@ export default function ProductOptionsScreen() {
 
             {/* Options List */}
             {productOptions.length === 0 ? (
-              <View>
-                <View className="rounded-xl p-6 mt-4 border items-center" style={{ backgroundColor: colors.bg.card, borderColor: colors.border.light }}>
-                  <View
-                    className="w-16 h-16 rounded-2xl items-center justify-center mb-4"
-                    style={{ backgroundColor: 'rgba(168, 85, 247, 0.15)' }}
-                  >
-                    <Tag size={32} color="#A855F7" strokeWidth={1.5} />
-                  </View>
-                  <Text style={{ color: colors.text.tertiary }} className="text-base mb-1">No product options yet</Text>
-                  <Text style={{ color: colors.text.muted }} className="text-sm text-center px-4">
-                    Add reusable options like Shoe Size, Width, Finish, Gift Message, or Packaging. They are saved for this business and can be attached to any product.
-                  </Text>
-                </View>
-              </View>
+              <EmptyState
+                icon={Tag}
+                title="No product options yet"
+                description="Add reusable options like Shoe Size, Width, Finish, Gift Message, or Packaging. They are saved for this business and can be attached to any product."
+                style={{ marginTop: 16 }}
+              />
             ) : (
               productOptions.map((option, index) => {
                 const isExpanded = expandedOptionIds.has(option.id);

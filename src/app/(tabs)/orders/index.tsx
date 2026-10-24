@@ -21,8 +21,9 @@ import { getOrderStatusColor } from '@/lib/order-status-colors';
 import { findOrderTrackingStageByName, sortOrderStatusesForFulfillment } from '@/lib/order-status';
 import { getFulfillmentSnapshot } from '@/lib/fulfillment';
 import * as Haptics from 'expo-haptics';
-import { useFonts, BricolageGrotesque_700Bold } from '@expo-google-fonts/bricolage-grotesque';
+import { useFonts, BricolageGrotesque_600SemiBold, BricolageGrotesque_700Bold } from '@expo-google-fonts/bricolage-grotesque';
 import { SearchClearButton } from '@/components/SearchClearButton';
+import { EmptyState } from '@/components/EmptyState';
 import { supabaseData } from '@/lib/supabase/data';
 import { FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, usePaymentsPalette } from '@/components/payments/payments-ui';
 
@@ -421,7 +422,7 @@ function OrderRowWeb({
 }
 
 export default function OrdersScreen() {
-  const [bricolageLoaded] = useFonts({ BricolageGrotesque_700Bold });
+  const [bricolageLoaded] = useFonts({ BricolageGrotesque_600SemiBold, BricolageGrotesque_700Bold });
   const router = useRouter();
   const colors = useThemeColors();
   const palette = usePaymentsPalette();
@@ -714,6 +715,18 @@ export default function OrdersScreen() {
     ));
   }), [orders, paymentsQuery.data]);
   const firstUnlinkedPayment = unlinkedVerifiedPayments[0];
+  const hasOrderFilters = Boolean(searchQuery.trim() || selectedStatus || selectedSource);
+
+  const handleEmptyStateAction = () => {
+    if (orders.length === 0) {
+      handleNewOrder();
+      return;
+    }
+    setSearchQuery('');
+    setSelectedStatus(null);
+    setSelectedSource(null);
+    setSortBy('newest');
+  };
 
   const ordersHeaderContent = (
     <View style={{ paddingTop: isWebDesktop ? 28 : 14, paddingBottom: 12, width: '100%', gap: isWebDesktop ? 18 : 14 }}>
@@ -751,7 +764,7 @@ export default function OrdersScreen() {
 
         {isMobile ? (
           <View style={{ borderRadius: 20, borderWidth: 1, borderColor: separatorColor, backgroundColor: colors.bg.card, padding: 18, gap: 14 }}>
-            <View style={{ gap: 4 }}><Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>In progress</Text><Text style={{ color: colors.text.primary, fontSize: 32, lineHeight: 36, fontWeight: bricolageLoaded ? '400' : '700', fontFamily: bricolageLoaded ? 'BricolageGrotesque_700Bold' : undefined, letterSpacing: -1 }}>{orderSummary.inProgressCount} orders</Text><Text style={{ color: colors.text.muted, fontSize: 13 }}>{formatCurrency(orderSummary.inProgressValue)} across processing and delivery</Text></View>
+            <View style={{ gap: 4 }}><Text maxFontSizeMultiplier={1} style={{ color: colors.text.tertiary, fontSize: 10, lineHeight: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>In progress</Text><Text style={{ color: colors.text.primary, fontSize: 32, lineHeight: 36, fontWeight: bricolageLoaded ? '400' : '700', fontFamily: bricolageLoaded ? 'BricolageGrotesque_700Bold' : undefined, letterSpacing: -1 }}>{orderSummary.inProgressCount} orders</Text><Text style={{ color: colors.text.muted, fontSize: 13 }}>{formatCurrency(orderSummary.inProgressValue)} across processing and delivery</Text></View>
             <View style={{ height: 1, backgroundColor: separatorColor }} />
             <View className="flex-row" style={{ gap: 10 }}>
               {[
@@ -787,14 +800,14 @@ export default function OrdersScreen() {
               <TextInput placeholder="Search orders, customers, products" placeholderTextColor={colors.input.placeholder} value={searchQuery} onChangeText={setSearchQuery} style={{ flex: 1, marginLeft: 10, color: colors.input.text, fontSize: 14.5 }} selectionColor={colors.text.primary} />
               <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
             </View>
-            {!isWebDesktop ? <Pressable onPress={() => setShowFilterMenu(true)} style={{ width: 48, height: 48, borderRadius: 999, borderWidth: 1, borderColor: activeFilterCount ? colors.accent.primary : colors.border.light, backgroundColor: activeFilterCount ? colors.accent.primary : colors.bg.card, alignItems: 'center', justifyContent: 'center' }}><Filter size={18} color={activeFilterCount ? (isDark ? '#1E1E1E' : '#FFFFFF') : colors.text.muted} strokeWidth={2} /></Pressable> : null}
+            {!isWebDesktop ? <Pressable onPress={() => setShowFilterMenu(true)} style={{ width: 48, height: 48, borderRadius: 999, borderWidth: 1, borderColor: activeFilterCount ? FYLL_LIME : colors.border.light, backgroundColor: activeFilterCount ? FYLL_LIME : colors.bg.card, alignItems: 'center', justifyContent: 'center' }}><Filter size={18} color={activeFilterCount ? FYLL_LIME_INK : colors.text.muted} strokeWidth={2} /></Pressable> : null}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={isWebDesktop ? { flex: 1 } : { position: 'absolute', width: 0, height: 0 }} contentContainerStyle={{ gap: 8 }}>
-              <Pressable onPress={() => setSelectedStatus(null)} style={{ height: 36, paddingHorizontal: 14, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: selectedStatus === null ? colors.text.primary : 'transparent', borderWidth: 1, borderColor: selectedStatus === null ? colors.text.primary : colors.border.medium }}><Text style={{ color: selectedStatus === null ? colors.bg.primary : colors.text.secondary, fontSize: 12, fontWeight: '600' }}>All <Text style={{ opacity: 0.55 }}>{orders.length}</Text></Text></Pressable>
-              {sortedOrderStatuses.map((status) => <Pressable key={status.id} onPress={() => setSelectedStatus(status.name)} style={{ height: 36, paddingHorizontal: 14, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: selectedStatus === status.name ? colors.text.primary : 'transparent', borderWidth: 1, borderColor: selectedStatus === status.name ? colors.text.primary : colors.border.medium }}><Text style={{ color: selectedStatus === status.name ? colors.bg.primary : colors.text.secondary, fontSize: 12, fontWeight: '600' }}>{status.name} <Text style={{ opacity: 0.55 }}>{statusCounts[status.name] ?? 0}</Text></Text></Pressable>)}
+              <Pressable onPress={() => setSelectedStatus(null)} style={{ height: 36, paddingHorizontal: 14, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: selectedStatus === null ? FYLL_LIME : 'transparent', borderWidth: 1, borderColor: selectedStatus === null ? FYLL_LIME : colors.border.medium }}><Text style={{ color: selectedStatus === null ? FYLL_LIME_INK : colors.text.secondary, fontSize: 12, fontWeight: '600' }}>All <Text style={{ opacity: 0.55 }}>{orders.length}</Text></Text></Pressable>
+              {sortedOrderStatuses.map((status) => <Pressable key={status.id} onPress={() => setSelectedStatus(status.name)} style={{ height: 36, paddingHorizontal: 14, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: selectedStatus === status.name ? FYLL_LIME : 'transparent', borderWidth: 1, borderColor: selectedStatus === status.name ? FYLL_LIME : colors.border.medium }}><Text style={{ color: selectedStatus === status.name ? FYLL_LIME_INK : colors.text.secondary, fontSize: 12, fontWeight: '600' }}>{status.name} <Text style={{ opacity: 0.55 }}>{statusCounts[status.name] ?? 0}</Text></Text></Pressable>)}
             </ScrollView>
-            {isWebDesktop ? <Pressable onPress={() => setShowFilterMenu(true)} style={{ width: 40, height: 40, borderRadius: 999, borderWidth: 1, borderColor: activeFilterCount ? colors.accent.primary : colors.border.medium, backgroundColor: activeFilterCount ? colors.accent.primary : 'transparent', alignItems: 'center', justifyContent: 'center' }}><Filter size={17} color={activeFilterCount ? (isDark ? '#1E1E1E' : '#FFFFFF') : colors.text.secondary} strokeWidth={2} /></Pressable> : null}
+            {isWebDesktop ? <Pressable onPress={() => setShowFilterMenu(true)} style={{ width: 40, height: 40, borderRadius: 999, borderWidth: 1, borderColor: activeFilterCount ? FYLL_LIME : colors.border.medium, backgroundColor: activeFilterCount ? FYLL_LIME : 'transparent', alignItems: 'center', justifyContent: 'center' }}><Filter size={17} color={activeFilterCount ? FYLL_LIME_INK : colors.text.secondary} strokeWidth={2} /></Pressable> : null}
           </View>
-          {!isWebDesktop ? <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginRight: -horizontalPadding }} contentContainerStyle={{ gap: 8, paddingRight: horizontalPadding }}><Pressable onPress={() => setSelectedStatus(null)} style={{ height: 36, paddingHorizontal: 14, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: selectedStatus === null ? colors.text.primary : 'transparent', borderWidth: 1, borderColor: selectedStatus === null ? colors.text.primary : colors.border.medium }}><Text style={{ color: selectedStatus === null ? colors.bg.primary : colors.text.secondary, fontSize: 12, fontWeight: '600' }}>All <Text style={{ opacity: 0.55 }}>{orders.length}</Text></Text></Pressable>{sortedOrderStatuses.map((status) => <Pressable key={status.id} onPress={() => setSelectedStatus(status.name)} style={{ height: 36, paddingHorizontal: 14, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: selectedStatus === status.name ? colors.text.primary : 'transparent', borderWidth: 1, borderColor: selectedStatus === status.name ? colors.text.primary : colors.border.medium }}><Text style={{ color: selectedStatus === status.name ? colors.bg.primary : colors.text.secondary, fontSize: 12, fontWeight: '600' }}>{status.name} <Text style={{ opacity: 0.55 }}>{statusCounts[status.name] ?? 0}</Text></Text></Pressable>)}</ScrollView> : null}
+          {!isWebDesktop ? <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginRight: -horizontalPadding }} contentContainerStyle={{ gap: 8, paddingRight: horizontalPadding }}><Pressable onPress={() => setSelectedStatus(null)} style={{ height: 36, paddingHorizontal: 14, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: selectedStatus === null ? FYLL_LIME : 'transparent', borderWidth: 1, borderColor: selectedStatus === null ? FYLL_LIME : colors.border.medium }}><Text style={{ color: selectedStatus === null ? FYLL_LIME_INK : colors.text.secondary, fontSize: 12, fontWeight: '600' }}>All <Text style={{ opacity: 0.55 }}>{orders.length}</Text></Text></Pressable>{sortedOrderStatuses.map((status) => <Pressable key={status.id} onPress={() => setSelectedStatus(status.name)} style={{ height: 36, paddingHorizontal: 14, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: selectedStatus === status.name ? FYLL_LIME : 'transparent', borderWidth: 1, borderColor: selectedStatus === status.name ? FYLL_LIME : colors.border.medium }}><Text style={{ color: selectedStatus === status.name ? FYLL_LIME_INK : colors.text.secondary, fontSize: 12, fontWeight: '600' }}>{status.name} <Text style={{ opacity: 0.55 }}>{statusCounts[status.name] ?? 0}</Text></Text></Pressable>)}</ScrollView> : null}
         </View>
     </View>
   );
@@ -829,21 +842,20 @@ export default function OrdersScreen() {
                 <ActivityIndicator size="small" color={colors.text.tertiary} />
                 <Text style={{ color: colors.text.muted }} className="text-sm mt-3">Loading orders…</Text>
               </View>
-            ) : <View className="items-center justify-center py-20">
-              <View className="w-20 h-20 rounded-2xl items-center justify-center mb-4" style={{ backgroundColor: colors.border.light }}>
-                <ShoppingCart size={40} color={colors.text.muted} strokeWidth={1.5} />
+            ) : (
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: isMobile ? 36 : 56 }}>
+                <EmptyState
+                  icon={ShoppingCart}
+                  title={orders.length === 0 ? 'Your first order starts here' : 'No matching orders'}
+                  description={orders.length === 0
+                    ? 'Create an order to begin tracking payment, fulfilment, and delivery in one place.'
+                    : hasOrderFilters ? 'Try clearing your search and filters to see every order again.' : 'No orders are available in this view.'}
+                  actionLabel={orders.length === 0 ? 'Create first order' : 'Clear filters'}
+                  actionIcon={orders.length === 0 ? Plus : X}
+                  onAction={handleEmptyStateAction}
+                />
               </View>
-              <Text style={{ color: colors.text.tertiary }} className="text-base mb-1">No orders found</Text>
-              <Text style={{ color: colors.text.muted }} className="text-sm mb-4">Create your first order to get started</Text>
-              <Pressable
-                onPress={handleNewOrder}
-                className="rounded-full active:opacity-80 px-6 py-3 flex-row items-center"
-                style={{ backgroundColor: colors.accent.primary }}
-              >
-                <Plus size={16} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={2.5} />
-                <Text style={{ color: isDark ? '#000000' : '#FFFFFF' }} className="font-semibold ml-1.5">Create First Order</Text>
-              </Pressable>
-            </View>
+            )
           }
           ListHeaderComponent={
             <>
@@ -876,7 +888,7 @@ export default function OrdersScreen() {
             </>
           }
           ListFooterComponent={
-            <View className="items-center pb-6">
+            visibleOrders.length > 0 ? <View className="items-center pb-6">
               {hasMoreOrders ? (
                 <Pressable
                   onPress={loadMoreOrders}
@@ -899,7 +911,7 @@ export default function OrdersScreen() {
                 </Text>
               )}
               <View className="h-24" />
-            </View>
+            </View> : null
           }
           renderItem={({ item: order, index }) => {
             const previousOrder = index > 0 ? visibleOrders[index - 1] : null;

@@ -1,0 +1,31 @@
+{
+  "releases": [
+    {
+      "version": "2.4.0",
+      "date": "2026-10-24T09:00:00Z",
+      "features": [
+        {
+          "icon": "zap",
+          "title": "Faster Fyll Checkout approvals",
+          "body": "Approving a storefront payment now finishes right away while the rest syncs in the background."
+        },
+        {
+          "icon": "package",
+          "title": "Custom items go to inventory",
+          "body": "Items you add on the fly in an order are saved to your inventory so you can reuse them."
+        },
+        {
+          "icon": "home",
+          "title": "A fresher Home",
+          "body": "New Payments collected card, quicker Jump to tiles and a cleaner Needs you today."
+        }
+      ],
+      "fixes": [
+        "Storefront payments now show as paid in Fyll Ops once the order is approved.",
+        "WooCommerce fields are hidden when WooCommerce is not connected.",
+        "Page headers, tabs and empty states now look the same across Payments, Delivery, Returns and Partners.",
+        "The active item in the left menu is now Fyll lime."
+      ]
+    }
+  ]
+}

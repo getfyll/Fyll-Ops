@@ -18,6 +18,7 @@ import { capitalizeDisplayLabel } from '@/lib/display-format';
 import { SearchClearButton } from '@/components/SearchClearButton';
 import { FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, isHovered, usePaymentsPalette } from '@/components/payments/payments-ui';
 import { FilterPill, MenuPill } from '@/components/inventory/inventory-ui';
+import { EmptyState } from '@/components/EmptyState';
 
 type WarehouseFormState = {
   name: string;
@@ -396,6 +397,7 @@ export default function WarehouseScreen() {
           paddingHorizontal: isWebDesktop ? 28 : 16,
           paddingBottom: tabBarHeight + 32,
           gap: isWebDesktop ? 18 : 14,
+          flexGrow: 1,
         }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
@@ -596,31 +598,22 @@ export default function WarehouseScreen() {
           </View>
         )}
 
-        <View>
+        <View style={{ flexGrow: filteredItems.length === 0 ? 1 : undefined }}>
           {filteredItems.length === 0 ? (
-            <View
-              style={{
-                borderWidth: 1,
-                borderColor: palette.border,
-                borderRadius: 18,
-                paddingVertical: 46,
-                paddingHorizontal: 16,
-                alignItems: 'center',
-                backgroundColor: palette.card,
-              }}
-            >
-              <View style={{ width: 64, height: 64, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.softFill }}>
-                <Boxes size={28} color={palette.faint} strokeWidth={1.6} />
-              </View>
-              <Text style={{ color: palette.text, fontWeight: '600', fontSize: 16, marginTop: 14 }}>{warehouseItems.length === 0 ? 'No warehouse items yet' : 'No items match'}</Text>
-              <Text style={{ color: palette.muted, fontSize: 14, marginTop: 4, textAlign: 'center' }}>{warehouseItems.length === 0 ? 'Add your first item to start physical stock counting.' : 'Try another search or filter.'}</Text>
-              {warehouseItems.length === 0 ? (
-                <Pressable onPress={openCreateModal} style={(state) => ({ height: 40, paddingHorizontal: 18, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 16, backgroundColor: isHovered(state) ? FYLL_LIME_HOVER : FYLL_LIME })}>
-                  <Plus size={15} color={FYLL_LIME_INK} strokeWidth={2.6} />
-                  <Text style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '600' }}>Add item</Text>
-                </Pressable>
-              ) : null}
-            </View>
+            // Same empty state as Orders: first-run copy, a way out of filters, centred in the space left.
+            <EmptyState
+              fill
+              icon={Boxes}
+              title={warehouseItems.length === 0 ? 'Your first warehouse item starts here' : 'No matching items'}
+              description={warehouseItems.length === 0
+                ? 'Add the materials and packaging you keep so you can count and track your physical stock.'
+                : 'Try clearing your search and filters to see every item again.'}
+              actionLabel={warehouseItems.length === 0 ? 'Add first item' : 'Clear filters'}
+              actionIcon={warehouseItems.length === 0 ? Plus : X}
+              onAction={warehouseItems.length === 0
+                ? openCreateModal
+                : () => { setSearchQuery(''); setStockFilter('all'); setFrequencyFilter('all'); setCategoryFilter('all'); }}
+            />
           ) : (
             <View
               style={{

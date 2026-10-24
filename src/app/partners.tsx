@@ -32,6 +32,7 @@ import { DesktopSidebar } from '@/components/DesktopSidebar';
 import { PartnerBillDetail } from '@/components/PartnerBillDetail';
 import { PartnerJobFormModal } from '@/components/PartnerJobFormModal';
 import { ResolvedAttachmentImage } from '@/components/ResolvedAttachmentImage';
+import { EmptyState } from '@/components/EmptyState';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
@@ -1166,10 +1167,10 @@ export default function PartnersScreen() {
               alignSelf: isDesktop ? 'flex-start' : 'stretch',
               minHeight: isDesktop ? DESKTOP_PAGE_HEADER_MIN_HEIGHT : undefined,
               paddingHorizontal: horizontalPadding,
-              paddingTop: isDesktop ? 28 : 16,
-              paddingBottom: isDesktop ? 16 : 12,
+              paddingTop: isDesktop ? 28 : 14,
+              paddingBottom: 14,
               flexDirection: 'row',
-              alignItems: 'center',
+              alignItems: isMobile ? 'center' : 'flex-start',
               justifyContent: 'space-between',
               gap: 16,
               flexWrap: 'wrap',
@@ -1179,9 +1180,11 @@ export default function PartnersScreen() {
               <Text style={[headingStyle, { color: colors.text.primary }]}>
                 {activePartnerSection === 'jobs' ? 'Partner Jobs' : activePartnerSection === 'bills' ? 'Partner Bills' : activePartnerSection === 'issues' ? 'Issues' : 'Partners'}
               </Text>
-              {activePartnerSection !== 'jobs' && activePartnerSection !== 'bills' ? (
-                <Text style={{ color: colors.text.tertiary, fontSize: isMobile ? 10 : 12, fontWeight: '400', marginTop: 4 }}>
-                  {activePartnerSection === 'issues'
+              {activePartnerSection !== 'bills' ? (
+                <Text style={{ color: colors.text.muted, fontSize: isMobile ? 13 : 14, lineHeight: 20, marginTop: 4 }}>
+                  {activePartnerSection === 'jobs'
+                      ? 'Track every job you have sent to your partners.'
+                      : activePartnerSection === 'issues'
                       ? 'Defects and complaints reported against partner jobs.'
                       : 'External business partners who work for you.'}
                 </Text>
@@ -1228,27 +1231,11 @@ export default function PartnersScreen() {
         </View>
 
         <ScrollView
-          contentContainerStyle={{ paddingHorizontal: horizontalPadding, paddingTop: 16, paddingBottom: (isDesktop ? 32 : 24) + tabBarHeight, maxWidth: contentMaxWidth, width: '100%', alignSelf: isDesktop ? 'flex-start' : 'stretch' }}
+          contentContainerStyle={{ paddingHorizontal: horizontalPadding, paddingTop: 0, paddingBottom: (isDesktop ? 32 : 24) + tabBarHeight, flexGrow: 1, maxWidth: contentMaxWidth, width: '100%', alignSelf: isDesktop ? 'flex-start' : 'stretch' }}
           showsVerticalScrollIndicator={false}
         >
           {activePartnerSection === 'jobs' ? (
-            <View style={{ gap: isMobile ? 16 : 0 }}>
-          {partners.length === 0 ? (
-            <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card, padding: 24, alignItems: 'center', marginBottom: isMobile ? 0 : 16 }}>
-              <Truck size={24} color={colors.text.tertiary} strokeWidth={1.8} />
-              <Text style={{ color: colors.text.primary, fontWeight: '600', marginTop: 10 }}>No partners yet</Text>
-              <Text style={{ color: colors.text.tertiary, fontSize: 12.5, marginTop: 4, textAlign: 'center' }}>
-                Add an optician or vendor partner first, then dispatch jobs to them.
-              </Text>
-              <Pressable
-                onPress={() => setShowAddPartnerModal(true)}
-                style={{ marginTop: 14, height: 40, borderRadius: 999, backgroundColor: colors.text.primary, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' }}
-              >
-                <Text style={{ color: colors.bg.primary, fontSize: 12.5, fontWeight: '600' }}>+ Add Partner</Text>
-              </Pressable>
-            </View>
-          ) : null}
-
+            <View style={{ gap: isMobile ? 16 : 0, flexGrow: partners.length === 0 || filteredJobs.length === 0 ? 1 : undefined }}>
           <View
             style={{
               flexDirection: 'row',
@@ -1278,10 +1265,10 @@ export default function PartnersScreen() {
                     borderRadius: 999,
                     alignItems: 'center',
                     justifyContent: 'center',
-                    backgroundColor: selected ? colors.text.primary : 'transparent',
+                    backgroundColor: selected ? FYLL_LIME : 'transparent',
                   }}
                 >
-                  <Text style={{ color: selected ? colors.bg.primary : colors.text.muted, fontSize: 12, fontWeight: '600' }}>{period.label}</Text>
+                  <Text style={{ color: selected ? FYLL_LIME_INK : colors.text.muted, fontSize: 12, fontWeight: '600' }}>{period.label}</Text>
                 </Pressable>
               );
             })}
@@ -1370,14 +1357,14 @@ export default function PartnersScreen() {
                       alignItems: 'center',
                       justifyContent: 'center',
                       flexDirection: 'row',
-                      backgroundColor: selected ? colors.text.primary : colors.bg.card,
+                      backgroundColor: selected ? FYLL_LIME : colors.bg.card,
                       borderWidth: selected ? 0 : 1,
                       borderColor: colors.border.light,
                     }}
                   >
-                    <Text style={{ color: selected ? colors.bg.primary : colors.text.primary, fontSize: 12, fontWeight: '600' }}>{chip.label}</Text>
+                    <Text style={{ color: selected ? FYLL_LIME_INK : colors.text.primary, fontSize: 12, fontWeight: '600' }}>{chip.label}</Text>
                     {chip.count > 0 ? (
-                      <Text style={{ color: selected ? colors.bg.primary : colors.text.muted, fontSize: 12, fontWeight: '600', marginLeft: 6 }}>{chip.count}</Text>
+                      <Text style={{ color: selected ? FYLL_LIME_INK : colors.text.muted, fontSize: 12, fontWeight: '600', marginLeft: 6 }}>{chip.count}</Text>
                     ) : null}
                   </Pressable>
                 );
@@ -1387,13 +1374,31 @@ export default function PartnersScreen() {
 
           {/* Jobs list */}
           {filteredJobs.length === 0 ? (
-            <View style={{ padding: 44, alignItems: 'center', borderRadius: 18, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card }}>
-              <Glasses size={28} color={colors.text.tertiary} strokeWidth={1.7} />
-              <Text style={{ color: colors.text.primary, fontSize: 15, fontWeight: '600', marginTop: 12 }}>No partner jobs found</Text>
-              <Text style={{ color: colors.text.tertiary, fontSize: 12.5, marginTop: 4, textAlign: 'center' }}>
-                Jobs you send to external partners will show up here.
-              </Text>
-            </View>
+            // Same empty state as Orders, below the tabs and search. With no partners yet, that is the one to show.
+            partners.length === 0 ? (
+              <EmptyState
+                fill
+                icon={Truck}
+                title="Your first partner starts here"
+                description="Add an optician or vendor partner, then dispatch jobs to them and follow each one to the end."
+                actionLabel="Add first partner"
+                onAction={() => setShowAddPartnerModal(true)}
+              />
+            ) : (
+              <EmptyState
+                fill
+                icon={Glasses}
+                title={partnerJobs.length === 0 ? 'Your first partner job starts here' : 'No matching jobs'}
+                description={partnerJobs.length === 0
+                  ? 'Jobs you send to your partners will show up here, so you can follow each one until it is done.'
+                  : 'Try clearing your search and filters to see every job again.'}
+                actionLabel={partnerJobs.length === 0 ? 'Create first job' : 'Clear filters'}
+                actionIcon={partnerJobs.length === 0 ? Plus : X}
+                onAction={partnerJobs.length === 0
+                  ? () => { setMobileJobFormReturnId(null); resetJobForm(); setShowNewJobModal(true); }
+                  : () => { setSearchQuery(''); setPartnerFilter('all'); setStatusFilter('all'); setJobPeriod('all'); }}
+              />
+            )
           ) : isDesktop ? (
             <View style={{ borderRadius: 18, borderWidth: 1, borderColor: separatorColor, backgroundColor: colors.bg.card, overflow: 'visible', zIndex: actionMenuJobId || statusDropdownJobId ? 50 : 1 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 22, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: separatorColor }}>
@@ -1685,7 +1690,7 @@ export default function PartnersScreen() {
           ) : null}
 
           {activePartnerSection === 'bills' ? (
-            <View style={{ gap: isMobile ? 16 : 0 }}>
+            <View style={{ gap: isMobile ? 16 : 0, flexGrow: visibleBills.length === 0 ? 1 : undefined }}>
               <View
                 style={{
                   flexDirection: 'row',
@@ -1715,10 +1720,10 @@ export default function PartnersScreen() {
                         borderRadius: 999,
                         alignItems: 'center',
                         justifyContent: 'center',
-                        backgroundColor: selected ? colors.text.primary : 'transparent',
+                        backgroundColor: selected ? FYLL_LIME : 'transparent',
                       }}
                     >
-                      <Text style={{ color: selected ? colors.bg.primary : colors.text.muted, fontSize: 12, fontWeight: '600' }}>{period.label}</Text>
+                      <Text style={{ color: selected ? FYLL_LIME_INK : colors.text.muted, fontSize: 12, fontWeight: '600' }}>{period.label}</Text>
                     </Pressable>
                   );
                 })}
@@ -1784,28 +1789,27 @@ export default function PartnersScreen() {
                         alignItems: 'center',
                         justifyContent: 'center',
                         flexDirection: 'row',
-                        backgroundColor: selected ? colors.text.primary : colors.bg.card,
+                        backgroundColor: selected ? FYLL_LIME : colors.bg.card,
                         borderWidth: selected ? 0 : 1,
                         borderColor: colors.border.light,
                       }}
                     >
-                      <Text style={{ color: selected ? colors.bg.primary : colors.text.primary, fontSize: 12, fontWeight: '600' }}>{filter.label}</Text>
+                      <Text style={{ color: selected ? FYLL_LIME_INK : colors.text.primary, fontSize: 12, fontWeight: '600' }}>{filter.label}</Text>
                       {count > 0 ? (
-                        <Text style={{ color: selected ? colors.bg.primary : colors.text.muted, fontSize: 12, fontWeight: '600', marginLeft: 6 }}>{count}</Text>
+                        <Text style={{ color: selected ? FYLL_LIME_INK : colors.text.muted, fontSize: 12, fontWeight: '600', marginLeft: 6 }}>{count}</Text>
                       ) : null}
                     </Pressable>
                   );
                 })}
               </ScrollView>
-              <View style={isDesktop ? { borderRadius: 18, borderWidth: 1, borderColor: separatorColor, backgroundColor: colors.bg.card, overflow: 'hidden' } : undefined}>
+              <View style={visibleBills.length === 0 ? { flexGrow: 1 } : isDesktop ? { borderRadius: 18, borderWidth: 1, borderColor: separatorColor, backgroundColor: colors.bg.card, overflow: 'hidden' } : undefined}>
               {visibleBills.length === 0 ? (
-                <View style={{ padding: 28, alignItems: 'center', borderRadius: 18, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card }}>
-                  <Banknote size={26} color={colors.text.tertiary} strokeWidth={1.7} />
-                  <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600', marginTop: 10 }}>No bills here</Text>
-                  <Text style={{ color: colors.text.tertiary, fontSize: 12.5, marginTop: 4, textAlign: 'center' }}>
-                    Bills show up once a partner submits one from their portal.
-                  </Text>
-                </View>
+                <EmptyState
+                  fill
+                  icon={Banknote}
+                  title="No bills yet"
+                  description="Bills show up here once a partner submits one from their portal."
+                />
               ) : (
                 isDesktop ? (
                   <>
@@ -1964,14 +1968,14 @@ export default function PartnersScreen() {
           ) : null}
 
           {activePartnerSection === 'issues' ? (
-            <View style={{ marginTop: isMobile ? 16 : 0 }}>
+            <View style={{ marginTop: isMobile ? 16 : 0, flexGrow: partnerJobIssues.length === 0 ? 1 : undefined }}>
               {partnerJobIssues.length === 0 ? (
-                <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card, padding: 24, alignItems: 'center' }}>
-                  <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600' }}>No issues reported</Text>
-                  <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 4, textAlign: 'center' }}>
-                    Report an issue from a job's menu if something's wrong with the work — it holds that job's payment until resolved.
-                  </Text>
-                </View>
+                <EmptyState
+                  fill
+                  icon={Glasses}
+                  title="No issues reported"
+                  description="Report an issue from a job's menu if something's wrong with the work. It holds that job's payment until resolved."
+                />
               ) : isDesktop ? (
                 <View style={{ borderRadius: 18, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card, overflow: 'hidden' }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 46, paddingHorizontal: 18, borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
@@ -2126,21 +2130,16 @@ export default function PartnersScreen() {
 
           {/* Partner directory with portal links */}
           {activePartnerSection === 'all' ? (
-            <View style={{ marginTop: 20 }}>
+            <View style={{ marginTop: 20, flexGrow: partners.length === 0 ? 1 : undefined }}>
               {partners.length === 0 ? (
-                <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card, padding: 24, alignItems: 'center' }}>
-                  <Truck size={24} color={colors.text.tertiary} strokeWidth={1.8} />
-                  <Text style={{ color: colors.text.primary, fontWeight: '600', marginTop: 10 }}>No partners yet</Text>
-                  <Text style={{ color: colors.text.tertiary, fontSize: 12.5, marginTop: 4, textAlign: 'center' }}>
-                    Add an external business partner before creating jobs.
-                  </Text>
-                  <Pressable
-                    onPress={() => setShowAddPartnerModal(true)}
-                    style={{ marginTop: 14, height: 40, borderRadius: 999, backgroundColor: colors.text.primary, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' }}
-                  >
-                    <Text style={{ color: colors.bg.primary, fontSize: 12.5, fontWeight: '600' }}>+ Add Partner</Text>
-                  </Pressable>
-                </View>
+                <EmptyState
+                  fill
+                  icon={Truck}
+                  title="Your first partner starts here"
+                  description="Add an optician or vendor partner, then dispatch jobs to them and follow each one to the end."
+                  actionLabel="Add first partner"
+                  onAction={() => setShowAddPartnerModal(true)}
+                />
               ) : (
                 <View style={{ borderRadius: 18, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card, overflow: 'hidden' }}>
                   {isDesktop ? (

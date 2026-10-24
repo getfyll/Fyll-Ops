@@ -1,7 +1,7 @@
 import React from 'react';
-import { Pressable, Text, View, type StyleProp, type ViewStyle } from 'react-native';
-import { ChevronRight } from 'lucide-react-native';
-import { MoneyText, isHovered, usePaymentsPalette } from '@/components/payments/payments-ui';
+import { Pressable, Text, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
+import { ChevronRight, Plus } from 'lucide-react-native';
+import { FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, MoneyText, isHovered, usePaymentsPalette } from '@/components/payments/payments-ui';
 import { SkeletonBox } from '@/components/SkeletonLoader';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 
@@ -10,6 +10,11 @@ import { useBreakpoint } from '@/lib/useBreakpoint';
 export const HOME_GAP = 16;
 export const HOME_TITLE_SIZE = 14;
 export const HOME_BODY_SIZE = 12;
+export const HOME_BUTTON_TEXT_STYLE: TextStyle = {
+  fontFamily: 'BricolageGrotesque_600SemiBold',
+  fontSize: 14,
+  fontWeight: '600',
+};
 
 export function HomeCard({ children, style, flush = false }: { children: React.ReactNode; style?: StyleProp<ViewStyle>; flush?: boolean }) {
   const palette = usePaymentsPalette();
@@ -38,7 +43,7 @@ export function HomeLink({ label = 'View all', onPress }: { label?: string; onPr
   const palette = usePaymentsPalette();
   return (
     <Pressable onPress={onPress} className="active:opacity-70" style={{ flexDirection: 'row', alignItems: 'center', gap: 2, height: 28 }}>
-      <Text style={{ color: palette.limeOnSurface, fontSize: HOME_BODY_SIZE, fontWeight: '600' }}>{label}</Text>
+      <Text style={[HOME_BUTTON_TEXT_STYLE, { color: palette.limeOnSurface }]}>{label}</Text>
       <ChevronRight size={14} color={palette.limeOnSurface} strokeWidth={2.2} />
     </Pressable>
   );
@@ -162,7 +167,7 @@ export function KpiStrip({ items, loading = false }: { items: KpiItem[]; loading
                 opacity: state.pressed ? 0.8 : 1,
               })}
             >
-              <Text style={{ color: palette.muted, fontSize: HOME_BODY_SIZE, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }} numberOfLines={1}>
+              <Text style={{ color: palette.muted, fontSize: isMobile ? 10 : 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }} numberOfLines={1}>
                 {item.label}
               </Text>
               {loading ? (
@@ -190,5 +195,30 @@ export function KpiStrip({ items, loading = false }: { items: KpiItem[]; loading
         })}
       </View>
     </HomeCard>
+  );
+}
+
+// The one lime call-to-action used on the big home cards ("New payment", "Add order").
+// The label stays on a single line at any width.
+export function HomeCta({ label, onPress }: { label: string; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      style={(state) => ({
+        height: 46,
+        borderRadius: 999,
+        paddingHorizontal: 20,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        backgroundColor: isHovered(state) ? FYLL_LIME_HOVER : FYLL_LIME,
+        opacity: state.pressed ? 0.85 : 1,
+      })}
+    >
+      <Plus size={17} color={FYLL_LIME_INK} strokeWidth={2.6} />
+      <Text style={[HOME_BUTTON_TEXT_STYLE, { color: FYLL_LIME_INK }]} numberOfLines={1}>{label}</Text>
+    </Pressable>
   );
 }

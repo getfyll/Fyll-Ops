@@ -3,7 +3,7 @@ import { View, Text, ScrollView, Pressable, TextInput, Platform, RefreshControl,
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Wallet, Link2, Landmark, Store, Check, Trash2, Pencil, AlertTriangle, ChevronRight, FileText } from 'lucide-react-native';
+import { Plus, Search, Wallet, Link2, Landmark, Store, Check, Trash2, Pencil, AlertTriangle, ChevronRight, FileText, X } from 'lucide-react-native';
 import { PaymentsCreateMenu } from '@/components/quotes/PaymentsCreateMenu';
 import { useQuotes } from '@/lib/quotes-api';
 import { QUOTE_STATUS_LABEL, QUOTE_STATUS_TONE, getQuoteEffectiveStatus, type QuoteStatus } from '@/lib/quotes';
@@ -19,6 +19,7 @@ import { DESKTOP_PAGE_HEADER_MIN_HEIGHT, usePageHeadingStyle } from '@/lib/page-
 import { PaymentListSkeleton } from '@/components/SkeletonLoader';
 import * as Haptics from 'expo-haptics';
 import { SearchClearButton } from '@/components/SearchClearButton';
+import { EmptyState } from '@/components/EmptyState';
 import { fetchSocialCheckoutDrafts, getSocialCheckoutQueryKey } from '@/lib/social-checkout-query';
 import { syncFyllOrderStatusToWooCommerce } from '@/lib/woocommerce';
 
@@ -1266,6 +1267,7 @@ export default function PaymentsScreen() {
             width: isDesktop ? '100%' : undefined,
             alignSelf: isWebDesktop ? 'flex-start' : isDesktop ? 'center' : undefined,
             paddingBottom: contentPaddingBottom,
+            flexGrow: 1,
           }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
@@ -1284,7 +1286,7 @@ export default function PaymentsScreen() {
           {isInitialPaymentsLoading ? (
             <PaymentListSkeleton isDesktop={isDesktop} />
           ) : (
-            <View style={{ gap: 14 }}>
+            <View style={{ gap: 14, flexGrow: paymentRecords.length === 0 ? 1 : undefined }}>
               <View
                 accessibilityRole="tablist"
                 style={{ flexDirection: 'row', padding: 4, borderRadius: 999, backgroundColor: palette.segmentBg, borderWidth: 1, borderColor: palette.border, maxWidth: isDesktop ? 360 : undefined }}
@@ -1306,10 +1308,10 @@ export default function PaymentsScreen() {
                         borderRadius: 999,
                         alignItems: 'center',
                         justifyContent: 'center',
-                        backgroundColor: selected ? palette.inverseBg : isHovered(state) ? (palette.isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)') : 'transparent',
+                        backgroundColor: selected ? FYLL_LIME : isHovered(state) ? (palette.isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)') : 'transparent',
                       })}
                     >
-                      <Text style={{ color: selected ? palette.inverseText : palette.muted, fontSize: isMobile ? 12 : 14, fontWeight: '600' }}>{option.label}</Text>
+                      <Text style={{ color: selected ? FYLL_LIME_INK : palette.muted, fontSize: isMobile ? 12 : 14, fontWeight: '600' }}>{option.label}</Text>
                     </Pressable>
                   );
                 })}
@@ -1449,13 +1451,13 @@ export default function PaymentsScreen() {
                           alignItems: 'center',
                           gap: 6,
                           borderWidth: 1,
-                          borderColor: isActive ? palette.inverseBg : palette.isDark ? 'rgba(255,255,255,0.12)' : '#E2E2E2',
-                          backgroundColor: isActive ? palette.inverseBg : isHovered(state) ? (palette.isDark ? 'rgba(255,255,255,0.05)' : '#F6F6F6') : 'transparent',
+                          borderColor: isActive ? FYLL_LIME : palette.isDark ? 'rgba(255,255,255,0.12)' : '#E2E2E2',
+                          backgroundColor: isActive ? FYLL_LIME : isHovered(state) ? (palette.isDark ? 'rgba(255,255,255,0.05)' : '#F6F6F6') : 'transparent',
                         })}
                       >
-                        <Text style={{ color: isActive ? palette.inverseText : palette.textSoft, fontSize: 12, fontWeight: '600' }}>{chip.label}</Text>
+                        <Text style={{ color: isActive ? FYLL_LIME_INK : palette.textSoft, fontSize: 12, fontWeight: '600' }}>{chip.label}</Text>
                         {chip.count > 0 ? (
-                          <Text style={{ color: isActive ? palette.inverseText : palette.textSoft, opacity: 0.55, fontSize: 12, fontWeight: '600' }}>{chip.count}</Text>
+                          <Text style={{ color: isActive ? FYLL_LIME_INK : palette.textSoft, opacity: 0.55, fontSize: 12, fontWeight: '600' }}>{chip.count}</Text>
                         ) : null}
                       </Pressable>
                     );
@@ -1464,26 +1466,20 @@ export default function PaymentsScreen() {
               </View>
 
               {paymentRecords.length === 0 ? (
-                <View style={{ alignItems: 'center', paddingVertical: 56, paddingHorizontal: 20 }}>
-                  <View style={{ width: 56, height: 56, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.avatarBg, marginBottom: 14 }}>
-                    <Wallet size={26} color={palette.muted} strokeWidth={1.6} />
-                  </View>
-                  <Text style={{ color: palette.text, fontSize: fs(16), fontWeight: '600', marginBottom: 4 }}>
-                    {searchQuery.trim() || statusFilter ? 'No matching payments' : 'No payments yet'}
-                  </Text>
-                  <Text style={{ color: palette.muted, fontSize: fs(14), textAlign: 'center', maxWidth: 300, marginBottom: 16 }}>
-                    {searchQuery.trim() || statusFilter
-                      ? 'Try another search or filter.'
-                      : 'Storefront orders and payment links you send will show up here.'}
-                  </Text>
-                  {!searchQuery.trim() && !statusFilter ? (
-                    <Pressable
-                      onPress={handleNewLink}
-                      style={(state) => ({ height: 44, paddingHorizontal: 18, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: isHovered(state) ? FYLL_LIME_HOVER : FYLL_LIME })}
-                    >
-                      <Text style={{ color: FYLL_LIME_INK, fontSize: fs(14), fontWeight: '600' }}>Create payment link</Text>
-                    </Pressable>
-                  ) : null}
+                // Same empty state as Orders: first-run copy, a way out of a filter, centred in the space left.
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: isMobile ? 36 : 56 }}>
+                  <EmptyState
+                    icon={Wallet}
+                    title={searchQuery.trim() || statusFilter ? 'No matching payments' : 'Your first payment starts here'}
+                    description={searchQuery.trim() || statusFilter
+                      ? 'Try clearing your search and filters to see every payment again.'
+                      : 'Payments from your storefront orders and the payment links you send will show up here.'}
+                    actionLabel={searchQuery.trim() || statusFilter ? 'Clear filters' : 'Create payment link'}
+                    actionIcon={searchQuery.trim() || statusFilter ? X : Plus}
+                    onAction={searchQuery.trim() || statusFilter
+                      ? () => { setSearchQuery(''); setStatusFilter(null); }
+                      : handleNewLink}
+                  />
                 </View>
               ) : isDesktop ? (
                 <View style={{ borderRadius: 18, overflow: 'hidden', borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, marginTop: 4 }}>

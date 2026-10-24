@@ -14,6 +14,7 @@ import { CustomerDetailPanel } from '@/components/CustomerDetailPanel';
 import * as Haptics from 'expo-haptics';
 import { getSettingsWebPanelStyles } from '@/lib/settings-web-panel';
 import { SearchClearButton } from '@/components/SearchClearButton';
+import { EmptyState } from '@/components/EmptyState';
 import { FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, MoneyText, isHovered, usePaymentsPalette } from '@/components/payments/payments-ui';
 import { FilterPill, MenuPill } from '@/components/inventory/inventory-ui';
 
@@ -406,11 +407,31 @@ export default function CustomersScreen() {
     return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
   };
 
+  // Same empty state as Orders: first-run copy, a way out of filters, centred in the space left.
+  const renderCustomersEmptyState = () => {
+    const hasFilters = Boolean(searchQuery.trim()) || activeFilterTab !== 'all';
+    return (
+      <EmptyState
+        fill
+        icon={Users}
+        title={customers.length === 0 ? 'Your first customer starts here' : 'No matching customers'}
+        description={customers.length === 0
+          ? 'Customers are saved from your orders, or add one yourself to keep their details and history together.'
+          : hasFilters ? 'Try clearing your search and filters to see every customer again.' : 'No customers are available in this view.'}
+        actionLabel={customers.length === 0 ? 'Add first customer' : 'Clear filters'}
+        actionIcon={customers.length === 0 ? Plus : X}
+        onAction={customers.length === 0
+          ? () => { resetForm(); setShowAddModal(true); }
+          : () => { setSearchQuery(''); setActiveFilterTab('all'); }}
+      />
+    );
+  };
+
   // Master pane content
   const masterContent = (
     <ScrollView
       style={{ flex: 1, backgroundColor: palette.page }}
-      contentContainerStyle={{ paddingBottom: 32 }}
+      contentContainerStyle={{ paddingBottom: 32, flexGrow: 1 }}
       showsVerticalScrollIndicator={false}
       onScroll={handleCustomersScroll}
       scrollEventThrottle={16}
@@ -614,9 +635,12 @@ export default function CustomersScreen() {
           width: '100%',
           paddingHorizontal: isWebDesktop ? 28 : 16,
           paddingTop: 0,
+          flexGrow: filteredCustomers.length === 0 ? 1 : undefined,
         }}
       >
-        {isWebDesktop ? (
+        {isWebDesktop && filteredCustomers.length === 0 ? (
+          <View style={{ flex: 1 }}>{renderCustomersEmptyState()}</View>
+        ) : isWebDesktop ? (
           <View
             style={{
               width: '100%',
@@ -654,22 +678,7 @@ export default function CustomersScreen() {
               </View>
             </View>
 
-            {filteredCustomers.length === 0 ? (
-              <View style={{ padding: 40, alignItems: 'center' }}>
-                <View style={{ width: 64, height: 64, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginBottom: 14, backgroundColor: palette.softFill }}>
-                  <Users size={28} color={palette.faint} strokeWidth={1.6} />
-                </View>
-                <Text style={{ color: palette.text, fontSize: 16, fontWeight: '600', marginBottom: 4 }}>{customers.length === 0 ? 'No customers yet' : 'No customers match'}</Text>
-                <Text style={{ color: palette.muted, fontSize: 14, marginBottom: 16 }}>{customers.length === 0 ? 'Add your first customer to get started.' : 'Try another search or filter.'}</Text>
-                <Pressable
-                  onPress={() => { resetForm(); setShowAddModal(true); }}
-                  style={(state) => ({ backgroundColor: isHovered(state) ? FYLL_LIME_HOVER : FYLL_LIME, borderRadius: 999, paddingHorizontal: 18, height: 40, flexDirection: 'row', alignItems: 'center', gap: 6 })}
-                >
-                  <Plus size={15} color={FYLL_LIME_INK} strokeWidth={2.6} />
-                  <Text style={{ color: FYLL_LIME_INK, fontWeight: '600' }}>Add customer</Text>
-                </Pressable>
-              </View>
-            ) : visibleCustomers.map((customer, index) => (
+            {visibleCustomers.map((customer, index) => (
               (() => {
                 const stats = customerStatsById.get(customer.id);
                 const ordersCount = stats?.ordersCount ?? 0;
@@ -736,20 +745,7 @@ export default function CustomersScreen() {
             ))}
           </View>
         ) : filteredCustomers.length === 0 ? (
-          <View className="items-center justify-center py-16">
-            <View style={{ width: 64, height: 64, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginBottom: 14, backgroundColor: palette.softFill }}>
-              <Users size={28} color={palette.faint} strokeWidth={1.6} />
-            </View>
-            <Text style={{ color: palette.text, fontSize: 16, fontWeight: '600', marginBottom: 4 }}>{customers.length === 0 ? 'No customers yet' : 'No customers match'}</Text>
-            <Text style={{ color: palette.muted, fontSize: 14, marginBottom: 16 }}>{customers.length === 0 ? 'Add your first customer to get started.' : 'Try another search or filter.'}</Text>
-            <Pressable
-              onPress={() => { resetForm(); setShowAddModal(true); }}
-              style={(state) => ({ height: 40, paddingHorizontal: 18, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: isHovered(state) ? FYLL_LIME_HOVER : FYLL_LIME })}
-            >
-              <Plus size={15} color={FYLL_LIME_INK} strokeWidth={2.6} />
-              <Text style={{ color: FYLL_LIME_INK, fontWeight: '600' }}>Add customer</Text>
-            </Pressable>
-          </View>
+          renderCustomersEmptyState()
         ) : (
           <View style={{ borderRadius: 18, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, overflow: 'hidden' }}>
             {visibleCustomers.map((customer, index) => {

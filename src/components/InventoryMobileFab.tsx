@@ -3,7 +3,6 @@ import { Modal, Pressable, ScrollView, Text, View, Platform } from 'react-native
 import { useRouter } from 'expo-router';
 import { Box, Briefcase, Check, ClipboardCheck, Menu, Package, X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-import { useThemeColors } from '@/lib/theme';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
 import { FYLL_LIME, FYLL_LIME_INK, usePaymentsPalette } from '@/components/payments/payments-ui';
 
@@ -28,7 +27,6 @@ export function InventoryMobileFab({
   onSelectWarehouse,
 }: InventoryMobileFabProps) {
   const router = useRouter();
-  const colors = useThemeColors();
   const palette = usePaymentsPalette();
   const tabBarHeight = useTabBarHeight();
   const [open, setOpen] = useState(false);
@@ -183,11 +181,11 @@ export function InventoryMobileFab({
               borderRadius: 29,
               alignItems: 'center',
               justifyContent: 'center',
-              backgroundColor: palette.inverseBg,
+              backgroundColor: FYLL_LIME,
               zIndex: 60,
             }}
           >
-            <X size={23} color={palette.inverseText} strokeWidth={2.6} />
+            <X size={23} color={FYLL_LIME_INK} strokeWidth={2.6} />
           </Pressable>
         </Pressable>
       </Modal>
@@ -210,7 +208,7 @@ export function InventoryMobileFab({
           borderRadius: 29,
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: colors.text.primary,
+          backgroundColor: FYLL_LIME,
           shadowColor: '#000000',
           shadowOpacity: 0.22,
           shadowRadius: 14,
@@ -219,7 +217,7 @@ export function InventoryMobileFab({
           zIndex: 50,
         }}
       >
-        {open ? <X size={23} color={colors.bg.primary} strokeWidth={2.6} /> : <Menu size={24} color={colors.bg.primary} strokeWidth={2.6} />}
+        {open ? <X size={23} color={FYLL_LIME_INK} strokeWidth={2.6} /> : <Menu size={24} color={FYLL_LIME_INK} strokeWidth={2.6} />}
       </Pressable>
     </>
   );

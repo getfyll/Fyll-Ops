@@ -35,6 +35,8 @@ import {
   PAYMENT_FALLBACK_REDIRECT,
 } from '@/lib/tracking-host';
 import { GlobalFloatingActions } from '@/components/GlobalFloatingActions';
+import { WhatsNewModal } from '@/components/WhatsNewModal';
+import { useWhatsNew } from '@/hooks/useWhatsNew';
 import { RootErrorBoundary } from '@/components/RootErrorBoundary';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { useThemeColors } from '@/lib/theme';
@@ -311,6 +313,7 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
     && pathname !== '/(tabs)'
     && !pathname.startsWith('/threads')
     && !pathname.startsWith('/(tabs)/threads');
+  const whatsNew = useWhatsNew(isAuthenticated && !inPublicRoute && isNavigationReady);
   const isBottomActionRoute = firstSegment === 'new-order'
     || firstSegment === 'order'
     || firstSegment === 'order-edit'
@@ -724,6 +727,7 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
         </Stack>
         <RootMobileBottomNav visible={showRootMobileBottomNav} />
         {showGlobalFloatingActions ? <GlobalFloatingActions /> : null}
+        <WhatsNewModal state={whatsNew.state} onDismiss={whatsNew.dismiss} onUpdate={whatsNew.applyUpdate} />
       </RootErrorBoundary>
     </ThemeProvider>
   );

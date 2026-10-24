@@ -15,6 +15,7 @@ import { createOrderStatusColorMap, getOrderStatusChipColors } from '@/lib/order
 import useAuthStore from '@/lib/state/auth-store';
 import { normalizeDeliveryStateValue } from '@/lib/format-address';
 import { SearchClearButton } from '@/components/SearchClearButton';
+import { EmptyState } from '@/components/EmptyState';
 import { FYLL_LIME, FYLL_LIME_INK } from '@/components/payments/payments-ui';
 
 type DeliveryState = 'picked-up' | 'in-transit' | 'delivered';
@@ -450,6 +451,7 @@ export default function DeliveriesScreen() {
   };
 
   const contentPaddingBottom = (isDesktop ? 32 : 24) + tabBarHeight;
+  const horizontalPadding = isMobile ? 16 : isDesktop ? 28 : 20;
   const contentMaxWidth = isWebDesktop ? 1400 : isDesktop ? 980 : undefined;
   const actionDisabled = !selectedOrderId || !selectedCarrierName.trim() || !toIsoFromInputDate(dispatchDateInput) || isSavingDelivery;
   const separatorColor = colors.border.light;
@@ -467,24 +469,25 @@ export default function DeliveriesScreen() {
           <View
             style={[
               {
-                paddingHorizontal: isWebDesktop ? 0 : 20,
-                paddingTop: isWebDesktop ? 0 : 16,
-                paddingBottom: isWebDesktop ? 0 : 12,
+                paddingHorizontal: isWebDesktop ? 0 : horizontalPadding,
+                paddingTop: isWebDesktop ? 0 : 14,
+                paddingBottom: isWebDesktop ? 0 : 14,
               },
               isWebDesktop ? { width: '100%' } : undefined,
             ]}
           >
             <View
-              className={isWebDesktop ? 'flex-row items-center justify-between' : undefined}
+              className={isWebDesktop ? 'flex-row justify-between' : undefined}
               style={isWebDesktop ? {
                 width: '100%',
                 maxWidth: 1400,
                 alignSelf: 'flex-start',
                 minHeight: desktopHeaderMinHeight,
-                paddingLeft: 20,
-                paddingRight: 20,
-                paddingTop: 20,
-                paddingBottom: 16,
+                alignItems: 'flex-start',
+                paddingLeft: horizontalPadding,
+                paddingRight: horizontalPadding,
+                paddingTop: 28,
+                paddingBottom: 14,
               } : {
                 flexDirection: 'row',
                 alignItems: 'center',
@@ -493,6 +496,7 @@ export default function DeliveriesScreen() {
             >
               <View style={isWebDesktop ? undefined : { flex: 1, paddingRight: 12 }}>
                 <Text style={{ color: colors.text.primary, ...pageHeadingStyle }}>Delivery</Text>
+                <Text style={{ color: colors.text.muted, fontSize: 14, lineHeight: 20, marginTop: 4 }}>Follow every dispatch, courier and delivery in one place.</Text>
               </View>
               <Pressable
                 onPress={handleOpenCreateModal}
@@ -517,7 +521,7 @@ export default function DeliveriesScreen() {
 
         <ScrollView
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: contentPaddingBottom }}
+          contentContainerStyle={{ paddingBottom: contentPaddingBottom, flexGrow: 1 }}
           keyboardShouldPersistTaps="handled"
         >
           <View
@@ -525,10 +529,11 @@ export default function DeliveriesScreen() {
               width: '100%',
               maxWidth: contentMaxWidth,
               alignSelf: isWebDesktop ? 'flex-start' : 'stretch',
-              paddingHorizontal: 20,
+              paddingHorizontal: horizontalPadding,
+              flexGrow: filteredShipments.length === 0 ? 1 : undefined,
             }}
           >
-            <View style={{ paddingTop: 16 }}>
+            <View style={{ paddingTop: 0, flexGrow: filteredShipments.length === 0 ? 1 : undefined }}>
               <View
                 style={{
                   flexDirection: 'row',
@@ -538,7 +543,7 @@ export default function DeliveriesScreen() {
                   borderWidth: 1,
                   borderColor: separatorColor,
                   width: isMobile ? '100%' : 360,
-                  marginBottom: 16,
+                  marginBottom: 14,
                 }}
               >
                 {DELIVERY_DATE_FILTERS.map((option) => {
@@ -553,11 +558,11 @@ export default function DeliveriesScreen() {
                         borderRadius: 999,
                         alignItems: 'center',
                         justifyContent: 'center',
-                        backgroundColor: isActive ? colors.text.primary : 'transparent',
+                        backgroundColor: isActive ? FYLL_LIME : 'transparent',
                       }}
                     >
                       <Text
-                        style={{ color: isActive ? colors.bg.primary : colors.text.muted, fontSize: 12, fontWeight: '600' }}
+                        style={{ color: isActive ? FYLL_LIME_INK : colors.text.muted, fontSize: 12, fontWeight: '600' }}
                       >
                         {option.label}
                       </Text>
@@ -640,14 +645,14 @@ export default function DeliveriesScreen() {
                             paddingHorizontal: 16,
                             alignItems: 'center',
                             justifyContent: 'center',
-                            backgroundColor: isActive ? colors.accent.primary : colors.bg.card,
+                            backgroundColor: isActive ? FYLL_LIME : colors.bg.card,
                             borderWidth: isActive ? 0 : 1,
                             borderColor: separatorColor,
                           }}
                         >
                           <Text
                             className="text-sm font-semibold"
-                            style={{ color: isActive ? (isDark ? '#000000' : '#FFFFFF') : colors.text.primary }}
+                            style={{ color: isActive ? FYLL_LIME_INK : colors.text.primary }}
                           >
                             {option.label}
                           </Text>
@@ -669,14 +674,14 @@ export default function DeliveriesScreen() {
                     width: isDesktop ? undefined : 46,
                     height: isDesktop ? 44 : 46,
                     paddingHorizontal: isDesktop ? 16 : 0,
-                    backgroundColor: activeFilterCount > 0 ? colors.accent.primary : isDesktop ? colors.bg.card : colors.bg.secondary,
+                    backgroundColor: activeFilterCount > 0 ? FYLL_LIME : isDesktop ? colors.bg.card : colors.bg.secondary,
                     borderWidth: activeFilterCount > 0 ? 0 : isDesktop ? 1 : 0.5,
                     borderColor: separatorColor,
                   }}
                 >
-                  <Filter size={18} color={activeFilterCount > 0 ? (isDark ? '#000000' : '#FFFFFF') : colors.text.tertiary} strokeWidth={2} />
+                  <Filter size={18} color={activeFilterCount > 0 ? FYLL_LIME_INK : colors.text.tertiary} strokeWidth={2} />
                   {activeFilterCount > 0 && (
-                    <Text style={{ color: isDark ? '#000000' : '#FFFFFF' }} className="font-semibold text-sm ml-1.5">
+                    <Text style={{ color: FYLL_LIME_INK }} className="font-semibold text-sm ml-1.5">
                       {activeFilterCount}
                     </Text>
                   )}
@@ -684,22 +689,35 @@ export default function DeliveriesScreen() {
               </View>
 
               <View
-                className={isDesktop ? 'rounded-2xl overflow-hidden' : undefined}
+                className={isDesktop && filteredShipments.length > 0 ? 'rounded-2xl overflow-hidden' : undefined}
                 style={{
-                  backgroundColor: isDesktop ? colors.bg.card : 'transparent',
-                  borderWidth: isDesktop ? 1 : 0,
+                  backgroundColor: isDesktop && filteredShipments.length > 0 ? colors.bg.card : 'transparent',
+                  borderWidth: isDesktop && filteredShipments.length > 0 ? 1 : 0,
                   borderColor: colors.border.light,
+                  flexGrow: filteredShipments.length === 0 ? 1 : undefined,
                 }}
               >
                 {filteredShipments.length === 0 ? (
-                  <View style={{ padding: 20 }}>
-                    <Text style={{ color: colors.text.primary, fontSize: 15, fontWeight: '600' }}>
-                      No deliveries found
-                    </Text>
-                    <Text style={{ color: colors.text.muted, fontSize: 14, marginTop: 6 }}>
-                      Try another date range or status filter, or tag a courier on an order first.
-                    </Text>
-                  </View>
+                  // Same empty state as Orders: first-run copy, a way out of filters, centred in the space left.
+                  (() => {
+                    const hasFilters = Boolean(searchQuery.trim()) || statusFilter !== 'all' || courierFilter !== 'all' || dateFilter !== 'all';
+                    const hasNoDeliveries = shipments.length === 0;
+                    return (
+                      <EmptyState
+                        fill
+                        icon={Truck}
+                        title={hasNoDeliveries ? 'Your first delivery starts here' : 'No matching deliveries'}
+                        description={hasNoDeliveries
+                          ? 'Deliveries show up here once you tag a courier on an order, so you can follow every dispatch in one place.'
+                          : hasFilters ? 'Try clearing your filters to see every delivery again.' : 'No deliveries are available in this view.'}
+                        actionLabel={hasNoDeliveries ? 'Create an order' : 'Clear filters'}
+                        actionIcon={hasNoDeliveries ? Plus : X}
+                        onAction={hasNoDeliveries
+                          ? () => router.push('/new-order' as never)
+                          : () => { setSearchQuery(''); setStatusFilter('all'); setCourierFilter('all'); setDateFilter('all'); }}
+                      />
+                    );
+                  })()
                 ) : isDesktop ? (
                   <View>
                     <View

@@ -3,7 +3,7 @@ import { Modal, Platform, Pressable, ScrollView, Text, View, useWindowDimensions
 import { Check, ClipboardCheck, Clock3, CreditCard, FileText, Glasses, Package, ShieldCheck, X } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
 import { usePaymentsPalette, type PaymentsPalette } from '@/components/payments/payments-ui';
-import { HomeCard, HomeCardHeader, HomeRow } from '@/components/home/home-ui';
+import { HOME_BUTTON_TEXT_STYLE, HomeCard, HomeCardHeader, HomeRow } from '@/components/home/home-ui';
 import { storage } from '@/lib/storage';
 import type { HomeNeed, HomeNeedIcon, HomeNeedTone } from '@/lib/home-needs';
 
@@ -87,13 +87,13 @@ function AllCaught({ palette, onRestore, compact }: { palette: PaymentsPalette; 
         <Check size={compact ? 22 : 26} color={palette.tones.verified.ink} strokeWidth={2.6} />
       </View>
       <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>You're all caught up</Text>
-      <Text style={{ color: palette.faint, fontSize: 12, textAlign: 'center' }}>Nothing needs you right now. New items appear here as they come up.</Text>
+      <Text style={{ color: palette.faint, fontSize: 12, lineHeight: 17, textAlign: 'center', maxWidth: 240 }}>Nothing needs you right now. New items appear here as they come up.</Text>
       <Pressable
         onPress={onRestore}
         className="active:opacity-80"
         style={{ height: 34, paddingHorizontal: 16, borderRadius: 999, borderWidth: 1, borderColor: palette.outline, alignItems: 'center', justifyContent: 'center', marginTop: 4 }}
       >
-        <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }}>Bring them back</Text>
+        <Text style={[HOME_BUTTON_TEXT_STYLE, { color: palette.text }]}>Bring them back</Text>
       </Pressable>
     </View>
   );
@@ -132,7 +132,7 @@ export function NeedsYouCard({ needs, onAction, onDismiss, onRestore }: NeedsPro
             className="active:opacity-80"
             style={{ height: 32, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: palette.outline, alignItems: 'center', justifyContent: 'center' }}
           >
-            <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }}>{need.cta}</Text>
+            <Text style={[HOME_BUTTON_TEXT_STYLE, { color: palette.text }]}>{need.cta}</Text>
           </Pressable>
           <Pressable
             onPress={() => onDismiss(need.id)}
@@ -174,7 +174,7 @@ export function NeedsYouCarousel({ needs, onAction, onDismiss, onRestore }: Need
       </View>
       {needs.length > 1 ? (
         <Pressable onPress={() => setShowAll(true)} className="active:opacity-70" style={{ height: 30, justifyContent: 'center' }}>
-          <Text style={{ color: palette.limeOnSurface, fontSize: 13, fontWeight: '600' }}>See all {needs.length}</Text>
+          <Text style={[HOME_BUTTON_TEXT_STYLE, { color: palette.limeOnSurface }]}>See all {needs.length}</Text>
         </Pressable>
       ) : null}
     </View>
@@ -217,7 +217,7 @@ export function NeedsYouCarousel({ needs, onAction, onDismiss, onRestore }: Need
                     className="active:opacity-80"
                     style={{ height: 34, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: palette.outline, alignItems: 'center', justifyContent: 'center' }}
                   >
-                    <Text style={{ color: palette.text, fontSize: 12.5, fontWeight: '600' }}>{need.cta}</Text>
+                    <Text style={[HOME_BUTTON_TEXT_STYLE, { color: palette.text }]}>{need.cta}</Text>
                   </Pressable>
                   <Pressable
                     onPress={() => onDismiss(need.id)}
@@ -274,7 +274,7 @@ export function NeedsYouCarousel({ needs, onAction, onDismiss, onRestore }: Need
                         className="active:opacity-80"
                         style={{ height: 34, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: palette.outline, alignItems: 'center', justifyContent: 'center' }}
                       >
-                        <Text style={{ color: palette.text, fontSize: 12.5, fontWeight: '600' }}>{need.cta}</Text>
+                        <Text style={[HOME_BUTTON_TEXT_STYLE, { color: palette.text }]}>{need.cta}</Text>
                       </Pressable>
                       <Pressable
                         onPress={() => onDismiss(need.id)}

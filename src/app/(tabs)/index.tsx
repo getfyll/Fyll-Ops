@@ -18,6 +18,7 @@ import {
   Users,
   FileText,
   Bell,
+  Sparkles,
   X,
   MessageCircle,
   Clock3,
@@ -69,11 +70,14 @@ import { fetchSocialCheckoutDrafts, getSocialCheckoutQueryKey } from '@/lib/soci
 import { supabaseData } from '@/lib/supabase/data';
 import { buildHomeNeeds, type HomePaymentRecord } from '@/lib/home-needs';
 import { NeedsYouCard, NeedsYouCarousel, useDismissedNeeds, useVisibleNeeds } from '@/components/home/NeedsYouToday';
-import { JumpToRow, JumpToGrid, buildJumpToItems } from '@/components/home/JumpToRow';
+import { JumpToTiles, buildJumpToItems } from '@/components/home/JumpToRow';
+import { PaymentsCollectedCard } from '@/components/home/PaymentsCollectedCard';
 import { StorefrontCard } from '@/components/home/StorefrontCard';
-import { EmptyLine, HomeCard, HomeCardHeader, HomeLink, HomeRow, KpiStrip, StatusText, HOME_GAP, type KpiItem } from '@/components/home/home-ui';
+import { EmptyLine, HomeCard, HomeCardHeader, HomeLink, HomeRow, KpiStrip, StatusText, HOME_BUTTON_TEXT_STYLE, HOME_GAP, type KpiItem } from '@/components/home/home-ui';
+import useWhatsNewStore from '@/lib/state/whats-new-store';
+import { CURRENT_RELEASE } from '@/lib/release-notes';
 import { FYLL_LIME, FYLL_LIME_INK, usePaymentsPalette } from '@/components/payments/payments-ui';
-import { useFonts, BricolageGrotesque_700Bold } from '@expo-google-fonts/bricolage-grotesque';
+import { useFonts, BricolageGrotesque_600SemiBold, BricolageGrotesque_700Bold } from '@expo-google-fonts/bricolage-grotesque';
 
 const ORDER_NOTIFICATIONS_SEEN_KEY_PREFIX = 'dashboard-order-notifications-seen';
 const ONBOARDING_DISMISSED_KEY_PREFIX = 'dashboard-onboarding-dismissed';
@@ -208,7 +212,7 @@ function OnboardingChecklistCard({
               className="rounded-full items-center justify-center active:opacity-80"
               style={{ height: 40, paddingHorizontal: 20, backgroundColor: colors.text.primary }}
             >
-              <Text style={{ color: colors.bg.primary }} className="text-sm font-semibold">
+              <Text style={[HOME_BUTTON_TEXT_STYLE, { color: colors.bg.primary }]}>
                 {nextStep.title}
               </Text>
             </Pressable>
@@ -219,6 +223,51 @@ function OnboardingChecklistCard({
   );
 }
 
+// Banner titles use Bricolage; falls back to the system bold until the font loads.
+function useBannerTitleStyle() {
+  const [loaded] = useFonts({ BricolageGrotesque_700Bold });
+  return loaded ? { fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400' as const } : { fontWeight: '700' as const };
+}
+
+// Shown on Home while a newer version of Fyll Ops is live (or just installed).
+function UpdateBanner({ onPress, inset = true }: { onPress: () => void; inset?: boolean }) {
+  const colors = useThemeColors();
+  const titleStyle = useBannerTitleStyle();
+  const available = useWhatsNewStore((s) => s.available);
+  if (!available) return null;
+  const isUpdate = available.mode === 'update';
+  const content = (
+    <Pressable
+      onPress={onPress}
+      className="rounded-2xl p-4 active:opacity-90"
+      style={{ backgroundColor: 'rgba(213,224,87,0.16)', borderWidth: 1, borderColor: 'rgba(213,224,87,0.5)' }}
+    >
+      <View className="flex-row items-center">
+        <View
+          className="w-12 h-12 rounded-xl items-center justify-center mr-4"
+          style={{ backgroundColor: FYLL_LIME }}
+        >
+          <Sparkles size={22} color={FYLL_LIME_INK} strokeWidth={2} />
+        </View>
+        <View className="flex-1">
+          <Text style={[{ color: colors.text.primary, fontSize: 16 }, titleStyle]}>
+            {isUpdate ? 'New update available' : 'Fyll Ops was updated'}
+          </Text>
+          <Text style={{ color: colors.text.secondary }} className="text-sm mt-0.5">
+            {isUpdate ? 'Tap to see what’s new and refresh.' : 'See the new features and fixes.'}
+          </Text>
+        </View>
+        <View style={{ height: 24, paddingHorizontal: 10, borderRadius: 999, backgroundColor: FYLL_LIME, justifyContent: 'center', marginRight: 8 }}>
+          <Text style={{ color: FYLL_LIME_INK, fontSize: 11, fontWeight: '700' }}>v{available.release.version}</Text>
+        </View>
+        <ChevronRight size={20} color={colors.text.tertiary} strokeWidth={2} />
+      </View>
+    </Pressable>
+  );
+  if (!inset) return content;
+  return <View className="px-5 pt-4">{content}</View>;
+}
+
 // Audit Banner Component
 interface AuditBannerProps {
   onPress: () => void;
@@ -226,6 +275,7 @@ interface AuditBannerProps {
 }
 
 function AuditBanner({ onPress, inset = true }: AuditBannerProps) {
+  const titleStyle = useBannerTitleStyle();
   const content = (
     <Pressable
       onPress={onPress}
@@ -240,7 +290,7 @@ function AuditBanner({ onPress, inset = true }: AuditBannerProps) {
           <ClipboardList size={24} color="#8B5CF6" strokeWidth={2} />
         </View>
         <View className="flex-1">
-          <Text style={{ color: '#6B21A8' }} className="font-bold text-base">
+          <Text style={[{ color: '#6B21A8', fontSize: 16 }, titleStyle]}>
             Monthly Audit Due
           </Text>
           <Text style={{ color: '#7C3AED' }} className="text-sm mt-0.5">
@@ -269,6 +319,7 @@ function EventBanner({
   inset?: boolean;
 }) {
   const colors = useThemeColors();
+  const titleStyle = useBannerTitleStyle();
   const isDark = colors.bg.primary === '#111111';
   const bannerBackground = isDark ? 'rgba(37,99,235,0.14)' : '#EFF6FF';
   const bannerBorder = isDark ? 'rgba(96,165,250,0.34)' : '#BFDBFE';
@@ -290,7 +341,7 @@ function EventBanner({
           <Calendar size={24} color="#2563EB" strokeWidth={2} />
         </View>
         <View className="flex-1">
-          <Text style={{ color: titleColor }} className="font-bold text-base">
+          <Text style={[{ color: titleColor, fontSize: 16 }, titleStyle]}>
             {title}
           </Text>
           <Text style={{ color: subtitleColor }} className="text-sm mt-0.5">
@@ -317,6 +368,7 @@ function PrintQueueBanner({
   inset?: boolean;
 }) {
   const colors = useThemeColors();
+  const titleStyle = useBannerTitleStyle();
   const content = (
     <Pressable
       onPress={onPress}
@@ -331,7 +383,7 @@ function PrintQueueBanner({
           <Printer size={23} color={colors.text.primary} strokeWidth={2} />
         </View>
         <View className="flex-1">
-          <Text style={{ color: colors.text.primary }} className="font-bold text-base">
+          <Text style={[{ color: colors.text.primary, fontSize: 16 }, titleStyle]}>
             Fyll Print queue
           </Text>
           <Text style={{ color: colors.text.secondary }} className="text-sm mt-0.5">
@@ -407,7 +459,7 @@ function WebMoreMenu() {
         }}
       >
         <MoreHorizontal size={18} color={colors.text.primary} strokeWidth={2.5} />
-        <Text style={{ color: colors.text.primary }} className="font-semibold ml-2 text-sm">
+        <Text style={[HOME_BUTTON_TEXT_STYLE, { color: colors.text.primary, marginLeft: 8 }]}>
           More
         </Text>
       </Pressable>
@@ -591,6 +643,57 @@ function WebFeatureSearchMenu() {
         </View>
       ) : null}
     </View>
+  );
+}
+
+// What's new row, always first in the notification panel: the current release, or the one waiting to be installed.
+function UpdateNotificationRow({ compact, onOpen }: { compact: boolean; onOpen: () => void }) {
+  const colors = useThemeColors();
+  const available = useWhatsNewStore((s) => s.available);
+  const release = available?.release ?? CURRENT_RELEASE;
+  const isUpdate = available?.mode === 'update';
+  const unread = available !== null;
+  const timeAgo = (() => {
+    if (!release.date) return '';
+    const minutes = Math.floor((Date.now() - new Date(release.date).getTime()) / 60000);
+    if (!Number.isFinite(minutes) || minutes < 0) return '';
+    if (minutes < 60) return `${Math.max(minutes, 1)}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    if (days < 7) return `${days}d ago`;
+    return new Date(release.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  })();
+  return (
+    <Pressable
+      onPress={onOpen}
+      style={{
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: 12,
+        paddingHorizontal: compact ? 18 : 20,
+        paddingVertical: compact ? 14 : 16,
+        backgroundColor: unread ? 'rgba(213,224,87,0.14)' : 'transparent',
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border.light,
+      }}
+    >
+      <View style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: unread ? FYLL_LIME : 'rgba(213,224,87,0.16)', alignItems: 'center', justifyContent: 'center' }}>
+        <Sparkles size={18} color={unread ? FYLL_LIME_INK : colors.text.secondary} strokeWidth={2} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '700' }}>
+          {isUpdate ? 'New update available' : `What’s new in ${release.version}`}
+        </Text>
+        <Text style={{ color: colors.text.muted, fontSize: 12, marginTop: 2 }} numberOfLines={2}>
+          {isUpdate ? 'Tap to see what’s new and refresh.' : release.features.map((f) => f.title).join(' · ')}
+        </Text>
+        {timeAgo ? <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 4 }}>{timeAgo}</Text> : null}
+      </View>
+      <View style={{ height: 22, paddingHorizontal: 9, borderRadius: 999, backgroundColor: FYLL_LIME, justifyContent: 'center' }}>
+        <Text style={{ color: FYLL_LIME_INK, fontSize: 10.5, fontWeight: '700' }}>v{release.version}</Text>
+      </View>
+    </Pressable>
   );
 }
 
@@ -861,6 +964,8 @@ function NotificationPanel({
   }, [colors.accent.primary, isTaskNotification]);
 
   const unreadCount = notifications.filter((n) => !n.is_read).length;
+  const hasWhatsNew = true; // the What's new row is always there
+  const requestWhatsNew = useWhatsNewStore((s) => s.requestOpen);
 
   // Orders created in the last 24h — shown in a "New Orders" section
   const recentOrders = useMemo(() => {
@@ -1060,6 +1165,7 @@ function NotificationPanel({
             )}
           </View>
           <ScrollView style={{ maxHeight: 460 }} showsVerticalScrollIndicator={false}>
+            <UpdateNotificationRow compact onOpen={() => { onClose(); requestWhatsNew(); }} />
             {recentOrders.length > 0 && (
               <>
                 <View style={{ paddingHorizontal: 18, paddingTop: 10, paddingBottom: 4 }}>
@@ -1068,7 +1174,7 @@ function NotificationPanel({
                 {recentOrders.map((o) => renderNewOrderItem(o, true))}
               </>
             )}
-            {notifications.length === 0 && recentOrders.length === 0 ? (
+            {notifications.length === 0 && recentOrders.length === 0 && !hasWhatsNew ? (
               <View style={{ padding: 32, alignItems: 'center' }}>
                 <Bell size={32} color={colors.text.muted} strokeWidth={1.5} />
                 <Text style={{ color: colors.text.muted, fontSize: 14, marginTop: 8 }}>
@@ -1157,6 +1263,7 @@ function NotificationPanel({
           </View>
         </View>
         <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+          <UpdateNotificationRow compact={false} onOpen={() => { onClose(); requestWhatsNew(); }} />
           {recentOrders.length > 0 && (
             <>
               <View style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: 4 }}>
@@ -1165,7 +1272,7 @@ function NotificationPanel({
               {recentOrders.map((o) => renderNewOrderItem(o, false))}
             </>
           )}
-          {notifications.length === 0 && recentOrders.length === 0 ? (
+          {notifications.length === 0 && recentOrders.length === 0 && !hasWhatsNew ? (
             <View style={{ padding: 48, alignItems: 'center' }}>
               <Bell size={40} color={colors.text.muted} strokeWidth={1.5} />
               <Text style={{ color: colors.text.muted, fontSize: 15, marginTop: 12 }}>
@@ -1292,7 +1399,7 @@ export default function DashboardScreen() {
   const isDark = colors.bg.primary === '#111111';
   const tabBarHeight = useTabBarHeight();
   const { isDesktop, isMobile } = useBreakpoint();
-  const [bricolageLoaded] = useFonts({ BricolageGrotesque_700Bold });
+  const [bricolageLoaded] = useFonts({ BricolageGrotesque_600SemiBold, BricolageGrotesque_700Bold });
   const isWebDesktop = Platform.OS === 'web' && isDesktop;
   const products = useFyllStore((s) => s.products);
   const orders = useFyllStore((s) => s.orders);
@@ -1697,14 +1804,16 @@ export default function DashboardScreen() {
   const showAuditBanner = new Date(eventNowTick).getDate() >= 25
     && dashboardMetrics !== null
     && !dashboardMetrics.hasAuditForPeriod;
+  const hasWhatsNewAvailable = useWhatsNewStore((s) => s.available !== null);
+  const requestWhatsNew = useWhatsNewStore((s) => s.requestOpen);
   const unreadNotificationCount = useMemo(() => {
     const threadUnread = notifications.filter((notification) => !notification.is_read).length;
     const newOrdersCount = (dashboardMetrics?.newOrderCreatedAtLast24Hours ?? []).filter((createdAt) => {
       const createdAtMs = new Date(createdAt).getTime();
       return Number.isFinite(createdAtMs) && createdAtMs > orderNotificationsSeenAt;
     }).length;
-    return threadUnread + newOrdersCount;
-  }, [dashboardMetrics?.newOrderCreatedAtLast24Hours, notifications, orderNotificationsSeenAt]);
+    return threadUnread + newOrdersCount + (hasWhatsNewAvailable ? 1 : 0);
+  }, [dashboardMetrics?.newOrderCreatedAtLast24Hours, hasWhatsNewAvailable, notifications, orderNotificationsSeenAt]);
   const openCasesCount = dashboardMetrics?.openCasesCount ?? 0;
   const activePartnerJobsCount = dashboardMetrics?.activePartnerJobsCount ?? 0;
   const pendingPaymentCount = useMemo(
@@ -1739,6 +1848,32 @@ export default function DashboardScreen() {
   }), [canSeePaymentNeeds, canUseCases, eventNowTick, globalLowStockThreshold, homePaymentsQuery.data, openCasesCount, orderStatuses, orders, partnerJobs, partners, pendingPaymentCount, products, useGlobalLowStockThreshold]);
   const { dismissed: dismissedNeeds, dismiss: dismissNeed, restore: restoreNeeds } = useDismissedNeeds(businessId);
   const visibleNeeds = useVisibleNeeds(homeNeeds, dismissedNeeds);
+  // Money in: approved payments (storefront / Fyll Checkout / shared) plus verified payment links,
+  // counted by the day they were approved.
+  const paymentsCollected = useMemo(() => {
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const todayMs = startOfToday.getTime();
+    const weekMs = todayMs - 6 * 24 * 60 * 60 * 1000;
+    let today = 0;
+    let week = 0;
+    let awaiting = pendingPaymentCount;
+    const add = (amount: number, at?: string | null) => {
+      const time = at ? new Date(at).getTime() : NaN;
+      if (!Number.isFinite(time) || !Number.isFinite(amount) || amount <= 0) return;
+      if (time >= todayMs) today += amount;
+      if (time >= weekMs) week += amount;
+    };
+    (homePaymentsQuery.data ?? []).forEach((payment) => {
+      const status = String(payment.status ?? '').trim().toLowerCase().replace(/[_-]+/g, ' ');
+      if (['verified', 'confirmed', 'payment confirmed', 'paid'].includes(status)) add(Number(payment.amount), payment.updatedAt ?? payment.createdAt);
+      if (['proof submitted', 'submitted'].includes(status)) awaiting += 1;
+    });
+    (socialCheckoutDraftsQuery.data ?? []).forEach((draft) => {
+      if (getSocialCheckoutEffectiveStatus(draft) === 'verified') add(Number(draft.amount), draft.reviewedAt ?? draft.updatedAt);
+    });
+    return { today, week, awaiting };
+  }, [homePaymentsQuery.data, pendingPaymentCount, socialCheckoutDraftsQuery.data]);
   const jumpToItems = buildJumpToItems({
     canUseCases,
     canUseSocialCheckout,
@@ -1750,6 +1885,7 @@ export default function DashboardScreen() {
     pendingPaymentCount,
     financeBadgeCount: financeCardBadgeCount,
     activePartnerJobsCount,
+    monthSalesLabel: formatCurrency(dashboardMetrics?.totalRevenue ?? 0),
   });
   const onboardingSteps = useMemo<OnboardingStep[]>(() => [
     {
@@ -2088,34 +2224,40 @@ export default function DashboardScreen() {
   };
 
   const renderRevenueTrend = (chartHeight: number) => (
-    <HomeCard>
-      <HomeCardHeader
-        title="Revenue trend"
-        loading={shouldShowDashboardSkeleton}
-        subtitle={selectedRevenueTrendDay
-          ? `${formatShortDate(selectedRevenueTrendDay.key)} · ${formatCurrency(selectedRevenueTrendDay.value)}`
-          : `Last 7 days · ${formatCurrency(revenueTrend7d.total)} · ${revenueTrend7d.ordersTotal} orders`}
-        right={trendBadge(revenueTrend7d.change)}
-      />
-      {shouldShowDashboardSkeleton ? (
-        <SkeletonBox width="100%" height={chartHeight} rounded="lg" />
-      ) : (
-        <InteractiveLineChart
-          data={revenueLineData}
-          height={chartHeight}
-          lineColor={palette.limeOnSurface}
-          gridColor={palette.hairline}
-          textColor={palette.faint}
-          selectedIndex={selectedRevenueTrendIndex}
-          onSelectIndex={setSelectedRevenueTrendIndex}
-          formatYLabel={formatCompactCurrencyTick}
-          formatValueLabel={formatCurrency}
-          tooltipBackgroundColor={palette.inverseBg}
-          tooltipTextColor={palette.inverseText}
+    <HomeCard flush>
+      <View style={{ paddingHorizontal: 18, paddingTop: 16 }}>
+        <HomeCardHeader
+          title="Revenue trend"
+          loading={shouldShowDashboardSkeleton}
+          subtitle={selectedRevenueTrendDay
+            ? `${formatShortDate(selectedRevenueTrendDay.key)} · ${formatCurrency(selectedRevenueTrendDay.value)}`
+            : `Last 7 days · ${formatCurrency(revenueTrend7d.total)} · ${revenueTrend7d.ordersTotal} orders`}
+          right={trendBadge(revenueTrend7d.change)}
         />
-      )}
+      </View>
+      <View>
+        {shouldShowDashboardSkeleton ? (
+          <SkeletonBox width="100%" height={chartHeight} rounded="lg" />
+        ) : (
+          <InteractiveLineChart
+            data={revenueLineData}
+            height={chartHeight}
+            lineColor={palette.limeOnSurface}
+            gridColor={palette.hairline}
+            textColor={palette.faint}
+            selectedIndex={selectedRevenueTrendIndex}
+            onSelectIndex={setSelectedRevenueTrendIndex}
+            formatYLabel={formatCompactCurrencyTick}
+            formatValueLabel={formatCurrency}
+            tooltipBackgroundColor={palette.inverseBg}
+            tooltipTextColor={palette.inverseText}
+            paddingLeft={36}
+            paddingRight={18}
+          />
+        )}
+      </View>
       {!isWebDesktop && !shouldShowDashboardMetricsSkeleton ? (
-        <View style={{ flexDirection: 'row', marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: palette.hairline }}>
+        <View style={{ flexDirection: 'row', marginTop: 14, marginHorizontal: 18, paddingTop: 12, paddingBottom: 16, borderTopWidth: 1, borderTopColor: palette.hairline }}>
           {[
             ['Products', stats.productSales],
             ['Delivery', stats.deliveryFees],
@@ -2127,7 +2269,7 @@ export default function DashboardScreen() {
             </View>
           ))}
         </View>
-      ) : null}
+      ) : <View style={{ height: 16 }} />}
     </HomeCard>
   );
 
@@ -2304,7 +2446,7 @@ export default function DashboardScreen() {
                       style={{ backgroundColor: FYLL_LIME, height: 40 }}
                     >
                       <Plus size={16} color={FYLL_LIME_INK} strokeWidth={2.6} />
-                      <Text style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '600', marginLeft: 6 }}>New order</Text>
+                      <Text style={[HOME_BUTTON_TEXT_STYLE, { color: FYLL_LIME_INK, marginLeft: 6 }]}>New order</Text>
                     </Pressable>
                     <WebFeatureSearchMenu />
                     <WebMoreMenu />
@@ -2317,6 +2459,7 @@ export default function DashboardScreen() {
               />
 
               <View style={{ marginTop: HOME_GAP, gap: HOME_GAP }}>
+                <UpdateBanner onPress={requestWhatsNew} inset={false} />
                 {showAuditBanner ? (
                   <AuditBanner onPress={() => handleQuickAction('/inventory-audit')} inset={false} />
                 ) : null}
@@ -2339,8 +2482,6 @@ export default function DashboardScreen() {
                   />
                 ) : null}
 
-                <JumpToRow items={jumpToItems} onPress={handleCardPress} />
-
                 <KpiStrip items={kpiItems} loading={shouldShowDashboardMetricsSkeleton} />
 
                 <NeedsYouCard
@@ -2350,11 +2491,31 @@ export default function DashboardScreen() {
                   onRestore={restoreNeeds}
                 />
 
-                <FulfillmentPipelineCard
-                  counts={fulfillment}
-                  onPress={() => goToFulfillment()}
-                  onStagePress={(stage) => goToFulfillment(stage)}
-                />
+                <View style={{ flexDirection: 'row', alignItems: 'stretch', gap: HOME_GAP }}>
+                  {canSeePaymentNeeds ? (
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <PaymentsCollectedCard
+                        collectedToday={paymentsCollected.today}
+                        collectedWeek={paymentsCollected.week}
+                        awaitingCount={paymentsCollected.awaiting}
+                        loading={homePaymentsQuery.isLoading}
+                        onNewPayment={() => handleQuickAction('/social-checkout/new')}
+                        onOpen={() => handleCardPress('/payments')}
+                        onReview={() => handleCardPress('/payments')}
+                      />
+                    </View>
+                  ) : null}
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <FulfillmentPipelineCard
+                      counts={fulfillment}
+                      onPress={() => goToFulfillment()}
+                      onStagePress={(stage) => goToFulfillment(stage)}
+                      onAddOrder={() => handleQuickAction('/new-order')}
+                    />
+                  </View>
+                </View>
+
+                <JumpToTiles items={jumpToItems} onPress={handleCardPress} />
 
                 {userRole === 'admin' || userRole === 'manager' ? (
                   <StorefrontCard
@@ -2422,6 +2583,8 @@ export default function DashboardScreen() {
             profilesMap={profilesMap}
           />
 
+          <UpdateBanner onPress={requestWhatsNew} />
+
           {/* Audit Banner - Shows between 25th-31st if no audit logged */}
           {showAuditBanner && (
             <AuditBanner onPress={() => handleQuickAction('/inventory-audit')} />
@@ -2467,13 +2630,26 @@ export default function DashboardScreen() {
 
               {(userRole === 'admin' || userRole === 'manager') ? renderRevenueTrend(170) : null}
 
-              <JumpToGrid items={jumpToItems} onPress={handleCardPress} />
+              {canSeePaymentNeeds ? (
+                <PaymentsCollectedCard
+                  collectedToday={paymentsCollected.today}
+                  collectedWeek={paymentsCollected.week}
+                  awaitingCount={paymentsCollected.awaiting}
+                  loading={homePaymentsQuery.isLoading}
+                  onNewPayment={() => handleQuickAction('/social-checkout/new')}
+                  onOpen={() => handleCardPress('/payments')}
+                  onReview={() => handleCardPress('/payments')}
+                />
+              ) : null}
 
               <FulfillmentPipelineCard
                 counts={fulfillment}
                 onPress={() => goToFulfillment()}
                 onStagePress={(stage) => goToFulfillment(stage)}
+                onAddOrder={() => handleQuickAction('/new-order')}
               />
+
+              <JumpToTiles items={jumpToItems} onPress={handleCardPress} />
 
               {userRole === 'admin' || userRole === 'manager' ? (
                 <StorefrontCard
@@ -2501,7 +2677,7 @@ export default function DashboardScreen() {
                   style={{ flex: 1, height: 48, borderRadius: 999, backgroundColor: FYLL_LIME, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}
                 >
                   <Plus size={18} color={FYLL_LIME_INK} strokeWidth={2.4} />
-                  <Text style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '600' }}>New order</Text>
+                  <Text style={[HOME_BUTTON_TEXT_STYLE, { color: FYLL_LIME_INK }]}>New order</Text>
                 </Pressable>
                 <Pressable
                   onPress={() => handleQuickAction('/scan')}
@@ -2509,7 +2685,7 @@ export default function DashboardScreen() {
                   style={{ flex: 1, height: 48, borderRadius: 999, borderWidth: 1, borderColor: palette.outline, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}
                 >
                   <Scan size={18} color={palette.text} strokeWidth={2.2} />
-                  <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>Scan item</Text>
+                  <Text style={[HOME_BUTTON_TEXT_STYLE, { color: palette.text }]}>Scan item</Text>
                 </Pressable>
               </View>
             </View>

@@ -26,6 +26,8 @@ export interface HomePaymentRecord {
   sourceOrderId?: string;
   linkedOrderId?: string | null;
   unlinkedOrderId?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;

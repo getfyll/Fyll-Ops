@@ -21,6 +21,7 @@ import { ResolvedAttachmentImage } from '@/components/ResolvedAttachmentImage';
 import { InventoryMobileFab } from '@/components/InventoryMobileFab';
 import { capitalizeDisplayLabel } from '@/lib/display-format';
 import { SearchClearButton } from '@/components/SearchClearButton';
+import { EmptyState } from '@/components/EmptyState';
 import { FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, MoneyText, isHovered, usePaymentsPalette } from '@/components/payments/payments-ui';
 import { FilterPill, InventoryCheckbox, MenuPill, ProductListRow, ProductTableRow, TABLE_COLUMNS, formatCompactNaira, getStockStatus, type StockStatus } from '@/components/inventory/inventory-ui';
 
@@ -671,38 +672,34 @@ export default function InventoryScreen() {
             alignItems: 'center',
             gap: 6,
             borderWidth: 1,
-            borderColor: activeFilterCount > 0 ? palette.inverseBg : palette.outline,
+            borderColor: activeFilterCount > 0 ? FYLL_LIME : palette.outline,
+            backgroundColor: activeFilterCount > 0 ? FYLL_LIME : 'transparent',
             opacity: state.pressed ? 0.7 : 1,
           })}
         >
-          <ArrowDownAZ size={14} color={palette.textSoft} strokeWidth={2.2} />
-          <Text style={{ color: palette.textSoft, fontSize: 13, fontWeight: '600' }}>Sort</Text>
+          <ArrowDownAZ size={14} color={activeFilterCount > 0 ? FYLL_LIME_INK : palette.textSoft} strokeWidth={2.2} />
+          <Text style={{ color: activeFilterCount > 0 ? FYLL_LIME_INK : palette.textSoft, fontSize: 13, fontWeight: '600' }}>Sort</Text>
         </Pressable>
       ) : null}
     </ScrollView>
   );
 
+  // Same empty state as Orders: first-run copy, a way out of filters, centred in the space left.
+  const hasProductFilters = Boolean(searchQuery.trim()) || inventoryFilter !== 'all' || categoryFilter !== 'all';
   const emptyProducts = (
-    <View style={{ paddingVertical: 48, paddingHorizontal: 20, alignItems: 'center' }}>
-      <View style={{ width: 64, height: 64, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginBottom: 14, backgroundColor: palette.softFill }}>
-        <Package size={28} color={palette.faint} strokeWidth={1.6} />
-      </View>
-      <Text style={{ color: palette.text, fontSize: 16, fontWeight: '600', marginBottom: 4 }}>
-        {productsBase.length === 0 ? 'No products yet' : 'No products match'}
-      </Text>
-      <Text style={{ color: palette.muted, fontSize: 14, marginBottom: 16, textAlign: 'center' }}>
-        {productsBase.length === 0 ? 'Add your first product to get started.' : 'Try another search or filter.'}
-      </Text>
-      {productsBase.length === 0 ? (
-        <Pressable
-          onPress={handleAddProduct}
-          style={(state) => ({ height: 40, paddingHorizontal: 18, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: isHovered(state) ? FYLL_LIME_HOVER : FYLL_LIME })}
-        >
-          <Plus size={15} color={FYLL_LIME_INK} strokeWidth={2.6} />
-          <Text style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '600' }}>Add product</Text>
-        </Pressable>
-      ) : null}
-    </View>
+    <EmptyState
+      fill
+      icon={Package}
+      title={productsBase.length === 0 ? 'Your first product starts here' : 'No matching products'}
+      description={productsBase.length === 0
+        ? 'Add the products you sell to track stock, prices and variants in one place.'
+        : hasProductFilters ? 'Try clearing your search and filters to see every product again.' : 'No products are available in this view.'}
+      actionLabel={productsBase.length === 0 ? 'Add first product' : 'Clear filters'}
+      actionIcon={productsBase.length === 0 ? Plus : X}
+      onAction={productsBase.length === 0
+        ? handleAddProduct
+        : () => { setSearchQuery(''); setInventoryFilter('all'); setCategoryFilter('all'); }}
+    />
   );
 
   const listFooter = (
@@ -742,6 +739,7 @@ export default function InventoryScreen() {
         paddingHorizontal: horizontalPadding,
         paddingBottom: tabBarHeight + (selectedProductIds.length > 0 ? 110 : 32),
         gap: isWebDesktop ? 18 : 14,
+        flexGrow: 1,
       }}
       showsVerticalScrollIndicator={false}
       onScroll={handleInventoryScroll}
@@ -1011,7 +1009,7 @@ export default function InventoryScreen() {
           ) : (
             <View style={{ borderRadius: 20, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, paddingHorizontal: 18, paddingTop: 18, paddingBottom: 16, gap: 14 }}>
               <View style={{ gap: 4 }}>
-                <Text style={{ color: palette.muted, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{statTiles[0].label}</Text>
+                <Text maxFontSizeMultiplier={1} style={{ color: palette.muted, fontSize: 10, lineHeight: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{statTiles[0].label}</Text>
                 <MoneyText style={{ color: palette.text, fontSize: 32, letterSpacing: -0.8 }} numberOfLines={1}>{statTiles[0].value}</MoneyText>
                 <Text style={{ color: palette.faint, fontSize: 13 }}>
                   {isOwner
@@ -1025,7 +1023,7 @@ export default function InventoryScreen() {
                   <Pressable key={tile.key} onPress={() => tile.filter && pickFilter(tile.filter)} style={{ flex: 1, gap: 3 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                       <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: tile.dot }} />
-                      <Text style={{ color: palette.muted, fontSize: 12 }}>{tile.label}</Text>
+                      <Text maxFontSizeMultiplier={1} style={{ color: palette.muted, fontSize: 10, lineHeight: 12 }}>{tile.label}</Text>
                     </View>
                     <Text style={{ color: palette.text, fontSize: 18, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{tile.value}</Text>
                   </Pressable>
@@ -1083,7 +1081,7 @@ export default function InventoryScreen() {
         </View>
       ) : null}
       {inventoryTab === 'products' ? (
-        <View style={{ gap: 14 }}>
+        <View style={{ gap: 14, flexGrow: filteredProducts.length === 0 && !isInitialLoading ? 1 : undefined }}>
           {isInitialLoading ? (
             <View>
               <ProductCardSkeleton />
@@ -1092,7 +1090,8 @@ export default function InventoryScreen() {
               <ProductCardSkeleton />
             </View>
           ) : isWebDesktop ? (
-            <View style={{ borderRadius: 18, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, overflow: 'hidden' }}>
+            <View style={filteredProducts.length === 0 ? { flexGrow: 1 } : { borderRadius: 18, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, overflow: 'hidden' }}>
+              {filteredProducts.length > 0 ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: TABLE_COLUMNS.gap, paddingHorizontal: 22, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: palette.hairline }}>
                 <InventoryCheckbox checked={allVisibleProductsSelected} onPress={toggleVisibleProductSelection} palette={palette} label="Select all products" />
                 <Text style={[tableHeadStyle, { flex: 2.4 }]}>Product</Text>
@@ -1102,6 +1101,7 @@ export default function InventoryScreen() {
                 <Text style={[tableHeadStyle, { width: TABLE_COLUMNS.status }]}>Status</Text>
                 <View style={{ width: TABLE_COLUMNS.trail }} />
               </View>
+              ) : null}
               {filteredProducts.length === 0 ? emptyProducts : visibleProducts.map((product, index) => {
                 const threshold = getEffectiveThreshold(product);
                 return (
@@ -1130,7 +1130,7 @@ export default function InventoryScreen() {
             </View>
           ) : (
             <>
-              <View style={{ borderRadius: 18, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, overflow: 'hidden' }}>
+              <View style={filteredProducts.length === 0 ? { flexGrow: 1 } : { borderRadius: 18, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, overflow: 'hidden' }}>
                 {filteredProducts.length === 0 ? emptyProducts : visibleProducts.map((product, index) => (
                   <ProductListRow
                     key={product.id}

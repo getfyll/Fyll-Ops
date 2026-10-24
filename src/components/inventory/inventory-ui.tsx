@@ -3,7 +3,7 @@ import { Pressable, Text, View } from 'react-native';
 import { Check, ChevronDown, ChevronRight, Minus, Package, PackagePlus, Plus, Printer } from 'lucide-react-native';
 import type { Product, ProductVariant } from '@/lib/state/fyll-store';
 import { ResolvedAttachmentImage } from '@/components/ResolvedAttachmentImage';
-import { isHovered, type PaymentsPalette } from '@/components/payments/payments-ui';
+import { FYLL_LIME, FYLL_LIME_INK, isHovered, type PaymentsPalette } from '@/components/payments/payments-ui';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 
 export type StockStatus = 'in' | 'low' | 'out' | 'inactive';
@@ -141,14 +141,14 @@ export function FilterPill({ label, count, active, onPress, palette, textSize = 
         alignItems: 'center',
         gap: 6,
         borderWidth: 1,
-        borderColor: active ? palette.inverseBg : palette.outline,
-        backgroundColor: active ? palette.inverseBg : isHovered(state) ? palette.softFill : 'transparent',
+        borderColor: active ? FYLL_LIME : palette.outline,
+        backgroundColor: active ? FYLL_LIME : isHovered(state) ? palette.softFill : 'transparent',
         opacity: state.pressed ? 0.8 : 1,
       })}
     >
-      <Text style={{ color: active ? palette.inverseText : palette.textSoft, fontSize: textSize, fontWeight: '600' }}>{label}</Text>
+      <Text style={{ color: active ? FYLL_LIME_INK : palette.textSoft, fontSize: textSize, fontWeight: '600' }}>{label}</Text>
       {count !== undefined ? (
-        <Text style={{ color: active ? palette.inverseText : palette.textSoft, opacity: 0.55, fontSize: textSize, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{count}</Text>
+        <Text style={{ color: active ? FYLL_LIME_INK : palette.textSoft, opacity: 0.55, fontSize: textSize, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{count}</Text>
       ) : null}
     </Pressable>
   );
@@ -421,6 +421,11 @@ function IconAction({ label, onPress, palette, children }: { label: string; onPr
   );
 }
 
+const truncateToWords = (value: string, limit: number) => {
+  const words = value.trim().split(/\s+/).filter(Boolean);
+  return words.length > limit ? `${words.slice(0, limit).join(' ')}…` : value;
+};
+
 type ProductListRowProps = {
   product: Product;
   status: StockStatus;
@@ -438,6 +443,7 @@ export function ProductListRow({ product, status, totalStock, displayPrice, isOw
   const { isMobile: compact } = useBreakpoint();
   const variantCount = product.variants.length;
   const stockInk = status === 'inactive' ? palette.faint : totalStock === 0 ? palette.danger : palette.text;
+  const displayName = compact ? truncateToWords(product.name, 5) : product.name;
   return (
     <Pressable
       accessibilityRole="button"
@@ -458,7 +464,7 @@ export function ProductListRow({ product, status, totalStock, displayPrice, isOw
       <ProductThumb product={product} size={48} radius={12} palette={palette} />
       <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
-          <Text style={{ flex: 1, color: palette.text, fontSize: compact ? 12 : 15, fontWeight: '500' }} numberOfLines={1}>{product.name}</Text>
+          <Text style={{ flex: 1, color: palette.text, fontSize: compact ? 12 : 15, fontWeight: '500' }} numberOfLines={1}>{displayName}</Text>
           <Text style={{ color: stockInk, fontSize: compact ? 12 : 15, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{totalStock} left</Text>
         </View>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>

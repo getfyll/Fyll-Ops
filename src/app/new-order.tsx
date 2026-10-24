@@ -331,6 +331,7 @@ export default function NewOrderScreen() {
   const palette = usePaymentsPalette();
   const isDark = colors.bg.primary === '#111111';
   const isDesktopWeb = Platform.OS === 'web' && isDesktop;
+  const orderLineFontSize = isDesktopWeb ? 14 : 12;
   const isNarrowWeb = Platform.OS === 'web' && breakpointWidth < 1280;
   const rightColumnWidth = isDesktopWeb ? (isNarrowWeb ? Math.max(320, Math.round(breakpointWidth * 0.3)) : 420) : undefined;
   const webMaxWidth = 1456;
@@ -348,7 +349,8 @@ export default function NewOrderScreen() {
   const softCardClass = isDark ? 'bg-[#141414] border-[rgba(255,255,255,0.14)] focus:border-[#D5E057]' : 'bg-[#F6F6F4] border-[#DCDCDC] focus:border-[#B8C43A]';
   const dropdownOpenBorder = isDark ? FYLL_LIME : '#B8C43A';
   const sectionTitleClass = isDesktopWeb ? 'font-medium text-base' : 'font-medium text-sm';
-  const fieldLabelClass = 'text-sm font-semibold';
+  const fieldLabelClass = 'font-semibold';
+  const fieldLabelFontSize = isDesktopWeb ? 14 : 12;
   const summaryCardClass = cardClass;
   const summaryPrimaryClass = textPrimaryClass;
   const summarySecondaryClass = textSecondaryClass;
@@ -1778,14 +1780,13 @@ export default function NewOrderScreen() {
             <View className="mb-4 flex-row items-center" style={{ gap: 12 }}>
               <StepBadge n={5} palette={palette} />
               <View className="flex-1">
-                <Text className={cn(sectionTitleClass, textPrimaryClass)}>Order type &amp; reference</Text>
-                <Text className={cn('text-xs mt-1', textMutedClass)}>{wooAvailable ? 'Delivery timeline and website order linkage.' : 'Delivery timeline and order type.'}</Text>
+                <Text className={textPrimaryClass} style={{ fontSize: isDesktopWeb ? 16 : 14, fontWeight: '500' }}>Order type &amp; reference</Text>
               </View>
             </View>
 
             {!isServiceOrder && (
               <View className="mb-4">
-                <Text className={cn(fieldLabelClass, 'mb-2')} style={{ color: colors.text.secondary }}>Order Type</Text>
+                <Text className={cn(fieldLabelClass, 'mb-2')} style={{ color: palette.textSoft, fontSize: fieldLabelFontSize }}>Order Type</Text>
                 <Pressable
                   onPress={() => setShowOrderTypeMenu((open) => !open)}
                   className="rounded-xl px-4 flex-row items-center justify-between active:opacity-70"
@@ -1880,7 +1881,7 @@ export default function NewOrderScreen() {
 
             {wooAvailable || websiteOrderRef.trim() ? (
             <View>
-              <Text className={cn(fieldLabelClass, 'mb-1.5')} style={{ color: colors.text.secondary }}>Website Order Ref (WooCommerce)</Text>
+              <Text className={cn(fieldLabelClass, 'mb-1.5')} style={{ color: palette.textSoft, fontSize: fieldLabelFontSize }}>Website Order Ref (WooCommerce)</Text>
               <FocusInput
                 placeholder="e.g. 47581 or WC-47581"
                 placeholderTextColor="#9CA3AF"
@@ -2004,14 +2005,13 @@ export default function NewOrderScreen() {
             <View className="mb-4 flex-row items-center" style={{ gap: 12 }}>
               <StepBadge n={6} palette={palette} />
               <View className="flex-1">
-                <Text className={cn(sectionTitleClass, textPrimaryClass)}>Order details</Text>
-                <Text className={cn('text-xs mt-1', textMutedClass)}>Date and order category.</Text>
+                <Text className={textPrimaryClass} style={{ fontSize: isDesktopWeb ? 16 : 14, fontWeight: '500' }}>Order details</Text>
               </View>
             </View>
 
             {/* Order Date */}
             <View className="mb-4">
-              <Text className={cn(fieldLabelClass, 'mb-1.5')} style={{ color: colors.text.secondary }}>Order Date</Text>
+              <Text className={cn(fieldLabelClass, 'mb-1.5')} style={{ color: palette.textSoft, fontSize: fieldLabelFontSize }}>Order Date</Text>
               <View className={cn('flex-row rounded-full overflow-hidden border', softCardClass)}>
                 <Pressable
                   onPress={() => {
@@ -2069,7 +2069,7 @@ export default function NewOrderScreen() {
             </View>
 
             <View>
-              <Text className={cn(fieldLabelClass, 'mb-1.5')} style={{ color: colors.text.secondary }}>Order Category</Text>
+              <Text className={cn(fieldLabelClass, 'mb-1.5')} style={{ color: palette.textSoft, fontSize: fieldLabelFontSize }}>Order Category</Text>
               <Pressable
                 onPress={() => setShowOrderClassificationModal(!showOrderClassificationModal)}
                 className={cn('rounded-[14px] px-4 py-3.5 flex-row items-center justify-between border', softCardClass)}
@@ -2127,7 +2127,7 @@ export default function NewOrderScreen() {
           const compact = !isDesktopWeb;
           const fieldInput = [{ height: 52, paddingHorizontal: 16, borderRadius: 14, borderWidth: 1, borderColor: palette.outline, backgroundColor: palette.inset, color: palette.text, fontSize: 15 }, Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null];
           const fieldLabel = (text: string) => (
-            <Text style={{ color: palette.textSoft, fontSize: 14, fontWeight: '600', marginBottom: 8 }}>{text}</Text>
+            <Text style={{ color: palette.textSoft, fontSize: fieldLabelFontSize, fontWeight: '600', marginBottom: 8 }}>{text}</Text>
           );
           const innerBox = { borderRadius: 18, backgroundColor: palette.inset, borderWidth: 1, borderColor: palette.border } as const;
           const limeButtonStyle = (state: { pressed: boolean; hovered?: boolean }, height = 44) => ({ height, borderRadius: 999, paddingHorizontal: 18, flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'center' as const, gap: 6, backgroundColor: state.hovered ? FYLL_LIME_HOVER : FYLL_LIME, opacity: state.pressed ? 0.85 : 1 });
@@ -2137,7 +2137,7 @@ export default function NewOrderScreen() {
           const deliveryFields = (
             <>
                 <View>
-                  <Text className={cn(fieldLabelClass, 'mb-1.5')} style={{ color: colors.text.secondary }}>Delivery State</Text>
+                  <Text className={cn(fieldLabelClass, 'mb-1.5')} style={{ color: palette.textSoft, fontSize: fieldLabelFontSize }}>Delivery State</Text>
                   <Pressable
                     onPress={() => {
                       setShowStateModal(!showStateModal);
@@ -2341,16 +2341,25 @@ export default function NewOrderScreen() {
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: compact ? 'wrap' : 'nowrap' }}>
                           <Thumb imageUrl={variant?.imageUrl || product?.imageUrl} size={compact ? 48 : 56} palette={palette} />
                           <View style={{ flex: 1, minWidth: compact ? 120 : 0, gap: 2 }}>
-                            <Text style={{ color: palette.text, fontSize: compact ? 15 : 16, fontWeight: '600' }} numberOfLines={2}>{title}</Text>
-                            <Text style={{ color: palette.muted, fontSize: 13.5 }}>{formatCurrency(item.unitPrice)} each</Text>
+                            <Text style={{ color: palette.text, fontSize: orderLineFontSize, fontWeight: '600' }} numberOfLines={2}>{title}</Text>
+                            <Text style={{ color: palette.muted, fontSize: orderLineFontSize }}>{formatCurrency(item.unitPrice)} each</Text>
                           </View>
                           <Stepper quantity={item.quantity} onMinus={() => handleUpdateQuantity(index, -1)} onPlus={() => handleUpdateQuantity(index, 1)} palette={palette} fontSize={compact ? 15 : 16} />
-                          <Text style={{ minWidth: compact ? 82 : 96, textAlign: 'right', color: palette.text, fontSize: compact ? 15 : 16, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{formatCurrency(item.unitPrice * item.quantity)}</Text>
-                          <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${title}`} hitSlop={8} onPress={() => handleRemoveItem(index)} style={{ padding: 4 }}>
-                            <Trash2 size={17} color={palette.danger} strokeWidth={2.2} />
-                          </Pressable>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: compact && customServices.length > 0 ? 'space-between' : 'flex-end', gap: 12, ...(compact ? { width: '100%' } : null) }}>
+                            {compact && customServices.length > 0 ? (
+                              <Pressable accessibilityRole="button" onPress={() => openAddServiceForItem(index)} style={{ height: 30, paddingHorizontal: 12, borderRadius: 999, justifyContent: 'center', borderWidth: 1, borderStyle: 'dashed', borderColor: palette.outline }}>
+                                <Text style={{ color: palette.limeOnSurface, fontSize: 12, fontWeight: '600' }}>+ Add-on</Text>
+                              </Pressable>
+                            ) : null}
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                              <Text style={{ minWidth: compact ? 82 : 96, textAlign: 'right', color: palette.text, fontSize: orderLineFontSize, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{formatCurrency(item.unitPrice * item.quantity)}</Text>
+                              <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${title}`} hitSlop={8} onPress={() => handleRemoveItem(index)} style={{ padding: 4 }}>
+                                <Trash2 size={17} color={palette.danger} strokeWidth={2.2} />
+                              </Pressable>
+                            </View>
+                          </View>
                         </View>
-                        {details.orderOptions.length > 0 || customServices.length > 0 ? (
+                        {details.orderOptions.length > 0 || (!compact && customServices.length > 0) ? (
                           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingLeft: compact ? 0 : 68 }}>
                             {details.orderOptions.map((option) => (
                               <Pressable
@@ -2362,7 +2371,7 @@ export default function NewOrderScreen() {
                                 <Text style={{ color: palette.textSoft, fontSize: 12, fontWeight: '600' }}>{option.name}: {item.selectedOptions?.[option.name] ?? 'Choose'}</Text>
                               </Pressable>
                             ))}
-                            {customServices.length > 0 ? (
+                            {!compact && customServices.length > 0 ? (
                               <Pressable accessibilityRole="button" onPress={() => openAddServiceForItem(index)} style={{ height: 30, paddingHorizontal: 12, borderRadius: 999, justifyContent: 'center', borderWidth: 1, borderStyle: 'dashed', borderColor: palette.outline }}>
                                 <Text style={{ color: palette.limeOnSurface, fontSize: 12, fontWeight: '600' }}>+ Add-on</Text>
                               </Pressable>
@@ -2387,10 +2396,10 @@ export default function NewOrderScreen() {
                         <Pencil size={18} color={palette.limeOnSurface} strokeWidth={2} />
                       </View>
                       <View style={{ flex: 1, gap: 2 }}>
-                        <Text style={{ color: palette.text, fontSize: compact ? 15 : 16, fontWeight: '600' }} numberOfLines={2}>{service.name}</Text>
+                        <Text style={{ color: palette.text, fontSize: orderLineFontSize, fontWeight: '600' }} numberOfLines={2}>{service.name}</Text>
                         <Text style={{ color: palette.muted, fontSize: 13.5 }}>Custom item</Text>
                       </View>
-                      <Text style={{ color: palette.text, fontSize: compact ? 15 : 16, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{formatCurrency(service.price)}</Text>
+                      <Text style={{ color: palette.text, fontSize: orderLineFontSize, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{formatCurrency(service.price)}</Text>
                       <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${service.name}`} hitSlop={8} onPress={() => handleRemoveService(index)}>
                         <X size={17} color={palette.faint} strokeWidth={2.4} />
                       </Pressable>
@@ -2483,16 +2492,18 @@ export default function NewOrderScreen() {
                           <Package size={20} color={palette.limeOnSurface} strokeWidth={2} />
                         </View>
                         <View style={{ flex: 1, minWidth: compact ? 120 : 0, gap: 2 }}>
-                          <Text style={{ color: palette.text, fontSize: compact ? 15 : 16, fontWeight: '600' }} numberOfLines={2}>{fullName}</Text>
-                          <Text style={{ color: palette.muted, fontSize: 13.5 }}>
+                          <Text style={{ color: palette.text, fontSize: orderLineFontSize, fontWeight: '600' }} numberOfLines={2}>{fullName}</Text>
+                          <Text style={{ color: palette.muted, fontSize: orderLineFontSize }}>
                             {isService ? `${formatCurrency(item.unitPrice)} each` : `${stock} in stock · ${formatCurrency(item.unitPrice)} each`}
                           </Text>
                         </View>
                         <Stepper quantity={item.quantity} onMinus={() => handleUpdateQuantity(index, -1)} onPlus={() => handleUpdateQuantity(index, 1)} palette={palette} fontSize={compact ? 15 : 16} />
-                        <Text style={{ minWidth: compact ? 82 : 96, textAlign: 'right', color: palette.text, fontSize: compact ? 15 : 16, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{formatCurrency(item.unitPrice * item.quantity)}</Text>
-                        <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${fullName}`} hitSlop={8} onPress={() => handleRemoveItem(index)} style={{ padding: 4 }}>
-                          <Trash2 size={17} color={palette.danger} strokeWidth={2.2} />
-                        </Pressable>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 12, ...(compact ? { width: '100%' } : null) }}>
+                          <Text style={{ minWidth: compact ? 82 : 96, textAlign: 'right', color: palette.text, fontSize: orderLineFontSize, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{formatCurrency(item.unitPrice * item.quantity)}</Text>
+                          <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${fullName}`} hitSlop={8} onPress={() => handleRemoveItem(index)} style={{ padding: 4 }}>
+                            <Trash2 size={17} color={palette.danger} strokeWidth={2.2} />
+                          </Pressable>
+                        </View>
                       </View>
 
                       {!isService && (orderOptions.length > 0 || legacySelectedOptionEntries.length > 0) && (
@@ -2581,7 +2592,7 @@ export default function NewOrderScreen() {
                               const isRequired = Boolean(variable.required);
                               return (
                                 <View key={variable.id}>
-                                  <Text style={{ color: palette.textSoft, fontSize: 14, fontWeight: '600', marginBottom: 8 }}>
+                                  <Text style={{ color: palette.textSoft, fontSize: fieldLabelFontSize, fontWeight: '600', marginBottom: 8 }}>
                                     {variable.name}{isRequired ? ' *' : ''}
                                   </Text>
                                   {variable.type === 'Select' && (
@@ -2670,7 +2681,7 @@ export default function NewOrderScreen() {
                               const displayTimeValue = fieldType === 'Time' ? formatTimeDisplay(value) : '';
                               return (
                                 <View key={field.id}>
-                                  <Text style={{ color: palette.textSoft, fontSize: 14, fontWeight: '600', marginBottom: 8 }}>
+                                  <Text style={{ color: palette.textSoft, fontSize: fieldLabelFontSize, fontWeight: '600', marginBottom: 8 }}>
                                     {field.label}{isRequired ? ' *' : ''}
                                   </Text>
                                   {fieldType === 'Date' ? (
@@ -2941,8 +2952,8 @@ export default function NewOrderScreen() {
               {summaryLines.length === 0 ? <Text style={{ color: palette.faint, fontSize: 14 }}>Add items to see the total.</Text> : null}
               {summaryLines.map((line) => (
                 <View key={line.key} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
-                  <Text style={{ flex: 1, color: palette.textSoft, fontSize: 15 }} numberOfLines={2}>{line.label}</Text>
-                  <Text style={{ color: palette.text, fontSize: 15, fontVariant: ['tabular-nums'] }}>{formatCurrency(line.amount)}</Text>
+                  <Text style={{ flex: 1, color: palette.textSoft, fontSize: orderLineFontSize }} numberOfLines={2}>{line.label}</Text>
+                  <Text style={{ color: palette.text, fontSize: orderLineFontSize, fontVariant: ['tabular-nums'] }}>{formatCurrency(line.amount)}</Text>
                 </View>
               ))}
               <View style={{ height: 1, backgroundColor: palette.hairline }} />
@@ -3113,7 +3124,7 @@ export default function NewOrderScreen() {
               </Pressable>
             </View>
             <View>
-              <Text style={{ color: palette.textSoft, fontSize: 14, fontWeight: '600', marginBottom: 8 }}>Service fee</Text>
+              <Text style={{ color: palette.textSoft, fontSize: fieldLabelFontSize, fontWeight: '600', marginBottom: 8 }}>Service fee</Text>
               <FocusInput
                 placeholder="0"
                 placeholderTextColor={palette.faint}
@@ -3532,8 +3543,8 @@ export default function NewOrderScreen() {
         <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center', padding: 20 }} onPress={() => setShowCustomItemModal(false)}>
           <Pressable onPress={(event) => event.stopPropagation()} style={{ width: '100%', maxWidth: 420, borderRadius: 26, padding: 20, gap: 14, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}>
             <View style={{ gap: 4 }}>
-              <Text style={{ color: palette.text, fontSize: 20, fontWeight: '600', letterSpacing: -0.3 }}>Custom item</Text>
-              <Text style={{ color: palette.muted, fontSize: 14, lineHeight: 20 }}>For anything not in your inventory yet: a made-to-order piece or a one-off. It is added to your inventory too, so you can sell it again.</Text>
+              <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>Custom item</Text>
+              <Text style={{ color: palette.muted, fontSize: 12, lineHeight: 18 }}>For anything not in your inventory yet: a made-to-order piece or a one-off. It is added to your inventory too, so you can sell it again.</Text>
             </View>
             <FocusInput
               placeholder="Item name"

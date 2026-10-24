@@ -2,7 +2,7 @@ import React from 'react';
 import { Linking, Platform, Pressable, Text, View } from 'react-native';
 import { ArrowUpRight, Store } from 'lucide-react-native';
 import { FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, isHovered, usePaymentsPalette } from '@/components/payments/payments-ui';
-import { HOME_BODY_SIZE, HOME_TITLE_SIZE, HomeCard } from '@/components/home/home-ui';
+import { HOME_BODY_SIZE, HOME_BUTTON_TEXT_STYLE, HOME_TITLE_SIZE, HomeCard } from '@/components/home/home-ui';
 import { buildStorefrontDashboardUrl, buildStorefrontSubdomainUrl } from '@/lib/storefront-url';
 
 const openExternal = (url: string) => {
@@ -56,7 +56,7 @@ export function StorefrontCard({
           onPress={() => openExternal(dashboardUrl)}
           style={(state) => ({ height: 38, paddingHorizontal: 16, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: isHovered(state) ? FYLL_LIME_HOVER : FYLL_LIME, opacity: state.pressed ? 0.85 : 1 })}
         >
-          <Text style={{ color: FYLL_LIME_INK, fontSize: HOME_BODY_SIZE + 1, fontWeight: '700' }}>{enabled ? 'Open dashboard' : 'Set up storefront'}</Text>
+          <Text style={[HOME_BUTTON_TEXT_STYLE, { color: FYLL_LIME_INK }]}>{enabled ? 'Open dashboard' : 'Set up storefront'}</Text>
           <ArrowUpRight size={14} color={FYLL_LIME_INK} strokeWidth={2.6} />
         </Pressable>
         <Pressable
@@ -64,7 +64,7 @@ export function StorefrontCard({
           onPress={() => (enabled ? openExternal(storeUrl) : onConnectWebsite())}
           style={(state) => ({ height: 38, paddingHorizontal: 16, borderRadius: 999, borderWidth: 1, borderColor: palette.outline, alignItems: 'center', justifyContent: 'center', backgroundColor: isHovered(state) ? palette.softFill : 'transparent', opacity: state.pressed ? 0.8 : 1 })}
         >
-          <Text style={{ color: palette.text, fontSize: HOME_BODY_SIZE + 1, fontWeight: '600' }}>{enabled ? 'View store' : 'Connect website'}</Text>
+          <Text style={[HOME_BUTTON_TEXT_STYLE, { color: palette.text }]}>{enabled ? 'View store' : 'Connect website'}</Text>
         </Pressable>
       </View>
     </HomeCard>

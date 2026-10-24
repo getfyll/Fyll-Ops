@@ -163,6 +163,7 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
   const colors = useThemeColors();
   const { isDesktop, width: breakpointWidth } = useBreakpoint();
   const isDesktopWeb = Platform.OS === 'web' && isDesktop;
+  const orderLineFontSize = isDesktopWeb ? 14 : 12;
   const isNarrowWeb = Platform.OS === 'web' && breakpointWidth < 1280;
   const rightColumnWidth = isDesktopWeb ? (isNarrowWeb ? Math.max(320, Math.round(breakpointWidth * 0.3)) : 420) : undefined;
   const webMaxWidth = 1456;
@@ -1657,7 +1658,7 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
                     >
                       <View className="flex-row items-center">
                         <View className="flex-1 mr-3">
-                          <Text style={{ color: colors.text.primary }} className="font-semibold text-sm" numberOfLines={2}>{fullName}</Text>
+                          <Text style={{ color: colors.text.primary, fontSize: orderLineFontSize, fontWeight: '600' }} numberOfLines={2}>{fullName}</Text>
                           <Text style={{ color: colors.text.tertiary }} className="text-xs mt-0.5">
                             {isService ? 'Service' : `${stock} in stock`}
                           </Text>
@@ -1691,7 +1692,7 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
                         </Pressable>
                       </View>
 
-                      <Text style={{ color: colors.text.primary }} className="font-bold text-sm mt-1">
+                      <Text style={{ color: colors.text.primary, fontSize: orderLineFontSize, fontWeight: '700', marginTop: 4 }}>
                         {formatCurrency(item.unitPrice * item.quantity)}
                         {item.quantity > 1 && (
                           <Text style={helperTextStyle} className="font-normal text-xs">

@@ -31,6 +31,7 @@ import { FyllAiButton } from '@/components/FyllAiButton';
 import { CaseAiSheet } from '@/components/cases/CaseAiSheet';
 import { parseCaseDraft, type CaseDraftData } from '@/lib/ai-case-parser';
 import { SearchClearButton } from '@/components/SearchClearButton';
+import { EmptyState } from '@/components/EmptyState';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
 import { FYLL_LIME, FYLL_LIME_INK } from '@/components/payments/payments-ui';
 
@@ -171,6 +172,24 @@ export default function CasesScreen() {
     setShowCaseForm(true);
   };
 
+  // Same empty state as Orders: first-run copy, a way out of filters, centred in the space left.
+  const renderCasesEmptyState = () => {
+    const hasFilters = Boolean(searchQuery.trim()) || selectedStatus !== 'All';
+    return (
+      <EmptyState
+        fill
+        icon={FileText}
+        title={cases.length === 0 ? 'Your first case starts here' : 'No matching cases'}
+        description={cases.length === 0
+          ? 'Cases keep customer issues, complaints and resolutions in one place so nothing gets lost.'
+          : hasFilters ? 'Try clearing your search and filters to see every case again.' : 'No cases are available in this view.'}
+        actionLabel={cases.length === 0 ? 'Create first case' : 'Clear filters'}
+        actionIcon={cases.length === 0 ? Plus : X}
+        onAction={cases.length === 0 ? handleCreateCase : () => { setSearchQuery(''); setSelectedStatus('All'); }}
+      />
+    );
+  };
+
   const openCaseAi = () => {
     Haptics.selectionAsync();
     setShowFyllAiModal(true);
@@ -204,6 +223,7 @@ export default function CasesScreen() {
             paddingBottom: 40,
             width: '100%',
             alignSelf: 'stretch',
+            flexGrow: 1,
           }}
           showsVerticalScrollIndicator={false}
         >
@@ -278,7 +298,7 @@ export default function CasesScreen() {
               </View>
             </View>
 
-            <View style={{ width: '100%', maxWidth: 1456, alignSelf: 'flex-start', paddingLeft: 28, paddingRight: 28, paddingTop: 18 }}>
+            <View style={{ width: '100%', maxWidth: 1456, alignSelf: 'flex-start', paddingLeft: 28, paddingRight: 28, paddingTop: 18, flexGrow: filteredCases.length === 0 ? 1 : undefined }}>
             <View style={{ flexDirection: 'row', borderRadius: 20, borderWidth: 1, borderColor: separatorColor, backgroundColor: colors.bg.card, overflow: 'hidden', marginBottom: 18 }}>
               {[
                 ['Open cases', `${caseSummary.open} cases`, 'Requiring attention', 1.3, null],
@@ -342,14 +362,14 @@ export default function CasesScreen() {
                         paddingHorizontal: 14,
                         alignItems: 'center',
                         justifyContent: 'center',
-                        backgroundColor: isSelected ? colors.accent.primary : colors.bg.card,
+                        backgroundColor: isSelected ? FYLL_LIME : colors.bg.card,
                         borderWidth: isSelected ? 0 : 1,
                         borderColor: separatorColor,
                       }}
                     >
                       <Text
                         style={{
-                          color: isSelected ? (isDark ? '#000000' : '#FFFFFF') : colors.text.primary,
+                          color: isSelected ? FYLL_LIME_INK : colors.text.primary,
                           fontSize: 12,
                           fontWeight: '600',
                         }}
@@ -363,6 +383,9 @@ export default function CasesScreen() {
             </View>
 
             {/* Table */}
+            {filteredCases.length === 0 ? (
+              <View style={{ marginTop: 16, flex: 1 }}>{renderCasesEmptyState()}</View>
+            ) : (
             <View
               style={{
                 marginTop: 16,
@@ -384,20 +407,7 @@ export default function CasesScreen() {
                 </View>
               </View>
 
-              {filteredCases.length === 0 ? (
-                <View style={{ padding: 40, alignItems: 'center' }}>
-                  <View style={{ width: 80, height: 80, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginBottom: 16, backgroundColor: colors.border.light }}>
-                    <FileText size={36} color={colors.text.muted} strokeWidth={1.5} />
-                  </View>
-                  <Text style={{ color: colors.text.tertiary, fontSize: 16, marginBottom: 4 }}>No cases found</Text>
-                  <Text style={{ color: colors.text.muted, fontSize: 14, marginBottom: 16 }}>Create your first case to get started</Text>
-                  <Pressable onPress={handleCreateCase} style={{ backgroundColor: colors.accent.primary, borderRadius: 999, paddingHorizontal: 24, paddingVertical: 12, flexDirection: 'row', alignItems: 'center' }}>
-                    <Plus size={16} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={2.5} />
-                    <Text style={{ color: isDark ? '#000000' : '#FFFFFF', fontWeight: '600', marginLeft: 6 }}>Create First Case</Text>
-                  </Pressable>
-                </View>
-              ) : (
-                filteredCases.map((caseItem, index) => {
+              {filteredCases.map((caseItem, index) => {
                   const statusHex = getStatusColor(caseItem.status);
                   const priorityHex = CASE_PRIORITY_COLORS[caseItem.priority ?? 'Low'] || '#6B7280';
                   const previousCase = index > 0 ? filteredCases[index - 1] : null;
@@ -442,14 +452,14 @@ export default function CasesScreen() {
                     </Pressable>
                     </React.Fragment>
                   );
-                })
-              )}
+                })}
             </View>
+            )}
             </View>
           </ScrollView>
       ) : (
         // Mobile
-        <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
+        <ScrollView className="flex-1" contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false}>
           {/* Header */}
           <View className="px-5 pb-2" style={{ paddingTop: openedFromSettings ? 24 : 16 }}>
             <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
@@ -543,14 +553,14 @@ export default function CasesScreen() {
                 className="rounded-full items-center justify-center active:opacity-70 flex-row px-4"
                 style={{
                   height: 48,
-                  backgroundColor: activeFilterCount > 0 ? colors.accent.primary : colors.bg.secondary,
+                  backgroundColor: activeFilterCount > 0 ? FYLL_LIME : colors.bg.secondary,
                   borderWidth: activeFilterCount > 0 ? 0 : 0.5,
                   borderColor: separatorColor,
                 }}
               >
-                <Filter size={18} color={activeFilterCount > 0 ? (isDark ? '#000000' : '#FFFFFF') : colors.text.tertiary} strokeWidth={2} />
+                <Filter size={18} color={activeFilterCount > 0 ? FYLL_LIME_INK : colors.text.tertiary} strokeWidth={2} />
                 {activeFilterCount > 0 && (
-                  <Text style={{ color: isDark ? '#000000' : '#FFFFFF' }} className="font-semibold text-sm ml-1.5">
+                  <Text style={{ color: FYLL_LIME_INK }} className="font-semibold text-sm ml-1.5">
                     {activeFilterCount}
                   </Text>
                 )}
@@ -559,19 +569,9 @@ export default function CasesScreen() {
           </View>
 
           {/* List */}
-          <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 96 }}>
+          <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 96, flexGrow: filteredCases.length === 0 ? 1 : undefined }}>
             {filteredCases.length === 0 ? (
-              <View className="items-center justify-center py-20">
-                <View className="w-20 h-20 rounded-2xl items-center justify-center mb-4" style={{ backgroundColor: colors.border.light }}>
-                  <FileText size={36} color={colors.text.muted} strokeWidth={1.5} />
-                </View>
-                <Text style={{ color: colors.text.tertiary }} className="text-base mb-1">No cases found</Text>
-                <Text style={{ color: colors.text.muted }} className="text-sm mb-4">Create your first case to get started</Text>
-                <Pressable onPress={handleCreateCase} className="rounded-full active:opacity-80 px-6 py-3 flex-row items-center" style={{ backgroundColor: colors.accent.primary }}>
-                  <Plus size={16} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={2.5} />
-                  <Text style={{ color: isDark ? '#000000' : '#FFFFFF' }} className="font-semibold ml-1.5">Create First Case</Text>
-                </Pressable>
-              </View>
+              renderCasesEmptyState()
             ) : (
               filteredCases.map((caseItem, index) => {
                 const statusHexMobile = getStatusColor(caseItem.status);

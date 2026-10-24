@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, TextInput, ScrollView, Pressable, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Briefcase, Search, Plus, ChevronLeft, ChevronRight } from 'lucide-react-native';
+import { Briefcase, Search, Plus, X, ChevronLeft, ChevronRight } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import useFyllStore, { formatCurrency, Product } from '@/lib/state/fyll-store';
 import { useThemeColors } from '@/lib/theme';
@@ -17,6 +17,7 @@ import { InventoryMobileFab } from '@/components/InventoryMobileFab';
 import { ResolvedAttachmentImage } from '@/components/ResolvedAttachmentImage';
 import { capitalizeDisplayLabel } from '@/lib/display-format';
 import { SearchClearButton } from '@/components/SearchClearButton';
+import { EmptyState } from '@/components/EmptyState';
 import { useFonts, BricolageGrotesque_700Bold } from '@expo-google-fonts/bricolage-grotesque';
 import { FYLL_LIME, FYLL_LIME_INK, isHovered, usePaymentsPalette } from '@/components/payments/payments-ui';
 
@@ -80,6 +81,23 @@ export default function ServicesScreen() {
     }
     return result.sort((a, b) => a.name.localeCompare(b.name));
   }, [services, searchQuery]);
+
+  // Same empty state as the Orders page: friendly first-run copy, and a way out when a search finds nothing.
+  const hasNoServicesAtAll = services.length === 0;
+  const renderServicesEmptyState = () => (
+    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: isMobile ? 36 : 56 }}>
+      <EmptyState
+        icon={Briefcase}
+        title={hasNoServicesAtAll ? 'Your first service starts here' : 'No matching services'}
+        description={hasNoServicesAtAll
+          ? 'Add the services your business offers so you can add them to orders and keep track of them in one place.'
+          : searchQuery.trim() ? 'Try clearing your search to see every service again.' : 'No services are available in this view.'}
+        actionLabel={hasNoServicesAtAll ? 'Add first service' : 'Clear search'}
+        actionIcon={hasNoServicesAtAll ? Plus : X}
+        onAction={hasNoServicesAtAll ? handleAddService : () => setSearchQuery('')}
+      />
+    </View>
+  );
 
   const selectedService = useMemo(
     () => filteredServices.find((service) => service.id === selectedServiceId) ?? null,
@@ -176,7 +194,7 @@ export default function ServicesScreen() {
   };
 
   const compactMasterContent = (
-    <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
+    <ScrollView className="flex-1" contentContainerStyle={{ flexGrow: 1 }} showsVerticalScrollIndicator={false}>
       <View
         className="px-5 pb-2"
         style={{
@@ -257,19 +275,9 @@ export default function ServicesScreen() {
         </View>
       </View>
 
-      <View className="px-5 pt-4 pb-24">
+      <View className="px-5 pt-4 pb-24" style={filteredServices.length === 0 ? { flexGrow: 1 } : undefined}>
         {filteredServices.length === 0 ? (
-          <View className="items-center justify-center py-20">
-            <View className="w-20 h-20 rounded-2xl items-center justify-center mb-4" style={{ backgroundColor: colors.border.light }}>
-              <Briefcase size={36} color={colors.text.muted} strokeWidth={1.5} />
-            </View>
-            <Text style={{ color: colors.text.tertiary }} className="text-base mb-1">No services found</Text>
-            <Text style={{ color: colors.text.muted }} className="text-sm mb-4">Add your first service to get started</Text>
-            <Pressable onPress={handleAddService} className="rounded-full active:opacity-80 px-6 py-3 flex-row items-center" style={{ backgroundColor: colors.accent.primary }}>
-              <Plus size={16} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={2.5} />
-              <Text style={{ color: isDark ? '#000000' : '#FFFFFF' }} className="font-semibold ml-1.5">Create First Service</Text>
-            </Pressable>
-          </View>
+          renderServicesEmptyState()
         ) : (
           filteredServices.map((service) => {
             const category = service.serviceTags?.[0] ?? '—';
@@ -409,6 +417,7 @@ export default function ServicesScreen() {
                 paddingRight: 28,
                 paddingTop: 18,
                 paddingBottom: 40,
+                flexGrow: 1,
               }}
               showsVerticalScrollIndicator={false}
             >
@@ -455,6 +464,9 @@ export default function ServicesScreen() {
                 </View>
               </View>
 
+              {filteredServices.length === 0 ? (
+                <View style={{ marginTop: 16, flex: 1 }}>{renderServicesEmptyState()}</View>
+              ) : (
               <View
                 style={{
                   marginTop: 16,
@@ -473,23 +485,9 @@ export default function ServicesScreen() {
                   <Text style={[tableHeadStyle, { width: SERVICE_TABLE_COLUMNS.status }]}>Status</Text>
                   <View style={{ width: SERVICE_TABLE_COLUMNS.trail }} />
                 </View>
-
-                {filteredServices.length === 0 ? (
-                  <View style={{ padding: 40, alignItems: 'center' }}>
-                    <View style={{ width: 80, height: 80, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginBottom: 16, backgroundColor: colors.border.light }}>
-                      <Briefcase size={36} color={colors.text.muted} strokeWidth={1.5} />
-                    </View>
-                    <Text style={{ color: colors.text.tertiary, fontSize: 16, marginBottom: 4 }}>No services found</Text>
-                    <Text style={{ color: colors.text.muted, fontSize: 14, marginBottom: 16 }}>Add your first service to get started</Text>
-                    <Pressable onPress={handleAddService} style={{ backgroundColor: colors.accent.primary, borderRadius: 999, paddingHorizontal: 24, paddingVertical: 12, flexDirection: 'row', alignItems: 'center' }}>
-                      <Plus size={16} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={2.5} />
-                      <Text style={{ color: isDark ? '#000000' : '#FFFFFF', fontWeight: '600', marginLeft: 6 }}>Create First Service</Text>
-                    </Pressable>
-                  </View>
-                ) : (
-                  filteredServices.map(renderRow)
-                )}
+                {filteredServices.map(renderRow)}
               </View>
+              )}
             </ScrollView>
           </View>
         ) : showSplitView ? (

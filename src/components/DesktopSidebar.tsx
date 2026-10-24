@@ -1,3 +1,4 @@
+import { FYLL_LIME, FYLL_LIME_INK } from '@/components/payments/payments-ui';
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, ScrollView, Platform } from 'react-native';
 import { useGlobalSearchParams, usePathname, useRouter, useSegments } from 'expo-router';
@@ -534,8 +535,8 @@ export function DesktopSidebar() {
 
           const active = isActive(item.href) || (item.href === '/finance' && pathname.includes('calculator'));
           const Icon = item.icon;
-          const activeBg = colors.accent.primary;
-          const activeFg = isDark ? '#111111' : '#FFFFFF';
+          const activeBg = FYLL_LIME;
+          const activeFg = FYLL_LIME_INK;
           const navBadgeCount = item.href === '/threads'
             ? totalUnreadThreads
             : item.href === '/tasks'
@@ -565,9 +566,7 @@ export function DesktopSidebar() {
                     paddingHorizontal: 16,
                     paddingVertical: 14,
                     borderRadius: 18,
-                    backgroundColor: active ? colors.bg.secondary : 'transparent',
-                    borderWidth: active ? 1 : 0,
-                    borderColor: colors.border.light,
+                    backgroundColor: active ? FYLL_LIME : 'transparent',
                   }}
                 >
                   <View
@@ -580,7 +579,7 @@ export function DesktopSidebar() {
                   >
                     <Icon
                       size={20}
-                      color={active ? colors.text.primary : colors.text.tertiary}
+                      color={active ? FYLL_LIME_INK : colors.text.tertiary}
                       strokeWidth={active ? 2.5 : 2}
                     />
                   </View>
@@ -588,7 +587,7 @@ export function DesktopSidebar() {
                     style={{
                       fontSize: 15,
                       fontWeight: active ? '700' : '500',
-                      color: active ? colors.text.primary : colors.text.secondary,
+                      color: active ? FYLL_LIME_INK : colors.text.secondary,
                     }}
                   >
                     {item.name}
@@ -676,9 +675,7 @@ export function DesktopSidebar() {
                     paddingHorizontal: 16,
                     paddingVertical: 14,
                     borderRadius: 18,
-                    backgroundColor: active ? colors.bg.secondary : 'transparent',
-                    borderWidth: active ? 1 : 0,
-                    borderColor: colors.border.light,
+                    backgroundColor: active ? FYLL_LIME : 'transparent',
                   }}
                 >
                   <View
@@ -691,7 +688,7 @@ export function DesktopSidebar() {
                   >
                     <Icon
                       size={20}
-                      color={active ? colors.text.primary : colors.text.tertiary}
+                      color={active ? FYLL_LIME_INK : colors.text.tertiary}
                       strokeWidth={active ? 2.5 : 2}
                     />
                   </View>
@@ -699,7 +696,7 @@ export function DesktopSidebar() {
                     style={{
                       fontSize: 15,
                       fontWeight: active ? '700' : '500',
-                      color: active ? colors.text.primary : colors.text.secondary,
+                      color: active ? FYLL_LIME_INK : colors.text.secondary,
                     }}
                   >
                     {item.name}
@@ -919,9 +916,7 @@ export function DesktopSidebar() {
                     paddingHorizontal: 16,
                     paddingVertical: 14,
                     borderRadius: 18,
-                    backgroundColor: active ? colors.bg.secondary : 'transparent',
-                    borderWidth: active ? 1 : 0,
-                    borderColor: colors.border.light,
+                    backgroundColor: active ? FYLL_LIME : 'transparent',
                   }}
                 >
                   <View
@@ -934,7 +929,7 @@ export function DesktopSidebar() {
                   >
                     <Icon
                       size={20}
-                      color={active ? colors.text.primary : colors.text.tertiary}
+                      color={active ? FYLL_LIME_INK : colors.text.tertiary}
                       strokeWidth={active ? 2.5 : 2}
                     />
                   </View>
@@ -942,7 +937,7 @@ export function DesktopSidebar() {
                     style={{
                       fontSize: 15,
                       fontWeight: active ? '700' : '500',
-                      color: active ? colors.text.primary : colors.text.secondary,
+                      color: active ? FYLL_LIME_INK : colors.text.secondary,
                     }}
                   >
                     {item.name}
