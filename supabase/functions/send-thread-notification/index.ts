@@ -735,6 +735,52 @@ const sendOneSignalDirectSubscriptionNotification = async ({
   return { mode: 'direct_subscription', deliveries }
 }
 
+// WhatsApp alerts (Twilio). A business opts in under Settings -> WhatsApp alerts, which stores
+// businesses.data.whatsappAlerts = { enabled, phone, orders, payments }. Sending never blocks or fails
+// the main notification: errors are logged and swallowed.
+const sendWhatsAppAlert = async (
+  admin: ReturnType<typeof getAdminClient>,
+  businessId: string,
+  kind: 'orders' | 'payments',
+  text: string,
+) => {
+  try {
+    const accountSid = Deno.env.get('TWILIO_ACCOUNT_SID')
+    const keySid = Deno.env.get('TWILIO_API_KEY_SID') ?? accountSid
+    const keySecret = Deno.env.get('TWILIO_API_KEY_SECRET') ?? Deno.env.get('TWILIO_AUTH_TOKEN')
+    const from = Deno.env.get('TWILIO_WHATSAPP_FROM')
+    if (!accountSid || !keySid || !keySecret || !from) return { skipped: 'twilio_not_configured' }
+
+    const { data: business } = await admin.from('businesses').select('data').eq('id', businessId).maybeSingle()
+    const settings = ((business?.data as Record<string, unknown> | null)?.whatsappAlerts ?? null) as
+      | { enabled?: boolean; phone?: string; orders?: boolean; payments?: boolean }
+      | null
+    const phone = (settings?.phone ?? '').replace(/[^\d+]/g, '')
+    if (!settings?.enabled || !phone.startsWith('+') || phone.length < 8) return { skipped: 'not_enabled' }
+    if (settings[kind] === false) return { skipped: `${kind}_off` }
+
+    const body = new URLSearchParams({
+      To: `whatsapp:${phone}`,
+      From: from.startsWith('whatsapp:') ? from : `whatsapp:${from}`,
+      Body: text,
+    })
+    const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${btoa(`${keySid}:${keySecret}`)}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body,
+    })
+    const result = await response.json().catch(() => ({}))
+    if (!response.ok) console.error('WhatsApp alert failed', { businessId, status: response.status, result })
+    return { ok: response.ok, status: response.status }
+  } catch (error) {
+    console.error('WhatsApp alert error', error)
+    return { error: true }
+  }
+}
+
 const sendBusinessWideOrderNotification = async (
   admin: ReturnType<typeof getAdminClient>,
   businessId: string,
@@ -768,6 +814,7 @@ const sendBusinessWideOrderNotification = async (
 
   const heading = `New Order #${orderNumber}`
   const content = `${customerName || 'Walk-in'} — ${totalAmount}${createdBy ? ` (by ${createdBy})` : ''}`
+  await sendWhatsAppAlert(admin, businessId, 'orders', `🛍️ New order #${orderNumber}\n${content}\nOpen Fyll to view it.`)
   return await sendPushNotification({
     recipients,
     heading,
@@ -842,6 +889,12 @@ const notifyStorefrontOrder = async (
 
   const heading = `🎉 New storefront order`
   const content = `New order · ${formatPaymentAmount(totalAmount)} on Fyll storefront`
+  await sendWhatsAppAlert(
+    admin,
+    businessId,
+    'orders',
+    `🎉 New storefront order #${orderNumber}\n${customerName || 'A customer'} · ${formatPaymentAmount(totalAmount)}\nOpen Fyll to view it.`,
+  )
   return await sendPushNotification({
     recipients,
     heading,
@@ -974,6 +1027,7 @@ const notifyPaymentReceived = async (
     ? `${notificationPayload.amount} · ${notificationPayload.customerName || 'A customer'}`
     : `${notificationPayload.customerName || 'A customer'} paid ${notificationPayload.amount} — ${paymentReference}`
   const collapseId = `payment:${businessId}:${paymentReference}:${notificationPayload.status || 'received'}`
+  await sendWhatsAppAlert(admin, businessId, 'payments', `💰 ${heading}\n${content}`)
 
   return await sendPushNotification({
     recipients,

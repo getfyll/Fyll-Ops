@@ -29,6 +29,7 @@ import AccountSettingsScreen from '@/app/account-settings';
 import BusinessSettingsScreen from '@/app/business-settings';
 import StorefrontSettingsScreen from '@/app/storefront-settings';
 import PaymentAccountsScreen from '@/app/payment-accounts';
+import { WhatsAppAlertsCard } from '@/components/WhatsAppAlertsCard';
 import TeamManagementScreen from '@/app/team';
 import InvitationsScreen from '@/app/invitations';
 import WooCommerceSettingsScreen from '@/app/woocommerce-settings';
@@ -4329,6 +4330,8 @@ export default function SettingsScreen() {
         </View>
       ) : null}
 
+      <WhatsAppAlertsCard bordered />
+
       {canUseOrderAutomation ? (
         <Pressable
           onPress={() => openSettingsPanel('email-settings', '/email-settings?from=settings')}
@@ -5874,10 +5877,12 @@ export default function SettingsScreen() {
               </View>
             )}
 
+            <WhatsAppAlertsCard />
+
             {canUseOrderAutomation ? (
               <View
                 style={{
-                  borderTopWidth: Platform.OS === 'web' && notifPermission !== null ? 1 : 0,
+                  borderTopWidth: 1,
                   borderTopColor: colors.border.light,
                 }}
               >
