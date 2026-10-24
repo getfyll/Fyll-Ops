@@ -1309,7 +1309,9 @@ export default function DashboardScreen() {
   const { businessName, businessPhone, returnAddress, storefrontEnabled, storefrontSlug, companyName, featureAccess, isLoading: isLoadingBusinessSettings } = useBusinessSettings();
   const canUseStorefront = isBusinessFeatureEnabled(featureAccess, 'storefront');
   const canUseCases = isBusinessFeatureEnabled(featureAccess, 'cases');
-  const canUseSocialCheckout = isBusinessFeatureEnabled(featureAccess, 'socialCheckout');
+  // On Home this only drives the Payments shortcut and payment needs. Payments is a core page, so it
+  // no longer depends on the Social Checkout switch.
+  const canUseSocialCheckout = true;
   const canUseTasks = isBusinessFeatureEnabled(featureAccess, 'tasks');
   const canUseFinance = isBusinessFeatureEnabled(featureAccess, 'finance');
   const canUseInsights = isBusinessFeatureEnabled(featureAccess, 'insights');

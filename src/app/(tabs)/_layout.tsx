@@ -185,7 +185,8 @@ export default function TabLayout() {
   const { featureAccess } = useBusinessSettings();
   const canViewInsights = (ROLE_PERMISSIONS[userRole]?.canViewInsights ?? false) && isBusinessFeatureEnabled(featureAccess, 'insights');
   const canViewFinance = canShowFinanceNavigation(userRole) && isBusinessFeatureEnabled(featureAccess, 'finance');
-  const canViewPayments = isBusinessFeatureEnabled(featureAccess, 'socialCheckout');
+  // Payments is a core page: it stays available even when Social Checkout is switched off.
+  const canViewPayments = true;
   const canViewThreads = isBusinessFeatureEnabled(featureAccess, 'threads');
   const canViewTasks = isBusinessFeatureEnabled(featureAccess, 'tasks');
   const threadCountsQuery = useQuery({
@@ -408,7 +409,6 @@ export default function TabLayout() {
             fontWeight: '700',
           },
           headerShown: false,
-          href: canViewThreads ? undefined : null,
         }}
       />
       <Tabs.Screen

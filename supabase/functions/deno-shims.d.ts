@@ -34,3 +34,10 @@ declare const Deno: {
     get(key: string): string | undefined;
   };
 };
+
+declare module 'https://esm.sh/standardwebhooks@1.0.0' {
+  export class Webhook {
+    constructor(secret: string);
+    verify(payload: string, headers: Record<string, string>): unknown;
+  }
+}

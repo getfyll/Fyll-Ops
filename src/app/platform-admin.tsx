@@ -3,6 +3,7 @@ import { ActivityIndicator, Alert, Image, Platform, Pressable, ScrollView, Share
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
+import { FYLL_PARTNER_PORTAL_ORIGIN } from '@/lib/partner-host';
 import * as Haptics from 'expo-haptics';
 import * as Linking from 'expo-linking';
 import {
@@ -20,6 +21,7 @@ import {
   Mail,
   MoreHorizontal,
   MoreVertical,
+  Pencil,
   RefreshCcw,
   Search,
   Send,
@@ -38,7 +40,7 @@ import { buildFounderAccessLink, getFyllPublicAppOrigin } from '@/lib/fyll-app-u
 import { FYLL_TRACKING_ORIGIN } from '@/lib/tracking-host';
 import { SearchClearButton } from '@/components/SearchClearButton';
 import {
-  BUSINESS_FEATURES,
+  SWITCHABLE_BUSINESS_FEATURES,
   normalizeBusinessFeatureAccess,
   type BusinessFeatureAccess,
   type BusinessFeatureKey,
@@ -86,8 +88,8 @@ type PlatformInvite = {
 };
 
 type AdminTab = 'overview' | 'businesses' | 'invites';
-type BusinessFilter = 'all' | 'active' | 'inactive';
-type BusinessState = 'active' | 'inactive';
+type BusinessFilter = 'all' | 'active' | 'inactive' | 'disabled';
+type BusinessState = 'active' | 'inactive' | 'disabled';
 
 type BusinessViewModel = PlatformBusiness & {
   state: BusinessState;
@@ -173,6 +175,9 @@ const statusPillStyle = (status: string) => {
 };
 
 const statusCardStyle = (state: BusinessState) => {
+  if (state === 'disabled') {
+    return { borderColor: 'rgba(239,68,68,0.28)', textColor: '#EF4444', bgColor: 'rgba(239,68,68,0.08)', label: 'DISABLED' };
+  }
   if (state === 'active') {
     return { borderColor: 'rgba(34,197,94,0.18)', textColor: '#22C55E', bgColor: 'rgba(34,197,94,0.08)', label: 'ACTIVE' };
   }
@@ -248,6 +253,22 @@ export default function PlatformAdminScreen() {
   const [isCreatingInvite, setIsCreatingInvite] = useState(false);
   const [isSavingLimit, setIsSavingLimit] = useState(false);
   const [isSavingFeatures, setIsSavingFeatures] = useState(false);
+  const [isEditingBusinessName, setIsEditingBusinessName] = useState(false);
+  const [businessNameDraft, setBusinessNameDraft] = useState('');
+  const [companyNameDraft, setCompanyNameDraft] = useState('');
+  const [businessNameError, setBusinessNameError] = useState('');
+  const [isSavingBusinessName, setIsSavingBusinessName] = useState(false);
+  const [storefrontHandle, setStorefrontHandle] = useState<string | null>(null);
+  const [disabledBusinesses, setDisabledBusinesses] = useState<Record<string, { reason: string; at: string }>>({});
+  const [isConfirmingDisable, setIsConfirmingDisable] = useState(false);
+  const [disableReasonDraft, setDisableReasonDraft] = useState('');
+  const [isSavingDisabled, setIsSavingDisabled] = useState(false);
+  const [disableError, setDisableError] = useState('');
+  const [partnerOf, setPartnerOf] = useState<{ business_id: string; business_name: string } | null>(null);
+  const [isEditingHandle, setIsEditingHandle] = useState(false);
+  const [handleDraft, setHandleDraft] = useState('');
+  const [handleError, setHandleError] = useState('');
+  const [isSavingHandle, setIsSavingHandle] = useState(false);
   const [openInviteMenuId, setOpenInviteMenuId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState('');
   const [actionError, setActionError] = useState('');
@@ -288,7 +309,9 @@ export default function PlatformAdminScreen() {
     return Array.from(rowsByBusinessId.values()).map((business) => {
       const lastActiveAt = business.onboarding_completed_at ?? business.created_at;
       const activeAgeDays = daysBetween(lastActiveAt);
-      const state: BusinessState = activeAgeDays !== null && activeAgeDays <= 365 ? 'active' : 'inactive';
+      const state: BusinessState = disabledBusinesses[business.business_id]
+        ? 'disabled'
+        : activeAgeDays !== null && activeAgeDays <= 365 ? 'active' : 'inactive';
       const joinedCount = business.joined_invite_count ?? 0;
       const plan: BusinessViewModel['plan'] = joinedCount >= 2 ? 'Pro' : 'Starter';
       return {
@@ -299,7 +322,7 @@ export default function PlatformAdminScreen() {
         joinedAgoLabel: formatRelativeDays(business.created_at),
       };
     });
-  }, [businesses, invites]);
+  }, [businesses, invites, disabledBusinesses]);
 
   const selectedBusiness = useMemo(
     () => businessRows.find((business) => business.business_id === selectedBusinessId) ?? null,
@@ -336,9 +359,10 @@ export default function PlatformAdminScreen() {
         acc.joinedInvites += business.joined_invite_count ?? 0;
         if (business.state === 'active') acc.active += 1;
         if (business.state === 'inactive') acc.inactive += 1;
+        if (business.state === 'disabled') acc.disabled += 1;
         return acc;
       },
-      { total: 0, active: 0, inactive: 0, pendingInvites: 0, joinedInvites: 0 }
+      { total: 0, active: 0, inactive: 0, disabled: 0, pendingInvites: 0, joinedInvites: 0 }
     );
   }, [businessRows]);
 
@@ -400,6 +424,12 @@ export default function PlatformAdminScreen() {
       if (error) throw error;
       const rows = (Array.isArray(data) ? data : []) as PlatformBusiness[];
       setBusinesses(rows);
+      const { data: disabledData } = await supabase.rpc('platform_admin_list_disabled_businesses');
+      const disabledMap: Record<string, { reason: string; at: string }> = {};
+      (Array.isArray(disabledData) ? disabledData : []).forEach((row: { business_id: string; disabled_reason?: string; disabled_at?: string }) => {
+        disabledMap[row.business_id] = { reason: row.disabled_reason ?? '', at: row.disabled_at ?? '' };
+      });
+      setDisabledBusinesses(disabledMap);
       setSelectedBusinessId((current) => {
         if (current && rows.some((row) => row.business_id === current)) return current;
         return null;
@@ -441,6 +471,29 @@ export default function PlatformAdminScreen() {
     void loadBusinesses();
     void loadInvites();
   }, [loadBusinesses, loadInvites, platformAdmin?.is_admin]);
+
+  // Close the name / handle editors whenever a different business is opened, and load its handle.
+  useEffect(() => {
+    setIsEditingBusinessName(false);
+    setBusinessNameError('');
+    setIsEditingHandle(false);
+    setHandleError('');
+    setIsConfirmingDisable(false);
+    setDisableReasonDraft('');
+    setDisableError('');
+    setStorefrontHandle(null);
+    setPartnerOf(null);
+    if (!selectedBusinessId) return;
+    let cancelled = false;
+    void (async () => {
+      const { data, error } = await supabase.rpc('platform_admin_get_business_handles', { business_id_input: selectedBusinessId });
+      if (cancelled || error) return;
+      const handles = (data ?? {}) as { storefront_slug?: string; partner_of?: { business_id: string; business_name: string } | null };
+      setStorefrontHandle(handles.storefront_slug ?? '');
+      setPartnerOf(handles.partner_of ?? null);
+    })();
+    return () => { cancelled = true; };
+  }, [selectedBusinessId]);
 
   useEffect(() => {
     if (!selectedBusiness) return;
@@ -488,6 +541,134 @@ export default function PlatformAdminScreen() {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setIsCreatingInvite(false);
+    }
+  };
+
+  const handleStartEditBusinessName = () => {
+    if (!selectedBusiness) return;
+    setBusinessNameDraft(selectedBusiness.business_name || selectedBusiness.company_name);
+    setCompanyNameDraft(selectedBusiness.company_name || selectedBusiness.business_name);
+    setBusinessNameError('');
+    setIsEditingBusinessName(true);
+  };
+
+  const handleSaveBusinessName = async () => {
+    if (!selectedBusiness || isSavingBusinessName) return;
+    const nextBusinessName = businessNameDraft.trim().replace(/\s+/g, ' ');
+    const nextCompanyName = companyNameDraft.trim().replace(/\s+/g, ' ');
+    const currentBusinessName = selectedBusiness.business_name || selectedBusiness.company_name;
+    const currentCompanyName = selectedBusiness.company_name || selectedBusiness.business_name;
+    if (!nextBusinessName || !nextCompanyName) {
+      setBusinessNameError('Both names are required.');
+      return;
+    }
+    if (nextBusinessName.length > 80 || nextCompanyName.length > 120) {
+      setBusinessNameError('Business name must be 80 characters or fewer, company name 120.');
+      return;
+    }
+    if (nextBusinessName === currentBusinessName && nextCompanyName === currentCompanyName) {
+      setIsEditingBusinessName(false);
+      return;
+    }
+    setIsSavingBusinessName(true);
+    setBusinessNameError('');
+    setActionError('');
+    setSuccessMessage('');
+    try {
+      const { data, error } = await supabase.rpc('platform_admin_update_business_name', {
+        business_id_input: selectedBusiness.business_id,
+        business_name_input: nextBusinessName,
+        company_name_input: nextCompanyName,
+      });
+      if (error) throw error;
+      const saved = (data ?? {}) as { business_slug?: string; addresses_changed?: boolean };
+      setBusinesses((current) => current.map((business) => (
+        business.business_id === selectedBusiness.business_id
+          ? {
+              ...business,
+              business_name: nextBusinessName,
+              company_name: nextCompanyName,
+              business_slug: saved.business_slug || business.business_slug,
+            }
+          : business
+      )));
+      setIsEditingBusinessName(false);
+      setSuccessMessage(saved.addresses_changed
+        ? `Names updated. Customer links and the storefront address now use "${saved.business_slug}".`
+        : 'Names updated.');
+      await loadBusinesses('refresh');
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      console.error('Failed to update business names:', error);
+      setBusinessNameError(error instanceof Error ? error.message : 'Could not update the names.');
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setIsSavingBusinessName(false);
+    }
+  };
+
+  const handleSetBusinessDisabled = async (disabled: boolean) => {
+    if (!selectedBusiness || isSavingDisabled) return;
+    setIsSavingDisabled(true);
+    setDisableError('');
+    setSuccessMessage('');
+    try {
+      const { error } = await supabase.rpc('platform_admin_set_business_disabled', {
+        business_id_input: selectedBusiness.business_id,
+        disabled_input: disabled,
+        reason_input: disabled ? disableReasonDraft.trim() : null,
+      });
+      if (error) throw error;
+      setDisabledBusinesses((current) => {
+        const next = { ...current };
+        if (disabled) next[selectedBusiness.business_id] = { reason: disableReasonDraft.trim(), at: new Date().toISOString() };
+        else delete next[selectedBusiness.business_id];
+        return next;
+      });
+      setIsConfirmingDisable(false);
+      setDisableReasonDraft('');
+      setSuccessMessage(disabled ? 'Business disabled. Its team will see an "account disabled" screen.' : 'Business enabled again.');
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      console.error('Failed to change business access:', error);
+      setDisableError(error instanceof Error ? error.message : 'Could not change this business.');
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setIsSavingDisabled(false);
+    }
+  };
+
+  const handleSaveStorefrontHandle = async () => {
+    if (!selectedBusiness || isSavingHandle) return;
+    const nextHandle = handleDraft.toLowerCase().replace(/[^a-z0-9]+/g, '');
+    if (!nextHandle) {
+      setHandleError('Handle needs at least one letter or number.');
+      return;
+    }
+    if (nextHandle === storefrontHandle) {
+      setIsEditingHandle(false);
+      return;
+    }
+    setIsSavingHandle(true);
+    setHandleError('');
+    setSuccessMessage('');
+    try {
+      const { data, error } = await supabase.rpc('platform_admin_update_storefront_handle', {
+        business_id_input: selectedBusiness.business_id,
+        handle_input: nextHandle,
+      });
+      if (error) throw error;
+      const saved = (data ?? {}) as { storefront_slug?: string };
+      setStorefrontHandle(saved.storefront_slug ?? nextHandle);
+      setIsEditingHandle(false);
+      setSuccessMessage(`Storefront handle changed to "${saved.storefront_slug ?? nextHandle}".`);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      console.error('Failed to update storefront handle:', error);
+      setHandleError(error instanceof Error ? error.message : 'Could not update the storefront handle.');
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setIsSavingHandle(false);
     }
   };
 
@@ -839,6 +1020,9 @@ export default function PlatformAdminScreen() {
     if (!selectedBusiness) return null;
 
     const displayName = selectedBusiness.business_name || selectedBusiness.company_name;
+    // Partner logins show up as businesses too (named "Partner · …"); they only need a login link.
+    const isPartnerAccount = Boolean(partnerOf) || displayName.startsWith('Partner · ');
+    const partnerLoginUrl = `${FYLL_PARTNER_PORTAL_ORIGIN}/partner-login`;
     const secondaryName = selectedBusiness.company_name && selectedBusiness.company_name !== displayName
       ? selectedBusiness.company_name
       : '';
@@ -848,7 +1032,7 @@ export default function PlatformAdminScreen() {
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
             <View style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor }}>
-              <Text style={{ color: textSecondary, fontSize: 11, fontWeight: '500' }}>{selectedBusiness.state === 'active' ? 'ACTIVE' : 'INACTIVE'}</Text>
+              <Text style={{ color: textSecondary, fontSize: 11, fontWeight: '500' }}>{statusCardStyle(selectedBusiness.state).label}</Text>
             </View>
             <View style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor }}>
               <Text style={{ color: textSecondary, fontSize: 11, fontWeight: '500' }}>{selectedBusiness.plan}</Text>
@@ -859,13 +1043,115 @@ export default function PlatformAdminScreen() {
           </Pressable>
         </View>
 
-        <Text style={{ color: textPrimary, fontSize: 20, fontWeight: '600', marginTop: 24 }}>
-          {displayName}
-        </Text>
+        {isEditingBusinessName ? (
+          (() => {
+            const draftSlug = businessNameDraft.toLowerCase().replace(/[^a-z0-9]+/g, '');
+            const currentBusinessName = selectedBusiness.business_name || selectedBusiness.company_name;
+            const addressesWillChange = businessNameDraft.trim().replace(/\s+/g, ' ') !== currentBusinessName && draftSlug.length > 0;
+            const inputStyle = {
+              height: 46,
+              borderRadius: 14,
+              borderWidth: 1,
+              borderColor,
+              backgroundColor: isDark ? '#111111' : '#FFFFFF',
+              color: textPrimary,
+              paddingHorizontal: 14,
+              fontSize: 15,
+              fontWeight: '500' as const,
+            };
+            return (
+              <View style={{ marginTop: 24, gap: 12 }}>
+                <View style={{ gap: 6 }}>
+                  <Text style={{ color: textFaint, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase' }}>Business name</Text>
+                  <TextInput
+                    value={businessNameDraft}
+                    onChangeText={(value) => { setBusinessNameDraft(value); setBusinessNameError(''); }}
+                    autoFocus
+                    maxLength={80}
+                    placeholder="Business name"
+                    placeholderTextColor={textFaint}
+                    style={inputStyle}
+                    selectionColor={textPrimary}
+                  />
+                </View>
+                <View style={{ gap: 6 }}>
+                  <Text style={{ color: textFaint, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase' }}>Company name</Text>
+                  <TextInput
+                    value={companyNameDraft}
+                    onChangeText={(value) => { setCompanyNameDraft(value); setBusinessNameError(''); }}
+                    maxLength={120}
+                    placeholder="Company name"
+                    placeholderTextColor={textFaint}
+                    onSubmitEditing={() => { void handleSaveBusinessName(); }}
+                    style={inputStyle}
+                    selectionColor={textPrimary}
+                  />
+                </View>
+                {addressesWillChange ? (
+                  <View style={{ borderRadius: 14, borderWidth: 1, borderColor: 'rgba(245,158,11,0.35)', backgroundColor: 'rgba(245,158,11,0.08)', padding: 12, gap: 4 }}>
+                    <Text style={{ color: textPrimary, fontSize: 12.5, fontWeight: '600' }}>This also changes their addresses</Text>
+                    <Text style={{ color: textSecondary, fontSize: 12.5 }}>Tracking and payment links: …/{draftSlug}</Text>
+                    <Text style={{ color: textSecondary, fontSize: 12.5 }}>Storefront: {draftSlug}.fyll.store</Text>
+                    <Text style={{ color: textMuted, fontSize: 12, lineHeight: 17, marginTop: 2 }}>Links already shared under the old name will stop working.</Text>
+                  </View>
+                ) : (
+                  <Text style={{ color: textMuted, fontSize: 12, lineHeight: 17 }}>
+                    The business name is what the app shows. Changing the company name alone does not change any link.
+                  </Text>
+                )}
+                {businessNameError ? <Text style={{ color: '#F87171', fontSize: 12.5 }}>{businessNameError}</Text> : null}
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <Pressable
+                    onPress={() => { void handleSaveBusinessName(); }}
+                    disabled={isSavingBusinessName}
+                    style={{ height: 38, paddingHorizontal: 18, borderRadius: 999, backgroundColor: textPrimary, alignItems: 'center', justifyContent: 'center', opacity: isSavingBusinessName ? 0.6 : 1 }}
+                  >
+                    <Text style={{ color: isDark ? '#111111' : '#FFFFFF', fontSize: 13, fontWeight: '600' }}>{isSavingBusinessName ? 'Saving…' : 'Save names'}</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => { setIsEditingBusinessName(false); setBusinessNameError(''); }}
+                    style={{ height: 38, paddingHorizontal: 16, borderRadius: 999, borderWidth: 1, borderColor, alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    <Text style={{ color: textSecondary, fontSize: 13, fontWeight: '600' }}>Cancel</Text>
+                  </Pressable>
+                </View>
+              </View>
+            );
+          })()
+        ) : (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 24 }}>
+            <Text style={{ color: textPrimary, fontSize: 20, fontWeight: '600', flexShrink: 1 }}>
+              {displayName}
+            </Text>
+            <Pressable
+              onPress={handleStartEditBusinessName}
+              accessibilityLabel="Edit business and company name"
+              hitSlop={8}
+              style={{ width: 30, height: 30, borderRadius: 15, borderWidth: 1, borderColor, alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Pencil size={14} color={textMuted} strokeWidth={2.2} />
+            </Pressable>
+          </View>
+        )}
         {secondaryName ? (
           <Text style={{ color: textMuted, fontSize: 14, fontWeight: '400', marginTop: 8 }}>
             {secondaryName}
           </Text>
+        ) : null}
+
+        {partnerOf ? (
+          <View style={{ marginTop: 18, borderRadius: 16, borderWidth: 1, borderColor, backgroundColor: headerBg, padding: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={{ color: textFaint, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase' }}>Partner account</Text>
+              <Text style={{ color: textPrimary, fontSize: 14, fontWeight: '600', marginTop: 6 }} numberOfLines={1}>Works with {partnerOf.business_name}</Text>
+            </View>
+            <Pressable
+              onPress={() => setSelectedBusinessId(partnerOf.business_id)}
+              style={{ height: 36, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor, alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Text style={{ color: textSecondary, fontSize: 12.5, fontWeight: '600' }}>Open business</Text>
+            </Pressable>
+          </View>
         ) : null}
 
         <View style={{ gap: 14, marginTop: 22 }}>
@@ -881,6 +1167,7 @@ export default function PlatformAdminScreen() {
           ))}
         </View>
 
+        {isPartnerAccount ? null : (
         <View style={{ flexDirection: 'row', gap: 14, marginTop: 24 }}>
           <View style={{ flex: 1, borderRadius: 18, borderWidth: 1, borderColor, backgroundColor: headerBg, padding: 18 }}>
             <Text style={{ color: textFaint, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase' }}>Pending invites</Text>
@@ -891,7 +1178,31 @@ export default function PlatformAdminScreen() {
             <Text style={{ color: textPrimary, fontSize: 20, fontWeight: '600', marginTop: 16 }}>{selectedBusiness.joined_invite_count ?? 0}</Text>
           </View>
         </View>
+        )}
 
+        {isPartnerAccount ? (
+          <View style={{ marginTop: 24 }}>
+            <Text style={{ color: textFaint, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 12 }}>Partner login</Text>
+            <View style={{ borderRadius: 18, borderWidth: 1, borderColor, backgroundColor: headerBg, padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ color: textMuted, fontSize: 12, fontWeight: '400' }}>Partner login link</Text>
+                <Text style={{ color: textPrimary, fontSize: 13, fontWeight: '500', marginTop: 8 }} numberOfLines={1}>{partnerLoginUrl.replace(/^https?:\/\//, '')}</Text>
+              </View>
+              <Pressable
+                onPress={async () => {
+                  await Clipboard.setStringAsync(partnerLoginUrl);
+                  setSuccessMessage('Partner login link copied.');
+                  void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                }}
+                accessibilityLabel="Copy partner login link"
+                style={{ height: 38, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor, flexDirection: 'row', alignItems: 'center', gap: 6 }}
+              >
+                <Copy size={14} color={textMuted} strokeWidth={2} />
+                <Text style={{ color: textSecondary, fontSize: 12.5, fontWeight: '600' }}>Copy</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : (
         <View style={{ marginTop: 24 }}>
           <Text style={{ color: textFaint, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 12 }}>Workspace</Text>
           <View style={{ gap: 12 }}>
@@ -900,6 +1211,63 @@ export default function PlatformAdminScreen() {
               <Text style={{ color: textPrimary, fontSize: 13, fontWeight: '500', marginTop: 8 }}>
                 {selectedBusiness.business_slug ? getTrackingPageUrl(selectedBusiness.business_slug) : 'No slug yet'}
               </Text>
+            </View>
+            <View style={{ borderRadius: 18, borderWidth: 1, borderColor, backgroundColor: headerBg, padding: 16 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Text style={{ color: textMuted, fontSize: 12, fontWeight: '400' }}>Storefront handle</Text>
+                {!isEditingHandle && storefrontHandle !== null ? (
+                  <Pressable
+                    onPress={() => { setHandleDraft(storefrontHandle); setHandleError(''); setIsEditingHandle(true); }}
+                    accessibilityLabel="Edit storefront handle"
+                    hitSlop={8}
+                    style={{ width: 28, height: 28, borderRadius: 14, borderWidth: 1, borderColor, alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    <Pencil size={13} color={textMuted} strokeWidth={2.2} />
+                  </Pressable>
+                ) : null}
+              </View>
+              {isEditingHandle ? (
+                <View style={{ gap: 10, marginTop: 10 }}>
+                  <TextInput
+                    value={handleDraft}
+                    onChangeText={(value) => { setHandleDraft(value); setHandleError(''); }}
+                    autoFocus
+                    autoCapitalize="none"
+                    maxLength={60}
+                    placeholder="e.g. minteyewear"
+                    placeholderTextColor={textFaint}
+                    onSubmitEditing={() => { void handleSaveStorefrontHandle(); }}
+                    style={{ height: 44, borderRadius: 14, borderWidth: 1, borderColor, backgroundColor: isDark ? '#111111' : '#FFFFFF', color: textPrimary, paddingHorizontal: 14, fontSize: 14, fontWeight: '500' }}
+                    selectionColor={textPrimary}
+                  />
+                  <Text style={{ color: textSecondary, fontSize: 12.5 }}>
+                    Storefront: {handleDraft.toLowerCase().replace(/[^a-z0-9]+/g, '') || '…'}.fyll.store
+                  </Text>
+                  <Text style={{ color: textMuted, fontSize: 12, lineHeight: 17 }}>
+                    Letters and numbers only. Links already shared under the old handle will stop working.
+                  </Text>
+                  {handleError ? <Text style={{ color: '#F87171', fontSize: 12.5 }}>{handleError}</Text> : null}
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <Pressable
+                      onPress={() => { void handleSaveStorefrontHandle(); }}
+                      disabled={isSavingHandle}
+                      style={{ height: 38, paddingHorizontal: 18, borderRadius: 999, backgroundColor: textPrimary, alignItems: 'center', justifyContent: 'center', opacity: isSavingHandle ? 0.6 : 1 }}
+                    >
+                      <Text style={{ color: isDark ? '#111111' : '#FFFFFF', fontSize: 13, fontWeight: '600' }}>{isSavingHandle ? 'Saving…' : 'Save handle'}</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => { setIsEditingHandle(false); setHandleError(''); }}
+                      style={{ height: 38, paddingHorizontal: 16, borderRadius: 999, borderWidth: 1, borderColor, alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      <Text style={{ color: textSecondary, fontSize: 13, fontWeight: '600' }}>Cancel</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : (
+                <Text style={{ color: textPrimary, fontSize: 13, fontWeight: '500', marginTop: 8 }}>
+                  {storefrontHandle === null ? 'Loading…' : storefrontHandle ? `${storefrontHandle}.fyll.store` : 'No handle yet'}
+                </Text>
+              )}
             </View>
             <View style={{ borderRadius: 18, borderWidth: 1, borderColor, backgroundColor: headerBg, padding: 16 }}>
               <Text style={{ color: textMuted, fontSize: 12, fontWeight: '400' }}>Invite limit</Text>
@@ -972,7 +1340,7 @@ export default function PlatformAdminScreen() {
               </View>
 
               <View style={{ gap: 10, marginTop: 14 }}>
-                {BUSINESS_FEATURES.map((feature) => {
+                {SWITCHABLE_BUSINESS_FEATURES.map((feature) => {
                   const enabled = featureAccessDraft[feature.key];
                   return (
                     <Pressable
@@ -1018,6 +1386,76 @@ export default function PlatformAdminScreen() {
             </View>
           </View>
         </View>
+        )}
+
+        {isPartnerAccount ? null : (
+          <View style={{ marginTop: 24 }}>
+            <Text style={{ color: textFaint, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 12 }}>Account access</Text>
+            <View style={{ borderRadius: 18, borderWidth: 1, borderColor: selectedBusiness.state === 'disabled' ? 'rgba(239,68,68,0.28)' : borderColor, backgroundColor: headerBg, padding: 16, gap: 12 }}>
+              {selectedBusiness.state === 'disabled' ? (
+                <>
+                  <Text style={{ color: textPrimary, fontSize: 14, fontWeight: '600' }}>This business is disabled</Text>
+                  <Text style={{ color: textMuted, fontSize: 12.5, lineHeight: 18 }}>
+                    Everyone signed in to it sees an "account disabled" screen. Nothing has been deleted.
+                    {disabledBusinesses[selectedBusiness.business_id]?.reason ? `\nNote: ${disabledBusinesses[selectedBusiness.business_id]?.reason}` : ''}
+                  </Text>
+                  {disableError ? <Text style={{ color: '#F87171', fontSize: 12.5 }}>{disableError}</Text> : null}
+                  <Pressable
+                    onPress={() => { void handleSetBusinessDisabled(false); }}
+                    disabled={isSavingDisabled}
+                    style={{ height: 42, borderRadius: 999, backgroundColor: textPrimary, alignItems: 'center', justifyContent: 'center', opacity: isSavingDisabled ? 0.6 : 1 }}
+                  >
+                    <Text style={{ color: isDark ? '#111111' : '#FFFFFF', fontSize: 13, fontWeight: '600' }}>{isSavingDisabled ? 'Saving…' : 'Enable business'}</Text>
+                  </Pressable>
+                </>
+              ) : isConfirmingDisable ? (
+                <>
+                  <Text style={{ color: textPrimary, fontSize: 14, fontWeight: '600' }}>Disable {displayName}?</Text>
+                  <Text style={{ color: textMuted, fontSize: 12.5, lineHeight: 18 }}>
+                    Everyone in this business is stopped on an "account disabled" screen within about a minute. Nothing is deleted, and you can enable it again any time.
+                  </Text>
+                  <TextInput
+                    value={disableReasonDraft}
+                    onChangeText={setDisableReasonDraft}
+                    placeholder="Note shown to them (optional)"
+                    placeholderTextColor={textFaint}
+                    maxLength={300}
+                    style={{ height: 44, borderRadius: 14, borderWidth: 1, borderColor, backgroundColor: isDark ? '#111111' : '#FFFFFF', color: textPrimary, paddingHorizontal: 14, fontSize: 14 }}
+                    selectionColor={textPrimary}
+                  />
+                  {disableError ? <Text style={{ color: '#F87171', fontSize: 12.5 }}>{disableError}</Text> : null}
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <Pressable
+                      onPress={() => { void handleSetBusinessDisabled(true); }}
+                      disabled={isSavingDisabled}
+                      style={{ height: 40, paddingHorizontal: 18, borderRadius: 999, backgroundColor: '#DC2626', alignItems: 'center', justifyContent: 'center', opacity: isSavingDisabled ? 0.6 : 1 }}
+                    >
+                      <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '600' }}>{isSavingDisabled ? 'Disabling…' : 'Disable business'}</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => { setIsConfirmingDisable(false); setDisableError(''); }}
+                      style={{ height: 40, paddingHorizontal: 16, borderRadius: 999, borderWidth: 1, borderColor, alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      <Text style={{ color: textSecondary, fontSize: 13, fontWeight: '600' }}>Cancel</Text>
+                    </Pressable>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <Text style={{ color: textMuted, fontSize: 12.5, lineHeight: 18 }}>
+                    Disabling pauses this business's access to Fyll without deleting anything.
+                  </Text>
+                  <Pressable
+                    onPress={() => { setDisableError(''); setIsConfirmingDisable(true); }}
+                    style={{ height: 42, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(239,68,68,0.4)', alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    <Text style={{ color: '#EF4444', fontSize: 13, fontWeight: '600' }}>Disable business</Text>
+                  </Pressable>
+                </>
+              )}
+            </View>
+          </View>
+        )}
       </>
     );
   };
@@ -1032,6 +1470,7 @@ export default function PlatformAdminScreen() {
             {renderBusinessFilterPill('all', 'All', businessRows.length)}
             {renderBusinessFilterPill('active', 'Active', businessMetrics.active)}
             {renderBusinessFilterPill('inactive', 'Inactive', businessMetrics.inactive)}
+            {renderBusinessFilterPill('disabled', 'Disabled', businessMetrics.disabled)}
           </View>
         </View>
 

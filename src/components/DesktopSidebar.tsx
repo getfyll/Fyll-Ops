@@ -61,7 +61,6 @@ type PartnerSubItem = {
 };
 
 const NAV_FEATURES: Partial<Record<string, BusinessFeatureKey>> = {
-  '/payments': 'socialCheckout',
   '/deliveries': 'delivery',
   '/fyll-print': 'fyllPrint',
   '/returns': 'returns',

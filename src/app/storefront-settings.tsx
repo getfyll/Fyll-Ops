@@ -10,6 +10,7 @@ import { useBusinessSettings } from '@/hooks/useBusinessSettings';
 import { getSettingsWebPanelStyles, isFromSettingsRoute } from '@/lib/settings-web-panel';
 import { useSettingsBack } from '@/lib/useSettingsBack';
 import { useThemeColors } from '@/lib/theme';
+import { ChangeRequestModal } from '@/components/ChangeRequestModal';
 import {
   buildStorefrontDashboardUrl,
   buildStorefrontDiscoveryUrl,
@@ -17,7 +18,6 @@ import {
   buildStorefrontUrl,
   buildSuggestedStorefrontUrls,
   resolveStorefrontSlug,
-  STOREFRONT_PRIMARY_DOMAIN,
 } from '@/lib/storefront-url';
 
 export default function StorefrontSettingsScreen() {
@@ -36,14 +36,13 @@ export default function StorefrontSettingsScreen() {
     companyName,
     storefrontEnabled,
     storefrontSlug,
-    storefrontCustomDomain,
     isLoading,
     saveSettings,
   } = useBusinessSettings();
 
   const [storefrontLive, setStorefrontLive] = useState(false);
   const [storefrontHandle, setStorefrontHandle] = useState('');
-  const [storefrontDomain, setStorefrontDomain] = useState('');
+  const [showHandleRequest, setShowHandleRequest] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -53,9 +52,8 @@ export default function StorefrontSettingsScreen() {
     if (!isLoading) {
       setStorefrontLive(storefrontEnabled);
       setStorefrontHandle(storefrontSlug);
-      setStorefrontDomain(storefrontCustomDomain);
     }
-  }, [isLoading, storefrontCustomDomain, storefrontEnabled, storefrontSlug]);
+  }, [isLoading, storefrontEnabled, storefrontSlug]);
 
   useEffect(() => () => {
     if (toastTimerRef.current) {
@@ -102,8 +100,7 @@ export default function StorefrontSettingsScreen() {
     companyName,
   });
   const hasChanges = storefrontLive !== storefrontEnabled
-    || storefrontHandle.trim() !== storefrontSlug
-    || storefrontDomain.trim() !== storefrontCustomDomain;
+    || storefrontHandle.trim() !== storefrontSlug;
   const primaryPillButtonStyle = {
     backgroundColor: colors.text.primary,
     borderRadius: 999,
@@ -119,7 +116,6 @@ export default function StorefrontSettingsScreen() {
       const result = await saveSettings({
         storefrontEnabled: storefrontLive,
         storefrontSlug: storefrontHandle.trim(),
-        storefrontCustomDomain: storefrontDomain.trim(),
       });
 
       if (result.success) {
@@ -239,12 +235,13 @@ export default function StorefrontSettingsScreen() {
                 <View className="flex-row items-center mb-2">
                   <Globe size={16} color={colors.text.tertiary} strokeWidth={2} />
                   <Text style={{ color: colors.text.secondary }} className="text-sm font-medium ml-2">Storefront Handle</Text>
+                  <Text style={{ color: colors.text.muted }} className="text-xs ml-2">Locked</Text>
                 </View>
 
                 <View
                   className="rounded-xl px-4"
                   style={{
-                    backgroundColor: colors.input.bg,
+                    backgroundColor: colors.bg.secondary,
                     borderWidth: 1,
                     borderColor: colors.border.light,
                     height: 50,
@@ -253,10 +250,10 @@ export default function StorefrontSettingsScreen() {
                 >
                   <TextInput
                     value={storefrontHandle}
-                    onChangeText={setStorefrontHandle}
                     placeholder="e.g. mint-eyewear"
                     placeholderTextColor={colors.input.placeholder}
                     autoCapitalize="none"
+                    editable={false}
                     style={{ color: colors.input.text, fontSize: 14 }}
                     selectionColor={colors.text.primary}
                   />
@@ -265,39 +262,18 @@ export default function StorefrontSettingsScreen() {
                 <Text style={{ color: colors.text.muted }} className="text-xs mt-2">
                   Live storefront: {storefrontPrimaryUrl}
                 </Text>
-              </View>
-
-              <View className="mb-4">
-                <View className="flex-row items-center mb-2">
-                  <Globe size={16} color={colors.text.tertiary} strokeWidth={2} />
-                  <Text style={{ color: colors.text.secondary }} className="text-sm font-medium ml-2">Custom Domain</Text>
-                  <Text style={{ color: colors.text.muted }} className="text-xs ml-2">Optional later</Text>
-                </View>
-
-                <View
-                  className="rounded-xl px-4"
-                  style={{
-                    backgroundColor: colors.input.bg,
-                    borderWidth: 1,
-                    borderColor: colors.border.light,
-                    height: 50,
-                    justifyContent: 'center',
-                  }}
-                >
-                  <TextInput
-                    value={storefrontDomain}
-                    onChangeText={setStorefrontDomain}
-                    placeholder="e.g. shop.yourbusiness.com"
-                    placeholderTextColor={colors.input.placeholder}
-                    autoCapitalize="none"
-                    style={{ color: colors.input.text, fontSize: 14 }}
-                    selectionColor={colors.text.primary}
-                  />
-                </View>
-
-                <Text style={{ color: colors.text.muted }} className="text-xs mt-2">
-                  Launch first on {STOREFRONT_PRIMARY_DOMAIN}, then move to a custom domain later if needed.
+                <Text style={{ color: colors.text.muted }} className="text-xs mt-1">
+                  Your handle is locked because it is part of your storefront address. Need it changed?
                 </Text>
+                <Pressable onPress={() => setShowHandleRequest(true)} className="mt-2 self-start active:opacity-70" hitSlop={6}>
+                  <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' }}>Request a change</Text>
+                </Pressable>
+                <ChangeRequestModal
+                  visible={showHandleRequest}
+                  kind="storefront_handle"
+                  currentValue={storefrontHandle}
+                  onClose={() => setShowHandleRequest(false)}
+                />
               </View>
 
               <View className="rounded-2xl p-3 mb-4" style={{ backgroundColor: colors.bg.secondary }}>
@@ -317,11 +293,6 @@ export default function StorefrontSettingsScreen() {
                 <Text style={{ color: colors.text.muted }} className="text-xs mt-1">
                   Merchant subdomain: {storefrontPremiumUrl}
                 </Text>
-                {storefrontDomain.trim() ? (
-                  <Text style={{ color: colors.text.primary }} className="text-xs mt-2">
-                    Custom domain draft: https://{storefrontDomain.trim().replace(/^https?:\/\//, '')}
-                  </Text>
-                ) : null}
               </View>
 
               <View className="flex-row items-center justify-between">

@@ -40,6 +40,7 @@ import { useBreakpoint } from '@/lib/useBreakpoint';
 import { useThemeColors } from '@/lib/theme';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
 import { isBusinessFeatureEnabled, type BusinessFeatureKey } from '@/lib/feature-access';
+import { useBusinessDisabled } from '@/hooks/useBusinessDisabled';
 
 export const unstable_settings = {
   // Ensure that reloading on `/modal` keeps a back button present.
@@ -62,14 +63,12 @@ const webInitialMetrics = {
   frame: { x: 0, y: 0, width: 0, height: 0 },
   insets: { top: 0, left: 0, right: 0, bottom: 0 },
 };
-const PUBLIC_ROUTE_SEGMENTS = new Set(['login', 'reset-password', 'welcome', 'start', 'request-invite', 'track', 'order-tracking', 'confirm-delivery', 'start-return', 'checkout', 'platform-admin-login', 'partner', 'partner-login', 'partner-invite', 'q', 'quotes']);
+const PUBLIC_ROUTE_SEGMENTS = new Set(['login', 'reset-password', 'account-disabled', 'welcome', 'start', 'request-invite', 'track', 'order-tracking', 'confirm-delivery', 'start-return', 'checkout', 'platform-admin-login', 'partner', 'partner-login', 'partner-invite', 'q', 'quotes']);
 const LEGACY_PUBLIC_ROUTE_SEGMENTS = new Set(['track', 'order-tracking', 'confirm-delivery', 'start-return', 'checkout', 'partner', 'partner-login', 'partner-invite', 'q', 'quotes']);
 const WOO_CONNECT_SESSION_KEY = 'fyll_woocommerce_connect_params';
 const ROUTE_FEATURES: Record<string, BusinessFeatureKey> = {
-  payments: 'socialCheckout',
   'social-checkout': 'socialCheckout',
   quote: 'socialCheckout',
-  'storefront-payment': 'socialCheckout',
   'payment-accounts': 'socialCheckout',
   threads: 'threads',
   cases: 'cases',
@@ -297,6 +296,7 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
   const syncWithSupabaseSession = useAuthStore((s) => s.syncWithSupabaseSession);
   const refreshTeamData = useAuthStore((s) => s.refreshTeamData);
   const currentUserId = useAuthStore((s) => s.currentUser?.id ?? null);
+  const { isDisabled: isBusinessDisabled } = useBusinessDisabled();
   const [isHydrated, setIsHydrated] = useState(false);
   const [hasHiddenNativeSplash, setHasHiddenNativeSplash] = useState(false);
   const [isBootstrappingApp, setIsBootstrappingApp] = useState(true);
@@ -332,6 +332,12 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
     && !inPublicRoute
     && firstSegment !== '(tabs)'
     && !isBottomActionRoute;
+
+  // A business disabled from the Fyll console: send everyone signed in to it to the disabled screen.
+  useEffect(() => {
+    if (!isAuthenticated || !isBusinessDisabled || firstSegment === 'account-disabled') return;
+    router.replace('/account-disabled');
+  }, [firstSegment, isAuthenticated, isBusinessDisabled, router]);
 
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof document === 'undefined' || !isPartnerPortalHost) return;
@@ -638,6 +644,7 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
           <Stack.Screen name="[businessSlug]/start-return" options={{ headerShown: false }} />
           <Stack.Screen name="checkout" options={{ headerShown: false }} />
           <Stack.Screen name="reset-password" options={{ headerShown: false }} />
+          <Stack.Screen name="account-disabled" options={{ headerShown: false }} />
           <Stack.Screen name="[businessSlug]/checkout/[code]" options={{ headerShown: false }} />
           <Stack.Screen name="social-checkout/new" options={{ headerShown: false, presentation: 'transparentModal', animation: 'fade', contentStyle: { backgroundColor: 'transparent' } }} />
           <Stack.Screen name="social-checkout/[id]" options={{ headerShown: false }} />

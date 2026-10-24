@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Building2, Camera, X, Check, MessageCircle, Globe, MapPin } from 'lucide-react-native';
 import { useThemeColors } from '@/lib/theme';
+import { ChangeRequestModal } from '@/components/ChangeRequestModal';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
@@ -57,6 +58,7 @@ export default function BusinessSettingsScreen() {
   const [website, setWebsite] = useState('');
   const [address, setAddress] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [showBusinessNameRequest, setShowBusinessNameRequest] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -411,14 +413,14 @@ export default function BusinessSettingsScreen() {
                 <Building2 size={16} color={colors.text.tertiary} strokeWidth={2} />
                 <Text style={{ color: colors.text.secondary }} className="text-sm font-medium ml-2">Business Name</Text>
                 <Text style={{ color: colors.text.muted }} className="text-xs ml-2">
-                  {canEditBusinessName ? 'Editable' : 'Locked'}
+                  Locked
                 </Text>
               </View>
 
               <View
                 className="rounded-xl px-4"
                 style={{
-                  backgroundColor: canEditBusinessName ? colors.input.bg : colors.bg.secondary,
+                  backgroundColor: colors.bg.secondary,
                   borderWidth: 1,
                   borderColor: colors.border.light,
                   height: 50,
@@ -432,7 +434,7 @@ export default function BusinessSettingsScreen() {
                   placeholderTextColor={colors.input.placeholder}
                   style={{ color: colors.input.text, fontSize: 14 }}
                   selectionColor={colors.text.primary}
-                  editable={canEditBusinessName}
+                  editable={false}
                   autoCapitalize="words"
                 />
               </View>
@@ -446,10 +448,17 @@ export default function BusinessSettingsScreen() {
                 </Text>
               ) : null}
               <Text style={{ color: colors.text.muted }} className="text-xs mt-1">
-                {canEditBusinessName
-                  ? 'You can change this business name once every 12 months.'
-                  : `Business name can only be changed once every 12 months. Next edit available ${nextBusinessNameEditLabel}.`}
+                Your business name is locked because it is part of your customer links. Need it changed?
               </Text>
+              <Pressable onPress={() => setShowBusinessNameRequest(true)} className="mt-2 self-start active:opacity-70" hitSlop={6}>
+                <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' }}>Request a change</Text>
+              </Pressable>
+              <ChangeRequestModal
+                visible={showBusinessNameRequest}
+                kind="business_name"
+                currentValue={displayName || businessName}
+                onClose={() => setShowBusinessNameRequest(false)}
+              />
             </View>
 
             {/* Business Website */}
