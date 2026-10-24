@@ -4,7 +4,8 @@ import { storage } from '@/lib/storage';
 import useWhatsNewStore from '@/lib/state/whats-new-store';
 import { CURRENT_RELEASE, compareVersions, type Release } from '@/lib/release-notes';
 
-const LAST_SEEN_KEY = 'fyll_last_seen_version';
+// v2: the first release is shown to everyone once, so earlier silent records are ignored.
+const LAST_SEEN_KEY = 'fyll_last_seen_version_v2';
 const CHECK_INTERVAL_MS = 10 * 60 * 1000;
 
 export type WhatsNewState = {
@@ -47,7 +48,7 @@ export function useWhatsNew(enabled: boolean) {
     }
   }, [enabled]);
 
-  // First load on a new version: show the notes once. A brand-new install just records the version.
+  // On login or a new session, show the notes over the main screen until the person presses Continue.
   useEffect(() => {
     if (!enabled) return;
     let cancelled = false;
@@ -55,9 +56,7 @@ export function useWhatsNew(enabled: boolean) {
       try {
         const lastSeen = await storage.getItem(LAST_SEEN_KEY);
         if (cancelled) return;
-        if (!lastSeen) {
-          await storage.setItem(LAST_SEEN_KEY, CURRENT_RELEASE.version);
-        } else if (compareVersions(CURRENT_RELEASE.version, lastSeen) > 0) {
+        if (!lastSeen || compareVersions(CURRENT_RELEASE.version, lastSeen) > 0) {
           setState((current) => current ?? { mode: 'seen', release: CURRENT_RELEASE });
         }
       } catch {
