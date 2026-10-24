@@ -45,6 +45,7 @@ import { getTeamThreadChannelById, getTeamThreadDisplayNameFromEntityId, isTeamT
 import { supabaseData } from '@/lib/supabase/data';
 import { createWooCommerceOrderFromFyll, fetchWooCommerceOrder } from '@/lib/woocommerce';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
+import { useWooCommerceAvailable } from '@/hooks/useWooCommerceAvailable';
 import { FYLL_LIME } from '@/components/payments/payments-ui';
 
 const STAMP_DUTY_THRESHOLD = 10000;
@@ -190,6 +191,7 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
   const teamMembers = useAuthStore((s) => s.teamMembers);
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
   const isOfflineMode = useAuthStore((s) => s.isOfflineMode);
+  const wooAvailable = useWooCommerceAvailable();
   const { woocommerceStoreUrl, woocommerceConsumerKey, woocommerceConsumerSecret, hasWooCommerceConnection } = useBusinessSettings();
   const [pendingCancelOrder, setPendingCancelOrder] = useState(false);
   const [pendingDeleteOrder, setPendingDeleteOrder] = useState(false);
@@ -1644,7 +1646,7 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
         </View>
       </DetailSection>
 
-      {(
+      {wooAvailable ? (
         <DetailSection title="WooCommerce Link" titleBottomSpacing={18}>
           <View style={{ paddingTop: 4, paddingBottom: 4 }}>
             {!order.websiteOrderReference ? (
@@ -1739,7 +1741,7 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
             ) : null}
           </View>
         </DetailSection>
-      )}
+      ) : null}
 
       {/* Payment & Source */}
       <DetailSection title="Payment">

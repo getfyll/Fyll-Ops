@@ -1419,42 +1419,51 @@ export default function StorefrontPaymentDetailScreen() {
       }
 
       await Promise.all(syncTasks);
-      if (payment.source.trim().toLowerCase() === 'fyll_checkout') {
-        try {
-          await notifyFyllCheckoutPaymentConfirmed({
-            reference: payment.sourceOrderId,
-            businessId,
-          });
-        } catch (error) {
-          console.warn('Fyll Checkout confirmation callback failed after local approval:', error);
-          showFyllCheckoutSyncFailedNotice(payment.sourceOrderId, error);
-        }
-      }
 
-      // Storefront checkouts may also have a WooCommerce order. Both systems
-      // must move forward after verification: checkout becomes paid and the
-      // fulfilment order becomes Processing.
-      if (orderToSync?.websiteOrderReference) {
-        try {
-          await syncFyllOrderStatusToWooCommerce({
-            businessId,
-            orderId: orderToSync.id,
-            status: nextStatus,
-          });
-        } catch (error) {
-          console.warn('WooCommerce status sync failed after storefront payment approval:', error);
-          showFyllCheckoutSyncFailedNotice(payment.sourceOrderId, error);
-        }
+      // The approval itself is saved at this point. Telling Fyll Checkout and WooCommerce is slow
+      // (two outside systems, one after the other), so it runs in the background instead of keeping
+      // the Approve button spinning. A failure still shows the same "sync failed" notice.
+      const isFyllCheckoutSource = payment.source.trim().toLowerCase() === 'fyll_checkout';
+      const wooOrderToSync = orderToSync?.websiteOrderReference ? orderToSync : null;
+      if (isFyllCheckoutSource || wooOrderToSync) {
+        void (async () => {
+          if (isFyllCheckoutSource) {
+            try {
+              await notifyFyllCheckoutPaymentConfirmed({
+                reference: payment.sourceOrderId,
+                businessId,
+              });
+            } catch (error) {
+              console.warn('Fyll Checkout confirmation callback failed after local approval:', error);
+              showFyllCheckoutSyncFailedNotice(payment.sourceOrderId, error);
+            }
+          }
+
+          // Storefront checkouts may also have a WooCommerce order. Both systems
+          // must move forward after verification: checkout becomes paid and the
+          // fulfilment order becomes Processing.
+          if (wooOrderToSync) {
+            try {
+              await syncFyllOrderStatusToWooCommerce({
+                businessId,
+                orderId: wooOrderToSync.id,
+                status: nextStatus,
+              });
+            } catch (error) {
+              console.warn('WooCommerce status sync failed after storefront payment approval:', error);
+              showFyllCheckoutSyncFailedNotice(payment.sourceOrderId, error);
+            }
+          }
+        })();
       }
       return updatedPayment;
     },
-    onSuccess: async () => {
+    onSuccess: () => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['storefront-payment-detail', businessId, paymentId] }),
-        queryClient.invalidateQueries({ queryKey: ['shared-payments', businessId] }),
-        queryClient.invalidateQueries({ queryKey: ['orders-for-payments', businessId] }),
-      ]);
+      // Refresh in the background too, so the screen flips to "Approved" straight away.
+      void queryClient.invalidateQueries({ queryKey: ['storefront-payment-detail', businessId, paymentId] });
+      void queryClient.invalidateQueries({ queryKey: ['shared-payments', businessId] });
+      void queryClient.invalidateQueries({ queryKey: ['orders-for-payments', businessId] });
     },
   });
 

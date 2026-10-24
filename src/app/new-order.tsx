@@ -12,6 +12,8 @@ import useFyllStore, {
   PrescriptionInfo,
   type SocialCheckoutDraft,
   generateOrderNumber,
+  generateProductId,
+  generateVariantBarcode,
   formatCurrency,
   NIGERIA_STATES,
   Customer,
@@ -26,6 +28,7 @@ import { BackButton, FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, MoneyText, isHov
 import { ResolvedAttachmentImage } from '@/components/ResolvedAttachmentImage';
 import { getFyllPublicAppOrigin } from '@/lib/fyll-app-url';
 import { buildCustomerTrackingUrl } from '@/lib/tracking-url';
+import { useWooCommerceAvailable } from '@/hooks/useWooCommerceAvailable';
 import { buildWhatsAppUrl } from '@/lib/quotes';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { sendOrderNotification } from '@/hooks/useWebPushNotifications';
@@ -372,6 +375,8 @@ export default function NewOrderScreen() {
   const addOrder = useFyllStore((s) => s.addOrder);
   const addCustomer = useFyllStore((s) => s.addCustomer);
   const updateVariantStock = useFyllStore((s) => s.updateVariantStock);
+  const addProduct = useFyllStore((s) => s.addProduct);
+  const wooAvailable = useWooCommerceAvailable();
   const currentUser = useAuthStore((s) => s.currentUser);
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
   const {
@@ -422,6 +427,8 @@ export default function NewOrderScreen() {
   const [showCustomItemModal, setShowCustomItemModal] = useState(false);
   const [customItemName, setCustomItemName] = useState('');
   const [customItemPrice, setCustomItemPrice] = useState('');
+  const [customItemQuantity, setCustomItemQuantity] = useState('1');
+  const [isAddingCustomItem, setIsAddingCustomItem] = useState(false);
   const [showDiscountInput, setShowDiscountInput] = useState(false);
   const [sendReceipt, setSendReceipt] = useState(false);
   const [sendToWoo, setSendToWoo] = useState(false);
@@ -877,6 +884,82 @@ export default function NewOrderScreen() {
     const eta = addBusinessDays(new Date(orderDateValueForPreview), fulfillmentTimelinePreview.maxBusinessDays);
     return eta.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   }, [fulfillmentTimelinePreview.maxBusinessDays, orderDateValueForPreview]);
+
+  // A custom item is saved as a real inventory product (so it can be sold again and shows up in
+  // Inventory) and added to this order as a normal item — which also lets an order be created with
+  // custom items only. Stock starts at the quantity ordered and drops back to 0 when the order is created.
+  const handleAddCustomItem = async () => {
+    const name = customItemName.trim();
+    const price = parseFloat(customItemPrice) || 0;
+    const quantity = Math.max(1, Math.floor(Number(customItemQuantity) || 1));
+    if (!name || price <= 0 || isAddingCustomItem) return;
+    if (!businessId) {
+      showToast('error', 'Your workspace is still loading. Please try again in a moment.');
+      return;
+    }
+    setIsAddingCustomItem(true);
+    try {
+      let productId: string;
+      let variantId: string;
+      const existing = products.find((product) =>
+        normalizeProductType(product.productType) === 'product'
+        && !product.isArchived
+        && !product.isDiscontinued
+        && product.variants.length === 1
+        && product.name.trim().toLowerCase() === name.toLowerCase()
+      );
+      if (existing) {
+        // Same name already in inventory: reuse it, topping up stock so this order can be created.
+        const variant = existing.variants[0];
+        productId = existing.id;
+        variantId = variant.id;
+        if (variant.stock < quantity) {
+          await updateVariantStock(productId, variantId, quantity - variant.stock, businessId);
+        }
+      } else {
+        productId = generateProductId();
+        variantId = `${productId}-1`;
+        await addProduct({
+          id: productId,
+          name,
+          description: 'Custom item added from a new order.',
+          categories: ['Custom'],
+          variants: [{
+            id: variantId,
+            sku: `CUSTOM-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+            barcode: generateVariantBarcode(),
+            variableValues: {},
+            stock: quantity,
+            sellingPrice: price,
+          }],
+          lowStockThreshold: 0,
+          createdAt: new Date().toISOString(),
+          productType: 'product',
+          createdBy: currentUser?.name,
+          useGlobalStock: false,
+        }, businessId);
+      }
+
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setItems((current) => {
+        const existingIndex = current.findIndex((item) => item.productId === productId && item.variantId === variantId);
+        if (existingIndex >= 0) {
+          return current.map((item, index) => (index === existingIndex ? { ...item, quantity: item.quantity + quantity, unitPrice: price } : item));
+        }
+        return [...current, { id: createOrderLineId(), productId, variantId, quantity, unitPrice: price }];
+      });
+      setCustomItemName('');
+      setCustomItemPrice('');
+      setCustomItemQuantity('1');
+      setShowCustomItemModal(false);
+      showToast('success', existing ? `${name} added to this order.` : `${name} added to this order and to your inventory.`);
+    } catch (error) {
+      console.warn('Could not add custom item:', error);
+      showToast('error', 'Could not add the custom item. Please try again.');
+    } finally {
+      setIsAddingCustomItem(false);
+    }
+  };
 
   const handleAddProduct = (result: SearchResult) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -1423,7 +1506,7 @@ export default function NewOrderScreen() {
       // Optional: create the same order in WooCommerce. The order is already saved either way.
       let wooAdded = '';
       let wooFailure = '';
-      if (sendToWoo && hasWooCommerceConnection && !websiteOrderRef.trim() && !isServiceOrder && businessId) {
+      if (sendToWoo && wooAvailable && !websiteOrderRef.trim() && !isServiceOrder && businessId) {
         try {
           const wooResult = await createWooCommerceOrderFromFyll({ businessId, orderId: order.id, silentImport: !notifyWooCustomer });
           const reference = wooResult.websiteOrderReference;
@@ -1696,7 +1779,7 @@ export default function NewOrderScreen() {
               <StepBadge n={5} palette={palette} />
               <View className="flex-1">
                 <Text className={cn(sectionTitleClass, textPrimaryClass)}>Order type &amp; reference</Text>
-                <Text className={cn('text-xs mt-1', textMutedClass)}>Delivery timeline and website order linkage.</Text>
+                <Text className={cn('text-xs mt-1', textMutedClass)}>{wooAvailable ? 'Delivery timeline and website order linkage.' : 'Delivery timeline and order type.'}</Text>
               </View>
             </View>
 
@@ -1795,6 +1878,7 @@ export default function NewOrderScreen() {
               </View>
             )}
 
+            {wooAvailable || websiteOrderRef.trim() ? (
             <View>
               <Text className={cn(fieldLabelClass, 'mb-1.5')} style={{ color: colors.text.secondary }}>Website Order Ref (WooCommerce)</Text>
               <FocusInput
@@ -1863,6 +1947,7 @@ export default function NewOrderScreen() {
                 </View>
               ) : null}
             </View>
+            ) : null}
           </View>
           );
 
@@ -2359,7 +2444,7 @@ export default function NewOrderScreen() {
               )}
 
               <Pressable accessibilityRole="button" onPress={() => setShowCustomItemModal(true)} style={{ alignSelf: 'flex-start', paddingVertical: 4 }}>
-                <Text style={{ color: palette.limeOnSurface, fontSize: 14, fontWeight: '600' }}>+ Custom item (not in inventory)</Text>
+                <Text style={{ color: palette.limeOnSurface, fontSize: 14, fontWeight: '600' }}>+ Custom item (adds to inventory)</Text>
               </Pressable>
             </StepCard>
           );
@@ -2835,7 +2920,7 @@ export default function NewOrderScreen() {
           ];
           const receiptPhone = customerPhone.trim();
           // Sending to WooCommerce only makes sense for a product order that is not already linked to one.
-          const showWooOption = hasWooCommerceConnection && !isServiceOrder && !websiteOrderRef.trim();
+          const showWooOption = wooAvailable && !isServiceOrder && !websiteOrderRef.trim();
           const canCreateOrder = Boolean(customerName.trim()) && items.length > 0 && !isSubmitting;
           const summaryRow = (label: string, value: string, muted = true) => (
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
@@ -3448,7 +3533,7 @@ export default function NewOrderScreen() {
           <Pressable onPress={(event) => event.stopPropagation()} style={{ width: '100%', maxWidth: 420, borderRadius: 26, padding: 20, gap: 14, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}>
             <View style={{ gap: 4 }}>
               <Text style={{ color: palette.text, fontSize: 20, fontWeight: '600', letterSpacing: -0.3 }}>Custom item</Text>
-              <Text style={{ color: palette.muted, fontSize: 14, lineHeight: 20 }}>For anything not in your inventory: a made-to-order piece, a service, delivery or a one-off. It does not touch your stock.</Text>
+              <Text style={{ color: palette.muted, fontSize: 14, lineHeight: 20 }}>For anything not in your inventory yet: a made-to-order piece or a one-off. It is added to your inventory too, so you can sell it again.</Text>
             </View>
             <FocusInput
               placeholder="Item name"
@@ -3466,25 +3551,25 @@ export default function NewOrderScreen() {
               keyboardType="numeric"
               style={[{ height: 52, paddingHorizontal: 16, borderRadius: 14, borderWidth: 1, borderColor: palette.outline, backgroundColor: palette.inset, color: palette.text, fontSize: 15 }, Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null]}
             />
+            <FocusInput
+              placeholder="Quantity"
+              placeholderTextColor={palette.faint}
+              value={customItemQuantity}
+              onChangeText={setCustomItemQuantity}
+              keyboardType="number-pad"
+              style={[{ height: 52, paddingHorizontal: 16, borderRadius: 14, borderWidth: 1, borderColor: palette.outline, backgroundColor: palette.inset, color: palette.text, fontSize: 15 }, Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null]}
+            />
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <Pressable accessibilityRole="button" onPress={() => setShowCustomItemModal(false)} style={{ flex: 1, height: 48, borderRadius: 999, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: palette.outline }}>
                 <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>Cancel</Text>
               </Pressable>
               <Pressable
                 accessibilityRole="button"
-                disabled={!customItemName.trim() || !(parseFloat(customItemPrice) > 0)}
-                onPress={() => {
-                  const price = parseFloat(customItemPrice) || 0;
-                  if (!customItemName.trim() || price <= 0) return;
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setServices((current) => [...current, { serviceId: `custom-${Date.now().toString(36)}`, name: customItemName.trim(), price }]);
-                  setCustomItemName('');
-                  setCustomItemPrice('');
-                  setShowCustomItemModal(false);
-                }}
-                style={{ flex: 1.3, height: 48, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: FYLL_LIME, opacity: !customItemName.trim() || !(parseFloat(customItemPrice) > 0) ? 0.45 : 1 }}
+                disabled={!customItemName.trim() || !(parseFloat(customItemPrice) > 0) || isAddingCustomItem}
+                onPress={() => { void handleAddCustomItem(); }}
+                style={{ flex: 1.3, height: 48, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: FYLL_LIME, opacity: !customItemName.trim() || !(parseFloat(customItemPrice) > 0) || isAddingCustomItem ? 0.45 : 1 }}
               >
-                <Text style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '600' }}>Add to order</Text>
+                <Text style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '600' }}>{isAddingCustomItem ? 'Adding…' : 'Add to order'}</Text>
               </Pressable>
             </View>
           </Pressable>
