@@ -52,6 +52,7 @@ export type WooNormalizedProduct = {
 
 type WooSyncFunctionResponse = {
   success?: boolean;
+  queued?: boolean;
   connected?: boolean;
   sampleCount?: number;
   fetchedCount?: number;
@@ -291,4 +292,27 @@ export const createWooCommerceOrderFromFyll = async (
     websiteOrderReference: data.websiteOrderReference ?? data.order?.websiteOrderReference ?? null,
     warning: data.warning ?? null,
   };
+};
+
+export const queueWooCommerceOrderFromFyll = async (
+  input: { businessId: string; orderId: string; silentImport?: boolean },
+) => {
+  const { data, error } = await supabase.functions.invoke<WooSyncFunctionResponse>('woocommerce-sync', {
+    body: {
+      action: 'queue_create_fyll_order',
+      businessId: input.businessId.trim(),
+      orderId: input.orderId.trim(),
+      silentImport: input.silentImport === true,
+    },
+  });
+
+  if (error) {
+    throw new Error(await getFunctionErrorMessage(error));
+  }
+
+  if (!data?.success || !data.queued) {
+    throw new Error(data?.error || 'WooCommerce order could not be queued.');
+  }
+
+  return { queued: true as const };
 };

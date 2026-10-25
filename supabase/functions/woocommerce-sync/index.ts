@@ -10,6 +10,7 @@ const sanitizeEnvValue = (value: string | undefined | null) => (
 
 const SUPABASE_URL = sanitizeEnvValue(Deno.env.get('SUPABASE_URL'))
 const SUPABASE_SERVICE_ROLE_KEY = sanitizeEnvValue(Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))
+const SUPABASE_ANON_KEY = sanitizeEnvValue(Deno.env.get('SUPABASE_ANON_KEY'))
 const ALLOWED_ORIGIN = sanitizeEnvValue(Deno.env.get('ALLOWED_ORIGIN')) || '*'
 
 const corsHeaders = {
@@ -18,7 +19,7 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
-type WooSyncAction = 'test_connection' | 'fetch_orders' | 'fetch_order' | 'fetch_products' | 'update_order_status' | 'sync_fyll_order_status' | 'create_fyll_order'
+type WooSyncAction = 'test_connection' | 'fetch_orders' | 'fetch_order' | 'fetch_products' | 'update_order_status' | 'sync_fyll_order_status' | 'create_fyll_order' | 'queue_create_fyll_order'
 
 type WooSyncPayload = {
   action?: WooSyncAction
@@ -759,6 +760,46 @@ serve(async (req) => {
     const payload = await req.json() as WooSyncPayload
     const action = payload.action
 
+    if (action === 'queue_create_fyll_order') {
+      const businessId = String(payload.businessId ?? '').trim()
+      const orderId = String(payload.orderId ?? '').trim()
+      if (!businessId || !orderId) {
+        return jsonResponse(400, { error: 'Business ID and order ID are required.' })
+      }
+
+      const backgroundRequest = fetch(`${SUPABASE_URL}/functions/v1/woocommerce-sync`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${bearer}`,
+          ...(SUPABASE_ANON_KEY ? { apikey: SUPABASE_ANON_KEY } : {}),
+        },
+        body: JSON.stringify({
+          action: 'create_fyll_order',
+          businessId,
+          orderId,
+          silentImport: payload.silentImport === true,
+        }),
+      }).then(async (response) => {
+        if (response.ok) return
+        const message = await response.text()
+        throw new Error(message || `WooCommerce background sync failed with ${response.status}.`)
+      }).catch((error) => {
+        console.error('WooCommerce background order creation failed:', error)
+      })
+
+      const runtime = (globalThis as typeof globalThis & {
+        EdgeRuntime?: { waitUntil: (promise: Promise<unknown>) => void }
+      }).EdgeRuntime
+      if (runtime?.waitUntil) {
+        runtime.waitUntil(backgroundRequest)
+      } else {
+        void backgroundRequest
+      }
+
+      return jsonResponse(202, { success: true, queued: true })
+    }
+
     if (action === 'create_fyll_order') {
       const businessId = String(payload.businessId ?? '').trim()
       const orderId = String(payload.orderId ?? '').trim()
@@ -1015,6 +1056,13 @@ serve(async (req) => {
       const customerEmail = toTrimmedString(orderData.customerEmail)
       const deliveryAddress = toTrimmedString(orderData.deliveryAddress)
       const deliveryState = toTrimmedString(orderData.deliveryState)
+      const orderSource = toTrimmedString(orderData.source).toLowerCase().replace(/[_-]+/g, ' ')
+      const originatedInStorefront = Boolean(
+        orderData.fyllCheckout
+        || orderSource.includes('storefront')
+        || ['website', 'web store', 'fyll checkout'].includes(orderSource)
+      )
+      const fyllOrderOrigin = originatedInStorefront ? 'storefront' : 'fyll_ops'
       const services = Array.isArray(orderData.services) ? orderData.services as Record<string, unknown>[] : []
       const hasBackorderedItems = lineItems.some((lineItem) => Array.isArray(lineItem.meta_data) && lineItem.meta_data.length > 0)
       const feeLines = services.map((service) => ({
@@ -1068,6 +1116,8 @@ serve(async (req) => {
           { key: '_fyll_order_id', value: order.id },
           { key: '_fyll_order_number', value: toTrimmedString(orderData.orderNumber) },
           { key: '_fyll_order_source', value: toTrimmedString(orderData.source) || 'Fyll Ops' },
+          { key: '_fyll_order_origin', value: fyllOrderOrigin },
+          { key: '_fyll_skip_storefront_import', value: originatedInStorefront ? 'no' : 'yes' },
           { key: '_fyll_original_order_date', value: toTrimmedString(orderData.orderDate) || toTrimmedString(orderData.createdAt) },
           { key: '_fyll_backorder_required', value: hasBackorderedItems ? 'yes' : 'no' },
           ...(silentImport ? [{ key: '_fyll_silent_import', value: 'yes' }] : []),

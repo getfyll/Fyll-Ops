@@ -1,8 +1,8 @@
 -- ==================================================================
 -- STOREFRONT ORDER NOTIFICATIONS — PUSH + IN-APP
 -- ==================================================================
--- Fires whenever a new row lands in public.orders that looks like it
--- came from the public storefront (fyll.store), and notifies every
+-- Fires whenever a new row lands in public.orders that explicitly came
+-- from the public storefront (fyll.store), and notifies every
 -- team member on that business via OneSignal push + an in-app
 -- notification (bell icon), by calling the send-thread-notification
 -- edge function with type "storefront_order_created".
@@ -10,9 +10,10 @@
 -- The storefront's checkout backend lives in a separate codebase, so
 -- this trigger can't assume a single exact field name — it matches on
 -- any of the signals a storefront order is likely to carry:
---   - data->>'customerTrackingCode' present (storefront-specific today)
---   - data->>'source' / data->>'platform' containing "storefront" or
---     "website" (in case that codebase is updated to set one)
+--   - data->'fyllCheckout' is present
+--   - data->>'source' / data->>'platform' identifies Storefront or Website
+-- Social Checkout is deliberately excluded because it has its own payment
+-- notification flow.
 --
 -- Applied to the linked project (pmqmefvzgmlxxbgicdpi) via
 -- `supabase db push`, reusing the same CRON_SECRET already deployed for
@@ -28,13 +29,25 @@ security definer
 set search_path = public
 as $$
 declare
+  order_source text;
+  order_platform text;
+  is_social_checkout_order boolean;
   is_storefront_order boolean;
 begin
-  is_storefront_order := (
-    (new.data ? 'customerTrackingCode')
-    or lower(coalesce(new.data->>'source', '')) like '%storefront%'
-    or lower(coalesce(new.data->>'source', '')) like '%website%'
-    or lower(coalesce(new.data->>'platform', '')) like '%storefront%'
+  order_source := lower(regexp_replace(trim(coalesce(new.data->>'source', '')), '[_-]+', ' ', 'g'));
+  order_platform := lower(regexp_replace(trim(coalesce(new.data->>'platform', '')), '[_-]+', ' ', 'g'));
+
+  is_social_checkout_order := (
+    order_source = 'social checkout'
+    or coalesce(new.data->>'websiteOrderReference', '') ~* '^SC-'
+    or coalesce(new.data->>'socialCheckoutReference', '') <> ''
+  );
+
+  is_storefront_order := not is_social_checkout_order and (
+    (new.data ? 'fyllCheckout')
+    or order_source like '%storefront%'
+    or order_source in ('website', 'web store', 'fyll checkout')
+    or order_platform like '%storefront%'
   );
 
   if is_storefront_order then

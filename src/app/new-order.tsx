@@ -36,7 +36,7 @@ import { addBusinessDays, getCustomerTrackingCode, resolveOrderTimeline } from '
 import { useThemeColors } from '@/lib/theme';
 import { PrescriptionSection } from '@/components/PrescriptionSection';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
-import { createWooCommerceOrderFromFyll, fetchWooCommerceOrder, fetchWooCommerceOrders, type WooNormalizedOrder } from '@/lib/woocommerce';
+import { fetchWooCommerceOrder, fetchWooCommerceOrders, queueWooCommerceOrderFromFyll, type WooNormalizedOrder } from '@/lib/woocommerce';
 import { normalizeWooLookupValue } from '@/lib/woocommerce-link';
 import { DesktopSidebar } from '@/components/DesktopSidebar';
 import { supabaseData } from '@/lib/supabase/data';
@@ -1505,23 +1505,16 @@ export default function NewOrderScreen() {
         }).catch(() => {});
       }
 
-      // Optional: create the same order in WooCommerce. The order is already saved either way.
-      let wooAdded = '';
+      // Queue the WooCommerce copy only after the Fyll order is safely persisted.
+      // The slow Woo API work runs in the Edge Function background and never blocks saving.
+      let wooQueued = false;
       let wooFailure = '';
       if (sendToWoo && wooAvailable && !websiteOrderRef.trim() && !isServiceOrder && businessId) {
         try {
-          const wooResult = await createWooCommerceOrderFromFyll({ businessId, orderId: order.id, silentImport: !notifyWooCustomer });
-          const reference = wooResult.websiteOrderReference;
-          if (reference) {
-            useFyllStore.setState((state) => ({
-              orders: state.orders.map((item) => (item.id === order.id ? { ...item, websiteOrderReference: reference } : item)),
-            }));
-            wooAdded = reference;
-          } else {
-            wooFailure = 'WooCommerce did not return an order number.';
-          }
+          await queueWooCommerceOrderFromFyll({ businessId, orderId: order.id, silentImport: !notifyWooCustomer });
+          wooQueued = true;
         } catch (wooError) {
-          wooFailure = wooError instanceof Error ? wooError.message : 'Could not reach WooCommerce.';
+          wooFailure = wooError instanceof Error ? wooError.message : 'Could not queue the WooCommerce sync.';
         }
       }
 
@@ -1529,11 +1522,11 @@ export default function NewOrderScreen() {
 
       const leaveDelay = wooFailure ? 3200 : 900;
       if (wooFailure) {
-        showToast('error', `Order saved, but it was not sent to WooCommerce: ${wooFailure} Send it from the order page.`);
+        showToast('error', `Order saved, but WooCommerce sync could not be queued: ${wooFailure} Send it from the order page.`);
       } else if (params.aiParsed === 'true') {
-        showToast('success', wooAdded ? `Draft order created and added to WooCommerce as ${wooAdded}.` : 'Draft order created successfully.');
+        showToast('success', wooQueued ? 'Draft order created. Sending to WooCommerce in the background.' : 'Draft order created successfully.');
       } else {
-        showToast('success', wooAdded ? `Order saved and added to WooCommerce as ${wooAdded}.` : 'Order saved successfully.');
+        showToast('success', wooQueued ? 'Order saved. Sending to WooCommerce in the background.' : 'Order saved successfully.');
       }
       if (params.aiParsed === 'true') {
         setTimeout(() => router.replace('/orders'), leaveDelay);
