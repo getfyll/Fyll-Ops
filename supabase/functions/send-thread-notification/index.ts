@@ -785,7 +785,8 @@ const sendWhatsAppAlert = async (
       })
       const result = await response.json().catch(() => ({}))
       if (!response.ok) console.error('WhatsApp (Meta) alert failed', { businessId, status: response.status, result })
-      return { provider: 'meta', ok: response.ok, status: response.status }
+      const metaError = (result as { error?: { message?: string } })?.error?.message
+      return { provider: 'meta', ok: response.ok, status: response.status, error: metaError }
     }
 
     const body = new URLSearchParams({
@@ -2249,6 +2250,16 @@ serve(async (req: Request) => {
 
     if (!resolvedBusinessId) {
       return jsonResponse(403, { error: 'Business access denied.' })
+    }
+
+    // Settings -> WhatsApp alerts -> "Send test message": the approved order template with sample
+    // values, sent only to the business's saved number. Creates no order.
+    if ((mode as string) === 'whatsapp_test') {
+      const result = await sendWhatsAppAlert(admin, resolvedBusinessId, 'orders', 'Test from Fyll: WhatsApp alerts are working.', {
+        name: 'new_order_alert',
+        params: ['#TEST', 'Fyll test', '₦0'],
+      })
+      return jsonResponse(200, { success: true, type: 'whatsapp_test', result })
     }
 
     // Build a unified profile-like object for name/email lookups

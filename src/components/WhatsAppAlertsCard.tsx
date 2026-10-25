@@ -30,6 +30,7 @@ export function WhatsAppAlertsCard({ bordered = false }: { bordered?: boolean })
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [isTesting, setIsTesting] = useState(false);
 
   useEffect(() => {
     if (!businessId) return;
@@ -71,6 +72,33 @@ export function WhatsAppAlertsCard({ bordered = false }: { bordered?: boolean })
       setMessage({ ok: false, text: 'Could not save. Please try again.' });
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  // Sends the approved order template with sample values to the saved number. No order is created.
+  const sendTest = async () => {
+    if (!businessId) return;
+    setIsTesting(true);
+    setMessage(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('send-thread-notification', {
+        body: { type: 'whatsapp_test', businessId },
+      });
+      if (error) throw error;
+      const result = (data as { result?: { ok?: boolean; skipped?: string; error?: string } } | null)?.result;
+      if (result?.ok) {
+        setMessage({ ok: true, text: `Test sent to ${form.phone}. Check WhatsApp.` });
+      } else if (result?.skipped === 'not_enabled') {
+        setMessage({ ok: false, text: 'Turn alerts on, add the number and press Save first.' });
+      } else if (result?.skipped === 'whatsapp_not_configured') {
+        setMessage({ ok: false, text: 'WhatsApp sending is not set up on the server yet.' });
+      } else {
+        setMessage({ ok: false, text: result?.error ? `WhatsApp refused it: ${result.error}` : 'The test did not send. Please try again.' });
+      }
+    } catch {
+      setMessage({ ok: false, text: 'Could not reach the server. Please try again.' });
+    } finally {
+      setIsTesting(false);
     }
   };
 
@@ -138,6 +166,16 @@ export function WhatsAppAlertsCard({ bordered = false }: { bordered?: boolean })
       >
         {isSaving ? <ActivityIndicator color={FYLL_LIME_INK} /> : <Text style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '600' }}>Save WhatsApp settings</Text>}
       </Pressable>
+
+      {form.enabled ? (
+        <Pressable
+          onPress={sendTest}
+          disabled={isTesting || isSaving}
+          style={({ pressed }) => ({ marginTop: 8, height: 40, borderRadius: 999, borderWidth: 1, borderColor: colors.border.light, alignItems: 'center', justifyContent: 'center', opacity: pressed || isTesting ? 0.7 : 1 })}
+        >
+          {isTesting ? <ActivityIndicator color={colors.text.primary} /> : <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600' }}>Send test message</Text>}
+        </Pressable>
+      ) : null}
     </View>
   );
 }

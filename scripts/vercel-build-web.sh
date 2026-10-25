@@ -14,3 +14,7 @@ cp web/OneSignalSDK.sw.js dist/OneSignalSDK.sw.js
 
 # Publish the release notes so open tabs can detect a new version and offer a refresh.
 cp src/data/release-notes.json dist/release-notes.json
+
+# fyll.app landing page (middleware.js serves it at "/" on fyll.app and www.fyll.app).
+mkdir -p dist/landing
+cp -R web/landing/. dist/landing/

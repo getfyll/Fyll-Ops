@@ -48,7 +48,7 @@ export function useWhatsNew(enabled: boolean) {
     }
   }, [enabled]);
 
-  // On login or a new session, show the notes over the main screen until the person presses Continue.
+  // First load of a new version (on login or a new session): show the notes over the main screen, once.
   useEffect(() => {
     if (!enabled) return;
     let cancelled = false;
@@ -58,6 +58,9 @@ export function useWhatsNew(enabled: boolean) {
         if (cancelled) return;
         if (!lastSeen || compareVersions(CURRENT_RELEASE.version, lastSeen) > 0) {
           setState((current) => current ?? { mode: 'seen', release: CURRENT_RELEASE });
+          // Shown once per version on this device: record it now, not on Continue, so closing the tab
+          // or logging out does not bring it back. The bell keeps it for anyone who wants to reread it.
+          await storage.setItem(LAST_SEEN_KEY, CURRENT_RELEASE.version);
         }
       } catch {
         // Notes are a nicety; never block the app.
