@@ -740,7 +740,11 @@ const sendOneSignalDirectSubscriptionNotification = async ({
 // Sends through Meta's WhatsApp Cloud API when META_WHATSAPP_TOKEN + META_WHATSAPP_PHONE_ID are set (approved
 // templates, so it works outside the 24h window), otherwise through Twilio. Sending never blocks or fails the
 // main notification: errors are logged and swallowed.
-type WhatsAppTemplate = { name: string; params: string[] }
+// buttonParam: the value for a template's dynamic URL button (the order number for new_storefront_order).
+type WhatsAppTemplate = { name: string; params: string[]; buttonParam?: string }
+
+// Meta rejects template values with line breaks, tabs or runs of 4+ spaces.
+const cleanTemplateValue = (value: string) => (value ?? '').replace(/[\n\r\t]+/g, ' ').replace(/ {4,}/g, '   ').trim() || '-'
 
 const sendWhatsAppAlert = async (
   admin: ReturnType<typeof getAdminClient>,
@@ -769,24 +773,36 @@ const sendWhatsAppAlert = async (
     if (settings[kind] === false) return { skipped: `${kind}_off` }
 
     if (useMeta && template) {
-      const response = await fetch(`https://graph.facebook.com/v21.0/${metaPhoneId}/messages`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messaging_product: 'whatsapp',
-          to: phone.replace('+', ''),
-          type: 'template',
-          template: {
-            name: template.name,
-            language: { code: 'en' },
-            components: [{ type: 'body', parameters: template.params.map((value) => ({ type: 'text', text: value || '-' })) }],
-          },
-        }),
-      })
-      const result = await response.json().catch(() => ({}))
-      if (!response.ok) console.error('WhatsApp (Meta) alert failed', { businessId, status: response.status, result })
+      // A template exists per language. "en" matches the older templates; a template created as English (US) or
+      // (UK) answers 132001 ("does not exist in the translation") for "en", so those are tried next.
+      let response: Response | null = null
+      let result: unknown = {}
+      for (const language of ['en', 'en_US', 'en_GB']) {
+        response = await fetch(`https://graph.facebook.com/v21.0/${metaPhoneId}/messages`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${metaToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messaging_product: 'whatsapp',
+            to: phone.replace('+', ''),
+            type: 'template',
+            template: {
+              name: template.name,
+              language: { code: language },
+              components: [
+                { type: 'body', parameters: template.params.map((value) => ({ type: 'text', text: cleanTemplateValue(value) })) },
+                ...(template.buttonParam
+                  ? [{ type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: cleanTemplateValue(template.buttonParam) }] }]
+                  : []),
+              ],
+            },
+          }),
+        })
+        result = await response.json().catch(() => ({}))
+        if (response.ok || (result as { error?: { code?: number } })?.error?.code !== 132001) break
+      }
+      if (!response!.ok) console.error('WhatsApp (Meta) alert failed', { businessId, status: response!.status, result })
       const metaError = (result as { error?: { message?: string } })?.error?.message
-      return { provider: 'meta', ok: response.ok, status: response.status, error: metaError }
+      return { provider: 'meta', ok: response!.ok, status: response!.status, error: metaError }
     }
 
     const body = new URLSearchParams({
@@ -869,6 +885,12 @@ const formatPaymentAmount = (value?: string) => {
   return `₦${amount.toLocaleString('en-US')}`
 }
 
+const getBusinessDisplayName = async (admin: ReturnType<typeof getAdminClient>, businessId: string) => {
+  const { data } = await admin.from('businesses').select('name, data').eq('id', businessId).maybeSingle()
+  const fromData = ((data?.data as Record<string, unknown> | null)?.businessName as string | undefined)?.trim()
+  return fromData || (data?.name as string | undefined)?.trim() || 'Your store'
+}
+
 const notifyStorefrontOrder = async (
   admin: ReturnType<typeof getAdminClient>,
   businessId: string,
@@ -887,6 +909,21 @@ const notifyStorefrontOrder = async (
   }
 
   const recipients = toUniqueIds((profiles ?? []).map((row: { id: string }) => row.id))
+
+  // WhatsApp goes to the number saved in Settings -> Notifications, not to app users, so it must not depend on
+  // `profiles` rows (Fyll Store merchant logins have none). Sent first, before the "No business recipients" return.
+  const storeName = await getBusinessDisplayName(admin, businessId)
+  await sendWhatsAppAlert(
+    admin,
+    businessId,
+    'orders',
+    `🎉 New storefront order ${orderNumber}\n${customerName || 'A customer'} · ${formatPaymentAmount(totalAmount)}\nOpen Fyll to view it.`,
+    {
+      name: 'new_storefront_order',
+      params: [customerName || 'A customer', orderNumber, storeName, formatPaymentAmount(totalAmount)],
+      buttonParam: orderNumber,
+    },
+  )
 
   const notificationPayload = {
     type: 'storefront_order_created' as const,
@@ -922,13 +959,6 @@ const notifyStorefrontOrder = async (
 
   const heading = `🎉 New storefront order`
   const content = `New order · ${formatPaymentAmount(totalAmount)} on Fyll storefront`
-  await sendWhatsAppAlert(
-    admin,
-    businessId,
-    'orders',
-    `🎉 New storefront order #${orderNumber}\n${customerName || 'A customer'} · ${formatPaymentAmount(totalAmount)}\nOpen Fyll to view it.`,
-    { name: 'new_order_alert', params: [`#${orderNumber}`, customerName || 'A customer', formatPaymentAmount(totalAmount)] },
-  )
   return await sendPushNotification({
     recipients,
     heading,
@@ -1061,10 +1091,13 @@ const notifyPaymentReceived = async (
     ? `${notificationPayload.amount} · ${notificationPayload.customerName || 'A customer'}`
     : `${notificationPayload.customerName || 'A customer'} paid ${notificationPayload.amount} — ${paymentReference}`
   const collapseId = `payment:${businessId}:${paymentReference}:${notificationPayload.status || 'received'}`
-  await sendWhatsAppAlert(admin, businessId, 'payments', `💰 ${heading}\n${content}`, {
-    name: 'new_payment_alert',
-    params: [paymentReference, notificationPayload.customerName || 'A customer', notificationPayload.amount],
-  })
+  // Storefront orders are announced by the new-order alert; their payments don't also get a WhatsApp message.
+  if (notificationPayload.source.toLowerCase() !== 'storefront') {
+    await sendWhatsAppAlert(admin, businessId, 'payments', `💰 ${heading}\n${content}`, {
+      name: 'new_payment_alert',
+      params: [paymentReference, notificationPayload.customerName || 'A customer', notificationPayload.amount],
+    })
+  }
 
   return await sendPushNotification({
     recipients,
@@ -2252,12 +2285,32 @@ serve(async (req: Request) => {
       return jsonResponse(403, { error: 'Business access denied.' })
     }
 
-    // Settings -> WhatsApp alerts -> "Send test message": the approved order template with sample
+    // Settings -> WhatsApp alerts -> "Send test message": the approved storefront-order template with sample
     // values, sent only to the business's saved number. Creates no order.
+    // The target business is never taken from the request body: it is the caller's own business, asked of the
+    // database as the caller (get_user_business_id() covers Fyll Store merchant logins, which have no profiles or
+    // team_members rows), falling back to those rows. A businessId in the body that differs is refused.
     if ((mode as string) === 'whatsapp_test') {
-      const result = await sendWhatsAppAlert(admin, resolvedBusinessId, 'orders', 'Test from Fyll: WhatsApp alerts are working.', {
-        name: 'new_order_alert',
-        params: ['#TEST', 'Fyll test', '₦0'],
+      let callerBusinessId = ''
+      const anonKey = sanitizeEnvValue(Deno.env.get('SUPABASE_ANON_KEY'))
+      if (anonKey) {
+        const callerClient = createClient(SUPABASE_URL, anonKey, {
+          global: { headers: { Authorization: `Bearer ${token}` } },
+          auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
+        })
+        const { data: rpcBusinessId } = await callerClient.rpc('get_user_business_id')
+        callerBusinessId = typeof rpcBusinessId === 'string' ? rpcBusinessId.trim() : ''
+      }
+      callerBusinessId = callerBusinessId
+        || ((profile?.business_id as string | null)?.trim() ?? '')
+        || ((teamMemberRow?.business_id as string | null)?.trim() ?? '')
+      if (!callerBusinessId || (businessId && businessId !== callerBusinessId)) {
+        return jsonResponse(403, { error: 'Business access denied.' })
+      }
+      const result = await sendWhatsAppAlert(admin, callerBusinessId, 'orders', 'Test from Fyll: WhatsApp alerts are working.', {
+        name: 'new_storefront_order',
+        params: ['Ada Obi', 'FYL-TEST', await getBusinessDisplayName(admin, callerBusinessId), '₦17,000'],
+        buttonParam: 'FYL-TEST',
       })
       return jsonResponse(200, { success: true, type: 'whatsapp_test', result })
     }
