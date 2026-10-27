@@ -1347,6 +1347,7 @@ export default function NewOrderScreen() {
         orderNumber,
         customerTrackingCode: getCustomerTrackingCode({ id: '', orderNumber, customerTrackingCode: undefined }),
         websiteOrderReference: websiteOrderRef.trim() || undefined,
+        socialCheckoutReference: socialCheckoutReference.trim() || undefined,
         customerId: resolvedCustomerId,
         customerName: customerName.trim(),
         customerNote: customerPrescription?.text?.trim() || undefined,
@@ -1494,8 +1495,10 @@ export default function NewOrderScreen() {
         })
       );
 
-      // Send push notification to team
-      if (businessId) {
+      // Send push notification to team. Skipped when the order comes from a payment that was already approved
+      // (Social Checkout / Fyll Checkout): the payment alert has told them, so a "new order" alert is a repeat.
+      const alreadyAnnouncedByPayment = Boolean(socialCheckoutReference.trim() || linkPaymentId);
+      if (businessId && !alreadyAnnouncedByPayment) {
         sendOrderNotification({
           businessId,
           orderNumber: order.orderNumber,

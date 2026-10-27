@@ -402,6 +402,9 @@ export interface Order {
   orderNumber: string;
   customerTrackingCode?: string;
   websiteOrderReference?: string; // WooCommerce order reference (e.g. WC #10234)
+  // Set when the order was created from a Social Checkout payment (e.g. SC-ABC123). Lets the notification
+  // triggers know the payment alert already announced it, whatever the order's Source is set to.
+  socialCheckoutReference?: string;
   customerId?: string; // Link to Customer
   customerName: string;
   customerNote?: string;

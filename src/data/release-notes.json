@@ -1,6 +1,41 @@
 {
   "releases": [
     {
+      "version": "2.5.0",
+      "date": "2026-10-27T12:00:00Z",
+      "features": [
+        {
+          "icon": "share",
+          "title": "Better payment links",
+          "body": "Customers now pay in three clear steps: details, pay, then receipt. You also get their contact details before they pay."
+        },
+        {
+          "icon": "zap",
+          "title": "Mark as received",
+          "body": "Customer paid but never uploaded a receipt? Confirm the payment yourself from the payment page or the ⋮ menu."
+        },
+        {
+          "icon": "home",
+          "title": "Payments on Home",
+          "body": "Staff now see their latest payments, and a pending chip shows payments waiting from the last 3 days."
+        },
+        {
+          "icon": "sparkles",
+          "title": "New partner portal",
+          "body": "The partner portal has a fresh look, jobs and bills grouped by day, and notifications settings."
+        }
+      ],
+      "fixes": [
+        "Staff no longer see stock value; they see total units in stock instead.",
+        "Unread badges on Threads, Cases and the bell no longer pile up from old or closed threads.",
+        "Mark all read now stays marked, with a confirmation.",
+        "Social Checkout orders no longer send a repeat new order or new storefront order alert after the payment alert.",
+        "Order headers now show where an order really came from.",
+        "Customer names are capitalised consistently across orders, payments and Home.",
+        "Bills under Partners are hidden from staff."
+      ]
+    },
+    {
       "version": "2.4.0",
       "date": "2026-10-24T09:00:00Z",
       "features": [
