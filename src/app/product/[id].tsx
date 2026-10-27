@@ -71,7 +71,7 @@ export default function ProductDetailScreen() {
   const currentUserRole = useAuthStore((s) => s.currentUser?.role ?? null);
 
   const product = useMemo(() => products.find((p) => p.id === id), [products, id]);
-  const isOwner = userRole === 'owner';
+  const isOwner = userRole === 'owner' && currentUserRole !== 'staff';
   const canManageStatus = userRole === 'owner' || currentUserRole === 'admin' || currentUserRole === 'manager';
   const canManageVariants = userRole === 'owner' || currentUserRole === 'admin' || currentUserRole === 'manager';
 

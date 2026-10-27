@@ -179,7 +179,12 @@ export const buildDashboardSnapshot = ({
     }
 
     const fulfillmentBucket = getFulfillmentPipelineBucket(order, orderStatuses);
-    if (fulfillmentBucket) fulfillment[fulfillmentBucket] += 1;
+    // Delivered only counts the last 30 days (by last update); processing and dispatched are always live.
+    const deliveredRecently = (() => {
+      const updatedMs = new Date(order.updatedAt ?? order.createdAt).getTime();
+      return Number.isFinite(updatedMs) && now.getTime() - updatedMs < 30 * 24 * 60 * 60 * 1000;
+    })();
+    if (fulfillmentBucket && (fulfillmentBucket !== 'delivered' || deliveredRecently)) fulfillment[fulfillmentBucket] += 1;
     const createdAtMs = new Date(order.createdAt).getTime();
     const createdAgeMs = now.getTime() - createdAtMs;
     if (!excludedFromSales && Number.isFinite(createdAtMs) && createdAgeMs >= 0 && createdAgeMs < 24 * 60 * 60 * 1000) {

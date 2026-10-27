@@ -88,7 +88,9 @@ export default function InventoryScreen() {
   const useGlobalLowStockThreshold = useFyllStore((s) => s.useGlobalLowStockThreshold);
   const globalLowStockThreshold = useFyllStore((s) => s.globalLowStockThreshold);
 
-  const isOwner = userRole === 'owner';
+  // Real signed-in role; the store's userRole defaults to 'owner' for everyone.
+  const currentUserRole = useAuthStore((s) => s.currentUser?.role ?? null);
+  const isOwner = userRole === 'owner' && currentUserRole !== 'staff';
 
   // A persisted web preview is intentionally incomplete. Only render the list
   // after a business-scoped full snapshot has been restored or fetched.

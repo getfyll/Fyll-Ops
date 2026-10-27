@@ -82,3 +82,33 @@ export const submitSocialCheckoutPayment = async ({
   if (error) throw error;
   return data as { ok: boolean; error?: string };
 };
+
+// Step 1 of the customer checkout: stores contact + delivery details before the bank account is
+// shown, so the seller keeps the contact even if no receipt is ever uploaded. Needs
+// supabase/social_checkout_save_details.sql.
+export const saveSocialCheckoutDetails = async ({
+  code,
+  customerName,
+  customerPhone,
+  customerEmail,
+  deliveryAddress,
+  deliveryState,
+}: {
+  code: string;
+  customerName: string;
+  customerPhone: string;
+  customerEmail: string;
+  deliveryAddress: string;
+  deliveryState: string;
+}) => {
+  const { data, error } = await supabase.rpc('save_social_checkout_details', {
+    code_input: code.trim().toUpperCase(),
+    customer_name_input: customerName,
+    customer_phone_input: customerPhone,
+    customer_email_input: customerEmail,
+    delivery_address_input: deliveryAddress,
+    delivery_state_input: deliveryState,
+  });
+  if (error) throw error;
+  return data as { ok: boolean; error?: string };
+};

@@ -538,8 +538,8 @@ export default function NewSocialCheckoutScreen() {
   );
 
   const successBody = created ? (
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1, alignItems: 'center', justifyContent: isDesktop ? 'center' : 'flex-start', paddingTop: isDesktop ? 24 : 40, paddingHorizontal: 20, paddingBottom: isDesktop ? 24 : Math.max(insets.bottom, 14) + 20 }}>
-      <View style={{ width: '100%', maxWidth: 460, flexGrow: isDesktop ? 0 : 1, alignItems: 'center', gap: 18 }}>
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 24, paddingHorizontal: isDesktop ? 20 : 32, paddingBottom: isDesktop ? 24 : Math.max(insets.bottom, 14) + 20 }}>
+      <View style={{ width: '100%', maxWidth: isDesktop ? 460 : 400, alignItems: 'center', gap: 20 }}>
         <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: palette.tones.verified.bg, alignItems: 'center', justifyContent: 'center' }}>
           <Check size={26} color={palette.tones.verified.ink} strokeWidth={2.6} />
         </View>
@@ -561,7 +561,7 @@ export default function NewSocialCheckoutScreen() {
             <Text style={{ color: palette.text, fontSize: 13, fontWeight: '600' }}>{linkCopied ? 'Copied' : 'Copy'}</Text>
           </Pressable>
         </View>
-        <View style={{ width: '100%', flexDirection: isDesktop ? 'row' : 'column', gap: 8, marginTop: isDesktop ? 0 : 'auto' }}>
+        <View style={{ width: '100%', flexDirection: isDesktop ? 'row' : 'column', gap: 8 }}>
           <Pressable accessibilityRole="button" onPress={handleCopyMessage} style={(state) => ({ ...limeButton(state, true, isDesktop ? 46 : 50), flex: isDesktop ? 1 : undefined })}>
             {messageCopied ? <Check size={16} color={FYLL_LIME_INK} strokeWidth={2.6} /> : null}
             <Text style={{ color: FYLL_LIME_INK, fontSize: 15, fontWeight: '600' }}>{messageCopied ? 'Message copied' : 'Copy message'}</Text>
@@ -570,22 +570,22 @@ export default function NewSocialCheckoutScreen() {
             <Text style={{ color: palette.text, fontSize: 14.5, fontWeight: '600' }}>Share to WhatsApp</Text>
           </Pressable>
         </View>
-        <View style={{ flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', gap: 8, paddingTop: 4 }}>
+        <View style={{ width: '100%', flexDirection: 'row', justifyContent: 'center', gap: 8 }}>
           <Pressable
             accessibilityRole="button"
             onPress={() => router.replace(`/social-checkout/${created.code}` as never)}
-            style={(state) => ({ height: 38, paddingHorizontal: 14, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: state.pressed || isHovered(state) ? palette.outline : palette.softFill })}
+            style={(state) => ({ flex: isDesktop ? undefined : 1, height: 44, paddingHorizontal: 16, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1.5, borderColor: FYLL_LIME, backgroundColor: state.pressed || isHovered(state) ? 'rgba(213,224,87,0.14)' : 'transparent' })}
           >
-            <ArrowUpRight size={15} color={palette.textSoft} strokeWidth={2.2} />
-            <Text style={{ color: palette.textSoft, fontSize: 13.5, fontWeight: '600' }}>View payment</Text>
+            <ArrowUpRight size={15} color={palette.isDark ? FYLL_LIME : palette.limeOnSurface} strokeWidth={2.2} />
+            <Text style={{ color: palette.isDark ? FYLL_LIME : palette.limeOnSurface, fontSize: 13.5, fontWeight: '600' }}>View payment</Text>
           </Pressable>
           <Pressable
             accessibilityRole="button"
             onPress={resetForm}
-            style={(state) => ({ height: 38, paddingHorizontal: 14, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: state.pressed || isHovered(state) ? palette.outline : palette.softFill })}
+            style={(state) => ({ flex: isDesktop ? undefined : 1, height: 44, paddingHorizontal: 16, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1.5, borderColor: FYLL_LIME, backgroundColor: state.pressed || isHovered(state) ? 'rgba(213,224,87,0.14)' : 'transparent' })}
           >
-            <Plus size={15} color={palette.textSoft} strokeWidth={2.2} />
-            <Text style={{ color: palette.textSoft, fontSize: 13.5, fontWeight: '600' }}>Create another</Text>
+            <Plus size={15} color={palette.isDark ? FYLL_LIME : palette.limeOnSurface} strokeWidth={2.2} />
+            <Text style={{ color: palette.isDark ? FYLL_LIME : palette.limeOnSurface, fontSize: 13.5, fontWeight: '600' }}>Create another</Text>
           </Pressable>
         </View>
       </View>

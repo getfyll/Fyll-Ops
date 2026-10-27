@@ -1144,10 +1144,12 @@ export default function PartnersScreen() {
     return partnerJobIssues.filter((issue) => issue.status === 'open').length;
   }, [partnerJobIssues]);
   const rawPartnerSection = Array.isArray(partnerSection) ? partnerSection[0] : partnerSection;
-  const activePartnerSection: PartnerSection = rawPartnerSection === 'all' ? 'all' : rawPartnerSection === 'bills' ? 'bills' : rawPartnerSection === 'issues' ? 'issues' : 'jobs';
+  // Bills are for managers and admins; staff land on Jobs even if they open a bills link.
+  const canSeePartnerBills = useAuthStore((s) => (s.currentUser?.role ?? 'staff') !== 'staff');
+  const activePartnerSection: PartnerSection = rawPartnerSection === 'all' ? 'all' : rawPartnerSection === 'bills' && canSeePartnerBills ? 'bills' : rawPartnerSection === 'issues' ? 'issues' : 'jobs';
   const partnerSectionItems: { key: PartnerSection; label: string }[] = [
     { key: 'jobs', label: 'Jobs' },
-    { key: 'bills', label: 'Bills' },
+    ...(canSeePartnerBills ? [{ key: 'bills' as const, label: 'Bills' }] : []),
     { key: 'issues', label: 'Issues' },
     { key: 'all', label: 'All partners' },
   ];

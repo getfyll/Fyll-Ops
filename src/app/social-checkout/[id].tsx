@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, ScrollView, Pressable, Image, Modal, ActivityIndicator, Platform, Alert, TextInput, Linking, type PressableStateCallbackType } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -124,6 +124,8 @@ export default function SocialCheckoutDetailScreen() {
   const [isDeactivating, setIsDeactivating] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showLinkOrderModal, setShowLinkOrderModal] = useState(false);
+  const moreButtonRef = useRef<View>(null);
+  const [moreAnchor, setMoreAnchor] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [orderSearchQuery, setOrderSearchQuery] = useState('');
   const [showMoreActions, setShowMoreActions] = useState<boolean>(false);
 
@@ -433,11 +435,54 @@ export default function SocialCheckoutDetailScreen() {
     }
   };
 
-  const performDeactivateLink = async () => {
-    if (!isAdmin) {
-      Alert.alert('Admin access required', 'Only admins can deactivate payment links.');
-      return;
+  // The customer paid but never uploaded a receipt (e.g. sent it on WhatsApp). Any team member can confirm.
+  const performMarkReceived = async () => {
+    if (!draft || !businessId || isApproving) return;
+    setIsApproving(true);
+    const confirmedAt = new Date().toISOString();
+    const updatedDraft: SocialCheckoutDraft = {
+      ...draft,
+      status: 'verified',
+      manuallyConfirmed: true,
+      reviewedBy: currentUser?.name,
+      reviewedAt: confirmedAt,
+      activityLog: [
+        ...(draft.activityLog ?? []),
+        {
+          id: `social-payment-manual-${confirmedAt}`,
+          action: 'Marked as received manually (no receipt submitted)',
+          actor: currentUser?.name ?? 'Staff',
+          createdAt: confirmedAt,
+        },
+      ],
+      updatedAt: confirmedAt,
+    };
+    try {
+      await supabaseData.upsertCollection('social_checkouts', businessId, [updatedDraft]);
+      await refreshPaymentQueries();
+      setDraft(updatedDraft);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      if (draft.customerEmail?.trim()) {
+        queueSocialCheckoutEmail({ type: 'payment_confirmed', businessId, checkoutCode: draft.id });
+      }
+    } catch {
+      Alert.alert('Could not confirm payment', 'Please check your connection and try again.');
+    } finally {
+      setIsApproving(false);
     }
+  };
+
+  const handleMarkReceived = () => {
+    if (!draft) return;
+    confirmDestructiveAction(
+      'Mark payment as received?',
+      'Only do this once you have seen the money in your account. The payment will show as Verified and be tagged as confirmed manually.',
+      'Mark as received',
+      () => { void performMarkReceived(); }
+    );
+  };
+
+  const performDeactivateLink = async () => {
     if (!draft || !businessId || isDeactivating) return;
     setIsDeactivating(true);
     const now = new Date().toISOString();
@@ -462,10 +507,6 @@ export default function SocialCheckoutDetailScreen() {
   };
 
   const handleDeactivateLink = () => {
-    if (!isAdmin) {
-      Alert.alert('Admin access required', 'Only admins can deactivate payment links.');
-      return;
-    }
     if (!draft) return;
     confirmDestructiveAction(
       'Deactivate payment link?',
@@ -543,7 +584,7 @@ export default function SocialCheckoutDetailScreen() {
   const linkedOrderNumber = linkedOrder?.orderNumber ?? (draft.convertedOrderId ? 'Linked order' : undefined);
   const deliveryLocationText = formatDeliveryLocation(draft.deliveryAddress, draft.deliveryState);
   const linkedOrderItems = linkedOrder?.items ?? [];
-  const canDeactivateLink = isAdmin && (draft.status === 'awaiting_payment' || draft.status === 'payment_submitted');
+  const canDeactivateLink = (draft.status === 'awaiting_payment' || draft.status === 'payment_submitted');
   const canEditLink = isAdmin && effectiveStatus !== 'expired' && draft.status !== 'cancelled' && draft.status !== 'rejected';
   const isInactive = effectiveStatus === 'cancelled' || effectiveStatus === 'expired' || effectiveStatus === 'rejected';
   const displayLink = publicLink || `fyll.app/checkout?code=${draft.id}`;
@@ -708,6 +749,24 @@ export default function SocialCheckoutDetailScreen() {
           <Text style={{ color: palette.danger, fontSize: fs(14.5), fontWeight: '600' }}>Reject</Text>
         </Pressable>
       </View>
+    </View>
+  ) : null;
+
+  const markReceivedSection = draft.status === 'awaiting_payment' ? (
+    <View style={{ ...cardStyle, padding: 16, gap: 12 }}>
+      <View style={{ gap: 3 }}>
+        <Text style={{ color: palette.text, fontSize: fs(15), fontWeight: '600' }}>Customer already paid?</Text>
+        <Text style={{ color: palette.muted, fontSize: fs(13) }}>If they sent the receipt on WhatsApp or you can see the transfer in your account, confirm it here.</Text>
+      </View>
+      <Pressable
+        accessibilityRole="button"
+        onPress={handleMarkReceived}
+        disabled={isApproving}
+        style={(state) => limeButton(state)}
+      >
+        {isApproving ? <ActivityIndicator color={FYLL_LIME_INK} size="small" /> : <Check size={15} color={FYLL_LIME_INK} strokeWidth={2.6} />}
+        <Text style={{ color: FYLL_LIME_INK, fontSize: fs(14.5), fontWeight: '600' }}>Mark as received</Text>
+      </Pressable>
     </View>
   ) : null;
 
@@ -1059,6 +1118,7 @@ export default function SocialCheckoutDetailScreen() {
     { key: 'copy-message', label: 'Copy message', icon: MessageCircle, onPress: () => { void handleCopyCustomerMessage(); } },
     canEditLink && !isEditing ? { key: 'edit', label: 'Edit link', icon: Pencil, onPress: handleStartEdit } : null,
     draft.convertedOrderId ? { key: 'open-order', label: 'Open linked order', icon: ExternalLink, onPress: openLinkedOrder } : null,
+    draft.status === 'awaiting_payment' ? { key: 'mark-received', label: 'Mark as received', icon: Check, onPress: handleMarkReceived } : null,
     canDeactivateLink ? { key: 'deactivate', label: 'Deactivate link', icon: Power, onPress: handleDeactivateLink, tone: 'warn' as const } : null,
     isAdmin ? { key: 'delete', label: 'Delete link', icon: Trash2, onPress: handleDeleteLink, tone: 'danger' as const } : null,
   ].filter((action): action is { key: string; label: string; icon: typeof Copy; onPress: () => void; tone?: 'warn' | 'danger' } => Boolean(action));
@@ -1081,7 +1141,16 @@ export default function SocialCheckoutDetailScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="More actions"
-            onPress={() => setShowMoreActions(true)}
+            ref={moreButtonRef}
+            collapsable={false}
+            onPress={() => {
+              // The menu drops down from this button on every screen size.
+              if (!moreButtonRef.current) { setMoreAnchor(null); setShowMoreActions(true); return; }
+              moreButtonRef.current.measureInWindow((x, y, width, height) => {
+                setMoreAnchor({ x, y, width, height });
+                setShowMoreActions(true);
+              });
+            }}
             style={(state) => ({ width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: state.pressed || isHovered(state) ? palette.softFill : 'transparent' })}
           >
             <MoreHorizontal size={21} color={palette.text} strokeWidth={2.2} />
@@ -1104,6 +1173,7 @@ export default function SocialCheckoutDetailScreen() {
               <View style={{ flex: 1.45, minWidth: 0, gap: contentGap }}>
                 {heroSection}
                 {reviewSection}
+                {markReceivedSection}
                 {orderSection}
                 {billSection}
                 {linkSection}
@@ -1121,6 +1191,7 @@ export default function SocialCheckoutDetailScreen() {
             <View style={{ gap: contentGap }}>
               {heroSection}
               {reviewSection}
+              {markReceivedSection}
               {orderSection}
               {customerSection}
               {proofSection}
@@ -1135,12 +1206,13 @@ export default function SocialCheckoutDetailScreen() {
         </ScrollView>
 
         <Modal visible={showMoreActions} transparent animationType="fade" onRequestClose={() => setShowMoreActions(false)}>
-          <Pressable onPress={() => setShowMoreActions(false)} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: isDesktop ? 'center' : 'flex-end', alignItems: 'center' }}>
+          <Pressable onPress={() => setShowMoreActions(false)} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.25)', justifyContent: !moreAnchor ? 'center' : undefined, alignItems: !moreAnchor ? 'center' : undefined }}>
             <Pressable
               onPress={(event) => event.stopPropagation?.()}
-              style={{ width: isDesktop ? 380 : '100%', backgroundColor: palette.card, borderRadius: 24, borderBottomLeftRadius: isDesktop ? 24 : 0, borderBottomRightRadius: isDesktop ? 24 : 0, borderWidth: 1, borderColor: palette.border, paddingTop: 10, paddingHorizontal: 12, paddingBottom: isDesktop ? 12 : Math.max(insets.bottom, 12) + 8 }}
+              style={!moreAnchor
+                ? { width: isDesktop ? 380 : '90%', backgroundColor: palette.card, borderRadius: 24, borderWidth: 1, borderColor: palette.border, paddingTop: 10, paddingHorizontal: 12, paddingBottom: 12 }
+                : { position: 'absolute', width: 230, top: moreAnchor.y + moreAnchor.height + 4, left: Math.max(12, moreAnchor.x + moreAnchor.width - 230), backgroundColor: palette.card, borderRadius: 16, borderWidth: 1, borderColor: palette.border, padding: 6, shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 12 }}
             >
-              {!isDesktop ? <View style={{ alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: palette.outline, marginBottom: 10 }} /> : null}
               {moreActions.map((action) => {
                 const Icon = action.icon;
                 const color = action.tone === 'danger' ? palette.danger : action.tone === 'warn' ? palette.warn : palette.text;
@@ -1151,7 +1223,7 @@ export default function SocialCheckoutDetailScreen() {
                       setShowMoreActions(false);
                       action.onPress();
                     }}
-                    style={(state) => ({ height: 52, borderRadius: 14, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: state.pressed || isHovered(state) ? palette.softFill : 'transparent' })}
+                    style={(state) => ({ height: isDesktop ? 52 : 46, borderRadius: 12, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: state.pressed || isHovered(state) ? palette.softFill : 'transparent' })}
                   >
                     <Icon size={18} color={action.tone ? color : palette.muted} strokeWidth={2.1} />
                     <Text style={{ color, fontSize: fs(15), fontWeight: '500' }}>{action.label}</Text>

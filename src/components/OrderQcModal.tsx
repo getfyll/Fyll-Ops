@@ -3,7 +3,7 @@ import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, Sc
 import { Camera, Check, Package, X } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ResolvedAttachmentImage } from '@/components/ResolvedAttachmentImage';
-import { FYLL_LIME, FYLL_LIME_INK, usePaymentsPalette } from '@/components/payments/payments-ui';
+import { FYLL_LIME, FYLL_LIME_INK, MoneyText, usePaymentsPalette } from '@/components/payments/payments-ui';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { openAttachmentPath } from '@/lib/storage-attachments';
 
@@ -181,7 +181,7 @@ export function OrderQcModal({
   };
 
   return (
-    <Modal visible={visible} animationType={isSheet ? 'slide' : 'fade'} transparent onRequestClose={onClose}>
+    <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <Pressable
           onPress={onClose}
@@ -439,7 +439,7 @@ export function OrderQcModal({
                   className="active:opacity-80"
                   style={{ height: 44, paddingHorizontal: 18, borderRadius: 999, borderWidth: 1, borderColor: palette.outline, alignItems: 'center', justifyContent: 'center', opacity: submitting || uploading ? 0.6 : 1 }}
                 >
-                  <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>Finish later</Text>
+                  <MoneyText style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>Finish later</MoneyText>
                 </Pressable>
               ) : null}
               <Pressable
@@ -461,9 +461,9 @@ export function OrderQcModal({
                 }}
               >
                 {submitting ? <ActivityIndicator size="small" color={FYLL_LIME_INK} /> : null}
-                <Text style={{ color: primaryDisabled ? palette.faint : mode === 'problem' ? palette.inverseText : FYLL_LIME_INK, fontSize: 15, fontWeight: '600' }} numberOfLines={1}>
+                <MoneyText style={{ color: primaryDisabled ? palette.faint : mode === 'problem' ? palette.inverseText : FYLL_LIME_INK, fontSize: 15, fontWeight: '600' }} numberOfLines={1}>
                   {primaryLabel}
-                </Text>
+                </MoneyText>
               </Pressable>
             </View>
 

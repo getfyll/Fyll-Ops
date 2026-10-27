@@ -830,7 +830,7 @@ export function DesktopSidebar() {
                       borderLeftColor: colors.border.light,
                     }}
                   >
-                    {partnerSubItems.map((subItem) => {
+                    {partnerSubItems.filter((subItem) => subItem.key !== 'bills' || userRole !== 'staff').map((subItem) => {
                       const SubIcon = subItem.icon;
                       const isSubActive = partnerActive && subItem.key === activePartnerSubKey;
                       const subBadgeCount = subItem.key === 'issues' ? openPartnerIssueCount : 0;

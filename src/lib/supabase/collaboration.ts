@@ -248,17 +248,25 @@ const isTransientNetworkError = (error: unknown) => {
   );
 };
 
+// Badges only count messages from the last few days. Without this, a thread never opened on this device
+// counted every old message from the team as unread, so the numbers kept piling up.
+export const UNREAD_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
+const getUnreadCutoffMs = () => Date.now() - UNREAD_WINDOW_MS;
+
 const fetchThreadEntityRows = async (
   businessId: string,
-  entityType: CollaborationEntityType
+  entityType: CollaborationEntityType,
+  options?: { openOnly?: boolean }
 ): Promise<Array<{ id: string; entity_id: string }>> => {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      const { data, error } = await supabase
+      let threadQuery = supabase
         .from('collaboration_threads')
         .select('id, entity_id')
         .eq('business_id', businessId)
         .eq('entity_type', entityType);
+      if (options?.openOnly) threadQuery = threadQuery.eq('is_closed', false);
+      const { data, error } = await threadQuery;
 
       if (!error) return (data ?? []) as Array<{ id: string; entity_id: string }>;
       if (!isTransientNetworkError(error) || attempt === 1) {
@@ -784,7 +792,8 @@ const listMyNotifications = async (businessId: string, options?: { unreadOnly?: 
     let threadsQuery = supabase
       .from('collaboration_threads')
       .select('id, entity_type, entity_id')
-      .eq('business_id', businessId);
+      .eq('business_id', businessId)
+      .eq('is_closed', false);
 
     if (entityType) {
       threadsQuery = threadsQuery.eq('entity_type', entityType);
@@ -846,10 +855,11 @@ const listMyNotifications = async (businessId: string, options?: { unreadOnly?: 
       return [];
     }
 
+    const unreadCutoffMs = getUnreadCutoffMs();
     const filteredComments = comments.filter((comment) => {
       if (!comment.thread_id) return false;
       const commentMs = new Date(comment.created_at).getTime();
-      if (!Number.isFinite(commentMs)) return false;
+      if (!Number.isFinite(commentMs) || commentMs < unreadCutoffMs) return false;
       const latestNotificationMs = latestNotificationByThread.get(comment.thread_id) ?? 0;
       const latestSeenMs = fallbackSeenMarkers[comment.thread_id] ?? 0;
       return commentMs > Math.max(latestNotificationMs, latestSeenMs);
@@ -1077,13 +1087,15 @@ const getUnreadNotificationCountsByEntity = async (
   businessId: string,
   entityType: CollaborationEntityType
 ): Promise<Record<string, number>> => {
-  // 1. Get threads for this entity type to map thread_id → entity_id
-  const threads = await fetchThreadEntityRows(businessId, entityType);
+  // 1. Get OPEN threads for this entity type to map thread_id → entity_id (closed threads never badge)
+  const threads = await fetchThreadEntityRows(businessId, entityType, { openOnly: true });
 
   if (!threads.length) return {};
 
   const threadIdToEntityId = new Map<string, string>();
   threads.forEach((t) => threadIdToEntityId.set(t.id, t.entity_id));
+  const unreadCutoffMs = getUnreadCutoffMs();
+  const unreadCutoffIso = new Date(unreadCutoffMs).toISOString();
 
   const getFallbackCountsFromComments = async (): Promise<Record<string, number>> => {
     const { data: authData } = await supabase.auth.getUser();
@@ -1134,7 +1146,7 @@ const getUnreadNotificationCountsByEntity = async (
     comments.forEach((comment) => {
       if (!comment.thread_id) return;
       const createdAtMs = new Date(comment.created_at).getTime();
-      if (!Number.isFinite(createdAtMs)) return;
+      if (!Number.isFinite(createdAtMs) || createdAtMs < unreadCutoffMs) return;
       const latestNotificationMs = latestNotificationByThread.get(comment.thread_id) ?? 0;
       const latestSeenMs = fallbackSeenMarkers[comment.thread_id] ?? 0;
       if (createdAtMs <= Math.max(latestNotificationMs, latestSeenMs)) return;
@@ -1153,6 +1165,7 @@ const getUnreadNotificationCountsByEntity = async (
     .select('thread_id')
     .eq('business_id', businessId)
     .eq('is_read', false)
+    .gte('created_at', unreadCutoffIso)
     .in('thread_id', threads.map((t) => t.id));
 
   if (notifError) {

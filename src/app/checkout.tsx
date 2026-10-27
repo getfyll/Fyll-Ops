@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text as NativeText, Pressable, TextInput, Alert, ActivityIndicator, Image, Platform, ScrollView, Share, Linking, useWindowDimensions, type TextProps, type PressableStateCallbackType } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
@@ -11,7 +11,7 @@ import { useFonts, BricolageGrotesque_800ExtraBold } from '@expo-google-fonts/br
 import { DMSans_400Regular, DMSans_600SemiBold, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
 import { Landmark, Check, Copy, Upload, CircleAlert, ChevronDown, ChevronLeft, ChevronRight, Clock, Lock, ArrowRight, Share2 } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
-import { getSocialCheckoutPublic, submitSocialCheckoutPayment } from '@/lib/supabase/social-checkout-public';
+import { getSocialCheckoutPublic, saveSocialCheckoutDetails, submitSocialCheckoutPayment } from '@/lib/supabase/social-checkout-public';
 import { queueSocialCheckoutEmail } from '@/lib/supabase/social-checkout-emails';
 import { uploadSocialCheckoutProof } from '@/lib/storage-attachments';
 import { formatCurrency, NIGERIA_STATES } from '@/lib/state/fyll-store';
@@ -74,13 +74,16 @@ function PublicPageBackground({
   fieldHeight?: number;
   fadeStart?: number;
 }) {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const compact = width < 768;
+  // The Field covers well over half the screen (the dark fade only takes the bottom third), with a soft
+  // dark scrim at the very top so white header text stays readable on the light green.
+  const fieldAreaHeight = Math.max(fieldHeight ?? (compact ? 760 : 680), Math.round(height * 0.68));
   const [fieldVisible, setFieldVisible] = useState<boolean>(fieldImageHasLoaded);
 
   return (
     <View style={{ flex: 1, backgroundColor: fyllColors.ink }}>
-      <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: fieldHeight ?? (compact ? 760 : 680), overflow: 'hidden' }}>
+      <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: fieldAreaHeight, overflow: 'hidden' }}>
         <Image
           source={compact ? fyllFieldPhone : fyllFieldDesktop}
           resizeMode="cover"
@@ -92,8 +95,15 @@ function PublicPageBackground({
         />
         <LinearGradient
           colors={fieldHeight ? ['rgba(20,20,20,0)', fyllColors.ink] : ['rgba(20,20,20,0)', 'rgba(20,20,20,0.08)', fyllColors.ink]}
-          locations={fieldHeight ? [fadeStart, 1] : [0, 0.56, 1]}
+          locations={fieldHeight ? [Math.max(fadeStart, 0.62), 1] : [0, 0.56, 1]}
           style={{ position: 'absolute', inset: 0 }}
+        />
+        {/* Even dark tint over the whole Field so white text keeps its contrast anywhere on it. */}
+        <View style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(20,20,20,0.38)' }} />
+        <LinearGradient
+          colors={['rgba(20,20,20,0.55)', 'rgba(20,20,20,0.22)', 'rgba(20,20,20,0)']}
+          locations={[0, 0.3, 0.55]}
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, height: Math.min(fieldAreaHeight, 340) }}
         />
       </View>
       <SafeAreaView className="flex-1" style={{ backgroundColor: 'transparent' }}>
@@ -454,6 +464,10 @@ export default function PublicSocialCheckoutScreen() {
   const [proofPublicUrl, setProofPublicUrl] = useState<string>('');
   const [proofShareCopied, setProofShareCopied] = useState<boolean>(false);
   const [checkoutStage, setCheckoutStage] = useState<'request' | 'checkout'>('request');
+  // Inside checkout: 1 = your details, 2 = pay (bank account), 3 = upload receipt. Later steps stay hidden
+  // until the one before is done.
+  const [checkoutStep, setCheckoutStep] = useState<1 | 2 | 3>(1);
+  const prefilledRef = useRef(false);
   const [nowMs, setNowMs] = useState(Date.now());
 
   const draftQuery = useQuery({
@@ -478,6 +492,53 @@ export default function PublicSocialCheckoutScreen() {
       refetchDraft();
     }
   }, [draftData?.expiresAt, draftData?.status, nowMs, refetchDraft]);
+
+  // Someone who already gave their details (e.g. came back to the link) resumes at the payment step.
+  useEffect(() => {
+    if (prefilledRef.current || !draftData || draftData.status !== 'awaiting_payment') return;
+    prefilledRef.current = true;
+    const name = draftData.customerName?.trim() ?? '';
+    const phone = draftData.customerPhone?.trim() ?? '';
+    const email = draftData.customerEmail?.trim() ?? '';
+    const address = draftData.deliveryAddress?.trim() ?? '';
+    const stateValue = draftData.deliveryState?.trim() ?? '';
+    if (name) setCustomerName(name);
+    if (phone) setCustomerPhone(phone);
+    if (email) setCustomerEmail(email);
+    if (address) setDeliveryAddress(address);
+    if (stateValue) setDeliveryState(stateValue);
+    if (name.length > 1 && phone.length >= 7 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && address.length > 4 && stateValue) {
+      setCheckoutStep(2);
+    }
+  }, [draftData]);
+
+  const saveDetailsMutation = useMutation({
+    mutationFn: async () => {
+      const result = await saveSocialCheckoutDetails({
+        code,
+        customerName: customerName.trim(),
+        customerPhone: customerPhone.trim(),
+        customerEmail: customerEmail.trim(),
+        deliveryAddress: deliveryAddress.trim(),
+        deliveryState,
+      });
+      if (!result.ok) throw new Error(result.error ?? 'save_failed');
+    },
+    onSuccess: () => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setCheckoutStep(2);
+    },
+    onError: (error: Error) => {
+      if (error.message === 'expired') {
+        Alert.alert('Link expired', 'This payment link has expired. Ask the seller to send you a new one.');
+        draftQuery.refetch();
+        return;
+      }
+      // Saving ahead of payment is a bonus: never block the customer from paying because of it.
+      // The full details are sent again with the receipt.
+      setCheckoutStep(2);
+    },
+  });
 
   const submitMutation = useMutation({
     mutationFn: async () => {
@@ -550,13 +611,13 @@ export default function PublicSocialCheckoutScreen() {
     }
   };
 
-  const isFormValid =
+  const areDetailsValid =
     customerName.trim().length > 1 &&
     customerPhone.trim().length >= 7 &&
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim()) &&
     deliveryAddress.trim().length > 4 &&
-    deliveryState.trim().length > 0 &&
-    !!proofUri;
+    deliveryState.trim().length > 0;
+  const isFormValid = areDetailsValid && !!proofUri;
 
   if (!fontsSettled || draftQuery.isLoading) {
     return (
@@ -609,7 +670,6 @@ export default function PublicSocialCheckoutScreen() {
     !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim()) ? 'email' : '',
     deliveryAddress.trim().length <= 4 ? 'address' : '',
     !deliveryState.trim() ? 'state' : '',
-    !proofUri ? 'payment receipt' : '',
   ].filter(Boolean);
 
   if (showTerminalState) {
@@ -834,7 +894,7 @@ export default function PublicSocialCheckoutScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Back"
-              onPress={() => setCheckoutStage('request')}
+              onPress={() => (checkoutStep === 1 ? setCheckoutStage('request') : setCheckoutStep((checkoutStep - 1) as 1 | 2))}
               style={(state) => [
                 { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: state.pressed || isHovered(state) ? 'rgba(20,20,20,0.62)' : 'rgba(20,20,20,0.4)', borderWidth: 1, borderColor: isHovered(state) ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.14)' },
                 WEB_TRANSITION,
@@ -878,6 +938,28 @@ export default function PublicSocialCheckoutScreen() {
             ) : null}
           </View>
 
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 18, paddingHorizontal: 4 }}>
+            {([
+              { n: 1, label: 'Your details' },
+              { n: 2, label: 'Pay' },
+              { n: 3, label: 'Receipt' },
+            ] as const).map((item, index) => {
+              const done = checkoutStep > item.n;
+              const active = checkoutStep === item.n;
+              return (
+                <React.Fragment key={item.n}>
+                  {index > 0 ? <View style={{ flex: 1, height: 1.5, marginHorizontal: 8, backgroundColor: checkoutStep >= item.n ? 'rgba(213,224,87,0.6)' : 'rgba(255,255,255,0.14)' }} /> : null}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <View style={{ width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: done || active ? fyllColors.accent : 'rgba(255,255,255,0.08)', borderWidth: done || active ? 0 : 1, borderColor: 'rgba(255,255,255,0.16)' }}>
+                      {done ? <Check size={14} color="#1E1E1E" strokeWidth={3} /> : <DText weight="700" style={{ color: active ? '#1E1E1E' : 'rgba(244,244,239,0.55)', fontSize: 12.5 }}>{item.n}</DText>}
+                    </View>
+                    <DText weight={active ? '700' : '400'} style={{ color: active ? '#F4F4EF' : 'rgba(244,244,239,0.5)', fontSize: 13 }}>{item.label}</DText>
+                  </View>
+                </React.Fragment>
+              );
+            })}
+          </View>
+
           <RequestGlass variant="card" style={{ marginTop: 16 }}>
             <View style={{ padding: 20 }}>
               <CardLabel style={{ marginBottom: 8 }}>What you’re paying for</CardLabel>
@@ -892,27 +974,7 @@ export default function PublicSocialCheckoutScreen() {
             </View>
           </RequestGlass>
 
-          <RequestGlass variant="card" style={{ marginTop: 14 }}>
-            <View style={{ padding: 20 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-                <Landmark size={15} color="rgba(244,244,239,0.5)" strokeWidth={2} />
-                <CardLabel>Pay via bank transfer</CardLabel>
-              </View>
-              <View style={{ gap: 3, marginBottom: 14 }}>
-                <DText style={{ color: 'rgba(244,244,239,0.5)', fontSize: 12 }}>Bank</DText>
-                <DText weight="600" style={{ color: '#F4F4EF', fontSize: 16 }}>{draft.bankAccount.bankName}</DText>
-              </View>
-              <View style={{ gap: 3, marginBottom: 16 }}>
-                <DText style={{ color: 'rgba(244,244,239,0.5)', fontSize: 12 }}>Account name</DText>
-                <DText weight="600" style={{ color: '#F4F4EF', fontSize: 16, lineHeight: 22 }}>{draft.bankAccount.accountName}</DText>
-              </View>
-              <View style={{ gap: 10 }}>
-                <CopyRow label="ACCOUNT NUMBER" value={draft.bankAccount.accountNumber} copied={copiedAccount} onPress={() => handleCopyAccountNumber(draft.bankAccount.accountNumber)} fontReady={bricolageReady} />
-                <CopyRow label="PAYMENT REFERENCE" value={code} copied={copiedReference} onPress={handleCopyReference} fontReady={bricolageReady} />
-              </View>
-            </View>
-          </RequestGlass>
-
+          {checkoutStep === 1 ? (
           <RequestGlass variant="card" style={{ marginTop: 14 }}>
             <View style={{ padding: 20, gap: 12 }}>
               <CardLabel style={{ marginBottom: 2 }}>Your details</CardLabel>
@@ -973,7 +1035,44 @@ export default function PublicSocialCheckoutScreen() {
               </View>
             </View>
           </RequestGlass>
+          ) : null}
 
+          {checkoutStep === 2 ? (
+          <>
+          <RequestGlass variant="card" style={{ marginTop: 14 }}>
+            <View style={{ padding: 20 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                <Landmark size={15} color="rgba(244,244,239,0.5)" strokeWidth={2} />
+                <CardLabel>Pay via bank transfer</CardLabel>
+              </View>
+              <View style={{ gap: 3, marginBottom: 14 }}>
+                <DText style={{ color: 'rgba(244,244,239,0.5)', fontSize: 12 }}>Bank</DText>
+                <DText weight="600" style={{ color: '#F4F4EF', fontSize: 16 }}>{draft.bankAccount.bankName}</DText>
+              </View>
+              <View style={{ gap: 3, marginBottom: 16 }}>
+                <DText style={{ color: 'rgba(244,244,239,0.5)', fontSize: 12 }}>Account name</DText>
+                <DText weight="600" style={{ color: '#F4F4EF', fontSize: 16, lineHeight: 22 }}>{draft.bankAccount.accountName}</DText>
+              </View>
+              <View style={{ gap: 10 }}>
+                <CopyRow label="ACCOUNT NUMBER" value={draft.bankAccount.accountNumber} copied={copiedAccount} onPress={() => handleCopyAccountNumber(draft.bankAccount.accountNumber)} fontReady={bricolageReady} />
+                <CopyRow label="PAYMENT REFERENCE" value={code} copied={copiedReference} onPress={handleCopyReference} fontReady={bricolageReady} />
+              </View>
+            </View>
+          </RequestGlass>
+
+          <View style={{ marginTop: 14, flexDirection: 'row', gap: 12, padding: 16, borderRadius: 18, backgroundColor: 'rgba(248,113,113,0.12)', borderWidth: 1, borderColor: 'rgba(248,113,113,0.4)' }}>
+            <CircleAlert size={20} color="#F87171" strokeWidth={2.2} style={{ marginTop: 1 }} />
+            <View style={{ flex: 1, gap: 4 }}>
+              <DText weight="700" style={{ color: '#F87171', fontSize: 14.5 }}>Your payment isn’t confirmed yet</DText>
+              <DText style={{ color: '#FCA5A5', fontSize: 13.5, lineHeight: 19 }}>
+                After you transfer, tap “I’ve made the transfer” below and upload your receipt in step 3. Without the receipt, your payment won’t be confirmed and your order won’t be processed.
+              </DText>
+            </View>
+          </View>
+          </>
+          ) : null}
+
+          {checkoutStep === 3 ? (
           <RequestGlass variant="card" style={{ marginTop: 14 }}>
             <View style={{ padding: 20 }}>
               <CardLabel style={{ marginBottom: 12 }}>Payment proof</CardLabel>
@@ -1011,27 +1110,93 @@ export default function PublicSocialCheckoutScreen() {
               </Pressable>
             </View>
           </RequestGlass>
+          ) : null}
 
           <View style={{ marginTop: 'auto', paddingTop: 22, paddingBottom: 24, gap: 12 }}>
+            {checkoutStep === 1 ? (
+              <>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={!areDetailsValid || isExpiredByTime || saveDetailsMutation.isPending}
+                  onPress={() => saveDetailsMutation.mutate()}
+                  style={(state) => limeButtonStyle(state, (areDetailsValid && !isExpiredByTime) || saveDetailsMutation.isPending, areDetailsValid && !isExpiredByTime && !saveDetailsMutation.isPending)}
+                >
+                  {saveDetailsMutation.isPending ? (
+                    <ActivityIndicator color="#1E1E1E" />
+                  ) : (
+                    <>
+                      <DText weight="700" style={{ color: areDetailsValid && !isExpiredByTime ? '#1E1E1E' : 'rgba(244,244,239,0.45)', fontSize: 17 }}>
+                        {isExpiredByTime ? 'Payment link expired' : 'Continue to payment'}
+                      </DText>
+                      {areDetailsValid && !isExpiredByTime ? <ArrowRight size={18} color="#1E1E1E" strokeWidth={2.4} /> : null}
+                    </>
+                  )}
+                </Pressable>
+                {!areDetailsValid && !isExpiredByTime && missingDetails.length > 0 ? (
+                  <DText style={{ color: 'rgba(244,244,239,0.5)', fontSize: 12.5, textAlign: 'center' }}>Still needed: {missingDetails.join(', ')}</DText>
+                ) : null}
+              </>
+            ) : null}
+            {checkoutStep === 2 ? (
+              <>
+              <Pressable
+                accessibilityRole="button"
+                disabled={isExpiredByTime}
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setCheckoutStep(3); }}
+                style={(state) => limeButtonStyle(state, !isExpiredByTime)}
+              >
+                <DText weight="700" style={{ color: isExpiredByTime ? 'rgba(244,244,239,0.45)' : '#1E1E1E', fontSize: 17 }}>
+                  {isExpiredByTime ? 'Payment link expired' : 'I’ve made the transfer'}
+                </DText>
+                {!isExpiredByTime ? <ArrowRight size={18} color="#1E1E1E" strokeWidth={2.4} /> : null}
+              </Pressable>
+              <Pressable
+              accessibilityRole="button"
+              onPress={() => setCheckoutStep(1)}
+              style={(state) => [
+                { height: 52, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1, borderColor: isHovered(state) ? 'rgba(255,255,255,0.34)' : 'rgba(255,255,255,0.18)', backgroundColor: state.pressed ? 'rgba(255,255,255,0.1)' : isHovered(state) ? 'rgba(255,255,255,0.07)' : 'transparent' },
+                WEB_TRANSITION,
+              ]}
+            >
+              <ChevronLeft size={17} color="#F4F4EF" strokeWidth={2.2} />
+              <DText weight="600" style={{ color: '#F4F4EF', fontSize: 15 }}>Edit my details</DText>
+            </Pressable>
+              </>
+            ) : null}
+            {checkoutStep === 3 ? (
+              <>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={!canSubmit}
+                  onPress={() => submitMutation.mutate()}
+                  style={(state) => limeButtonStyle(state, canSubmit || submitMutation.isPending, canSubmit)}
+                >
+                  {submitMutation.isPending ? (
+                    <ActivityIndicator color="#1E1E1E" />
+                  ) : (
+                    <>
+                      <DText weight="700" style={{ color: canSubmit ? '#1E1E1E' : 'rgba(244,244,239,0.45)', fontSize: 17 }}>
+                        {isExpiredByTime ? 'Payment link expired' : 'Submit receipt'}
+                      </DText>
+                      {canSubmit ? <ArrowRight size={18} color="#1E1E1E" strokeWidth={2.4} /> : null}
+                    </>
+                  )}
+                </Pressable>
+                {!hasProof && !isExpiredByTime ? (
+                  <DText style={{ color: 'rgba(244,244,239,0.5)', fontSize: 12.5, textAlign: 'center' }}>Still needed: payment receipt</DText>
+                ) : null}
             <Pressable
               accessibilityRole="button"
-              disabled={!canSubmit}
-              onPress={() => submitMutation.mutate()}
-              style={(state) => limeButtonStyle(state, canSubmit || submitMutation.isPending, canSubmit)}
+              onPress={() => setCheckoutStep(2)}
+              style={(state) => [
+                { height: 52, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1, borderColor: isHovered(state) ? 'rgba(255,255,255,0.34)' : 'rgba(255,255,255,0.18)', backgroundColor: state.pressed ? 'rgba(255,255,255,0.1)' : isHovered(state) ? 'rgba(255,255,255,0.07)' : 'transparent' },
+                WEB_TRANSITION,
+              ]}
             >
-              {submitMutation.isPending ? (
-                <ActivityIndicator color="#1E1E1E" />
-              ) : (
-                <>
-                  <DText weight="700" style={{ color: canSubmit ? '#1E1E1E' : 'rgba(244,244,239,0.45)', fontSize: 17 }}>
-                    {isExpiredByTime ? 'Payment link expired' : 'I’ve made this payment'}
-                  </DText>
-                  {canSubmit ? <ArrowRight size={18} color="#1E1E1E" strokeWidth={2.4} /> : null}
-                </>
-              )}
+              <ChevronLeft size={17} color="#F4F4EF" strokeWidth={2.2} />
+              <DText weight="600" style={{ color: '#F4F4EF', fontSize: 15 }}>Back to payment details</DText>
             </Pressable>
-            {!isFormValid && !isExpiredByTime && missingDetails.length > 0 ? (
-              <DText style={{ color: 'rgba(244,244,239,0.5)', fontSize: 12.5, textAlign: 'center' }}>Still needed: {missingDetails.join(', ')}</DText>
+              </>
             ) : null}
             <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 4 }}>
               <DText style={{ color: 'rgba(244,244,239,0.45)', fontSize: 12 }}>Secured by</DText>

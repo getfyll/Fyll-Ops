@@ -27,8 +27,8 @@ export function PaymentsCreateMenu({
     action();
   };
   const rows = [
-    { key: 'quote', title: 'New quote', caption: 'Price it first, get approval', icon: FileText, lime: true, onPress: choose(onNewQuote) },
-    { key: 'bill', title: 'New bill', caption: 'Ask for payment now', icon: Link2, lime: false, onPress: choose(onNewBill) },
+    { key: 'bill', title: 'New bill', caption: 'Ask for payment now', icon: Link2, lime: true, onPress: choose(onNewBill) },
+    { key: 'quote', title: 'New quote', caption: 'Price it first, get approval', icon: FileText, lime: false, onPress: choose(onNewQuote) },
   ];
 
   return (

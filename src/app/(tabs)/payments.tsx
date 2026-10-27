@@ -1,9 +1,10 @@
+import { formatPersonName } from '@/lib/display-format';
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, Pressable, TextInput, Platform, RefreshControl, ActivityIndicator, Alert, Modal, type PressableStateCallbackType } from 'react-native';
+import { View, Text, ScrollView, Pressable, TextInput, Platform, RefreshControl, ActivityIndicator, Alert, Modal, useWindowDimensions, type PressableStateCallbackType } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Wallet, Link2, Landmark, Store, Check, Trash2, Pencil, AlertTriangle, ChevronRight, FileText, X } from 'lucide-react-native';
+import { Plus, Search, Wallet, Link2, Link2Off, Landmark, Store, Check, Trash2, Pencil, AlertTriangle, ChevronRight, FileText, X, MoreVertical } from 'lucide-react-native';
 import { PaymentsCreateMenu } from '@/components/quotes/PaymentsCreateMenu';
 import { useQuotes } from '@/lib/quotes-api';
 import { QUOTE_STATUS_LABEL, QUOTE_STATUS_TONE, getQuoteEffectiveStatus, type QuoteStatus } from '@/lib/quotes';
@@ -277,7 +278,17 @@ type PaymentRecord = {
     onDelete: () => void;
     isDeleting: boolean;
   };
+  // Pending payment links only: stops the link from taking payments without deleting the record.
+  deactivateAction?: {
+    onDeactivate: () => void;
+  };
+  // Pending payment links: the customer paid but never uploaded a receipt.
+  markReceivedAction?: {
+    onMarkReceived: () => void;
+  };
 };
+
+type MenuAnchor = { x: number; y: number; width: number; height: number };
 
 const SOCIAL_STATUS_TONE: Record<SocialCheckoutStatus, StatusTone> = {
   awaiting_payment: 'awaiting',
@@ -365,11 +376,17 @@ function PaymentListRow({
   record: PaymentRecord;
   palette: PaymentsPalette;
   isFirst: boolean;
-  onOpenActions: (record: PaymentRecord) => void;
+  onOpenActions: (record: PaymentRecord, anchor?: MenuAnchor) => void;
 }) {
   const fs = useMobileFont();
   const unsuccessful = isUnsuccessfulTone(record.tone);
-  const hasMoreActions = Boolean(record.editAction || record.deleteAction || record.confirmAction);
+  const hasMoreActions = Boolean(record.editAction || record.deleteAction || record.confirmAction || record.deactivateAction || record.markReceivedAction);
+  const kebabRef = React.useRef<View>(null);
+  const openFromKebab = () => {
+    if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (!kebabRef.current) { onOpenActions(record); return; }
+    kebabRef.current.measureInWindow((x, y, width, height) => onOpenActions(record, { x, y, width, height }));
+  };
   return (
     <Pressable
       onPress={() => {
@@ -378,7 +395,7 @@ function PaymentListRow({
       }}
       onLongPress={hasMoreActions ? () => {
         if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        onOpenActions(record);
+        openFromKebab();
       } : undefined}
       delayLongPress={350}
       style={(state) => ({
@@ -395,7 +412,7 @@ function PaymentListRow({
       <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
           <Text style={{ flex: 1, color: palette.text, fontSize: fs(15), fontWeight: '500' }} numberOfLines={1}>
-            {record.customerName && record.customerName !== '—' ? record.customerName : 'Awaiting customer'}
+            {record.customerName && record.customerName !== '—' ? formatPersonName(record.customerName) : 'Awaiting customer'}
           </Text>
           <Text
             style={{
@@ -408,6 +425,22 @@ function PaymentListRow({
           >
             {formatCurrency(record.amount)}
           </Text>
+          {hasMoreActions ? (
+            <Pressable
+              ref={kebabRef}
+              collapsable={false}
+              accessibilityRole="button"
+              accessibilityLabel={`More actions for ${record.reference}`}
+              hitSlop={8}
+              onPress={(event) => {
+                event.stopPropagation?.();
+                openFromKebab();
+              }}
+              style={{ width: 24, height: 22, alignItems: 'center', justifyContent: 'center', marginRight: -6 }}
+            >
+              <MoreVertical size={17} color={palette.faint} strokeWidth={2.2} />
+            </Pressable>
+          ) : null}
         </View>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
           <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 5 }}>
@@ -440,9 +473,15 @@ const DESKTOP_COLUMNS = {
   actions: { flex: 0.9, minWidth: 120 },
 } as const;
 
-function PaymentTableRow({ record, palette, isLast }: { record: PaymentRecord; palette: PaymentsPalette; isLast: boolean }) {
+function PaymentTableRow({ record, palette, isLast, onOpenActions }: { record: PaymentRecord; palette: PaymentsPalette; isLast: boolean; onOpenActions: (record: PaymentRecord, anchor?: MenuAnchor) => void }) {
   const fs = useMobileFont();
   const unsuccessful = isUnsuccessfulTone(record.tone);
+  const hasMoreActions = Boolean(record.editAction || record.deleteAction || record.deactivateAction || record.markReceivedAction);
+  const kebabRef = React.useRef<View>(null);
+  const openMenu = () => {
+    if (!kebabRef.current) { onOpenActions(record); return; }
+    kebabRef.current.measureInWindow((x, y, width, height) => onOpenActions(record, { x, y, width, height }));
+  };
   return (
     <Pressable
       onPress={record.onPress}
@@ -459,7 +498,7 @@ function PaymentTableRow({ record, palette, isLast }: { record: PaymentRecord; p
       <View style={{ ...DESKTOP_COLUMNS.customer, flexDirection: 'row', alignItems: 'center', gap: 10, paddingRight: 10 }}>
         <InitialsAvatar name={record.customerName} palette={palette} size={32} />
         <Text style={{ flex: 1, color: palette.text, fontSize: fs(14), fontWeight: '500' }} numberOfLines={1}>
-          {record.customerName && record.customerName !== '—' ? record.customerName : 'Awaiting customer'}
+          {record.customerName && record.customerName !== '—' ? formatPersonName(record.customerName) : 'Awaiting customer'}
         </Text>
       </View>
       <Text style={{ ...DESKTOP_COLUMNS.reference, color: palette.textSoft, fontSize: fs(13.5), paddingRight: 10 }} numberOfLines={1}>{record.reference}</Text>
@@ -482,48 +521,53 @@ function PaymentTableRow({ record, palette, isLast }: { record: PaymentRecord; p
       <Text style={{ ...DESKTOP_COLUMNS.date, color: palette.faint, fontSize: fs(13), paddingRight: 10 }} numberOfLines={1}>{record.createdLabel}</Text>
       <View style={{ ...DESKTOP_COLUMNS.actions, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
         {record.confirmAction ? <ConfirmPill action={record.confirmAction} compact /> : null}
-        {record.deleteAction ? (
+        {hasMoreActions ? (
           <Pressable
+            ref={kebabRef}
+            collapsable={false}
             accessibilityRole="button"
-            accessibilityLabel={`Delete ${record.reference}`}
+            accessibilityLabel={`More actions for ${record.reference}`}
             onPress={(event) => {
               event.stopPropagation?.();
-              record.deleteAction?.onDelete();
+              openMenu();
             }}
-            disabled={record.deleteAction.isDeleting}
             style={(state) => ({
               width: 30,
               height: 30,
               borderRadius: 15,
               alignItems: 'center',
               justifyContent: 'center',
-              backgroundColor: isHovered(state) ? (palette.isDark ? 'rgba(229,119,109,0.16)' : 'rgba(194,69,58,0.1)') : 'transparent',
+              backgroundColor: isHovered(state) || state.pressed ? palette.softFill : 'transparent',
             })}
           >
-            {record.deleteAction.isDeleting ? (
+            {record.deleteAction?.isDeleting ? (
               <ActivityIndicator size="small" color={palette.danger} />
             ) : (
-              <Trash2 size={15} color={palette.faint} strokeWidth={2} />
+              <MoreVertical size={16} color={palette.faint} strokeWidth={2.2} />
             )}
           </Pressable>
         ) : null}
-        {!record.confirmAction && !record.deleteAction ? <Text style={{ color: palette.faint, fontSize: fs(13) }}>—</Text> : null}
+        {!record.confirmAction && !hasMoreActions ? <Text style={{ color: palette.faint, fontSize: fs(13) }}>—</Text> : null}
       </View>
     </Pressable>
   );
 }
 
-function PaymentActionSheet({ record, palette, onClose }: { record: PaymentRecord | null; palette: PaymentsPalette; onClose: () => void }) {
+const MENU_WIDTH = 230;
+const MENU_HEIGHT_ESTIMATE = 230;
+
+function PaymentActionSheet({ record, anchor, palette, onClose }: { record: PaymentRecord | null; anchor: MenuAnchor | null; palette: PaymentsPalette; onClose: () => void }) {
   const fs = useMobileFont();
   const insets = useSafeAreaInsets();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   if (!record) return null;
   const run = (action?: () => void) => {
     onClose();
     action?.();
   };
   const optionStyle = (state: PressableStateCallbackType) => ({
-    height: 52,
-    borderRadius: 14,
+    height: 38,
+    borderRadius: 10,
     paddingHorizontal: 14,
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -532,40 +576,71 @@ function PaymentActionSheet({ record, palette, onClose }: { record: PaymentRecor
   });
   return (
     <Modal transparent visible animationType="fade" onRequestClose={onClose}>
-      <Pressable onPress={onClose} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' }}>
+      <Pressable onPress={onClose} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.25)' }}>
         <Pressable
           onPress={(event) => event.stopPropagation?.()}
-          style={{ backgroundColor: palette.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 10, paddingHorizontal: 12, paddingBottom: Math.max(insets.bottom, 12) + 8, borderWidth: 1, borderColor: palette.border }}
+          style={{
+            position: 'absolute',
+            width: MENU_WIDTH,
+            left: Math.max(12, Math.min(windowWidth - MENU_WIDTH - 12, (anchor ? anchor.x + anchor.width : windowWidth - 12) - MENU_WIDTH)),
+            // Drops just under the kebab; flips above it when there is no room below.
+            ...(anchor && anchor.y + anchor.height + 8 + MENU_HEIGHT_ESTIMATE > windowHeight - insets.bottom
+              ? { bottom: Math.max(insets.bottom, windowHeight - anchor.y + 4) }
+              : { top: anchor ? anchor.y + anchor.height + 4 : insets.top + 80 }),
+            backgroundColor: palette.card,
+            borderRadius: 16,
+            padding: 6,
+            borderWidth: 1,
+            borderColor: palette.border,
+            shadowColor: '#000',
+            shadowOpacity: 0.25,
+            shadowRadius: 16,
+            shadowOffset: { width: 0, height: 8 },
+            elevation: 12,
+          }}
         >
-          <View style={{ alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: palette.isDark ? 'rgba(255,255,255,0.18)' : '#DDDDDD', marginBottom: 12 }} />
-          <View style={{ paddingHorizontal: 14, paddingBottom: 10 }}>
-            <Text style={{ color: palette.text, fontSize: fs(16), fontWeight: '600' }} numberOfLines={1}>
-              {record.customerName && record.customerName !== '—' ? record.customerName : 'Awaiting customer'} · {formatCurrency(record.amount)}
+          <View style={{ paddingHorizontal: 12, paddingTop: 6, paddingBottom: 8 }}>
+            <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }} numberOfLines={1}>
+              {record.customerName && record.customerName !== '—' ? formatPersonName(record.customerName) : 'Awaiting customer'} · {formatCurrency(record.amount)}
             </Text>
-            <Text style={{ color: palette.faint, fontSize: fs(13), marginTop: 2 }}>{record.reference}</Text>
+            <Text style={{ color: palette.faint, fontSize: 12, marginTop: 2 }}>{record.reference}</Text>
           </View>
           {record.confirmAction ? (
             <Pressable onPress={() => run(record.confirmAction?.onConfirm)} style={optionStyle}>
-              <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: FYLL_LIME, alignItems: 'center', justifyContent: 'center' }}>
-                <Check size={15} color={FYLL_LIME_INK} strokeWidth={2.6} />
+              <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: FYLL_LIME, alignItems: 'center', justifyContent: 'center' }}>
+                <Check size={12} color={FYLL_LIME_INK} strokeWidth={2.6} />
               </View>
-              <Text style={{ color: palette.text, fontSize: fs(15), fontWeight: '600' }}>Confirm payment</Text>
+              <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }}>Confirm payment</Text>
             </Pressable>
           ) : null}
           <Pressable onPress={() => run(record.onPress)} style={optionStyle}>
-            <ChevronRight size={18} color={palette.muted} strokeWidth={2} style={{ marginHorizontal: 5 }} />
-            <Text style={{ color: palette.text, fontSize: fs(15), fontWeight: '500' }}>Open payment</Text>
+            <ChevronRight size={12} color={palette.muted} strokeWidth={2} style={{ marginHorizontal: 4 }} />
+            <Text style={{ color: palette.text, fontSize: 12, fontWeight: '500' }}>Open payment</Text>
           </Pressable>
           {record.editAction ? (
             <Pressable onPress={() => run(record.editAction?.onEdit)} style={optionStyle}>
-              <Pencil size={17} color={palette.muted} strokeWidth={2.2} style={{ marginHorizontal: 5 }} />
-              <Text style={{ color: palette.text, fontSize: fs(15), fontWeight: '500' }}>Edit</Text>
+              <Pencil size={12} color={palette.muted} strokeWidth={2.2} style={{ marginHorizontal: 4 }} />
+              <Text style={{ color: palette.text, fontSize: 12, fontWeight: '500' }}>Edit</Text>
+            </Pressable>
+          ) : null}
+          {record.markReceivedAction ? (
+            <Pressable onPress={() => run(record.markReceivedAction?.onMarkReceived)} style={optionStyle}>
+              <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: FYLL_LIME, alignItems: 'center', justifyContent: 'center' }}>
+                <Check size={12} color={FYLL_LIME_INK} strokeWidth={2.6} />
+              </View>
+              <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }}>Mark as received</Text>
+            </Pressable>
+          ) : null}
+          {record.deactivateAction ? (
+            <Pressable onPress={() => run(record.deactivateAction?.onDeactivate)} style={optionStyle}>
+              <Link2Off size={12} color={palette.warn} strokeWidth={2.2} style={{ marginHorizontal: 4 }} />
+              <Text style={{ color: palette.warn, fontSize: 12, fontWeight: '500' }}>Deactivate link</Text>
             </Pressable>
           ) : null}
           {record.deleteAction ? (
             <Pressable onPress={() => run(record.deleteAction?.onDelete)} style={optionStyle}>
-              <Trash2 size={17} color={palette.danger} strokeWidth={2.2} style={{ marginHorizontal: 5 }} />
-              <Text style={{ color: palette.danger, fontSize: fs(15), fontWeight: '500' }}>Delete</Text>
+              <Trash2 size={12} color={palette.danger} strokeWidth={2.2} style={{ marginHorizontal: 4 }} />
+              <Text style={{ color: palette.danger, fontSize: 12, fontWeight: '500' }}>Delete</Text>
             </Pressable>
           ) : null}
         </Pressable>
@@ -653,6 +728,7 @@ export default function PaymentsScreen() {
   const [paymentPeriod, setPaymentPeriod] = useState<PaymentPeriod>('all');
   const [searchFocused, setSearchFocused] = useState<boolean>(false);
   const [actionRecord, setActionRecord] = useState<PaymentRecord | null>(null);
+  const [actionAnchor, setActionAnchor] = useState<MenuAnchor | null>(null);
   const [createMenuOpen, setCreateMenuOpen] = useState<boolean>(false);
   const quotesQuery = useQuotes();
   const [hasSeededFyllCheckoutDemo, setHasSeededFyllCheckoutDemo] = useState(false);
@@ -912,6 +988,78 @@ export default function PaymentsScreen() {
     );
   };
 
+  const deactivateLinkMutation = useMutation({
+    mutationFn: async (draftId: string) => {
+      const draft = (draftsQuery.data ?? []).find((item) => item.id === draftId);
+      if (!draft || !businessId) throw new Error('Payment link not found');
+      const now = new Date().toISOString();
+      await supabaseData.upsertCollection('social_checkouts', businessId, [{
+        ...draft,
+        status: 'cancelled',
+        reviewedBy: currentUserName,
+        reviewedAt: draft.reviewedAt ?? now,
+        updatedAt: now,
+      }]);
+    },
+    onSuccess: () => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      queryClient.invalidateQueries({ queryKey: ['social-checkouts', businessId] });
+    },
+    onError: () => Alert.alert('Could not deactivate link', 'Please check your connection and try again.'),
+  });
+
+  const markReceivedMutation = useMutation({
+    mutationFn: async (draftId: string) => {
+      const draft = (draftsQuery.data ?? []).find((item) => item.id === draftId);
+      if (!draft || !businessId) throw new Error('Payment link not found');
+      const now = new Date().toISOString();
+      await supabaseData.upsertCollection('social_checkouts', businessId, [{
+        ...draft,
+        status: 'verified',
+        manuallyConfirmed: true,
+        reviewedBy: currentUserName,
+        reviewedAt: now,
+        activityLog: [
+          ...(draft.activityLog ?? []),
+          { id: `social-payment-manual-${now}`, action: 'Marked as received manually (no receipt submitted)', actor: currentUserName, createdAt: now },
+        ],
+        updatedAt: now,
+      }]);
+    },
+    onSuccess: () => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      queryClient.invalidateQueries({ queryKey: ['social-checkouts', businessId] });
+    },
+    onError: () => Alert.alert('Could not confirm payment', 'Please check your connection and try again.'),
+  });
+
+  const handleMarkReceived = (draftId: string, reference: string) => {
+    if (markReceivedMutation.isPending) return;
+    const run = () => markReceivedMutation.mutate(draftId);
+    const message = `Only do this once you have seen the money in your account. ${reference} will show as Verified.`;
+    if (Platform.OS === 'web') {
+      if (window.confirm(`Mark ${reference} as received? ${message}`)) run();
+      return;
+    }
+    Alert.alert('Mark payment as received?', message, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Mark as received', onPress: run },
+    ]);
+  };
+
+  const handleDeactivateLink = (draftId: string, reference: string) => {
+    if (deactivateLinkMutation.isPending) return;
+    const run = () => deactivateLinkMutation.mutate(draftId);
+    if (Platform.OS === 'web') {
+      if (window.confirm(`Deactivate ${reference}? The customer will no longer be able to pay with this link.`)) run();
+      return;
+    }
+    Alert.alert('Deactivate payment link?', `${reference} will stop accepting payments. The record stays in your list as Cancelled.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Deactivate', style: 'destructive', onPress: run },
+    ]);
+  };
+
   const drafts = draftsQuery.data ?? [];
   const storefrontPayments = sharedPaymentsQuery.data ?? [];
   const quotes = quotesQuery.data ?? [];
@@ -1003,6 +1151,12 @@ export default function PaymentsScreen() {
         onPress: () => router.push(`/social-checkout/${draft.id}` as never),
         editAction: currentUserRole === 'admin' && effectiveStatus !== 'expired' && effectiveStatus !== 'rejected' && effectiveStatus !== 'cancelled'
           ? { onEdit: () => router.push(`/social-checkout/${draft.id}` as never) }
+          : undefined,
+        markReceivedAction: effectiveStatus === 'awaiting_payment'
+          ? { onMarkReceived: () => handleMarkReceived(draft.id, `SC-${draft.id}`) }
+          : undefined,
+        deactivateAction: effectiveStatus === 'awaiting_payment'
+          ? { onDeactivate: () => handleDeactivateLink(draft.id, `SC-${draft.id}`) }
           : undefined,
         deleteAction: currentUserRole === 'admin'
           ? {
@@ -1513,6 +1667,7 @@ export default function PaymentsScreen() {
                           record={record}
                           palette={palette}
                           isLast={groupIndex === dayGroups.length - 1 && rowIndex === group.rows.length - 1}
+                          onOpenActions={(record, anchor) => { setActionAnchor(anchor ?? null); setActionRecord(record); }}
                         />
                       ))}
                     </React.Fragment>
@@ -1525,13 +1680,13 @@ export default function PaymentsScreen() {
                       <Text style={{ paddingHorizontal: 4, color: palette.faint, fontSize: fs(12), fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{group.day}</Text>
                       <View style={{ borderRadius: 18, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, paddingHorizontal: 14 }}>
                         {group.rows.map((record, index) => (
-                          <PaymentListRow key={record.id} record={record} palette={palette} isFirst={index === 0} onOpenActions={setActionRecord} />
+                          <PaymentListRow key={record.id} record={record} palette={palette} isFirst={index === 0} onOpenActions={(record, anchor) => { setActionAnchor(anchor ?? null); setActionRecord(record); }} />
                         ))}
                       </View>
                     </View>
                   ))}
                   {paymentRecords.some((record) => record.editAction || record.deleteAction) ? (
-                    <Text style={{ color: palette.faint, fontSize: fs(12), textAlign: 'center', marginTop: 2 }}>Press and hold a payment for more actions</Text>
+                    <Text style={{ color: palette.faint, fontSize: fs(12), textAlign: 'center', marginTop: 2 }}>Tap ⋮ on a payment for more actions</Text>
                   ) : null}
                 </View>
               )}
@@ -1575,7 +1730,7 @@ export default function PaymentsScreen() {
             ? { right: 20, bottom: Math.max(96, tabBarHeight - 48) + 68 }
             : { right: horizontalPadding, top: isWebDesktop ? 76 : 64 }}
         />
-        <PaymentActionSheet record={actionRecord} palette={palette} onClose={() => setActionRecord(null)} />
+        <PaymentActionSheet record={actionRecord} anchor={actionAnchor} palette={palette} onClose={() => setActionRecord(null)} />
       </SafeAreaView>
     </View>
   );

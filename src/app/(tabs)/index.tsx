@@ -1,3 +1,4 @@
+import { formatPersonName } from '@/lib/display-format';
 import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import { View, Text, ScrollView, Pressable, Platform, Modal, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -46,7 +47,7 @@ import {
 import { useThemeColors } from '@/lib/theme';
 import * as Haptics from 'expo-haptics';
 import useAuthStore from '@/lib/state/auth-store';
-import { collaborationData, type CollaborationNotification } from '@/lib/supabase/collaboration';
+import { collaborationData, UNREAD_WINDOW_MS as collaborationUnreadWindowMs, type CollaborationNotification } from '@/lib/supabase/collaboration';
 import { supabase } from '@/lib/supabase';
 import { isTeamThreadEntityId, getTeamThreadDisplayNameFromEntityId } from '@/lib/team-threads';
 import { FulfillmentPipelineCard, type FulfillmentStageKey } from '@/components/FulfillmentPipelineCard';
@@ -704,6 +705,7 @@ function NotificationPanel({
   notifications,
   onNotificationPress,
   onMarkAllRead,
+  markAllToast = null,
   orders: ordersList = [],
   profilesMap = new Map<string, string>(),
 }: {
@@ -711,7 +713,8 @@ function NotificationPanel({
   onClose: () => void;
   notifications: CollaborationNotification[];
   onNotificationPress: (n: CollaborationNotification) => void;
-  onMarkAllRead: () => void;
+  onMarkAllRead: () => void | Promise<void>;
+  markAllToast?: string | null;
   orders?: Pick<Order, 'id' | 'orderNumber' | 'customerName' | 'createdAt' | 'createdBy'>[];
   profilesMap?: Map<string, string>;
 }) {
@@ -963,7 +966,9 @@ function NotificationPanel({
     return { icon: MessageCircle, color: colors.accent.primary, bg: `${colors.accent.primary}15` };
   }, [colors.accent.primary, isTaskNotification]);
 
-  const unreadCount = notifications.filter((n) => !n.is_read).length;
+  // Old unread notifications (past the 3-day window) stay in the list but no longer count toward the badge.
+  const unreadCutoffMs = Date.now() - collaborationUnreadWindowMs;
+  const unreadCount = notifications.filter((n) => !n.is_read && new Date(n.created_at).getTime() >= unreadCutoffMs).length;
   const hasWhatsNew = true; // the What's new row is always there
   const requestWhatsNew = useWhatsNewStore((s) => s.requestOpen);
 
@@ -1164,6 +1169,12 @@ function NotificationPanel({
               </Pressable>
             )}
           </View>
+          {markAllToast ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, marginTop: 10, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: 'rgba(213,224,87,0.14)', borderWidth: 1, borderColor: 'rgba(213,224,87,0.4)' }}>
+              <Check size={15} color={colors.accent.primary} strokeWidth={2.6} />
+              <Text style={{ flex: 1, color: colors.text.primary, fontSize: 13, fontWeight: '600' }}>{markAllToast}</Text>
+            </View>
+          ) : null}
           <ScrollView style={{ maxHeight: 460 }} showsVerticalScrollIndicator={false}>
             <UpdateNotificationRow compact onOpen={() => { onClose(); requestWhatsNew(); }} />
             {recentOrders.length > 0 && (
@@ -1223,7 +1234,7 @@ function NotificationPanel({
 
   // Mobile: full screen modal
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="fade" onRequestClose={onClose}>
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg.primary }}>
         <View
           style={{
@@ -1262,6 +1273,12 @@ function NotificationPanel({
             </Pressable>
           </View>
         </View>
+        {markAllToast ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, marginTop: 10, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: 'rgba(213,224,87,0.14)', borderWidth: 1, borderColor: 'rgba(213,224,87,0.4)' }}>
+            <Check size={15} color={colors.accent.primary} strokeWidth={2.6} />
+            <Text style={{ flex: 1, color: colors.text.primary, fontSize: 13, fontWeight: '600' }}>{markAllToast}</Text>
+          </View>
+        ) : null}
         <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
           <UpdateNotificationRow compact={false} onOpen={() => { onClose(); requestWhatsNew(); }} />
           {recentOrders.length > 0 && (
@@ -1335,7 +1352,7 @@ function RecentOrderItem({ order, statusColor, dateLabel, onPress, first = false
   if (wide) {
     return (
       <HomeRow onPress={onPress} first={first} style={{ gap: 16 }}>
-        <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600', flex: 1.5 }} numberOfLines={1}>{order.customerName}</Text>
+        <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600', flex: 1.5 }} numberOfLines={1}>{formatPersonName(order.customerName)}</Text>
         <Text style={{ color: palette.faint, fontSize: 12, flex: 1 }} numberOfLines={1}>{order.orderNumber}</Text>
         <Text style={{ color: palette.faint, fontSize: 12, width: 90 }}>{dateLabel}</Text>
         <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600', width: 110, textAlign: 'right' }}>{formatCurrency(order.totalAmount)}</Text>
@@ -1348,7 +1365,7 @@ function RecentOrderItem({ order, statusColor, dateLabel, onPress, first = false
   return (
     <HomeRow onPress={onPress} first={first}>
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>{order.customerName}</Text>
+        <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>{formatPersonName(order.customerName)}</Text>
         <Text style={{ color: palette.faint, fontSize: 12 }} numberOfLines={1}>{order.orderNumber} {'\u00b7'} {dateLabel}</Text>
       </View>
       <View style={{ alignItems: 'flex-end', gap: 2, flexShrink: 0 }}>
@@ -1384,8 +1401,8 @@ function RecentPartnerJobItem({ job, onPress, first = false }: RecentPartnerJobI
   return (
     <HomeRow onPress={onPress} first={first}>
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>{job.customerName || 'Customer'}</Text>
-        <Text style={{ color: palette.faint, fontSize: 12 }} numberOfLines={1}>{job.jobType || job.itemLabel || 'Partner job'} {'\u00b7'} {job.partnerName || 'No partner'}</Text>
+        <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>{formatPersonName(job.customerName) || 'Customer'}</Text>
+        <Text style={{ color: palette.faint, fontSize: 12 }} numberOfLines={1}>{job.jobType || job.itemLabel || 'Partner job'} {'\u00b7'} {formatPersonName(job.partnerName) || 'No partner'}</Text>
       </View>
       <StatusText label={statusMeta.label} color={statusMeta.color} />
     </HomeRow>
@@ -1434,6 +1451,8 @@ export default function DashboardScreen() {
   const eventReminderTriggerKeyRef = useRef<string | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [orderNotificationsSeenAt, setOrderNotificationsSeenAt] = useState(0);
+  const [markAllToast, setMarkAllToast] = useState<string | null>(null);
+  const markAllToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [eventNowTick, setEventNowTick] = useState(() => Date.now());
   const [pendingPrintQueueCount, setPendingPrintQueueCount] = useState(0);
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
@@ -1747,11 +1766,24 @@ export default function DashboardScreen() {
     }
   }, [queryClient, router]);
 
-  const handleMarkAllRead = useCallback(() => {
-    if (businessId) {
-      collaborationData.markAllNotificationsAsRead(businessId).catch(() => {});
+  const handleMarkAllRead = useCallback(async () => {
+    if (!businessId) return;
+    const notificationsKey = ['collaboration-notifications', businessId];
+    // Show them as read straight away; the refetch below keeps them that way once the write has finished.
+    queryClient.setQueryData<CollaborationNotification[]>(notificationsKey, (previous) => (
+      (previous ?? []).map((notification) => ({ ...notification, is_read: true }))
+    ));
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    try {
+      await collaborationData.markAllNotificationsAsRead(businessId);
+      setMarkAllToast('All notifications marked as read');
+    } catch {
+      setMarkAllToast('Could not mark as read — try again');
+    } finally {
       queryClient.invalidateQueries({ queryKey: ['collaboration-notifications'] });
       queryClient.invalidateQueries({ queryKey: ['collaboration-thread-counts'] });
+      if (markAllToastTimer.current) clearTimeout(markAllToastTimer.current);
+      markAllToastTimer.current = setTimeout(() => setMarkAllToast(null), 2200);
     }
   }, [businessId, queryClient]);
 
@@ -1807,7 +1839,8 @@ export default function DashboardScreen() {
   const hasWhatsNewAvailable = useWhatsNewStore((s) => s.available !== null);
   const requestWhatsNew = useWhatsNewStore((s) => s.requestOpen);
   const unreadNotificationCount = useMemo(() => {
-    const threadUnread = notifications.filter((notification) => !notification.is_read).length;
+    const unreadCutoffMs = Date.now() - collaborationUnreadWindowMs;
+    const threadUnread = notifications.filter((notification) => !notification.is_read && new Date(notification.created_at).getTime() >= unreadCutoffMs).length;
     const newOrdersCount = (dashboardMetrics?.newOrderCreatedAtLast24Hours ?? []).filter((createdAt) => {
       const createdAtMs = new Date(createdAt).getTime();
       return Number.isFinite(createdAtMs) && createdAtMs > orderNotificationsSeenAt;
@@ -1823,7 +1856,7 @@ export default function DashboardScreen() {
   const isOfflineMode = useAuthStore((s) => s.isOfflineMode);
   const useGlobalLowStockThreshold = useFyllStore((s) => s.useGlobalLowStockThreshold);
   const globalLowStockThreshold = useFyllStore((s) => s.globalLowStockThreshold);
-  const canSeePaymentNeeds = userRole !== 'staff' && canUseSocialCheckout;
+  const canSeePaymentNeeds = canUseSocialCheckout;
   // Same query key as the Orders screen, so the two share one cached fetch.
   const homePaymentsQuery = useQuery({
     queryKey: ['orders-unlinked-verified-payments', businessId],
@@ -1874,6 +1907,49 @@ export default function DashboardScreen() {
     });
     return { today, week, awaiting };
   }, [homePaymentsQuery.data, pendingPaymentCount, socialCheckoutDraftsQuery.data]);
+  // Staff see the latest few payments on the card instead of having to open the page.
+  const recentPayments = useMemo(() => {
+    if (userRole !== 'staff') return undefined;
+    const label = (status?: string) => String(status ?? '').trim().replace(/[_-]+/g, ' ').replace(/^\w/, (c) => c.toUpperCase()) || 'Pending';
+    const rows = (homePaymentsQuery.data ?? []).map((payment) => ({
+      id: payment.id,
+      name: payment.customerName?.trim() || 'Customer',
+      amount: Number(payment.amount) || 0,
+      status: ['verified', 'confirmed', 'payment confirmed', 'paid'].includes(String(payment.status ?? '').trim().toLowerCase().replace(/[_-]+/g, ' ')) ? 'Verified' : label(payment.status),
+      // When the payment came in, not when it was last edited, so old payments don't jump to the top.
+      at: new Date(payment.createdAt ?? payment.updatedAt ?? 0).getTime() || 0,
+    }));
+    // Fyll Checkout payments live in their own list; only count ones that actually came in.
+    (socialCheckoutDraftsQuery.data ?? []).forEach((draft) => {
+      const status = getSocialCheckoutEffectiveStatus(draft);
+      if (status !== 'verified' && status !== 'payment_submitted') return;
+      rows.push({
+        id: `checkout-${draft.id}`,
+        name: draft.customerName?.trim() || 'Customer',
+        amount: Number(draft.amount) || 0,
+        status: status === 'verified' ? 'Verified' : 'Proof submitted',
+        at: new Date(draft.submittedAt ?? draft.createdAt ?? 0).getTime() || 0,
+      });
+    });
+    return rows.sort((a, b) => b.at - a.at).slice(0, 3);
+  }, [homePaymentsQuery.data, socialCheckoutDraftsQuery.data, userRole]);
+  // Pending = not yet verified or rejected, from the last 3 days (payments awaiting proof or approval).
+  const pendingPaymentsRecentCount = useMemo(() => {
+    const since = Date.now() - 3 * 24 * 60 * 60 * 1000;
+    const recent = (value?: string | null) => {
+      const time = value ? new Date(value).getTime() : NaN;
+      return Number.isFinite(time) && time >= since;
+    };
+    const fromPayments = (homePaymentsQuery.data ?? []).filter((payment) => {
+      const status = String(payment.status ?? '').trim().toLowerCase().replace(/[_-]+/g, ' ');
+      return ['pending', 'proof submitted', 'submitted', 'awaiting payment'].includes(status) && recent(payment.createdAt ?? payment.updatedAt);
+    }).length;
+    const fromCheckout = (socialCheckoutDraftsQuery.data ?? []).filter((draft) => {
+      const status = getSocialCheckoutEffectiveStatus(draft);
+      return (status === 'payment_submitted' || status === 'awaiting_payment') && recent(draft.submittedAt ?? draft.createdAt);
+    }).length;
+    return fromPayments + fromCheckout;
+  }, [homePaymentsQuery.data, socialCheckoutDraftsQuery.data]);
   const jumpToItems = buildJumpToItems({
     canUseCases,
     canUseSocialCheckout,
@@ -2424,6 +2500,7 @@ export default function DashboardScreen() {
           notifications={notifications}
           onNotificationPress={handleNotificationPress}
           onMarkAllRead={handleMarkAllRead}
+          markAllToast={markAllToast}
           orders={recentOrdersWeb}
           profilesMap={profilesMap}
         />
@@ -2495,6 +2572,8 @@ export default function DashboardScreen() {
                   {canSeePaymentNeeds ? (
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <PaymentsCollectedCard
+                        recentPayments={recentPayments}
+                        pendingCount={pendingPaymentsRecentCount}
                         collectedToday={paymentsCollected.today}
                         collectedWeek={paymentsCollected.week}
                         awaitingCount={paymentsCollected.awaiting}
@@ -2579,6 +2658,7 @@ export default function DashboardScreen() {
             notifications={notifications}
             onNotificationPress={handleNotificationPress}
             onMarkAllRead={handleMarkAllRead}
+            markAllToast={markAllToast}
             orders={recentOrdersWeb}
             profilesMap={profilesMap}
           />
@@ -2632,6 +2712,8 @@ export default function DashboardScreen() {
 
               {canSeePaymentNeeds ? (
                 <PaymentsCollectedCard
+                        recentPayments={recentPayments}
+                        pendingCount={pendingPaymentsRecentCount}
                   collectedToday={paymentsCollected.today}
                   collectedWeek={paymentsCollected.week}
                   awaitingCount={paymentsCollected.awaiting}

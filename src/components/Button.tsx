@@ -2,6 +2,7 @@ import React from 'react';
 import { Pressable, Text, View, ActivityIndicator, Platform } from 'react-native';
 import { cn } from '@/lib/cn';
 import * as Haptics from 'expo-haptics';
+import { MoneyText } from '@/components/payments/payments-ui';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost' | 'danger-ghost';
 export type ButtonSize = 'sm' | 'md' | 'lg';
@@ -31,6 +32,8 @@ interface ButtonProps {
   haptic?: boolean;
   /** Override the label font size (defaults to the size preset's fontSize) */
   fontSize?: number;
+  /** Set the label in Bricolage Grotesque (Fyll's display face) */
+  bricolage?: boolean;
 }
 
 const variantStyles: Record<ButtonVariant, { bg: string; bgDisabled: string; text: string; textDisabled: string; border?: string }> = {
@@ -109,7 +112,9 @@ export function Button({
   icon,
   haptic = true,
   fontSize,
+  bricolage = false,
 }: ButtonProps) {
+  const Label = bricolage ? MoneyText : Text;
   const isDisabled = disabled || loading;
   const styles = variantStyles[variant];
   const sizes = sizeStyles[size];
@@ -161,12 +166,12 @@ export function Button({
       ) : (
         <View className="flex-row items-center">
           {icon && <View className="mr-2">{icon}</View>}
-          <Text
+          <Label
             className="font-semibold"
             style={{ color: textColor, fontSize: labelFontSize }}
           >
             {children}
-          </Text>
+          </Label>
         </View>
       )}
     </Pressable>

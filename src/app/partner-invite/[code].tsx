@@ -1,14 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Building2, Eye, EyeOff, Lock } from 'lucide-react-native';
-import { useThemeColors } from '@/lib/theme';
+import { FYLL_LIME, FYLL_LIME_INK, MoneyText, usePaymentsPalette } from '@/components/payments/payments-ui';
 import { supabase } from '@/lib/supabase';
 import { acceptPartnerInvite, getPartnerInvite, type PartnerInvite } from '@/lib/supabase/partner-portal';
 
+const fyllWordmarkPng = require('../../../assets/fyll-wordmark-thick-light.png');
+
 export default function PartnerInviteScreen() {
-  const colors = useThemeColors();
+  const palette = usePaymentsPalette();
   const router = useRouter();
   const { code: rawCode } = useLocalSearchParams<{ code?: string | string[] }>();
   const code = Array.isArray(rawCode) ? rawCode[0] : rawCode ?? '';
@@ -95,21 +97,23 @@ export default function PartnerInviteScreen() {
 
   if (isLoadingInvite) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg.primary, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator color={colors.text.primary} />
+      <SafeAreaView style={{ flex: 1, backgroundColor: palette.page, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator color={FYLL_LIME} />
       </SafeAreaView>
     );
   }
 
   if (inviteError || !invite) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg.primary }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: palette.page }}>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-          <Building2 size={28} color={colors.text.tertiary} strokeWidth={1.7} />
-          <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600', marginTop: 12, textAlign: 'center' }}>
+          <View style={{ width: 56, height: 56, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.dangerBg, borderWidth: 1, borderColor: palette.dangerBorder }}>
+            <Building2 size={24} color={palette.danger} strokeWidth={1.8} />
+          </View>
+          <MoneyText style={{ color: palette.text, fontSize: 24, letterSpacing: -0.6, marginTop: 18, textAlign: 'center' }}>
             This invite isn't working
-          </Text>
-          <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 6, textAlign: 'center' }}>
+          </MoneyText>
+          <Text style={{ color: palette.faint, fontSize: 14, lineHeight: 20, marginTop: 8, textAlign: 'center', maxWidth: 320 }}>
             {inviteError || 'Ask the business to send you a new invite.'}
           </Text>
         </View>
@@ -117,85 +121,101 @@ export default function PartnerInviteScreen() {
     );
   }
 
+  const inputShell = {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    height: 54,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: palette.border,
+    backgroundColor: palette.inputBg,
+    paddingHorizontal: 16,
+  };
+  const webNoOutline = Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null;
+
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg.primary }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: palette.page }}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-          <View style={{ width: '100%', maxWidth: 380 }}>
-            <View style={{ alignItems: 'center', marginBottom: 28 }}>
-              <View style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: colors.bg.secondary, alignItems: 'center', justifyContent: 'center' }}>
-                <Building2 size={24} color={colors.text.primary} strokeWidth={1.8} />
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <View style={{ width: '100%', maxWidth: 400 }}>
+            <View style={{ alignItems: 'flex-start', marginBottom: 30 }}>
+              <Image source={fyllWordmarkPng} accessibilityLabel="Fyll" resizeMode="contain" style={{ width: 30 * (900 / 493), height: 30, tintColor: palette.text }} />
+              <View style={{ marginTop: 28, flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4, paddingHorizontal: 10, borderRadius: 999, backgroundColor: palette.nudgeBg, borderWidth: 1, borderColor: palette.nudgeBorder }}>
+                <Building2 size={12} color={palette.limeOnSurface} strokeWidth={2.2} />
+                <Text style={{ color: palette.limeOnSurface, fontSize: 12, fontWeight: '700' }} numberOfLines={1}>{invite.businessName}</Text>
               </View>
-              <Text style={{ color: colors.text.primary, fontSize: 18, fontWeight: '700', marginTop: 16, textAlign: 'center' }}>
-                Join {invite.businessName} on Fyll
-              </Text>
-              <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 4, textAlign: 'center' }}>
-                Create a password for {invite.email} to access your partner portal.
+              <MoneyText style={{ color: palette.text, fontSize: 32, letterSpacing: -1.1, lineHeight: 38, marginTop: 14 }}>
+                You're invited to join {invite.businessName}
+              </MoneyText>
+              <Text style={{ color: palette.faint, fontSize: 14, lineHeight: 20, marginTop: 8 }}>
+                Create a password for {invite.email} to open your partner portal.
               </Text>
             </View>
 
             <View style={{ gap: 12 }}>
-              <View style={{ height: 48, borderRadius: 12, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.secondary, paddingHorizontal: 14, justifyContent: 'center' }}>
-                <Text style={{ color: colors.text.tertiary, fontSize: 14 }} numberOfLines={1}>{invite.email}</Text>
+              <View style={{ ...inputShell, backgroundColor: palette.softFill }}>
+                <Text style={{ flex: 1, color: palette.muted, fontSize: 15 }} numberOfLines={1}>{invite.email}</Text>
               </View>
 
-              <View style={{ flexDirection: 'row', alignItems: 'center', height: 48, borderRadius: 12, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card, paddingHorizontal: 14 }}>
-                <Lock size={16} color={colors.text.tertiary} strokeWidth={2} />
+              <View style={inputShell}>
+                <Lock size={17} color={palette.faint} strokeWidth={2} />
                 <TextInput
                   value={password}
                   onChangeText={setPassword}
                   placeholder="Create a password"
-                  placeholderTextColor={colors.text.muted}
+                  placeholderTextColor={palette.faint}
                   secureTextEntry={!showPassword}
-                  style={{ flex: 1, marginLeft: 10, color: colors.text.primary, fontSize: 14 }}
+                  style={[{ flex: 1, marginLeft: 12, color: palette.text, fontSize: 15 }, webNoOutline]}
                 />
-                <Pressable onPress={() => setShowPassword((prev) => !prev)}>
-                  {showPassword ? <EyeOff size={16} color={colors.text.tertiary} strokeWidth={2} /> : <Eye size={16} color={colors.text.tertiary} strokeWidth={2} />}
+                <Pressable onPress={() => setShowPassword((prev) => !prev)} accessibilityLabel={showPassword ? 'Hide password' : 'Show password'} hitSlop={8}>
+                  {showPassword ? <EyeOff size={17} color={palette.faint} strokeWidth={2} /> : <Eye size={17} color={palette.faint} strokeWidth={2} />}
                 </Pressable>
               </View>
 
-              <View style={{ flexDirection: 'row', alignItems: 'center', height: 48, borderRadius: 12, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card, paddingHorizontal: 14 }}>
-                <Lock size={16} color={colors.text.tertiary} strokeWidth={2} />
+              <View style={inputShell}>
+                <Lock size={17} color={palette.faint} strokeWidth={2} />
                 <TextInput
                   value={confirmPassword}
                   onChangeText={setConfirmPassword}
                   placeholder="Confirm password"
-                  placeholderTextColor={colors.text.muted}
+                  placeholderTextColor={palette.faint}
                   secureTextEntry={!showPassword}
-                  style={{ flex: 1, marginLeft: 10, color: colors.text.primary, fontSize: 14 }}
+                  style={[{ flex: 1, marginLeft: 12, color: palette.text, fontSize: 15 }, webNoOutline]}
                   onSubmitEditing={handleCreateAccount}
                 />
               </View>
 
               {formError ? (
-                <Text style={{ color: '#DC2626', fontSize: 12, fontWeight: '600' }}>{formError}</Text>
+                <View style={{ paddingVertical: 10, paddingHorizontal: 14, borderRadius: 14, backgroundColor: palette.dangerBg, borderWidth: 1, borderColor: palette.dangerBorder }}>
+                  <Text style={{ color: palette.danger, fontSize: 13, fontWeight: '600' }}>{formError}</Text>
+                </View>
               ) : null}
 
               {alreadyRegistered ? (
-                <View style={{ borderRadius: 12, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.secondary, padding: 14 }}>
-                  <Text style={{ color: colors.text.primary, fontSize: 12.5, fontWeight: '600' }}>
+                <View style={{ borderRadius: 20, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, padding: 16 }}>
+                  <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>
                     You already have an account for this email.
                   </Text>
-                  <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 4, lineHeight: 17 }}>
+                  <Text style={{ color: palette.faint, fontSize: 13, marginTop: 4, lineHeight: 18 }}>
                     Log in with your existing password instead of creating a new one.
                   </Text>
                   <Pressable
                     onPress={() => router.push(`/partner-login?email=${encodeURIComponent(invite.email)}&invite=${encodeURIComponent(invite.inviteCode)}`)}
-                    style={{ height: 40, borderRadius: 999, backgroundColor: colors.text.primary, alignItems: 'center', justifyContent: 'center', marginTop: 10 }}
+                    style={{ height: 46, borderRadius: 999, backgroundColor: FYLL_LIME, alignItems: 'center', justifyContent: 'center', marginTop: 12 }}
                   >
-                    <Text style={{ color: colors.bg.primary, fontSize: 12.5, fontWeight: '700' }}>Log In</Text>
+                    <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 15 }}>Log in</MoneyText>
                   </Pressable>
                 </View>
               ) : (
                 <Pressable
                   onPress={handleCreateAccount}
                   disabled={isSubmitting}
-                  style={{ height: 48, borderRadius: 999, backgroundColor: colors.text.primary, alignItems: 'center', justifyContent: 'center', opacity: isSubmitting ? 0.7 : 1, marginTop: 4 }}
+                  style={{ height: 54, borderRadius: 999, backgroundColor: FYLL_LIME, alignItems: 'center', justifyContent: 'center', opacity: isSubmitting ? 0.7 : 1, marginTop: 6 }}
                 >
                   {isSubmitting ? (
-                    <ActivityIndicator color={colors.bg.primary} size="small" />
+                    <ActivityIndicator color={FYLL_LIME_INK} size="small" />
                   ) : (
-                    <Text style={{ color: colors.bg.primary, fontSize: 14, fontWeight: '700' }}>Create Account</Text>
+                    <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 16 }}>Create account</MoneyText>
                   )}
                 </Pressable>
               )}

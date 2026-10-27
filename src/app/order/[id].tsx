@@ -3,7 +3,7 @@ import { View, Text, ScrollView, Pressable, Linking, Alert, Modal, TextInput, Ke
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Phone, Mail, MapPin, House, Calendar, Tag, Package, Trash2, Edit2, X, Check, Truck, CreditCard, ChevronDown, RefreshCcw, Camera, Plus, Minus, Search, Printer, User as UserIcon, Percent, ChevronLeft, ChevronRight, FileText, Save, MessageSquare, MoreVertical, Send, Copy, Flag, ExternalLink } from 'lucide-react-native';
+import { ArrowLeft, Phone, Mail, MapPin, House, Calendar, Tag, Package, Trash2, Edit2, X, Check, Truck, CreditCard, ChevronDown, RefreshCcw, Camera, Plus, Minus, Search, Printer, User as UserIcon, Percent, ChevronLeft, ChevronRight, FileText, Save, MessageSquare, MoreVertical, Send, Copy, Flag, ExternalLink, Clock, CircleCheck, CircleX, CircleDot } from 'lucide-react-native';
 import useFyllStore, { formatCurrency, NIGERIA_STATES, LogisticsInfo, Refund, OrderItem, PrescriptionInfo, Case, type Order, type PartnerJob, type RefundRequestStatus, type SocialCheckoutDraft } from '@/lib/state/fyll-store';
 import useAuthStore from '@/lib/state/auth-store';
 import { useThemeColors } from '@/lib/theme';
@@ -157,6 +157,17 @@ const getSystemOrderStatusDisplay = (status?: string | null, fallbackColor = '#6
     refunded: { label: 'Refunded', color: '#DC2626', bg: 'rgba(220,38,38,0.12)' },
   };
   return map[normalized] ?? { label: toSystemOrderStatusLabel(status), color: fallbackColor, bg: `${fallbackColor}20` };
+};
+// Header status icon: says what stage the order is in at a glance, instead of a plain colour dot.
+const getStatusIcon = (label: string) => {
+  const key = label.toLowerCase();
+  if (/cancel|fail|refund/.test(key)) return CircleX;
+  if (/deliver|complet|confirm|verified|paid/.test(key)) return CircleCheck;
+  if (/dispatch|ship|out for/.test(key)) return Truck;
+  if (/pack/.test(key)) return Package;
+  if (/await|approval|pending/.test(key)) return Clock;
+  if (/process|prepar/.test(key)) return RefreshCcw;
+  return CircleDot;
 };
 const isSocialCheckoutPaymentOrder = (order: Pick<Order, 'source' | 'websiteOrderReference'>) => (
   /^SC-/i.test(order.websiteOrderReference ?? '') || (order.source ?? '').toLowerCase().includes('social checkout')
@@ -688,10 +699,19 @@ export default function OrderDetailScreen() {
     );
   }
 
+  // Where the order really came from. A WooCommerce number only means it was sent/synced to the website
+  // (e.g. a Social Checkout order the team ticked "send to Woo" on), not that it started there.
+  const wooReference = order.websiteOrderReference?.trim() ?? '';
+  const originSource = formatOrderSourcePart(order.source);
+  const orderOriginParts: string[] = isSocialCheckoutPaymentOrder(order)
+    ? ['from Social Checkout', wooReference && !/^SC-/i.test(wooReference) ? `WooCommerce #${wooReference}` : '']
+    : wooReference
+      ? [originSource && !/woo|website/i.test(originSource) ? `from ${originSource}` : '', `${originSource && !/woo|website/i.test(originSource) ? '' : 'from '}WooCommerce #${wooReference}`]
+      : [];
   const headerSubtitle = [
     new Date(order.orderDate ?? order.createdAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }),
     order.createdBy ? `created by ${order.createdBy}` : null,
-    order.websiteOrderReference ? `from WooCommerce #${order.websiteOrderReference}` : null,
+    ...orderOriginParts.filter(Boolean),
   ].filter(Boolean).join(' · ');
   const orderDateSource = order.orderDate ?? order.createdAt;
   const orderDate = new Date(orderDateSource).toLocaleDateString('en-US', {
@@ -1978,7 +1998,7 @@ export default function OrderDetailScreen() {
           style={{ height: 44, flexShrink: 0, paddingHorizontal: 18, borderRadius: 999, backgroundColor: FYLL_LIME, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', opacity: isLinkingWooOrder ? 0.7 : 1 }}
         >
           {isLinkingWooOrder ? <ActivityIndicator size="small" color={FYLL_LIME_INK} /> : null}
-          <Text style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '600', marginLeft: isLinkingWooOrder ? 7 : 0 }}>{isLinkingWooOrder ? 'Linking…' : 'Link to Woo'}</Text>
+          <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '600', marginLeft: isLinkingWooOrder ? 7 : 0 }}>{isLinkingWooOrder ? 'Linking…' : 'Link to Woo'}</MoneyText>
         </Pressable>
       </View>
 </>
@@ -2048,7 +2068,7 @@ export default function OrderDetailScreen() {
             style={{ marginTop: 10, height: 44, borderRadius: 999, backgroundColor: FYLL_LIME, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', opacity: isSendingToWoo ? 0.65 : 1 }}
           >
             {isSendingToWoo ? <ActivityIndicator size="small" color="#17190B" /> : <Send size={16} color="#17190B" strokeWidth={2.3} />}
-            <Text style={{ color: '#17190B', fontSize: 13, fontWeight: '600', marginLeft: 8 }}>{isSendingToWoo ? 'Sending…' : 'Send to Woo'}</Text>
+            <MoneyText style={{ color: '#17190B', fontSize: 13, fontWeight: '600', marginLeft: 8 }}>{isSendingToWoo ? 'Sending…' : 'Send to Woo'}</MoneyText>
           </Pressable>
         </View>
       ) : null}
@@ -2413,7 +2433,7 @@ export default function OrderDetailScreen() {
         </View>
       ) : null}
 
-      <View className="flex-row items-center mt-4" style={{ gap: 10, justifyContent: 'flex-end' }}>
+      <View className="mt-4" style={{ flexDirection: isDesktop ? 'row' : 'column', alignItems: isDesktop ? 'center' : 'stretch', gap: 10, justifyContent: 'flex-end' }}>
         <Pressable
           onPress={() => {
             if (qcReady) {
@@ -2424,7 +2444,7 @@ export default function OrderDetailScreen() {
           }}
           className="active:opacity-80"
           style={{
-            minHeight: 44,
+            minHeight: isDesktop ? 44 : 48,
             paddingHorizontal: 18,
             borderRadius: 999,
             backgroundColor: qcReady ? 'transparent' : FYLL_LIME,
@@ -2436,16 +2456,16 @@ export default function OrderDetailScreen() {
           }}
         >
           <Check size={16} color={qcReady ? palette.text : FYLL_LIME_INK} strokeWidth={2} />
-          <Text style={{ color: qcReady ? palette.text : FYLL_LIME_INK, fontSize: 14, fontWeight: '600', marginLeft: 8 }}>
+          <MoneyText style={{ color: qcReady ? palette.text : FYLL_LIME_INK, fontSize: 14, fontWeight: '600', marginLeft: 8 }}>
             {qcReady ? (showQcDetails ? 'Hide QC details' : 'View QC details') : 'Start quality control'}
-          </Text>
+          </MoneyText>
         </Pressable>
         {qcReady ? (
           <Pressable
             onPress={() => setShowQcModal(true)}
             className="active:opacity-80"
             style={{
-              minHeight: 44,
+              minHeight: isDesktop ? 44 : 48,
               paddingHorizontal: 18,
               borderRadius: 999,
               borderWidth: 1,
@@ -2455,7 +2475,7 @@ export default function OrderDetailScreen() {
               justifyContent: 'center',
             }}
           >
-            <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>Edit</Text>
+            <MoneyText style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>Edit</MoneyText>
           </Pressable>
         ) : null}
       </View>
@@ -2595,8 +2615,8 @@ export default function OrderDetailScreen() {
       >
         <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: activeStatusDisplay.color }} />
         <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
-          <Text style={{ color: palette.muted, fontSize: 11, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>Current status</Text>
-          <Text style={{ color: activeStatusDisplay.color, fontSize: 15, fontWeight: '600' }} numberOfLines={1}>
+          <Text style={{ color: palette.muted, fontSize: 10, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>Current status</Text>
+          <Text style={{ color: activeStatusDisplay.color, fontSize: 14, fontWeight: '600' }} numberOfLines={1}>
             {activeStatusDisplay.label}
           </Text>
         </View>
@@ -2659,7 +2679,7 @@ export default function OrderDetailScreen() {
           className="active:opacity-85"
           style={{ height: 48, borderRadius: 999, backgroundColor: FYLL_LIME, alignItems: 'center', justifyContent: 'center', opacity: nextStatusBlocked ? 0.55 : 1 }}
         >
-          <Text style={{ color: FYLL_LIME_INK, fontSize: 15, fontWeight: '600' }}>Move to {getSystemOrderStatusDisplay(nextStatusOption.name, nextStatusOption.color).label}</Text>
+          <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 15, fontWeight: '600' }}>Move to {getSystemOrderStatusDisplay(nextStatusOption.name, nextStatusOption.color).label}</MoneyText>
         </Pressable>
       ) : null}
     </View>
@@ -2783,16 +2803,16 @@ export default function OrderDetailScreen() {
 
                   <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', columnGap: 12 }}>
-                      <Text style={{ color: palette.text, fontSize: 28, lineHeight: 34, fontWeight: '700', letterSpacing: -0.4 }} numberOfLines={1}>
+                      <MoneyText style={{ color: palette.text, fontSize: 28, lineHeight: 34, letterSpacing: -0.6 }} numberOfLines={1}>
                         {order.orderNumber}
-                      </Text>
+                      </MoneyText>
                       <Pressable
                         onPress={() => setShowStatusModal(true)}
+                        accessibilityLabel={`Order status: ${displayStatus}. Click to change`}
                         className="active:opacity-80"
-                        style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}
+                        style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', flexShrink: 0, backgroundColor: `${activeStatusDisplay.color}1f`, borderWidth: 1, borderColor: `${activeStatusDisplay.color}55` }}
                       >
-                        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: activeStatusDisplay.color }} />
-                        <Text style={{ color: activeStatusDisplay.color, fontSize: 13.5, fontWeight: '600' }}>{displayStatus}</Text>
+                        {React.createElement(getStatusIcon(displayStatus), { size: 16, color: activeStatusDisplay.color, strokeWidth: 2.4 })}
                       </Pressable>
                     </View>
                     <Text style={{ color: palette.faint, fontSize: 13.5 }} numberOfLines={1}>{headerSubtitle}</Text>
@@ -2827,7 +2847,7 @@ export default function OrderDetailScreen() {
                     </View>
                   ) : null}
 
-                  <Button
+                  <Button bricolage
                     onPress={handleSaveAll}
                     disabled={!hasUnsavedChanges}
                     fullWidth={false}
@@ -2904,27 +2924,24 @@ export default function OrderDetailScreen() {
           </View>
         ) : (
           <View style={{ borderBottomWidth: 1, borderBottomColor: palette.hairline, backgroundColor: palette.page }}>
-            <View
-              className="flex-row items-center"
-              style={{ paddingHorizontal: 12, paddingTop: 6, paddingBottom: 10, gap: 4 }}
-            >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 14 }}>
               <Pressable
                 onPress={handleBack}
                 accessibilityLabel="Back"
-                className="active:opacity-50 items-center justify-center"
-                style={{ width: 44, height: 44, borderRadius: 22 }}
+                className="active:opacity-70"
+                style={iconButtonStyle}
               >
-                <ArrowLeft size={20} color={palette.text} strokeWidth={2.2} />
+                <ArrowLeft size={19} color={palette.text} strokeWidth={2.2} />
               </Pressable>
-              <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
-                <Text style={{ color: palette.text, fontSize: 16, fontWeight: '600' }} numberOfLines={1}>{order.orderNumber}</Text>
+              <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <MoneyText style={{ flexShrink: 0, color: palette.text, fontSize: 20, letterSpacing: -0.4 }} numberOfLines={1}>{order.orderNumber}</MoneyText>
                 <Pressable
                   onPress={() => setShowStatusModal(true)}
+                  accessibilityLabel={`Order status: ${displayStatus}. Tap to change`}
                   className="active:opacity-80"
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start' }}
+                  style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', flexShrink: 0, backgroundColor: `${activeStatusDisplay.color}1f`, borderWidth: 1, borderColor: `${activeStatusDisplay.color}55` }}
                 >
-                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: activeStatusDisplay.color }} />
-                  <Text style={{ color: activeStatusDisplay.color, fontSize: isWebDesktop ? 12.5 : 12, fontWeight: '600' }}>{displayStatus}</Text>
+                  {React.createElement(getStatusIcon(displayStatus), { size: 15, color: activeStatusDisplay.color, strokeWidth: 2.4 })}
                 </Pressable>
               </View>
               <Pressable
@@ -2932,18 +2949,20 @@ export default function OrderDetailScreen() {
                   void handleOpenThread();
                 }}
                 accessibilityLabel={orderThreadQuery.data ? 'Open order thread' : 'Start order thread'}
-                className="items-center justify-center active:opacity-70"
-                style={{ width: 44, height: 44, borderRadius: 22, position: 'relative' }}
+                className="active:opacity-70"
+                style={{ ...iconButtonStyle, position: 'relative' }}
               >
                 <MessageSquare size={17} color={palette.text} strokeWidth={2} />
                 <View
                   style={{
                     position: 'absolute',
-                    top: 10,
-                    right: 10,
-                    width: 8,
-                    height: 8,
-                    borderRadius: 4,
+                    top: 8,
+                    right: 8,
+                    width: 9,
+                    height: 9,
+                    borderRadius: 5,
+                    borderWidth: 1.5,
+                    borderColor: palette.page,
                     backgroundColor: orderThreadQuery.data ? '#EF4444' : '#9CA3AF',
                   }}
                 />
@@ -2952,8 +2971,8 @@ export default function OrderDetailScreen() {
                 ref={headerActionButtonRef}
                 onPress={handleOpenHeaderActionMenu}
                 accessibilityLabel="More order actions"
-                className="items-center justify-center active:opacity-70"
-                style={{ width: 44, height: 44, borderRadius: 22 }}
+                className="active:opacity-70"
+                style={iconButtonStyle}
               >
                 <MoreVertical size={17} color={palette.text} strokeWidth={2} />
               </Pressable>
@@ -3058,7 +3077,7 @@ export default function OrderDetailScreen() {
                   </View>
                 </View>
               ) : null}
-              <Button
+              <Button bricolage
                 onPress={handleSaveAll}
                 disabled={!hasUnsavedChanges}
                 variant={isDark ? (hasUnsavedChanges ? 'secondary' : 'ghost') : 'primary'}
@@ -3839,7 +3858,7 @@ export default function OrderDetailScreen() {
                   </View>
 
                   {/* Done (stages changes) */}
-                  <Button onPress={handleSaveEdit} className="mb-4">
+                  <Button bricolage onPress={handleSaveEdit} className="mb-4">
                     Done
                   </Button>
                 </ScrollView>
@@ -4530,7 +4549,7 @@ export default function OrderDetailScreen() {
                     >
                       <Text style={{ color: colors.text.secondary, fontWeight: '600' }}>Save Draft</Text>
                     </Pressable>
-                    <Button
+                    <Button bricolage
                       onPress={() => { void handleSubmitRefundRequest('submit'); }}
                       disabled={!refundAmount || parseFloat(refundAmount) <= 0}
                       variant="primary"
@@ -4687,7 +4706,7 @@ export default function OrderDetailScreen() {
                   </View>
 
                   {/* Done (stages changes) */}
-                  <Button
+                  <Button bricolage
                     onPress={handleSaveRefund}
                     disabled={!refundAmount || parseFloat(refundAmount) <= 0}
                     variant="danger"

@@ -353,6 +353,8 @@ export interface SocialCheckoutDraft {
   submittedAt?: string;
 
   resolvedItems?: SocialCheckoutResolvedItem[];
+  // True when staff confirmed the money themselves because the customer never submitted a receipt.
+  manuallyConfirmed?: boolean;
   reviewedBy?: string;
   reviewedAt?: string;
   convertedOrderId?: string;

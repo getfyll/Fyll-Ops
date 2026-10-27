@@ -38,7 +38,7 @@ export function ProductDetailPanel({ productId, onClose }: ProductDetailPanelPro
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const product = useMemo(() => products.find((p) => p.id === productId), [products, productId]);
-  const isOwner = userRole === 'owner';
+  const isOwner = userRole === 'owner' && currentUserRole !== 'staff';
   const canManageStatus = userRole === 'owner' || currentUserRole === 'admin' || currentUserRole === 'manager';
   const primaryDisplayImage = useMemo(
     () => product?.imageUrl ?? product?.variants.find((variant) => variant.imageUrl?.trim())?.imageUrl,

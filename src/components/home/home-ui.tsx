@@ -43,7 +43,7 @@ export function HomeLink({ label = 'View all', onPress }: { label?: string; onPr
   const palette = usePaymentsPalette();
   return (
     <Pressable onPress={onPress} className="active:opacity-70" style={{ flexDirection: 'row', alignItems: 'center', gap: 2, height: 28 }}>
-      <Text style={[HOME_BUTTON_TEXT_STYLE, { color: palette.limeOnSurface }]}>{label}</Text>
+      <MoneyText style={[HOME_BUTTON_TEXT_STYLE, { color: palette.limeOnSurface }]}>{label}</MoneyText>
       <ChevronRight size={14} color={palette.limeOnSurface} strokeWidth={2.2} />
     </Pressable>
   );
@@ -149,13 +149,15 @@ export function KpiStrip({ items, loading = false }: { items: KpiItem[]; loading
           const col = index % columns;
           const row = Math.floor(index / columns);
           const trendUp = (item.trend ?? 0) >= 0;
+          // A lone last item on mobile spans the full row so the divider above it runs edge to edge.
+          const spansRow = isMobile && index === items.length - 1 && items.length % columns === 1;
           return (
             <Pressable
               key={item.key}
               onPress={item.onPress}
               disabled={!item.onPress}
               style={(state) => ({
-                width: `${100 / columns}%`,
+                width: spansRow ? '100%' : `${100 / columns}%`,
                 paddingHorizontal: isMobile ? 14 : 18,
                 paddingVertical: isMobile ? 14 : 16,
                 gap: 4,

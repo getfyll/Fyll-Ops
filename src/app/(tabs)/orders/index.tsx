@@ -1,3 +1,4 @@
+import { formatPersonName } from '@/lib/display-format';
 import React, { useState, useMemo, useEffect } from 'react';
 import { View, Text, ScrollView, FlatList, Pressable, TextInput, Modal, Platform, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -286,7 +287,7 @@ function OrderCard({ order, products, statusColor, onPress, isSelected, showSpli
           <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
             <View className="flex-row items-center justify-between" style={{ gap: 8 }}>
               <View className="flex-row items-center" style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '500', flexShrink: 1 }} numberOfLines={1}>{order.customerName}</Text>
+                <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '500', flexShrink: 1 }} numberOfLines={1}>{formatPersonName(order.customerName)}</Text>
                 {order.flagNote ? <Flag size={11} color={colors.accent.warning} fill={colors.accent.warning} strokeWidth={2} style={{ marginLeft: 6 }} /> : null}
                 {(unreadCount ?? 0) > 0 ? <View style={{ minWidth: 17, height: 17, borderRadius: 9, backgroundColor: '#DC2626', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, marginLeft: 6 }}><Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '700' }}>{unreadCount}</Text></View> : null}
               </View>
@@ -375,7 +376,7 @@ function OrderRowWeb({
             </View>
           )}
         </View>
-        <View style={{ flex: 1.3, flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 0 }}><View style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? '#2A2B24' : colors.bg.secondary }}><Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '600' }}>{getCustomerInitials(order.customerName)}</Text></View><Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '500', flex: 1 }} numberOfLines={1}>{order.customerName}</Text></View>
+        <View style={{ flex: 1.3, flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 0 }}><View style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? '#2A2B24' : colors.bg.secondary }}><Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '600' }}>{getCustomerInitials(order.customerName)}</Text></View><Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '500', flex: 1 }} numberOfLines={1}>{formatPersonName(order.customerName)}</Text></View>
         <Text style={{ color: colors.text.secondary, flex: 1.2, fontSize: 12 }} numberOfLines={1}>
           {itemSummary}
         </Text>

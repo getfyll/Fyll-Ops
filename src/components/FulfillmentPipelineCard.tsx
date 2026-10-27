@@ -12,7 +12,7 @@ export type FulfillmentCounts = Record<FulfillmentStageKey, number>;
 const STAGES: { key: FulfillmentStageKey; label: string }[] = [
   { key: 'processing', label: 'Processing' },
   { key: 'dispatch', label: 'Dispatched' },
-  { key: 'delivered', label: 'Delivered' },
+  { key: 'delivered', label: 'Delivered (30d)' },
 ];
 
 const formatCount = (value: number) => String(Math.max(0, value));
@@ -31,7 +31,8 @@ export function FulfillmentPipelineCard({
   const palette = usePaymentsPalette();
   const { isMobile } = useBreakpoint();
   const headlineSize = isMobile ? 28 : 24;
-  const total = counts.processing + counts.dispatch + counts.delivered;
+  const active = counts.processing + counts.dispatch;
+  const total = active + counts.delivered;
   const colorFor: Record<FulfillmentStageKey, string> = {
     processing: palette.warn,
     dispatch: palette.textSoft,
@@ -51,9 +52,14 @@ export function FulfillmentPipelineCard({
         <HomeLink onPress={onPress} />
       </View>
 
-      <MoneyText style={{ color: palette.text, fontSize: headlineSize, letterSpacing: -0.4 }}>{total}</MoneyText>
+      <View style={{ gap: 4 }}>
+        <MoneyText style={{ color: palette.text, fontSize: headlineSize, letterSpacing: -0.4 }}>{active}</MoneyText>
+        <Text style={{ color: palette.faint, fontSize: 12 }} numberOfLines={1}>
+          {`${counts.delivered} delivered in the last 30 days`}
+        </Text>
+      </View>
 
-      <View style={{ flexDirection: 'row', gap: 3, height: 12, borderRadius: 999, overflow: 'hidden', backgroundColor: palette.softFill }}>
+      <View style={{ flexDirection: 'row', gap: 3, height: 8, borderRadius: 999, overflow: 'hidden', backgroundColor: palette.softFill }}>
         {total > 0 ? STAGES.map((stage) => (
           counts[stage.key] > 0 ? (
             <Pressable
@@ -66,14 +72,20 @@ export function FulfillmentPipelineCard({
         )) : null}
       </View>
 
-      <View style={{ flexDirection: 'row', gap: 10 }}>
-        {STAGES.map((stage) => (
-          <Pressable key={stage.key} onPress={() => onStagePress?.(stage.key)} className="active:opacity-80" style={{ flex: 1, minWidth: 0, gap: 2 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: colorFor[stage.key] }} />
-              <Text style={{ color: palette.faint, fontSize: 12 }} numberOfLines={1}>{stage.label}</Text>
-            </View>
-            <Text style={{ color: palette.text, fontSize: 18, fontWeight: '700' }}>{formatCount(counts[stage.key])}</Text>
+      <View style={{ gap: 8, paddingTop: 12, borderTopWidth: 1, borderTopColor: palette.hairline }}>
+        {STAGES.map((stage, index) => (
+          <Pressable
+            key={stage.key}
+            onPress={() => onStagePress?.(stage.key)}
+            className="active:opacity-80"
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: index === 0 ? 0 : 8, borderTopWidth: index === 0 ? 0 : 1, borderTopColor: palette.hairline }}
+          >
+            <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: colorFor[stage.key] }} />
+            <Text style={{ flex: 1, minWidth: 0, color: palette.text, fontSize: 13, fontWeight: '500' }} numberOfLines={1}>{stage.label}</Text>
+            <MoneyText style={{ color: palette.text, fontSize: 13 }}>{formatCount(counts[stage.key])}</MoneyText>
+            <Text style={{ width: 72, textAlign: 'right', color: colorFor[stage.key], fontSize: 12, fontWeight: '600' }} numberOfLines={1}>
+              {total > 0 ? `${Math.round((counts[stage.key] / total) * 100)}%` : '0%'}
+            </Text>
           </Pressable>
         ))}
       </View>
