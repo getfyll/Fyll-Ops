@@ -3,7 +3,6 @@ import {
   FYLL_PAYMENT_ORIGIN,
   FYLL_RETURNS_ORIGIN,
   FYLL_TRACKING_ORIGIN,
-  PAYMENT_PRIMARY_DOMAIN,
 } from '@/lib/tracking-host';
 
 export const slugifyBusinessName = (value: string) => value
@@ -129,7 +128,7 @@ export const buildSocialCheckoutPath = ({
   const normalizedCode = code.trim().toUpperCase();
   const normalizedBusinessSlug = slugifyBusinessName(businessSlug || businessName || '');
   return normalizedBusinessSlug
-    ? `/${normalizedBusinessSlug}/checkout/${encodeURIComponent(normalizedCode)}`
+    ? `/${normalizedBusinessSlug}/bill/${encodeURIComponent(normalizedCode)}`
     : `/checkout?code=${encodeURIComponent(normalizedCode)}`;
 };
 
@@ -144,24 +143,7 @@ export const buildSocialCheckoutUrl = ({
   businessSlug?: string | null;
   code: string;
 }) => {
-  // On the payment host the link is the short /<business>/<code>; the dashboard
-  // host (and local dev) keep the older /<business>/checkout/<code> shape.
-  if (hostnameOf(origin) === PAYMENT_PRIMARY_DOMAIN) {
-    const slug = slugifyBusinessName(businessSlug || businessName || '');
-    const normalizedCode = code.trim().toUpperCase();
-    return slug
-      ? `${origin}/${slug}/${encodeURIComponent(normalizedCode)}`
-      : `${origin}/checkout?code=${encodeURIComponent(normalizedCode)}`;
-  }
   return `${origin}${buildSocialCheckoutPath({ businessName, businessSlug, code })}`;
-};
-
-const hostnameOf = (value: string) => {
-  try {
-    return new URL(value).hostname.replace(/^www\./, '');
-  } catch {
-    return '';
-  }
 };
 
 // Customers open payment links on payment.fyll.app, never the staff dashboard.

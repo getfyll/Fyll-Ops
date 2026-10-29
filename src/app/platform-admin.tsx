@@ -36,8 +36,14 @@ import useAuthStore from '@/lib/state/auth-store';
 import { supabase } from '@/lib/supabase';
 import { useResolvedThemeMode, useThemeColors } from '@/lib/theme';
 import { useSettingsBack } from '@/lib/useSettingsBack';
-import { buildFounderAccessLink, getFyllPublicAppOrigin } from '@/lib/fyll-app-url';
-import { FYLL_TRACKING_ORIGIN } from '@/lib/tracking-host';
+import { buildFounderAccessLink } from '@/lib/fyll-app-url';
+import {
+  FYLL_DELIVERY_CONFIRMATION_ORIGIN,
+  FYLL_PAYMENT_ORIGIN,
+  FYLL_RETURNS_ORIGIN,
+  FYLL_TRACKING_ORIGIN,
+} from '@/lib/tracking-host';
+import { STOREFRONT_PRIMARY_DOMAIN } from '@/lib/storefront-url';
 import { SearchClearButton } from '@/components/SearchClearButton';
 import {
   SWITCHABLE_BUSINESS_FEATURES,
@@ -87,7 +93,24 @@ type PlatformInvite = {
   email_sent_at: string | null;
 };
 
-type AdminTab = 'overview' | 'businesses' | 'invites';
+type AdminTab = 'overview' | 'businesses' | 'invites' | 'requests';
+
+type ChangeRequest = {
+  id: string;
+  business_id: string;
+  business_name: string;
+  kind: 'business_name' | 'storefront_handle';
+  current_value: string | null;
+  requested_value: string;
+  note: string | null;
+  requester_name: string | null;
+  requester_email: string | null;
+  status: 'pending' | 'approved' | 'declined';
+  resolved_by: string | null;
+  resolved_at: string | null;
+  resolution_note: string | null;
+  created_at: string;
+};
 type BusinessFilter = 'all' | 'active' | 'inactive' | 'disabled';
 type BusinessState = 'active' | 'inactive' | 'disabled';
 
@@ -143,11 +166,6 @@ const formatRelativeDays = (value?: string | null) => {
 
 const getJoinLink = (inviteCode: string) => {
   return buildFounderAccessLink(inviteCode);
-};
-
-const getTrackingPageUrl = (businessSlug: string) => {
-  const path = `/${businessSlug}`;
-  return Platform.OS === 'web' ? `${FYLL_TRACKING_ORIGIN}${path}` : Linking.createURL(path);
 };
 
 const DEFAULT_INVITE_EXPIRY_DAYS = '14';
@@ -236,6 +254,10 @@ export default function PlatformAdminScreen() {
   const shellMaxWidth = 1440;
 
   const [tab, setTab] = useState<AdminTab>('overview');
+  const [changeRequests, setChangeRequests] = useState<ChangeRequest[]>([]);
+  const [isLoadingRequests, setIsLoadingRequests] = useState(false);
+  const [requestsError, setRequestsError] = useState('');
+  const [resolvingRequestId, setResolvingRequestId] = useState<string | null>(null);
   const [platformAdmin, setPlatformAdmin] = useState<PlatformAdminStatus | null>(null);
   const [businesses, setBusinesses] = useState<PlatformBusiness[]>([]);
   const [invites, setInvites] = useState<PlatformInvite[]>([]);
@@ -265,10 +287,7 @@ export default function PlatformAdminScreen() {
   const [isSavingDisabled, setIsSavingDisabled] = useState(false);
   const [disableError, setDisableError] = useState('');
   const [partnerOf, setPartnerOf] = useState<{ business_id: string; business_name: string } | null>(null);
-  const [isEditingHandle, setIsEditingHandle] = useState(false);
   const [handleDraft, setHandleDraft] = useState('');
-  const [handleError, setHandleError] = useState('');
-  const [isSavingHandle, setIsSavingHandle] = useState(false);
   const [openInviteMenuId, setOpenInviteMenuId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState('');
   const [actionError, setActionError] = useState('');
@@ -472,12 +491,10 @@ export default function PlatformAdminScreen() {
     void loadInvites();
   }, [loadBusinesses, loadInvites, platformAdmin?.is_admin]);
 
-  // Close the name / handle editors whenever a different business is opened, and load its handle.
+  // Close the identity editor whenever a different business is opened, and load its public username.
   useEffect(() => {
     setIsEditingBusinessName(false);
     setBusinessNameError('');
-    setIsEditingHandle(false);
-    setHandleError('');
     setIsConfirmingDisable(false);
     setDisableReasonDraft('');
     setDisableError('');
@@ -500,6 +517,50 @@ export default function PlatformAdminScreen() {
     setInviteLimitDraft(String(selectedBusiness.invite_limit_total ?? 5));
     setFeatureAccessDraft(normalizeBusinessFeatureAccess(selectedBusiness.feature_access));
   }, [selectedBusiness]);
+
+  const loadChangeRequests = useCallback(async () => {
+    if (!platformAdmin?.is_admin) return;
+    setIsLoadingRequests(true);
+    setRequestsError('');
+    try {
+      const { data, error } = await supabase.rpc('platform_admin_list_change_requests', { status_input: 'all' });
+      if (error) throw error;
+      setChangeRequests((Array.isArray(data) ? data : []) as ChangeRequest[]);
+    } catch (error) {
+      setRequestsError(error instanceof Error ? error.message : 'Could not load requests.');
+    } finally {
+      setIsLoadingRequests(false);
+    }
+  }, [platformAdmin?.is_admin]);
+
+  useEffect(() => {
+    void loadChangeRequests();
+  }, [loadChangeRequests]);
+
+  const resolveChangeRequest = async (request: ChangeRequest, approve: boolean) => {
+    if (resolvingRequestId) return;
+    setResolvingRequestId(request.id);
+    setActionError('');
+    setSuccessMessage('');
+    try {
+      const { error } = await supabase.rpc('platform_admin_resolve_change_request', {
+        request_id_input: request.id,
+        approve_input: approve,
+        note_input: null,
+      });
+      if (error) throw error;
+      setSuccessMessage(approve
+        ? `Approved. ${request.business_name} now uses "${request.requested_value}".`
+        : `Declined the request from ${request.business_name}.`);
+      await loadChangeRequests();
+      if (approve) await loadBusinesses('refresh');
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Could not update that request.');
+    } finally {
+      setResolvingRequestId(null);
+    }
+  };
 
   const handleRefresh = async () => {
     await loadBusinesses('refresh');
@@ -548,6 +609,7 @@ export default function PlatformAdminScreen() {
     if (!selectedBusiness) return;
     setBusinessNameDraft(selectedBusiness.business_name || selectedBusiness.company_name);
     setCompanyNameDraft(selectedBusiness.company_name || selectedBusiness.business_name);
+    setHandleDraft(storefrontHandle ?? selectedBusiness.business_slug ?? '');
     setBusinessNameError('');
     setIsEditingBusinessName(true);
   };
@@ -556,17 +618,18 @@ export default function PlatformAdminScreen() {
     if (!selectedBusiness || isSavingBusinessName) return;
     const nextBusinessName = businessNameDraft.trim().replace(/\s+/g, ' ');
     const nextCompanyName = companyNameDraft.trim().replace(/\s+/g, ' ');
+    const nextHandle = handleDraft.toLowerCase().replace(/[^a-z0-9]+/g, '');
     const currentBusinessName = selectedBusiness.business_name || selectedBusiness.company_name;
     const currentCompanyName = selectedBusiness.company_name || selectedBusiness.business_name;
-    if (!nextBusinessName || !nextCompanyName) {
-      setBusinessNameError('Both names are required.');
+    if (!nextBusinessName || !nextCompanyName || !nextHandle) {
+      setBusinessNameError('Business name, company name, and public username are required.');
       return;
     }
     if (nextBusinessName.length > 80 || nextCompanyName.length > 120) {
       setBusinessNameError('Business name must be 80 characters or fewer, company name 120.');
       return;
     }
-    if (nextBusinessName === currentBusinessName && nextCompanyName === currentCompanyName) {
+    if (nextBusinessName === currentBusinessName && nextCompanyName === currentCompanyName && nextHandle === storefrontHandle) {
       setIsEditingBusinessName(false);
       return;
     }
@@ -575,32 +638,35 @@ export default function PlatformAdminScreen() {
     setActionError('');
     setSuccessMessage('');
     try {
-      const { data, error } = await supabase.rpc('platform_admin_update_business_name', {
+      const { data, error } = await supabase.rpc('platform_admin_update_business_identity', {
         business_id_input: selectedBusiness.business_id,
         business_name_input: nextBusinessName,
         company_name_input: nextCompanyName,
+        public_username_input: nextHandle,
       });
       if (error) throw error;
-      const saved = (data ?? {}) as { business_slug?: string; addresses_changed?: boolean };
+      const saved = (data ?? {}) as { business_slug?: string; storefront_slug?: string; addresses_changed?: boolean };
+      const savedUsername = saved.storefront_slug ?? saved.business_slug ?? nextHandle;
+      setStorefrontHandle(savedUsername);
       setBusinesses((current) => current.map((business) => (
         business.business_id === selectedBusiness.business_id
           ? {
               ...business,
               business_name: nextBusinessName,
               company_name: nextCompanyName,
-              business_slug: saved.business_slug || business.business_slug,
+              business_slug: saved.business_slug ?? savedUsername,
             }
           : business
       )));
       setIsEditingBusinessName(false);
       setSuccessMessage(saved.addresses_changed
-        ? `Names updated. Customer links and the storefront address now use "${saved.business_slug}".`
-        : 'Names updated.');
+        ? `Business identity updated. Every customer link now uses "${savedUsername}".`
+        : 'Business identity updated.');
       await loadBusinesses('refresh');
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
-      console.error('Failed to update business names:', error);
-      setBusinessNameError(error instanceof Error ? error.message : 'Could not update the names.');
+      console.error('Failed to update business identity:', error);
+      setBusinessNameError(error instanceof Error ? error.message : 'Could not update the business identity.');
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setIsSavingBusinessName(false);
@@ -635,40 +701,6 @@ export default function PlatformAdminScreen() {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setIsSavingDisabled(false);
-    }
-  };
-
-  const handleSaveStorefrontHandle = async () => {
-    if (!selectedBusiness || isSavingHandle) return;
-    const nextHandle = handleDraft.toLowerCase().replace(/[^a-z0-9]+/g, '');
-    if (!nextHandle) {
-      setHandleError('Handle needs at least one letter or number.');
-      return;
-    }
-    if (nextHandle === storefrontHandle) {
-      setIsEditingHandle(false);
-      return;
-    }
-    setIsSavingHandle(true);
-    setHandleError('');
-    setSuccessMessage('');
-    try {
-      const { data, error } = await supabase.rpc('platform_admin_update_storefront_handle', {
-        business_id_input: selectedBusiness.business_id,
-        handle_input: nextHandle,
-      });
-      if (error) throw error;
-      const saved = (data ?? {}) as { storefront_slug?: string };
-      setStorefrontHandle(saved.storefront_slug ?? nextHandle);
-      setIsEditingHandle(false);
-      setSuccessMessage(`Storefront handle changed to "${saved.storefront_slug ?? nextHandle}".`);
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (error) {
-      console.error('Failed to update storefront handle:', error);
-      setHandleError(error instanceof Error ? error.message : 'Could not update the storefront handle.');
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-    } finally {
-      setIsSavingHandle(false);
     }
   };
 
@@ -793,10 +825,13 @@ export default function PlatformAdminScreen() {
     ]);
   };
 
+  const pendingRequestCount = changeRequests.filter((request) => request.status === 'pending').length;
+
   const tabs: Array<{ key: AdminTab; label: string; icon: React.ReactNode }> = [
     { key: 'overview', label: 'Overview', icon: <LayoutGrid size={16} color={tab === 'overview' ? activeTabFg : inactiveTabFg} strokeWidth={2} /> },
     { key: 'businesses', label: 'Businesses', icon: <Building2 size={16} color={tab === 'businesses' ? activeTabFg : inactiveTabFg} strokeWidth={2} /> },
     { key: 'invites', label: 'Invites', icon: <Ticket size={16} color={tab === 'invites' ? activeTabFg : inactiveTabFg} strokeWidth={2} /> },
+    { key: 'requests', label: pendingRequestCount > 0 ? `Requests (${pendingRequestCount})` : 'Requests', icon: <Pencil size={16} color={tab === 'requests' ? activeTabFg : inactiveTabFg} strokeWidth={2} /> },
   ];
 
   const renderTopMetric = (title: string, value: string | number, subtitle: string, icon: React.ReactNode) => (
@@ -1023,10 +1058,17 @@ export default function PlatformAdminScreen() {
     // Partner logins show up as businesses too (named "Partner · …"); they only need a login link.
     const isPartnerAccount = Boolean(partnerOf) || displayName.startsWith('Partner · ');
     const partnerLoginUrl = `${FYLL_PARTNER_PORTAL_ORIGIN}/partner-login`;
-    const secondaryName = selectedBusiness.company_name && selectedBusiness.company_name !== displayName
-      ? selectedBusiness.company_name
-      : '';
-
+    const publicUsername = storefrontHandle || selectedBusiness.business_slug;
+    const publicLinks = publicUsername
+      ? [
+          { label: 'Storefront', url: `https://${publicUsername}.${STOREFRONT_PRIMARY_DOMAIN}`, canOpen: true, templateFor: null },
+          { label: 'Bill link', url: `${FYLL_PAYMENT_ORIGIN}/${publicUsername}/bill/BILL-CODE`, canOpen: false, templateFor: 'bill' },
+          { label: 'Returns', url: `${FYLL_RETURNS_ORIGIN}/${publicUsername}`, canOpen: true, templateFor: null },
+          { label: 'Delivery confirmation', url: `${FYLL_DELIVERY_CONFIRMATION_ORIGIN}/${publicUsername}/ORDER-CODE`, canOpen: false, templateFor: 'order' },
+          { label: 'Order tracking', url: `${FYLL_TRACKING_ORIGIN}/${publicUsername}/TRACKING-CODE`, canOpen: false, templateFor: 'order' },
+          { label: 'Quote link', url: `${FYLL_PAYMENT_ORIGIN}/${publicUsername}/quote/QUOTE-NUMBER`, canOpen: false, templateFor: 'quote' },
+        ]
+      : [];
     return (
       <>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -1043,101 +1085,9 @@ export default function PlatformAdminScreen() {
           </Pressable>
         </View>
 
-        {isEditingBusinessName ? (
-          (() => {
-            const draftSlug = businessNameDraft.toLowerCase().replace(/[^a-z0-9]+/g, '');
-            const currentBusinessName = selectedBusiness.business_name || selectedBusiness.company_name;
-            const addressesWillChange = businessNameDraft.trim().replace(/\s+/g, ' ') !== currentBusinessName && draftSlug.length > 0;
-            const inputStyle = {
-              height: 46,
-              borderRadius: 14,
-              borderWidth: 1,
-              borderColor,
-              backgroundColor: isDark ? '#111111' : '#FFFFFF',
-              color: textPrimary,
-              paddingHorizontal: 14,
-              fontSize: 15,
-              fontWeight: '500' as const,
-            };
-            return (
-              <View style={{ marginTop: 24, gap: 12 }}>
-                <View style={{ gap: 6 }}>
-                  <Text style={{ color: textFaint, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase' }}>Business name</Text>
-                  <TextInput
-                    value={businessNameDraft}
-                    onChangeText={(value) => { setBusinessNameDraft(value); setBusinessNameError(''); }}
-                    autoFocus
-                    maxLength={80}
-                    placeholder="Business name"
-                    placeholderTextColor={textFaint}
-                    style={inputStyle}
-                    selectionColor={textPrimary}
-                  />
-                </View>
-                <View style={{ gap: 6 }}>
-                  <Text style={{ color: textFaint, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase' }}>Company name</Text>
-                  <TextInput
-                    value={companyNameDraft}
-                    onChangeText={(value) => { setCompanyNameDraft(value); setBusinessNameError(''); }}
-                    maxLength={120}
-                    placeholder="Company name"
-                    placeholderTextColor={textFaint}
-                    onSubmitEditing={() => { void handleSaveBusinessName(); }}
-                    style={inputStyle}
-                    selectionColor={textPrimary}
-                  />
-                </View>
-                {addressesWillChange ? (
-                  <View style={{ borderRadius: 14, borderWidth: 1, borderColor: 'rgba(245,158,11,0.35)', backgroundColor: 'rgba(245,158,11,0.08)', padding: 12, gap: 4 }}>
-                    <Text style={{ color: textPrimary, fontSize: 12.5, fontWeight: '600' }}>This also changes their addresses</Text>
-                    <Text style={{ color: textSecondary, fontSize: 12.5 }}>Tracking and payment links: …/{draftSlug}</Text>
-                    <Text style={{ color: textSecondary, fontSize: 12.5 }}>Storefront: {draftSlug}.fyll.store</Text>
-                    <Text style={{ color: textMuted, fontSize: 12, lineHeight: 17, marginTop: 2 }}>Links already shared under the old name will stop working.</Text>
-                  </View>
-                ) : (
-                  <Text style={{ color: textMuted, fontSize: 12, lineHeight: 17 }}>
-                    The business name is what the app shows. Changing the company name alone does not change any link.
-                  </Text>
-                )}
-                {businessNameError ? <Text style={{ color: '#F87171', fontSize: 12.5 }}>{businessNameError}</Text> : null}
-                <View style={{ flexDirection: 'row', gap: 10 }}>
-                  <Pressable
-                    onPress={() => { void handleSaveBusinessName(); }}
-                    disabled={isSavingBusinessName}
-                    style={{ height: 38, paddingHorizontal: 18, borderRadius: 999, backgroundColor: textPrimary, alignItems: 'center', justifyContent: 'center', opacity: isSavingBusinessName ? 0.6 : 1 }}
-                  >
-                    <Text style={{ color: isDark ? '#111111' : '#FFFFFF', fontSize: 13, fontWeight: '600' }}>{isSavingBusinessName ? 'Saving…' : 'Save names'}</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => { setIsEditingBusinessName(false); setBusinessNameError(''); }}
-                    style={{ height: 38, paddingHorizontal: 16, borderRadius: 999, borderWidth: 1, borderColor, alignItems: 'center', justifyContent: 'center' }}
-                  >
-                    <Text style={{ color: textSecondary, fontSize: 13, fontWeight: '600' }}>Cancel</Text>
-                  </Pressable>
-                </View>
-              </View>
-            );
-          })()
-        ) : (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 24 }}>
-            <Text style={{ color: textPrimary, fontSize: 20, fontWeight: '600', flexShrink: 1 }}>
-              {displayName}
-            </Text>
-            <Pressable
-              onPress={handleStartEditBusinessName}
-              accessibilityLabel="Edit business and company name"
-              hitSlop={8}
-              style={{ width: 30, height: 30, borderRadius: 15, borderWidth: 1, borderColor, alignItems: 'center', justifyContent: 'center' }}
-            >
-              <Pencil size={14} color={textMuted} strokeWidth={2.2} />
-            </Pressable>
-          </View>
-        )}
-        {secondaryName ? (
-          <Text style={{ color: textMuted, fontSize: 14, fontWeight: '400', marginTop: 8 }}>
-            {secondaryName}
-          </Text>
-        ) : null}
+        <Text style={{ color: textPrimary, fontSize: 20, fontWeight: '600', marginTop: 24 }}>
+          {displayName}
+        </Text>
 
         {partnerOf ? (
           <View style={{ marginTop: 18, borderRadius: 16, borderWidth: 1, borderColor, backgroundColor: headerBg, padding: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
@@ -1204,69 +1154,124 @@ export default function PlatformAdminScreen() {
           </View>
         ) : (
         <View style={{ marginTop: 24 }}>
-          <Text style={{ color: textFaint, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 12 }}>Workspace</Text>
+          <Text style={{ color: textFaint, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 12 }}>Business settings</Text>
           <View style={{ gap: 12 }}>
             <View style={{ borderRadius: 18, borderWidth: 1, borderColor, backgroundColor: headerBg, padding: 16 }}>
-              <Text style={{ color: textMuted, fontSize: 12, fontWeight: '400' }}>Tracking page</Text>
-              <Text style={{ color: textPrimary, fontSize: 13, fontWeight: '500', marginTop: 8 }}>
-                {selectedBusiness.business_slug ? getTrackingPageUrl(selectedBusiness.business_slug) : 'No slug yet'}
-              </Text>
-            </View>
-            <View style={{ borderRadius: 18, borderWidth: 1, borderColor, backgroundColor: headerBg, padding: 16 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Text style={{ color: textMuted, fontSize: 12, fontWeight: '400' }}>Storefront handle</Text>
-                {!isEditingHandle && storefrontHandle !== null ? (
-                  <Pressable
-                    onPress={() => { setHandleDraft(storefrontHandle); setHandleError(''); setIsEditingHandle(true); }}
-                    accessibilityLabel="Edit storefront handle"
-                    hitSlop={8}
-                    style={{ width: 28, height: 28, borderRadius: 14, borderWidth: 1, borderColor, alignItems: 'center', justifyContent: 'center' }}
-                  >
-                    <Pencil size={13} color={textMuted} strokeWidth={2.2} />
-                  </Pressable>
-                ) : null}
-              </View>
-              {isEditingHandle ? (
-                <View style={{ gap: 10, marginTop: 10 }}>
-                  <TextInput
-                    value={handleDraft}
-                    onChangeText={(value) => { setHandleDraft(value); setHandleError(''); }}
-                    autoFocus
-                    autoCapitalize="none"
-                    maxLength={60}
-                    placeholder="e.g. minteyewear"
-                    placeholderTextColor={textFaint}
-                    onSubmitEditing={() => { void handleSaveStorefrontHandle(); }}
-                    style={{ height: 44, borderRadius: 14, borderWidth: 1, borderColor, backgroundColor: isDark ? '#111111' : '#FFFFFF', color: textPrimary, paddingHorizontal: 14, fontSize: 14, fontWeight: '500' }}
-                    selectionColor={textPrimary}
-                  />
-                  <Text style={{ color: textSecondary, fontSize: 12.5 }}>
-                    Storefront: {handleDraft.toLowerCase().replace(/[^a-z0-9]+/g, '') || '…'}.fyll.store
-                  </Text>
-                  <Text style={{ color: textMuted, fontSize: 12, lineHeight: 17 }}>
-                    Letters and numbers only. Links already shared under the old handle will stop working.
-                  </Text>
-                  {handleError ? <Text style={{ color: '#F87171', fontSize: 12.5 }}>{handleError}</Text> : null}
-                  <View style={{ flexDirection: 'row', gap: 10 }}>
-                    <Pressable
-                      onPress={() => { void handleSaveStorefrontHandle(); }}
-                      disabled={isSavingHandle}
-                      style={{ height: 38, paddingHorizontal: 18, borderRadius: 999, backgroundColor: textPrimary, alignItems: 'center', justifyContent: 'center', opacity: isSavingHandle ? 0.6 : 1 }}
-                    >
-                      <Text style={{ color: isDark ? '#111111' : '#FFFFFF', fontSize: 13, fontWeight: '600' }}>{isSavingHandle ? 'Saving…' : 'Save handle'}</Text>
-                    </Pressable>
-                    <Pressable
-                      onPress={() => { setIsEditingHandle(false); setHandleError(''); }}
-                      style={{ height: 38, paddingHorizontal: 16, borderRadius: 999, borderWidth: 1, borderColor, alignItems: 'center', justifyContent: 'center' }}
-                    >
-                      <Text style={{ color: textSecondary, fontSize: 13, fontWeight: '600' }}>Cancel</Text>
-                    </Pressable>
-                  </View>
-                </View>
+              {isEditingBusinessName ? (
+                (() => {
+                  const draftSlug = handleDraft.toLowerCase().replace(/[^a-z0-9]+/g, '');
+                  const addressesWillChange = draftSlug.length > 0 && draftSlug !== storefrontHandle;
+                  const inputStyle = {
+                    height: 46,
+                    borderRadius: 14,
+                    borderWidth: 1,
+                    borderColor,
+                    backgroundColor: isDark ? '#111111' : '#FFFFFF',
+                    color: textPrimary,
+                    paddingHorizontal: 14,
+                    fontSize: 15,
+                    fontWeight: '500' as const,
+                  };
+                  return (
+                    <View style={{ gap: 12 }}>
+                      <Text style={{ color: textPrimary, fontSize: 14, fontWeight: '600' }}>Business identity</Text>
+                      <View style={{ gap: 6 }}>
+                        <Text style={{ color: textFaint, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase' }}>Business name</Text>
+                        <TextInput
+                          value={businessNameDraft}
+                          onChangeText={(value) => { setBusinessNameDraft(value); setBusinessNameError(''); }}
+                          autoFocus
+                          maxLength={80}
+                          placeholder="Business name"
+                          placeholderTextColor={textFaint}
+                          style={inputStyle}
+                          selectionColor={textPrimary}
+                        />
+                      </View>
+                      <View style={{ gap: 6 }}>
+                        <Text style={{ color: textFaint, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase' }}>Company name</Text>
+                        <TextInput
+                          value={companyNameDraft}
+                          onChangeText={(value) => { setCompanyNameDraft(value); setBusinessNameError(''); }}
+                          maxLength={120}
+                          placeholder="Company name"
+                          placeholderTextColor={textFaint}
+                          style={inputStyle}
+                          selectionColor={textPrimary}
+                        />
+                      </View>
+                      <View style={{ gap: 6 }}>
+                        <Text style={{ color: textFaint, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase' }}>Public username</Text>
+                        <TextInput
+                          value={handleDraft}
+                          onChangeText={(value) => { setHandleDraft(value); setBusinessNameError(''); }}
+                          autoCapitalize="none"
+                          maxLength={60}
+                          placeholder="e.g. minteyewear"
+                          placeholderTextColor={textFaint}
+                          onSubmitEditing={() => { void handleSaveBusinessName(); }}
+                          style={inputStyle}
+                          selectionColor={textPrimary}
+                        />
+                        <Text style={{ color: textMuted, fontSize: 12, lineHeight: 17 }}>
+                          Letters and numbers only. Used across every Fyll customer link and the storefront address.
+                        </Text>
+                      </View>
+                      {addressesWillChange ? (
+                        <View style={{ borderRadius: 14, borderWidth: 1, borderColor: 'rgba(245,158,11,0.35)', backgroundColor: 'rgba(245,158,11,0.08)', padding: 12, gap: 4 }}>
+                          <Text style={{ color: textPrimary, fontSize: 12.5, fontWeight: '600' }}>This also changes their addresses</Text>
+                          <Text style={{ color: textSecondary, fontSize: 12.5 }}>Tracking, returns, delivery, quote and bill links will use: {draftSlug}</Text>
+                          <Text style={{ color: textSecondary, fontSize: 12.5 }}>Storefront: {draftSlug}.fyll.store</Text>
+                          <Text style={{ color: textMuted, fontSize: 12, lineHeight: 17, marginTop: 2 }}>Links already shared under the old username will stop working.</Text>
+                        </View>
+                      ) : (
+                        <Text style={{ color: textMuted, fontSize: 12, lineHeight: 17 }}>
+                          Business and company names control what staff see. Only the public username controls customer-facing links.
+                        </Text>
+                      )}
+                      {businessNameError ? <Text style={{ color: '#F87171', fontSize: 12.5 }}>{businessNameError}</Text> : null}
+                      <View style={{ flexDirection: 'row', gap: 10 }}>
+                        <Pressable
+                          onPress={() => { void handleSaveBusinessName(); }}
+                          disabled={isSavingBusinessName}
+                          style={{ height: 38, paddingHorizontal: 18, borderRadius: 999, backgroundColor: textPrimary, alignItems: 'center', justifyContent: 'center', opacity: isSavingBusinessName ? 0.6 : 1 }}
+                        >
+                          <Text style={{ color: isDark ? '#111111' : '#FFFFFF', fontSize: 13, fontWeight: '600' }}>{isSavingBusinessName ? 'Saving…' : 'Save identity'}</Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={() => { setIsEditingBusinessName(false); setBusinessNameError(''); }}
+                          style={{ height: 38, paddingHorizontal: 16, borderRadius: 999, borderWidth: 1, borderColor, alignItems: 'center', justifyContent: 'center' }}
+                        >
+                          <Text style={{ color: textSecondary, fontSize: 13, fontWeight: '600' }}>Cancel</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  );
+                })()
               ) : (
-                <Text style={{ color: textPrimary, fontSize: 13, fontWeight: '500', marginTop: 8 }}>
-                  {storefrontHandle === null ? 'Loading…' : storefrontHandle ? `${storefrontHandle}.fyll.store` : 'No handle yet'}
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                  <View style={{ flex: 1, minWidth: 0, gap: 12 }}>
+                    <Text style={{ color: textPrimary, fontSize: 14, fontWeight: '600' }}>Business identity</Text>
+                    {[
+                      { label: 'Business name', value: displayName },
+                      { label: 'Company name', value: selectedBusiness.company_name || displayName },
+                      { label: 'Public username', value: storefrontHandle === null ? 'Loading…' : storefrontHandle || 'Not assigned' },
+                    ].map((item) => (
+                      <View key={item.label} style={{ gap: 4 }}>
+                        <Text style={{ color: textFaint, fontSize: 11, letterSpacing: 0.7, textTransform: 'uppercase' }}>{item.label}</Text>
+                        <Text style={{ color: textPrimary, fontSize: 13.5, fontWeight: '500' }}>{item.value}</Text>
+                      </View>
+                    ))}
+                  </View>
+                  <Pressable
+                    onPress={handleStartEditBusinessName}
+                    accessibilityLabel="Edit business identity"
+                    hitSlop={8}
+                    style={{ width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor, alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    <Pencil size={14} color={textMuted} strokeWidth={2.2} />
+                  </Pressable>
+                </View>
               )}
             </View>
             <View style={{ borderRadius: 18, borderWidth: 1, borderColor, backgroundColor: headerBg, padding: 16 }}>
@@ -1384,6 +1389,66 @@ export default function PlatformAdminScreen() {
                 })}
               </View>
             </View>
+          </View>
+
+          <Text style={{ color: textFaint, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', marginTop: 26, marginBottom: 12 }}>External links</Text>
+          <View style={{ borderRadius: 18, borderWidth: 1, borderColor, backgroundColor: headerBg, overflow: 'hidden' }}>
+            <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 13, borderBottomWidth: 1, borderBottomColor: softBorderColor }}>
+              <Text style={{ color: textPrimary, fontSize: 14, fontWeight: '600' }}>Company links</Text>
+              <Text style={{ color: textMuted, fontSize: 12, lineHeight: 17, marginTop: 5 }}>
+                Every customer-facing Fyll address assigned to this business.
+              </Text>
+            </View>
+            {publicLinks.length > 0 ? publicLinks.map((link, index) => (
+              <View
+                key={link.label}
+                style={{
+                  paddingHorizontal: 16,
+                  paddingVertical: 13,
+                  borderBottomWidth: index === publicLinks.length - 1 ? 0 : 1,
+                  borderBottomColor: softBorderColor,
+                  gap: 9,
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ color: textMuted, fontSize: 11.5, fontWeight: '500' }}>{link.label}</Text>
+                    <Text selectable style={{ color: textPrimary, fontSize: 12.5, fontWeight: '500', marginTop: 5 }} numberOfLines={2}>
+                      {link.url}
+                    </Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                    <Pressable
+                      onPress={async () => {
+                        await Clipboard.setStringAsync(link.url);
+                        setSuccessMessage(`${link.label} copied.`);
+                        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                      }}
+                      accessibilityLabel={`Copy ${link.label}`}
+                      style={{ width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor, alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      <Copy size={13} color={textMuted} strokeWidth={2} />
+                    </Pressable>
+                    {link.canOpen ? (
+                      <Pressable
+                        onPress={() => { void Linking.openURL(link.url); }}
+                        accessibilityLabel={`Open ${link.label}`}
+                        style={{ width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor, alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <ExternalLink size={13} color={textMuted} strokeWidth={2} />
+                      </Pressable>
+                    ) : null}
+                  </View>
+                </View>
+                {link.templateFor ? (
+                  <Text style={{ color: textFaint, fontSize: 11, lineHeight: 15 }}>
+                    Template — the final link replaces the code when a {link.templateFor} is created.
+                  </Text>
+                ) : null}
+              </View>
+            )) : (
+              <Text style={{ color: textMuted, fontSize: 13, padding: 16 }}>No public username has been assigned yet.</Text>
+            )}
           </View>
         </View>
         )}
@@ -1581,6 +1646,117 @@ export default function PlatformAdminScreen() {
       </View>
     </View>
   );
+
+  const renderRequests = () => {
+    const pending = changeRequests.filter((request) => request.status === 'pending');
+    const history = changeRequests.filter((request) => request.status !== 'pending');
+    const kindLabel = (kind: ChangeRequest['kind']) => (kind === 'storefront_handle' ? 'Public username' : 'Business name');
+    const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+    const renderCard = (request: ChangeRequest) => {
+      const isPending = request.status === 'pending';
+      const busy = resolvingRequestId === request.id;
+      return (
+        <View key={request.id} style={{ borderRadius: 24, borderWidth: 1, borderColor, backgroundColor: cardBg, padding: 22, gap: 14 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={{ color: textPrimary, fontSize: 17, fontWeight: '600' }} numberOfLines={1}>{request.business_name}</Text>
+              <Text style={{ color: textMuted, fontSize: 13, marginTop: 3 }}>
+                {kindLabel(request.kind)} change · {when(request.created_at)}
+              </Text>
+            </View>
+            <View style={{ paddingHorizontal: 12, height: 26, borderRadius: 999, justifyContent: 'center', backgroundColor: isPending ? 'rgba(245,176,65,0.16)' : request.status === 'approved' ? 'rgba(34,197,94,0.14)' : 'rgba(161,161,170,0.16)' }}>
+              <Text style={{ color: isPending ? '#F5B041' : request.status === 'approved' ? '#22C55E' : textMuted, fontSize: 12, fontWeight: '600', textTransform: 'capitalize' }}>{request.status}</Text>
+            </View>
+          </View>
+
+          <View style={{ flexDirection: Platform.OS === 'web' ? 'row' : 'column', gap: 12 }}>
+            <View style={{ flex: 1, borderRadius: 16, borderWidth: 1, borderColor, backgroundColor: controlBg, padding: 14 }}>
+              <Text style={{ color: textFaint, fontSize: 11, textTransform: 'uppercase', letterSpacing: 1 }}>Current</Text>
+              <Text style={{ color: textSecondary, fontSize: 15, fontWeight: '500', marginTop: 6 }}>{request.current_value || '—'}</Text>
+            </View>
+            <View style={{ flex: 1, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(213,224,87,0.35)', backgroundColor: 'rgba(213,224,87,0.08)', padding: 14 }}>
+              <Text style={{ color: textFaint, fontSize: 11, textTransform: 'uppercase', letterSpacing: 1 }}>Requested</Text>
+              <Text style={{ color: textPrimary, fontSize: 15, fontWeight: '600', marginTop: 6 }}>{request.requested_value}</Text>
+            </View>
+          </View>
+
+          <Text style={{ color: textMuted, fontSize: 13 }}>
+            Asked by {request.requester_name || 'a team member'}{request.requester_email ? ` · ${request.requester_email}` : ''}
+          </Text>
+          {request.note ? <Text style={{ color: textSecondary, fontSize: 14, lineHeight: 20 }}>“{request.note}”</Text> : null}
+
+          {isPending ? (
+            <>
+              <Text style={{ color: textMuted, fontSize: 12.5, lineHeight: 18 }}>
+                {request.kind === 'storefront_handle'
+                  ? 'Approving updates the username across storefront, tracking, returns, delivery, quote and payment links. Old links will stop working.'
+                  : 'Approving renames the business and updates all of its Fyll public links. Old links will stop working.'}
+              </Text>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <Pressable
+                  onPress={() => { void resolveChangeRequest(request, true); }}
+                  disabled={Boolean(resolvingRequestId)}
+                  style={{ height: 42, paddingHorizontal: 22, borderRadius: 999, backgroundColor: '#D5E057', alignItems: 'center', justifyContent: 'center', opacity: resolvingRequestId ? 0.6 : 1, flexDirection: 'row', gap: 8 }}
+                >
+                  {busy ? <ActivityIndicator size="small" color="#1E1E1E" /> : null}
+                  <Text style={{ color: '#1E1E1E', fontSize: 14, fontWeight: '700' }}>Approve</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => { void resolveChangeRequest(request, false); }}
+                  disabled={Boolean(resolvingRequestId)}
+                  style={{ height: 42, paddingHorizontal: 20, borderRadius: 999, borderWidth: 1, borderColor, alignItems: 'center', justifyContent: 'center', opacity: resolvingRequestId ? 0.6 : 1 }}
+                >
+                  <Text style={{ color: textSecondary, fontSize: 14, fontWeight: '600' }}>Decline</Text>
+                </Pressable>
+              </View>
+            </>
+          ) : (
+            <Text style={{ color: textFaint, fontSize: 12.5 }}>
+              {request.status === 'approved' ? 'Approved' : 'Declined'} by {request.resolved_by || 'an admin'}{request.resolved_at ? ` · ${when(request.resolved_at)}` : ''}
+            </Text>
+          )}
+        </View>
+      );
+    };
+
+    return (
+      <View style={{ gap: 22 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: textPrimary, fontSize: 28, fontWeight: '600' }}>Requests</Text>
+            <Text style={{ color: textMuted, fontSize: 15, marginTop: 8 }}>Name and storefront handle changes that businesses have asked for.</Text>
+          </View>
+          <Pressable onPress={() => { void loadChangeRequests(); }} accessibilityLabel="Refresh requests" style={{ width: 42, height: 42, borderRadius: 21, borderWidth: 1, borderColor, alignItems: 'center', justifyContent: 'center' }}>
+            {isLoadingRequests ? <ActivityIndicator size="small" color={iconMuted} /> : <RefreshCcw size={16} color={iconMuted} strokeWidth={2} />}
+          </Pressable>
+        </View>
+
+        {requestsError ? (
+          <View style={{ borderRadius: 14, borderWidth: 1, borderColor: 'rgba(239,68,68,0.18)', backgroundColor: 'rgba(239,68,68,0.08)', paddingHorizontal: 14, paddingVertical: 12 }}>
+            <Text style={{ color: '#F87171', fontSize: 13 }}>{requestsError}</Text>
+          </View>
+        ) : null}
+
+        <View style={{ gap: 14 }}>
+          <Text style={{ color: textFaint, fontSize: 11, textTransform: 'uppercase', letterSpacing: 1 }}>Pending · {pending.length}</Text>
+          {pending.length === 0 ? (
+            <View style={{ borderRadius: 24, borderWidth: 1, borderStyle: 'dashed', borderColor, padding: 28, alignItems: 'center' }}>
+              <Text style={{ color: textSecondary, fontSize: 15, fontWeight: '600' }}>No pending requests</Text>
+              <Text style={{ color: textMuted, fontSize: 13, marginTop: 6, textAlign: 'center' }}>New name and handle requests will show up here as soon as a business sends one.</Text>
+            </View>
+          ) : pending.map(renderCard)}
+        </View>
+
+        {history.length > 0 ? (
+          <View style={{ gap: 14 }}>
+            <Text style={{ color: textFaint, fontSize: 11, textTransform: 'uppercase', letterSpacing: 1 }}>History</Text>
+            {history.map(renderCard)}
+          </View>
+        ) : null}
+      </View>
+    );
+  };
 
   const renderInvites = () => (
     <View style={{ gap: 22 }}>
@@ -2000,6 +2176,7 @@ export default function PlatformAdminScreen() {
                 {tab === 'overview' ? renderOverview() : null}
                 {tab === 'businesses' ? renderBusinesses() : null}
                 {tab === 'invites' ? renderInvites() : null}
+                {tab === 'requests' ? renderRequests() : null}
               </View>
             </ScrollView>
 

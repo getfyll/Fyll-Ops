@@ -7,7 +7,7 @@ import { isDeliveryConfirmationHostname, isPaymentHostname } from '@/lib/trackin
 export default function BusinessCodePublicRoute() {
   const hostname = Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.hostname : '';
 
-  // payment.fyll.app/<business>/<code> is the public payment page.
+  // Legacy payment.fyll.app/<business>/<code> links continue to open the public bill.
   if (isPaymentHostname(hostname)) return <CheckoutScreen />;
   return isDeliveryConfirmationHostname(hostname) ? <ConfirmDeliveryScreen /> : <TrackOrderScreen />;
 }

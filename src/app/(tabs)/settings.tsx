@@ -1,8 +1,8 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { View, Text, Pressable, TextInput, Alert, Switch, Platform, Modal, Dimensions, type GestureResponderEvent } from 'react-native';
+import { View, Text, Pressable, ScrollView, TextInput, Alert, Switch, Platform, Modal, Dimensions, type GestureResponderEvent } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Trash2, Edit2, Check, X, ChevronRight, ChevronUp, ChevronDown, ArrowLeft, Package, ShoppingCart, Tag, RotateCcw, Info, CreditCard, Truck, Wrench, Users, Moon, Sun, Laptop, LogOut, Shield, Building2, AlertTriangle, UserCircle, Upload, FileText, BarChart3, TrendingUp, Zap, Search, Sparkles, ListTodo, Bell, BellOff, Boxes, Clock3, Plus, MoreVertical, Megaphone, Printer, Copy, Link2, Landmark, Store, Mail } from 'lucide-react-native';
+import { Trash2, Edit2, Check, X, ChevronRight, ChevronUp, ChevronDown, ArrowLeft, Package, ShoppingCart, Tag, RotateCcw, Info, CreditCard, Truck, Wrench, Users, Moon, Sun, Laptop, LogOut, Shield, Building2, AlertTriangle, UserCircle, Upload, FileText, BarChart3, TrendingUp, Zap, Search, Sparkles, ListTodo, Bell, BellOff, Boxes, Clock3, Plus, MoreVertical, Megaphone, Printer, Copy, Link2, Landmark, Store, Mail, LayoutGrid } from 'lucide-react-native';
 import { useWebPushNotifications } from '@/hooks/useWebPushNotifications';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
 import useFyllStore, { formatCurrency, type DeletedItem, type ThemeMode } from '@/lib/state/fyll-store';
@@ -45,6 +45,10 @@ import ImportOrdersScreen from '@/app/import-orders';
 import ImportAiScreen from '@/app/import-ai';
 import TasksScreen from '@/app/(tabs)/tasks';
 import { SearchClearButton } from '@/components/SearchClearButton';
+import { FYLL_LIME, FYLL_LIME_INK, MoneyText, usePaymentsPalette } from '@/components/payments/payments-ui';
+import { FeaturesSettings, type FeatureRowKey } from '@/components/FeaturesSettings';
+import { SETTINGS_NAV, getSettingsNavItem, normalizeSettingsNavKey, searchSettings, type SettingsNavKey, type SettingsSearchEntry } from '@/lib/settings-nav';
+import useSettingsNavStore from '@/lib/state/settings-nav-store';
 
 type SettingsSection =
   | 'order-statuses'
@@ -57,19 +61,11 @@ type SettingsSection =
   | 'logistics-carriers'
   | 'case-statuses'
   | 'resolution-types'
-  | 'recycle-bin';
+  | 'recycle-bin'
+  | 'all-features';
 
-type WebSettingsMenuKey =
-  | 'profile'
-  | 'links'
-  | 'operations'
-  | 'orders'
-  | 'inventory'
-  | 'cases'
-  | 'appearance'
-  | 'notifications'
-  | 'integrations'
-  | 'system';
+// Pages of the Settings menu (see lib/settings-nav.ts).
+type WebSettingsMenuKey = SettingsNavKey;
 
 const SETTINGS_SECTION_MENU_MAP: Record<SettingsSection, WebSettingsMenuKey> = {
   'order-statuses': 'orders',
@@ -78,11 +74,12 @@ const SETTINGS_SECTION_MENU_MAP: Record<SettingsSection, WebSettingsMenuKey> = {
   'custom-services': 'inventory',
   'order-timelines': 'orders',
   'shipping-zones': 'orders',
-  'payment-methods': 'orders',
+  'payment-methods': 'payments',
   'logistics-carriers': 'orders',
   'case-statuses': 'cases',
   'resolution-types': 'cases',
   'recycle-bin': 'system',
+  'all-features': 'all-features',
 };
 
 type WebInlineSettingsPanel =
@@ -138,33 +135,41 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
   'case-statuses',
   'resolution-types',
   'recycle-bin',
+  'all-features',
 ];
 
 const normalizeSettingsSectionParam = (value?: string | null): SettingsSection | null => {
   const normalized = value?.trim().replace(/\?+$/, '') ?? '';
+  // Shipping Zones now live inside Fulfillment Timelines.
+  if (normalized === 'shipping-zones') return 'order-timelines';
   return SETTINGS_SECTIONS.includes(normalized as SettingsSection)
     ? (normalized as SettingsSection)
     : null;
 };
 
-const WEB_SETTINGS_MENUS: WebSettingsMenuKey[] = [
-  'profile',
-  'links',
-  'operations',
-  'orders',
-  'inventory',
-  'cases',
-  'appearance',
-  'notifications',
-  'integrations',
-  'system',
-];
+// Old `?menu=` values (e.g. the removed Operations page) redirect to their new home.
+const normalizeWebSettingsMenuParam = (value?: string | null): WebSettingsMenuKey | null => normalizeSettingsNavKey(value);
 
-const normalizeWebSettingsMenuParam = (value?: string | null): WebSettingsMenuKey | null => {
-  const normalized = value?.trim().replace(/\?+$/, '') ?? '';
-  return WEB_SETTINGS_MENUS.includes(normalized as WebSettingsMenuKey)
-    ? (normalized as WebSettingsMenuKey)
-    : null;
+// Which Settings page an inline sub-panel belongs to, so the sidebar highlights the right item.
+const PANEL_NAV_KEY: Record<WebInlineSettingsPanel, WebSettingsMenuKey> = {
+  'account-settings': 'profile',
+  'business-settings': 'business-details',
+  'storefront-settings': 'integrations',
+  'payment-accounts': 'payments',
+  team: 'team',
+  invitations: 'team',
+  'woocommerce-settings': 'integrations',
+  'order-automation': 'orders',
+  'email-settings': 'notifications',
+  'warehouse-settings': 'inventory',
+  'category-manager': 'inventory',
+  'product-variables': 'inventory',
+  'product-options': 'inventory',
+  'import-products': 'import-export',
+  'import-customers': 'import-export',
+  'import-orders': 'import-export',
+  'import-ai': 'import-export',
+  tasks: 'all-features',
 };
 
 const normalizeWebInlinePanelParam = (value?: string | null): WebInlineSettingsPanel | null => {
@@ -240,11 +245,14 @@ function EditableItem({
 }: EditableItemProps) {
   const colors = useThemeColors();
   const primaryPillButtonStyle = {
-    backgroundColor: colors.text.primary,
+    backgroundColor: FYLL_LIME,
     borderRadius: 999,
   } as const;
+  // Bricolage is single-weight, so ask for 400 to stop the web faux-bolding it.
   const primaryPillTextStyle = {
-    color: colors.bg.primary,
+    color: FYLL_LIME_INK,
+    fontFamily: 'BricolageGrotesque_700Bold',
+    fontWeight: '400',
   } as const;
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(item.name);
@@ -492,7 +500,11 @@ function SettingsRow({
   rightElement,
   showDivider = true,
 }: SettingsRowProps) {
-  const colors = useThemeColors();
+  const palette = usePaymentsPalette();
+  // One icon colour for every row (the new branding), whatever colour the caller passed.
+  const tintedIcon = React.isValidElement(icon)
+    ? React.cloneElement(icon as React.ReactElement<{ color?: string }>, { color: palette.limeOnSurface })
+    : icon;
   return (
     <Pressable
       onPress={() => {
@@ -505,42 +517,37 @@ function SettingsRow({
       disabled={!onPress}
     >
       <View
-        className="flex-row items-center px-4 py-3"
         style={{
-          minHeight: 76,
-          backgroundColor: 'transparent',
+          minHeight: 72,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 14,
+          paddingHorizontal: 18,
+          paddingVertical: 14,
           borderBottomWidth: showDivider ? 1 : 0,
-          borderBottomColor: colors.border.light,
+          borderBottomColor: palette.hairline,
         }}
       >
-        <View
-          className="items-center justify-center mr-3"
-          style={{
-            width: 46,
-            height: 46,
-            borderRadius: 999,
-            backgroundColor: colors.bg.secondary,
-          }}
-        >
-          {icon}
+        <View style={{ width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.nudgeBg }}>
+          {tintedIcon}
         </View>
-        <View className="flex-1">
-          <Text style={{ color: colors.text.primary }} className="font-semibold text-sm">
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }} numberOfLines={1}>
             {title}
           </Text>
           {description ? (
-            <Text style={{ color: colors.text.tertiary, fontSize: 12, lineHeight: 16, marginTop: 2 }}>
+            <Text style={{ color: palette.faint, fontSize: 12, lineHeight: 16, marginTop: 2 }} numberOfLines={2}>
               {description}
             </Text>
           ) : null}
         </View>
         {rightText ? (
-          <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold mr-2">
-            {rightText}
-          </Text>
+          <View style={{ minWidth: 26, height: 24, paddingHorizontal: 8, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.softFill }}>
+            <Text style={{ color: palette.textSoft, fontSize: 12, fontWeight: '600' }}>{rightText}</Text>
+          </View>
         ) : null}
         {rightElement ? rightElement : null}
-        {showChevron && onPress ? <ChevronRight size={18} color={colors.text.muted} strokeWidth={2} /> : null}
+        {showChevron && onPress ? <ChevronRight size={16} color={palette.faint} strokeWidth={2.2} /> : null}
       </View>
     </Pressable>
   );
@@ -557,6 +564,9 @@ export default function SettingsScreen() {
   const tabBarHeight = useTabBarHeight();
   const { isDesktop, isMobile } = useBreakpoint();
   const isWebDesktop = Platform.OS === 'web' && isDesktop;
+  const settingsPalette = usePaymentsPalette();
+  const setNavActiveKey = useSettingsNavStore((state) => state.setActiveKey);
+  const [settingsSearch, setSettingsSearch] = useState('');
   const pageHeadingStyle = usePageHeadingStyle(isMobile);
   const desktopHeaderMinHeight = DESKTOP_PAGE_HEADER_MIN_HEIGHT;
   const orderStatuses = useFyllStore((s) => s.orderStatuses);
@@ -1001,18 +1011,16 @@ export default function SettingsScreen() {
         <Pressable
           onPress={(e) => e.stopPropagation()}
           className="w-full rounded-3xl overflow-hidden"
-          style={{ backgroundColor: colors.bg.primary, maxWidth: 520 }}
+          style={{ backgroundColor: colors.bg.primary, maxWidth: 780, maxHeight: '92%' }}
         >
           <View className="px-5 py-4" style={{ borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
             <View className="flex-row items-center justify-between">
               <View className="flex-1 pr-4">
                 <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600' }}>
-                  {editingOrderTimelineId ? 'Edit Order Timeline' : 'New Order Timeline'}
+                  {editingOrderTimelineId || editingTimelineZoneId ? 'Edit Fulfillment Timeline' : 'New Fulfillment Timeline'}
                 </Text>
                 <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 4 }}>
-                  {editingOrderTimelineId
-                    ? 'Update the order type, optional shipping zone, and its processing business-day range before delivery time is added.'
-                    : 'Create an order type, optionally target a shipping zone, and define its processing business-day range before delivery time is added.'}
+                  'Choose the states, how many business days delivery takes there, and how many days processing takes before it ships.'
                 </Text>
               </View>
               <Pressable
@@ -1025,17 +1033,17 @@ export default function SettingsScreen() {
             </View>
           </View>
 
-          <View className="px-5 py-5" style={{ gap: 14 }}>
+          <ScrollView keyboardShouldPersistTaps="handled" style={{ flexShrink: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 20, gap: 14 }}>
             <View>
               <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '600', textTransform: 'uppercase', marginBottom: 7 }}>
-                Order Type
+                Timeline Name
               </Text>
               <View
                 className="rounded-2xl px-4"
                 style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light, minHeight: 50, justifyContent: 'center' }}
               >
                 <TextInput
-                  placeholder="Ready to wear"
+                  placeholder="e.g. Lagos delivery"
                   placeholderTextColor={colors.input.placeholder}
                   value={newOrderTypeName}
                   onChangeText={setNewOrderTypeName}
@@ -1047,65 +1055,157 @@ export default function SettingsScreen() {
 
             <View>
               <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '600', textTransform: 'uppercase', marginBottom: 7 }}>
-                Shipping Zone
+                States
               </Text>
-              <View
-                className="rounded-2xl p-3"
-                style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}
-              >
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              <View className="flex-row items-center justify-between" style={{ gap: 10, marginBottom: 8 }}>
+                <Text style={{ color: colors.text.muted, fontSize: 12 }}>
+                  {newShippingZoneSelectedStates.length} of {NIGERIAN_STATES.length} selected
+                </Text>
+                <View className="flex-row items-center" style={{ gap: 8 }}>
                   <Pressable
-                    onPress={() => setNewOrderTypeShippingZoneId(null)}
-                    className="rounded-full active:opacity-80"
+                    onPress={selectAllNewShippingZoneStates}
+                    className="rounded-full px-3 active:opacity-80"
                     style={{
-                      paddingHorizontal: 10,
-                      paddingVertical: 7,
-                      backgroundColor: newOrderTypeShippingZoneId === null ? colors.text.primary : colors.bg.card,
+                      minHeight: 32,
+                      justifyContent: 'center',
+                      backgroundColor: colors.bg.secondary,
                       borderWidth: 1,
-                      borderColor: newOrderTypeShippingZoneId === null ? colors.text.primary : colors.border.light,
+                      borderColor: colors.border.light,
                     }}
                   >
-                    <Text
-                      style={{
-                        color: newOrderTypeShippingZoneId === null ? colors.bg.primary : colors.text.secondary,
-                        fontSize: 11,
-                        fontWeight: '600',
-                      }}
-                    >
-                      All zones
+                    <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '600' }}>
+                      Select all
                     </Text>
                   </Pressable>
-                  {orderTimelineSettings.shippingZones.map((zone) => {
-                    const isSelected = newOrderTypeShippingZoneId === zone.id;
+                  <Pressable
+                    onPress={clearAllNewShippingZoneStates}
+                    className="rounded-full px-3 active:opacity-80"
+                    style={{
+                      minHeight: 32,
+                      justifyContent: 'center',
+                      backgroundColor: colors.bg.secondary,
+                      borderWidth: 1,
+                      borderColor: colors.border.light,
+                    }}
+                  >
+                    <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '600' }}>
+                      Clear all
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+              <View
+                className="rounded-2xl px-4"
+                style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light, minHeight: 50, justifyContent: 'center' }}
+              >
+                <TextInput
+                  placeholder="Type a Nigerian state"
+                  placeholderTextColor={colors.input.placeholder}
+                  value={newShippingZoneStateSearch}
+                  onChangeText={setNewShippingZoneStateSearch}
+                  style={{ color: colors.input.text, fontSize: 15, fontWeight: '500' }}
+                  selectionColor={colors.text.primary}
+                />
+                <SearchClearButton visible={Boolean(newShippingZoneStateSearch.trim())} onPress={() => setNewShippingZoneStateSearch('')} />
+              </View>
+              {newShippingZoneStateSearch.trim().length > 0 ? (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                  {getAvailableStateMatches(newShippingZoneStateSearch, newShippingZoneSelectedStates).map((stateName) => {
+                    const isSelected = newShippingZoneSelectedStates.includes(stateName);
                     return (
-                      <Pressable
-                        key={`order-timeline-zone-${zone.id}`}
-                        onPress={() => setNewOrderTypeShippingZoneId(zone.id)}
-                        className="rounded-full active:opacity-80"
+                    <Pressable
+                      key={`timeline-state-${stateName}`}
+                      onPress={() => toggleNewShippingZoneState(stateName)}
+                      className="rounded-full active:opacity-80"
+                      style={{
+                        paddingHorizontal: 8,
+                        paddingVertical: 5,
+                        backgroundColor: isSelected ? colors.text.primary : colors.bg.secondary,
+                        borderWidth: 1,
+                        borderColor: isSelected ? colors.text.primary : colors.border.light,
+                      }}
+                    >
+                      <Text
                         style={{
-                          paddingHorizontal: 10,
-                          paddingVertical: 7,
-                          backgroundColor: isSelected ? colors.text.primary : colors.bg.card,
-                          borderWidth: 1,
-                          borderColor: isSelected ? colors.text.primary : colors.border.light,
+                          color: isSelected ? colors.bg.primary : colors.text.secondary,
+                          fontSize: 10,
+                          fontWeight: '500',
                         }}
                       >
-                        <Text
-                          style={{
-                            color: isSelected ? colors.bg.primary : colors.text.secondary,
-                            fontSize: 11,
-                            fontWeight: '600',
-                          }}
-                        >
-                          {zone.name}
-                        </Text>
-                      </Pressable>
+                        {stateName}{isSelected ? ' ×' : ''}
+                      </Text>
+                    </Pressable>
                     );
                   })}
                 </View>
-                <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 10 }}>
-                  Choose a specific shipping zone only when this processing window should not apply everywhere. Shipping-zone delivery days are added on top.
-                </Text>
+              ) : null}
+            </View>
+
+            <View>
+              <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '600', textTransform: 'uppercase', marginBottom: 7 }}>
+                Added States
+              </Text>
+              <View
+                className="rounded-2xl px-4 py-3"
+                style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light, minHeight: 56 }}
+              >
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {newShippingZoneSelectedStates.length > 0 ? newShippingZoneSelectedStates.map((stateName) => (
+                    <Pressable
+                      key={`timeline-selected-${stateName}`}
+                      onPress={() => toggleNewShippingZoneState(stateName)}
+                      className="rounded-full active:opacity-80"
+                      style={{
+                        paddingHorizontal: 8,
+                        paddingVertical: 5,
+                        backgroundColor: colors.text.primary,
+                        borderWidth: 1,
+                        borderColor: colors.border.light,
+                      }}
+                    >
+                      <Text style={{ color: colors.bg.primary, fontSize: 10, fontWeight: '500' }}>{stateName} ×</Text>
+                    </Pressable>
+                  )) : (
+                    <Text style={{ color: colors.text.muted, fontSize: 12 }}>No states added yet.</Text>
+                  )}
+                </View>
+              </View>
+            </View>
+
+            <View>
+              <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '600', textTransform: 'uppercase', marginBottom: 2 }}>
+                Delivery Timeline
+              </Text>
+              <Text style={{ color: colors.text.muted, fontSize: 11, marginBottom: 8 }}>
+                Business days to deliver to these states. Leave the states empty to apply this timeline everywhere.
+              </Text>
+              <View className="flex-row" style={{ gap: 12 }}>
+                <View style={{ flex: 1 }}>
+                  <View className="rounded-2xl px-4" style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light, minHeight: 50, justifyContent: 'center' }}>
+                    <TextInput
+                      placeholder="Min days (1)"
+                      placeholderTextColor={colors.input.placeholder}
+                      value={newTimelineDeliveryMin}
+                      onChangeText={setNewTimelineDeliveryMin}
+                      keyboardType="numeric"
+                      style={{ color: colors.input.text, fontSize: 15, fontWeight: '500' }}
+                      selectionColor={colors.text.primary}
+                    />
+                  </View>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <View className="rounded-2xl px-4" style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light, minHeight: 50, justifyContent: 'center' }}>
+                    <TextInput
+                      placeholder="Max days (3)"
+                      placeholderTextColor={colors.input.placeholder}
+                      value={newTimelineDeliveryMax}
+                      onChangeText={setNewTimelineDeliveryMax}
+                      keyboardType="numeric"
+                      style={{ color: colors.input.text, fontSize: 15, fontWeight: '500' }}
+                      selectionColor={colors.text.primary}
+                    />
+                  </View>
+                </View>
               </View>
             </View>
 
@@ -1203,7 +1303,7 @@ export default function SettingsScreen() {
             <View className="flex-row" style={{ gap: 12 }}>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '600', textTransform: 'uppercase', marginBottom: 7 }}>
-                  Min Days
+                  Min Processing Days
                 </Text>
                 <View
                   className="rounded-2xl px-4"
@@ -1222,7 +1322,7 @@ export default function SettingsScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '600', textTransform: 'uppercase', marginBottom: 7 }}>
-                  Max Days
+                  Max Processing Days
                 </Text>
                 <View
                   className="rounded-2xl px-4"
@@ -1240,9 +1340,9 @@ export default function SettingsScreen() {
                 </View>
               </View>
             </View>
-          </View>
+          </ScrollView>
 
-          <View className="px-5 pb-5 flex-row" style={{ gap: 12 }}>
+          <View className="px-5 pb-5 pt-3 flex-row" style={{ gap: 12 }}>
             <Pressable
               onPress={() => setShowOrderTimelineModal(false)}
               className="flex-1 rounded-full items-center justify-center active:opacity-80"
@@ -1256,7 +1356,7 @@ export default function SettingsScreen() {
               style={[primaryPillButtonStyle, { minHeight: 48 }]}
             >
               <Text style={[primaryPillTextStyle, { fontWeight: '600' }]}>
-                {editingOrderTimelineId ? 'Save Changes' : 'Add Order Type'}
+                {editingOrderTimelineId || editingTimelineZoneId ? 'Save Changes' : 'Add Timeline'}
               </Text>
             </Pressable>
           </View>
@@ -1767,6 +1867,11 @@ export default function SettingsScreen() {
     setNewOrderTypeMaxDays('7');
     setNewOrderTypeShippingZoneId(null);
     setNewOrderTypeWorkflowStatusIds([]);
+    setNewShippingZoneSelectedStates([]);
+    setNewShippingZoneStateSearch('');
+    setNewTimelineDeliveryMin('1');
+    setNewTimelineDeliveryMax('3');
+    setEditingTimelineZoneId(null);
     setOrderTimelineMenu(null);
     setShowOrderTimelineModal(true);
   };
@@ -1814,15 +1919,20 @@ export default function SettingsScreen() {
     ));
   };
 
-  const openEditOrderTimelineModal = (timelineId: string) => {
-    const timeline = orderTimelineSettings.orderTypes.find((item) => item.id === timelineId);
-    if (!timeline) return;
-    setEditingOrderTimelineId(timeline.id);
-    setNewOrderTypeName(timeline.name);
-    setNewOrderTypeMinDays(String(timeline.minBusinessDays));
-    setNewOrderTypeMaxDays(String(timeline.maxBusinessDays));
-    setNewOrderTypeShippingZoneId(timeline.shippingZoneId ?? null);
-    setNewOrderTypeWorkflowStatusIds(timeline.workflowStatusIds ?? []);
+  const openEditOrderTimelineModal = (rowKey: string) => {
+    const row = timelineRows.find((item) => item.key === rowKey);
+    if (!row) return;
+    setEditingOrderTimelineId(row.typeId);
+    setEditingTimelineZoneId(row.zoneId);
+    setNewOrderTypeName(row.name);
+    setNewOrderTypeMinDays(String(row.processingMin));
+    setNewOrderTypeMaxDays(String(row.processingMax));
+    setNewOrderTypeShippingZoneId(row.zoneId);
+    setNewOrderTypeWorkflowStatusIds(row.workflowStatusIds);
+    setNewShippingZoneSelectedStates(row.states);
+    setNewShippingZoneStateSearch('');
+    setNewTimelineDeliveryMin(String(row.deliveryMin ?? 1));
+    setNewTimelineDeliveryMax(String(row.deliveryMax ?? 3));
     setOrderTimelineMenu(null);
     setShowOrderTimelineModal(true);
   };
@@ -1902,55 +2012,66 @@ export default function SettingsScreen() {
   const handleSubmitOrderTypeTimeline = async () => {
     const name = newOrderTypeName.trim();
     if (!name) return;
-    const shippingZoneId = newOrderTypeShippingZoneId ?? null;
-    const alreadyExists = orderTimelineSettings.orderTypes.some(
-      (item) => (
-        item.id !== editingOrderTimelineId
-        && item.name.trim().toLowerCase() === name.toLowerCase()
-        && (item.shippingZoneId ?? null) === shippingZoneId
-      )
-    );
+    const states = newShippingZoneSelectedStates;
+    const stateKey = [...states].sort().join('|');
+    const alreadyExists = timelineRows.some((row) => (
+      row.key !== (editingOrderTimelineId ?? (editingTimelineZoneId ? `zone:${editingTimelineZoneId}` : null))
+      && row.name.trim().toLowerCase() === name.toLowerCase()
+      && [...row.states].sort().join('|') === stateKey
+    ));
     if (alreadyExists) {
-      Alert.alert('Duplicate', 'This order timeline already exists for that shipping zone.');
+      Alert.alert('Duplicate', 'A fulfillment timeline with this name already exists for those states.');
       return;
     }
     const minBusinessDays = parseTimelineDays(newOrderTypeMinDays, 1);
     const maxBusinessDays = Math.max(minBusinessDays, parseTimelineDays(newOrderTypeMaxDays, minBusinessDays));
+    const deliveryMin = parseTimelineDays(newTimelineDeliveryMin, 1);
+    const deliveryMax = Math.max(deliveryMin, parseTimelineDays(newTimelineDeliveryMax, deliveryMin));
     const workflowStatusIds = newOrderTypeWorkflowStatusIds.filter((statusId, index, list) => (
       !!orderStatuses.find((status) => status.id === statusId) && list.indexOf(statusId) === index
     ));
-    const result = await saveTimelineSettings(
-      editingOrderTimelineId
-        ? {
-            ...orderTimelineSettings,
-            orderTypes: orderTimelineSettings.orderTypes.map((item) => (
-              item.id === editingOrderTimelineId
-                ? { ...item, name, minBusinessDays, maxBusinessDays, shippingZoneId, workflowStatusIds }
-                : item
-            )),
-          }
-        : {
-            ...orderTimelineSettings,
-            orderTypes: [
-              ...orderTimelineSettings.orderTypes,
-              {
-                id: `order-type-${Date.now().toString(36)}`,
-                name,
-                minBusinessDays,
-                maxBusinessDays,
-                shippingZoneId,
-                workflowStatusIds,
-              },
-            ],
-          }
+
+    // The states and delivery days live on a zone linked to this timeline. A zone shared with other order types is
+    // never edited in place (that would change them too); a copy is made instead.
+    const currentZoneId = editingTimelineZoneId;
+    const zoneSharedWithOthers = Boolean(currentZoneId) && orderTimelineSettings.orderTypes.some(
+      (type) => type.id !== editingOrderTimelineId && type.shippingZoneId === currentZoneId
     );
+    let shippingZones = orderTimelineSettings.shippingZones;
+    let shippingZoneId: string | null = null;
+    if (states.length > 0) {
+      if (currentZoneId && !zoneSharedWithOthers && shippingZones.some((zone) => zone.id === currentZoneId)) {
+        shippingZoneId = currentZoneId;
+        shippingZones = shippingZones.map((zone) => (
+          zone.id === currentZoneId ? { ...zone, name, states, minBusinessDays: deliveryMin, maxBusinessDays: deliveryMax } : zone
+        ));
+      } else {
+        shippingZoneId = `shipping-zone-${Date.now().toString(36)}`;
+        shippingZones = [...shippingZones, { id: shippingZoneId, name, states, shippingFee: 0, minBusinessDays: deliveryMin, maxBusinessDays: deliveryMax }];
+      }
+    } else if (currentZoneId && !zoneSharedWithOthers) {
+      // No states means "everywhere": the zone this timeline owned is no longer needed.
+      shippingZones = shippingZones.filter((zone) => zone.id !== currentZoneId);
+    }
+
+    const nextType = { name, minBusinessDays, maxBusinessDays, shippingZoneId, workflowStatusIds };
+    const result = await saveTimelineSettings({
+      ...orderTimelineSettings,
+      shippingZones,
+      orderTypes: editingOrderTimelineId
+        ? orderTimelineSettings.orderTypes.map((item) => (item.id === editingOrderTimelineId ? { ...item, ...nextType } : item))
+        : [...orderTimelineSettings.orderTypes, { id: `order-type-${Date.now().toString(36)}`, ...nextType }],
+    });
     if (!result.success) return;
     setEditingOrderTimelineId(null);
+    setEditingTimelineZoneId(null);
     setNewOrderTypeName('');
     setNewOrderTypeMinDays('3');
     setNewOrderTypeMaxDays('7');
     setNewOrderTypeShippingZoneId(null);
     setNewOrderTypeWorkflowStatusIds([]);
+    setNewShippingZoneSelectedStates([]);
+    setNewShippingZoneStateSearch('');
     setShowOrderTimelineModal(false);
   };
 
@@ -2045,12 +2166,21 @@ export default function SettingsScreen() {
     setShowShippingZoneModal(false);
   };
 
-  const handleDeleteOrderTimeline = (timelineId: string) => {
+  const handleDeleteOrderTimeline = (rowKey: string) => {
+    const row = timelineRows.find((item) => item.key === rowKey);
+    setOrderTimelineMenu(null);
+    if (!row) return;
+    const zoneStillUsed = Boolean(row.zoneId) && orderTimelineSettings.orderTypes.some(
+      (type) => type.id !== row.typeId && type.shippingZoneId === row.zoneId
+    );
     saveTimelineSettings({
       ...orderTimelineSettings,
-      orderTypes: orderTimelineSettings.orderTypes.filter((entry) => entry.id !== timelineId),
+      orderTypes: orderTimelineSettings.orderTypes.filter((entry) => entry.id !== row.typeId),
+      // The timeline's own states and delivery days go with it, unless another order type still uses that zone.
+      shippingZones: row.zoneId && !zoneStillUsed
+        ? orderTimelineSettings.shippingZones.filter((zone) => zone.id !== row.zoneId)
+        : orderTimelineSettings.shippingZones,
     });
-    setOrderTimelineMenu(null);
   };
 
   const handleDeleteOrderStatus = (statusId: string) => {
@@ -2253,6 +2383,14 @@ export default function SettingsScreen() {
 
   const [activeSection, setActiveSection] = useState<SettingsSection | null>(null);
   const [activeWebSettingsMenu, setActiveWebSettingsMenu] = useState<WebSettingsMenuKey>('profile');
+  useEffect(() => {
+    const key = activeWebInlinePanel
+      ? PANEL_NAV_KEY[activeWebInlinePanel]
+      : activeSection
+        ? SETTINGS_SECTION_MENU_MAP[activeSection]
+        : activeWebSettingsMenu;
+    setNavActiveKey(key);
+  }, [activeSection, activeWebInlinePanel, activeWebSettingsMenu, setNavActiveKey]);
   const [searchQuery, setSearchQuery] = useState('');
   const [newItemName, setNewItemName] = useState('');
   const [newItemColor, setNewItemColor] = useState('#3B82F6');
@@ -2263,6 +2401,9 @@ export default function SettingsScreen() {
   const [showOrderStatusModal, setShowOrderStatusModal] = useState(false);
   const [showOrderTimelineModal, setShowOrderTimelineModal] = useState(false);
   const [showShippingZoneModal, setShowShippingZoneModal] = useState(false);
+  const [newTimelineDeliveryMin, setNewTimelineDeliveryMin] = useState('1');
+  const [newTimelineDeliveryMax, setNewTimelineDeliveryMax] = useState('3');
+  const [editingTimelineZoneId, setEditingTimelineZoneId] = useState<string | null>(null);
   const [editingOrderStatusId, setEditingOrderStatusId] = useState<string | null>(null);
   const [editingOrderTimelineId, setEditingOrderTimelineId] = useState<string | null>(null);
   const [editingShippingZoneId, setEditingShippingZoneId] = useState<string | null>(null);
@@ -2296,11 +2437,14 @@ export default function SettingsScreen() {
   const [newShippingZoneFee, setNewShippingZoneFee] = useState('0');
   const mainMenuScrollYRef = useRef(settingsMainScrollYMemory);
   const primaryPillButtonStyle = {
-    backgroundColor: colors.text.primary,
+    backgroundColor: FYLL_LIME,
     borderRadius: 999,
   } as const;
+  // Bricolage is single-weight, so ask for 400 to stop the web faux-bolding it.
   const primaryPillTextStyle = {
-    color: colors.bg.primary,
+    color: FYLL_LIME_INK,
+    fontFamily: 'BricolageGrotesque_700Bold',
+    fontWeight: '400',
   } as const;
   const settingsMainContentWrapStyle = ({ flex: 1 } as const);
   const settingsSectionContentWrapStyle = (
@@ -2442,7 +2586,8 @@ export default function SettingsScreen() {
     ) : null
   );
 
-  const openSettingsSection = (section: SettingsSection) => {
+  const openSettingsSection = (requestedSection: SettingsSection) => {
+    const section: SettingsSection = requestedSection === 'shipping-zones' ? 'order-timelines' : requestedSection;
     setActiveSection(section);
     if (Platform.OS === 'web') {
       if (isDesktop) {
@@ -2530,6 +2675,56 @@ export default function SettingsScreen() {
     orderTimelineSettings.defaultOrderType.maxBusinessDays,
     orderTimelineSettings.warningThresholdPercent,
   ]);
+
+  // One list: each fulfillment timeline = states + delivery days (the linked zone) + processing days (the order type).
+  // Zones with no order type are kept and shown too, so nothing set up before disappears.
+  const timelineRows = useMemo(() => {
+    const zoneById = new Map(orderTimelineSettings.shippingZones.map((zone) => [zone.id, zone] as const));
+    const linkedZoneIds = new Set<string>();
+    type TimelineRow = {
+      key: string;
+      typeId: string | null;
+      zoneId: string | null;
+      name: string;
+      states: string[];
+      deliveryMin: number | null;
+      deliveryMax: number | null;
+      processingMin: number;
+      processingMax: number;
+      workflowStatusIds: string[];
+    };
+    const rows: TimelineRow[] = orderTimelineSettings.orderTypes.map((type) => {
+      const zone = type.shippingZoneId ? zoneById.get(type.shippingZoneId) ?? null : null;
+      if (zone) linkedZoneIds.add(zone.id);
+      return {
+        key: type.id,
+        typeId: type.id,
+        zoneId: zone?.id ?? null,
+        name: type.name,
+        states: zone?.states ?? [],
+        deliveryMin: zone?.minBusinessDays ?? null,
+        deliveryMax: zone?.maxBusinessDays ?? null,
+        processingMin: type.minBusinessDays,
+        processingMax: type.maxBusinessDays,
+        workflowStatusIds: type.workflowStatusIds ?? [],
+      };
+    });
+    orderTimelineSettings.shippingZones.filter((zone) => !linkedZoneIds.has(zone.id)).forEach((zone) => {
+      rows.push({
+        key: `zone:${zone.id}`,
+        typeId: null,
+        zoneId: zone.id,
+        name: zone.name,
+        states: zone.states,
+        deliveryMin: zone.minBusinessDays,
+        deliveryMax: zone.maxBusinessDays,
+        processingMin: orderTimelineSettings.defaultOrderType.minBusinessDays,
+        processingMax: orderTimelineSettings.defaultOrderType.maxBusinessDays,
+        workflowStatusIds: [],
+      });
+    });
+    return rows;
+  }, [orderTimelineSettings]);
 
   const shippingZoneNameById = useMemo(
     () => new Map(orderTimelineSettings.shippingZones.map((zone) => [zone.id, zone.name])),
@@ -3391,7 +3586,7 @@ export default function SettingsScreen() {
               style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
             >
               <Text style={{ color: colors.text.primary, fontSize: 15, fontWeight: '600', letterSpacing: 0.2 }}>
-                Default Order Timeline
+                Default Fulfillment Timeline
               </Text>
               <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '400', lineHeight: 18, marginTop: 6 }}>
                 Applies when an order type does not have a more specific timeline match. The due-soon threshold controls when ops starts seeing warning badges.
@@ -3480,14 +3675,14 @@ export default function SettingsScreen() {
                   Default expected window: {parseTimelineDays(defaultOrderTypeMinDays, orderTimelineSettings.defaultOrderType.minBusinessDays)}-{Math.max(
                     parseTimelineDays(defaultOrderTypeMinDays, orderTimelineSettings.defaultOrderType.minBusinessDays),
                     parseTimelineDays(defaultOrderTypeMaxDays, orderTimelineSettings.defaultOrderType.maxBusinessDays)
-                  )} business days before shipping-zone delivery time is added.
+                  )} business days before each timeline's delivery days are added.
                 </Text>
               </View>
             </View>
 
             <View className="mb-4">
               <Text style={{ color: colors.text.tertiary, fontSize: 12, lineHeight: 18 }}>
-                Set processing timelines by order type. Shipping-zone delivery days are added afterwards. Add a shipping zone only when that processing window should override the default all-zones version.
+                Each fulfillment timeline sets the delivery days for the states you choose, plus the processing days before it ships. Together they give every order its expected delivery date and its on-track or overdue status.
               </Text>
             </View>
 
@@ -3542,7 +3737,7 @@ export default function SettingsScreen() {
                 style={[primaryPillButtonStyle, { height: 46, gap: 8 }]}
               >
                 <Plus size={14} color={primaryPillTextStyle.color} strokeWidth={2.2} />
-                <Text style={primaryPillTextStyle} className="text-sm font-semibold">New Type</Text>
+                <Text style={primaryPillTextStyle} className="text-sm font-semibold">New Timeline</Text>
               </Pressable>
             ) : null}
 
@@ -3562,57 +3757,63 @@ export default function SettingsScreen() {
                   }}
                 >
                   <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', flex: 2, paddingHorizontal: 20 }}>
-                    Order Type
+                    Timeline
                   </Text>
-                  <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', flex: 1.2, paddingHorizontal: 20 }}>
-                    Shipping Zone
-                  </Text>
-                  <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', flex: 0.9, paddingHorizontal: 20 }}>
-                    Min Proc.
+                  <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', flex: 1.6, paddingHorizontal: 20 }}>
+                    States
                   </Text>
                   <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', flex: 0.9, paddingHorizontal: 20 }}>
-                    Max Proc.
+                    Delivery
+                  </Text>
+                  <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', flex: 0.9, paddingHorizontal: 20 }}>
+                    Processing
                   </Text>
                   <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', width: 92, paddingHorizontal: 20 }}>
                     Action
                   </Text>
                 </View>
 
-                {orderTimelineSettings.orderTypes.map((type, index) => (
+                {timelineRows.map((row, index) => (
                   <View
-                    key={type.id}
+                    key={row.key}
                     style={{
                       flexDirection: 'row',
                       minHeight: 68,
                       alignItems: 'center',
-                      borderBottomWidth: index < orderTimelineSettings.orderTypes.length - 1 ? 1 : 0,
+                      borderBottomWidth: index < timelineRows.length - 1 ? 1 : 0,
                       borderBottomColor: colors.border.light,
                       backgroundColor: colors.bg.card,
                     }}
                   >
                     <View style={{ flex: 2, paddingHorizontal: 20, justifyContent: 'center' }}>
                       <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '500' }}>
-                        {type.name}
+                        {row.name}
                       </Text>
                       <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '400', marginTop: 4 }} numberOfLines={1}>
-                        {(type.workflowStatusIds ?? [])
+                        {row.workflowStatusIds
                           .map((statusId) => orderStatuses.find((status) => status.id === statusId)?.name)
                           .filter(Boolean)
                           .join(' -> ') || 'No workflow sequence'}
                       </Text>
                     </View>
-                    <Text style={{ color: colors.text.primary, flex: 1.2, fontSize: 12, fontWeight: '500', paddingHorizontal: 20 }}>
-                      {type.shippingZoneId ? (shippingZoneNameById.get(type.shippingZoneId) ?? 'Unknown zone') : 'All zones'}
+                    <View style={{ flex: 1.6, paddingHorizontal: 20, justifyContent: 'center' }}>
+                      {row.states.length > 0 ? (
+                        <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '400', lineHeight: 17 }} numberOfLines={2}>
+                          {row.states.join(', ')}
+                        </Text>
+                      ) : (
+                        <Text style={{ color: colors.text.muted, fontSize: 12 }}>All states</Text>
+                      )}
+                    </View>
+                    <Text style={{ color: colors.text.primary, flex: 0.9, fontSize: 12, fontWeight: '500', paddingHorizontal: 20 }}>
+                      {row.deliveryMin != null && row.deliveryMax != null ? `${row.deliveryMin}-${row.deliveryMax} days` : '—'}
                     </Text>
                     <Text style={{ color: colors.text.primary, flex: 0.9, fontSize: 12, fontWeight: '500', paddingHorizontal: 20 }}>
-                      {type.minBusinessDays}
-                    </Text>
-                    <Text style={{ color: colors.text.primary, flex: 0.9, fontSize: 12, fontWeight: '500', paddingHorizontal: 20 }}>
-                      {type.maxBusinessDays}
+                      {row.processingMin}-{row.processingMax} days
                     </Text>
                     <View style={{ width: 92, alignItems: 'flex-end', paddingHorizontal: 20 }}>
                       <Pressable
-                        onPress={(event) => openOrderTimelineMenu(type.id, event)}
+                        onPress={(event) => openOrderTimelineMenu(row.key, event)}
                         className="w-8 h-8 rounded-full items-center justify-center active:opacity-70"
                         style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
                       >
@@ -3624,29 +3825,32 @@ export default function SettingsScreen() {
               </View>
             ) : (
               <View>
-                {orderTimelineSettings.orderTypes.map((type) => (
+                {timelineRows.map((row) => (
                   <View
-                    key={type.id}
+                    key={row.key}
                     className="rounded-xl p-4 mb-4"
                     style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
                   >
                     <View className="flex-row items-start justify-between" style={{ gap: 12 }}>
                       <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '500' }} numberOfLines={1}>
-                          {type.name}
+                        <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }} numberOfLines={1}>
+                          {row.name}
                         </Text>
-                        <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '400', lineHeight: 16, marginTop: 8 }}>
-                          {type.shippingZoneId ? (shippingZoneNameById.get(type.shippingZoneId) ?? 'Unknown zone') : 'All zones'}
+                        <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '400', lineHeight: 17, marginTop: 8 }}>
+                          {row.states.length > 0 ? row.states.join(', ') : 'All states'}
+                        </Text>
+                        <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '500', marginTop: 8 }}>
+                          Delivery {row.deliveryMin != null && row.deliveryMax != null ? `${row.deliveryMin}-${row.deliveryMax} days` : '—'}  ·  Processing {row.processingMin}-{row.processingMax} days
                         </Text>
                         <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '400', lineHeight: 16, marginTop: 6 }}>
-                          {(type.workflowStatusIds ?? [])
+                          {row.workflowStatusIds
                             .map((statusId) => orderStatuses.find((status) => status.id === statusId)?.name)
                             .filter(Boolean)
                             .join(' -> ') || 'No workflow sequence'}
                         </Text>
                       </View>
                       <Pressable
-                        onPress={(event) => openOrderTimelineMenu(type.id, event)}
+                        onPress={(event) => openOrderTimelineMenu(row.key, event)}
                         className="w-10 h-10 rounded-full items-center justify-center active:opacity-70"
                         style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
                       >
@@ -3789,6 +3993,9 @@ export default function SettingsScreen() {
             )}
           </View>
         );
+
+      case 'all-features':
+        return <FeaturesSettings onConfigure={handleConfigureFeature} />;
 
       case 'payment-methods':
         return (
@@ -4016,8 +4223,7 @@ export default function SettingsScreen() {
     { id: 'import-customers', title: 'Import Customers', description: 'Upload contacts via CSV', icon: <Upload size={18} color="#10B981" strokeWidth={2} />, onPress: () => openSettingsPanel('import-customers', '/import-customers?from=settings') },
     { id: 'order-statuses', title: 'Order Statuses', description: 'Workflow stages', icon: <ShoppingCart size={18} color="#F59E0B" strokeWidth={2} />, rightText: `${orderStatuses.length}`, onPress: () => openSettingsSection('order-statuses') },
     { id: 'quality-control-checks', title: 'Quality Control Checks', description: 'Dispatch checklist requirements', icon: <ListTodo size={18} color="#10B981" strokeWidth={2} />, rightText: `${qcChecklistRequirements.length}`, onPress: () => openSettingsSection('quality-control-checks') },
-    { id: 'order-timelines', title: 'Order Timelines', description: 'Order types and processing ETA rules', icon: <Clock3 size={18} color="#2563EB" strokeWidth={2} />, rightText: `${orderTimelineSettings.orderTypes.length}`, onPress: () => openSettingsSection('order-timelines') },
-    { id: 'shipping-zones', title: 'Shipping Zones', description: 'Delivery zones by Nigerian state', icon: <Truck size={18} color="#F59E0B" strokeWidth={2} />, rightText: `${orderTimelineSettings.shippingZones.length}`, onPress: () => openSettingsSection('shipping-zones') },
+    { id: 'order-timelines', title: 'Fulfillment Timelines', description: 'Processing and delivery days by state', icon: <Clock3 size={18} color="#2563EB" strokeWidth={2} />, rightText: `${timelineRows.length}`, onPress: () => openSettingsSection('order-timelines') },
     { id: 'sale-sources', title: 'Sale Sources', description: 'Where orders come from', icon: <Tag size={18} color="#059669" strokeWidth={2} />, rightText: `${saleSources.length}`, onPress: () => openSettingsSection('sale-sources') },
     { id: 'payment-methods', title: 'Payment Methods', description: 'Bank transfer, POS, website', icon: <CreditCard size={18} color="#3B82F6" strokeWidth={2} />, rightText: `${paymentMethods.length}`, onPress: () => openSettingsSection('payment-methods') },
     ...(canUseSocialCheckout ? [
@@ -4060,33 +4266,49 @@ export default function SettingsScreen() {
       )
     : [];
 
-  const webSettingsMenuItems: {
-    key: WebSettingsMenuKey;
-    label: string;
-    icon: React.ReactNode;
-  }[] = [
-    { key: 'profile', label: 'Profile', icon: <UserCircle size={18} color={activeWebSettingsMenu === 'profile' ? primaryPillTextStyle.color : colors.text.tertiary} strokeWidth={2} /> },
-    { key: 'links', label: 'Links', icon: <Link2 size={18} color={activeWebSettingsMenu === 'links' ? primaryPillTextStyle.color : colors.text.tertiary} strokeWidth={2} /> },
-    { key: 'operations', label: 'Operations', icon: <Zap size={18} color={activeWebSettingsMenu === 'operations' ? primaryPillTextStyle.color : colors.text.tertiary} strokeWidth={2} /> },
-    { key: 'orders', label: 'Orders', icon: <ShoppingCart size={18} color={activeWebSettingsMenu === 'orders' ? primaryPillTextStyle.color : colors.text.tertiary} strokeWidth={2} /> },
-    { key: 'inventory', label: 'Inventory', icon: <Package size={18} color={activeWebSettingsMenu === 'inventory' ? primaryPillTextStyle.color : colors.text.tertiary} strokeWidth={2} /> },
-    ...(canUseCases ? [
-      { key: 'cases' as const, label: 'Cases', icon: <FileText size={18} color={activeWebSettingsMenu === 'cases' ? primaryPillTextStyle.color : colors.text.tertiary} strokeWidth={2} /> },
-    ] : []),
-    { key: 'appearance', label: 'Appearance', icon: <Sun size={18} color={activeWebSettingsMenu === 'appearance' ? primaryPillTextStyle.color : colors.text.tertiary} strokeWidth={2} /> },
-    { key: 'notifications', label: 'Notifications', icon: <Bell size={18} color={activeWebSettingsMenu === 'notifications' ? primaryPillTextStyle.color : colors.text.tertiary} strokeWidth={2} /> },
-    { key: 'integrations', label: 'Connections', icon: <Boxes size={18} color={activeWebSettingsMenu === 'integrations' ? primaryPillTextStyle.color : colors.text.tertiary} strokeWidth={2} /> },
-    { key: 'system', label: 'System', icon: <Shield size={18} color={activeWebSettingsMenu === 'system' ? primaryPillTextStyle.color : colors.text.tertiary} strokeWidth={2} /> },
-  ];
+  // "Configure" on the Features page opens that feature's own page.
+  const handleConfigureFeature = (feature: FeatureRowKey) => {
+    switch (feature) {
+      case 'delivery':
+        openSettingsSection('order-timelines');
+        break;
+      case 'cases':
+        selectSettingsNav('cases');
+        break;
+      case 'returns':
+        router.push('/returns' as never);
+        break;
+      case 'fyllPrint':
+        router.push('/fyll-print' as never);
+        break;
+      case 'tasks':
+        router.push('/(tabs)/tasks' as never);
+        break;
+      case 'finance':
+        router.push('/(tabs)/finance?section=settings' as never);
+        break;
+      case 'announcements':
+        router.push('/announcements/setup' as never);
+        break;
+    }
+  };
+
+  const selectSettingsNav = (key: WebSettingsMenuKey) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setActiveSection(null);
+    setActiveWebInlinePanel(null);
+    setActiveWebSettingsMenu(key);
+    router.replace({ pathname: '/settings', params: { menu: key } });
+  };
 
   const getSettingsItem = (id: string) => searchItems.find((item) => item.id === id);
   const getSettingsItems = (ids: string[]) => ids.map(getSettingsItem).filter(Boolean) as typeof searchItems;
 
   const mobileSettingsCardStyle = {
-    backgroundColor: colors.bg.card,
+    backgroundColor: settingsPalette.card,
     borderWidth: 1,
-    borderColor: colors.border.light,
-    borderRadius: 24,
+    borderColor: settingsPalette.border,
+    borderRadius: 26,
     overflow: 'hidden',
   } as const;
 
@@ -4100,14 +4322,14 @@ export default function SettingsScreen() {
         backgroundColor: colors.bg.card,
         borderWidth: 1,
         borderColor: colors.border.light,
-        borderRadius: 18,
+        borderRadius: 26,
         padding: 28,
       }}
     >
       <View style={{ marginBottom: 22 }}>
-        <Text style={{ color: colors.text.primary, fontSize: 14, lineHeight: 18, fontWeight: '600', letterSpacing: 2.4, textTransform: 'uppercase', ...(Platform.OS === 'web' ? ({ fontSize: '14px', lineHeight: '18px' } as any) : {}) }}>
+        <MoneyText style={{ color: colors.text.primary, fontSize: 20, lineHeight: 26, letterSpacing: -0.5 }}>
           {title}
-        </Text>
+        </MoneyText>
         {subtitle ? (
           <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 6, lineHeight: 16 }}>
             {subtitle}
@@ -4127,7 +4349,7 @@ export default function SettingsScreen() {
           className="active:opacity-80"
           style={{
             minHeight: 72,
-            borderRadius: 14,
+            borderRadius: 22,
             borderWidth: 1,
             borderColor: colors.border.light,
             backgroundColor: colors.bg.primary,
@@ -4192,12 +4414,12 @@ export default function SettingsScreen() {
                   borderRadius: 999,
                   alignItems: 'center',
                   justifyContent: 'center',
-                  backgroundColor: isSelected ? colors.text.primary : colors.bg.primary,
-                  borderWidth: 1,
-                  borderColor: isSelected ? colors.text.primary : colors.border.medium,
+                  backgroundColor: isSelected ? FYLL_LIME : colors.bg.primary,
+                  borderWidth: isSelected ? 0 : 1,
+                  borderColor: colors.border.medium,
                 }}
               >
-                <Text style={{ color: isSelected ? colors.bg.primary : colors.text.primary, fontSize: 14, fontWeight: '500' }}>
+                <Text style={{ color: isSelected ? FYLL_LIME_INK : colors.text.primary, fontSize: 14, fontWeight: isSelected ? '600' : '500' }}>
                   {option.label}
                 </Text>
               </Pressable>
@@ -4380,7 +4602,7 @@ export default function SettingsScreen() {
           className="active:opacity-80"
           style={{
             minHeight: 72,
-            borderRadius: 14,
+            borderRadius: 22,
             borderWidth: 1,
             borderColor: colors.border.light,
             backgroundColor: colors.bg.primary,
@@ -4434,7 +4656,7 @@ export default function SettingsScreen() {
           className="active:opacity-80"
           style={{
             minHeight: 72,
-            borderRadius: 14,
+            borderRadius: 22,
             borderWidth: 1,
             borderColor: colors.border.light,
             backgroundColor: colors.bg.primary,
@@ -4651,6 +4873,86 @@ export default function SettingsScreen() {
     );
   };
 
+  // ---- Settings search (names, descriptions and keywords of every page) ----
+  const SEARCH_ITEM_GROUP: Record<string, string> = {
+    'my-account': 'Account', 'switch-business': 'Account',
+    'business-settings': 'Business', 'team-members': 'Business', invitations: 'Business', 'payment-accounts': 'Business', 'payment-methods': 'Business',
+    'order-statuses': 'Features', 'quality-control-checks': 'Features', 'order-timelines': 'Features', 'sale-sources': 'Features', 'logistics-carriers': 'Features', 'order-automation': 'Features',
+    'low-stock-alert': 'Features', 'warehouse-settings': 'Features', categories: 'Features', 'product-variables': 'Features', 'product-options': 'Features', 'service-catalog': 'Features', addons: 'Features',
+    'all-cases': 'Features', 'case-statuses': 'Features', 'resolution-types': 'Features',
+    'import-orders': 'Data', 'import-products': 'Data', 'import-customers': 'Data', 'import-ai': 'Data', 'storefront-settings': 'Data', 'woocommerce-settings': 'Data', 'recycle-bin': 'Data',
+  };
+  const SEARCH_ITEM_KEYWORDS: Record<string, string[]> = {
+    'order-timelines': ['delivery fee', 'delivery days', 'delivery zones', 'shipping zones', 'states', 'processing days', 'eta', 'timeline', 'delivery'],
+    'business-settings': ['logo', 'business name', 'phone', 'address'],
+    'payment-accounts': ['bank', 'bank account', 'payment link'],
+    'team-members': ['invite', 'staff', 'roles', 'permissions', 'manager'],
+    invitations: ['invite', 'vip', 'access'],
+    'low-stock-alert': ['stock', 'threshold', 'warning'],
+    'storefront-settings': ['shop', 'website', 'store link'],
+    'recycle-bin': ['deleted', 'restore'],
+  };
+  const settingsSearchEntries = useMemo<SettingsSearchEntry[]>(() => [
+    ...SETTINGS_NAV.map((item) => ({ id: `nav:${item.key}`, title: item.label, description: item.description, group: item.group, keywords: item.keywords, navKey: item.key })),
+    ...searchItems.filter((item) => item.id !== 'customer-list').map((item) => ({ id: `item:${item.id}`, title: item.title, description: item.description ?? '', group: SEARCH_ITEM_GROUP[item.id] ?? 'Settings', keywords: SEARCH_ITEM_KEYWORDS[item.id] ?? [], onOpen: item.onPress })),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [searchItems]);
+  const settingsSearchResults = useMemo(() => searchSettings(settingsSearchEntries, settingsSearch), [settingsSearch, settingsSearchEntries]);
+
+  const renderWebSettingsTopBar = () => {
+    const navItem = getSettingsNavItem(activeWebInlinePanel ? PANEL_NAV_KEY[activeWebInlinePanel] : activeSection ? SETTINGS_SECTION_MENU_MAP[activeSection] : activeWebSettingsMenu);
+    const palette = settingsPalette;
+    return (
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 24, marginBottom: 28, zIndex: 20 }}>
+        <Text style={{ color: palette.faint, fontSize: 13 }}>
+          Settings / <Text style={{ color: palette.textSoft }}>{navItem?.label ?? 'Settings'}</Text>
+        </Text>
+        <View style={{ width: 360, position: 'relative' }}>
+          <View style={{ height: 46, borderRadius: 14, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.inputBg, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14 }}>
+            <Search size={17} color={palette.faint} strokeWidth={2} />
+            <TextInput
+              value={settingsSearch}
+              onChangeText={setSettingsSearch}
+              placeholder="Search settings, e.g. delivery fee"
+              placeholderTextColor={palette.faint}
+              accessibilityLabel="Search settings"
+              onSubmitEditing={() => {
+                const first = settingsSearchResults[0];
+                if (!first) return;
+                setSettingsSearch('');
+                if (first.navKey) selectSettingsNav(first.navKey); else first.onOpen?.();
+              }}
+              style={[{ flex: 1, color: palette.text, fontSize: 15 }, Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null]}
+            />
+          </View>
+          {settingsSearch.trim().length > 0 ? (
+            <View style={{ position: 'absolute', top: 52, left: 0, right: 0, borderRadius: 16, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, padding: 6, zIndex: 30, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 18, shadowOffset: { width: 0, height: 10 }, elevation: 12 }}>
+              {settingsSearchResults.length === 0 ? (
+                <Text style={{ color: palette.faint, fontSize: 13, paddingHorizontal: 12, paddingVertical: 12 }}>No settings match "{settingsSearch.trim()}".</Text>
+              ) : settingsSearchResults.map((entry) => (
+                <Pressable
+                  key={entry.id}
+                  onPress={() => {
+                    setSettingsSearch('');
+                    if (entry.navKey) selectSettingsNav(entry.navKey); else entry.onOpen?.();
+                  }}
+                  className="active:opacity-80"
+                  style={{ paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10, flexDirection: 'row', alignItems: 'center', gap: 10 }}
+                >
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }} numberOfLines={1}>{entry.title}</Text>
+                    <Text style={{ color: palette.faint, fontSize: 12 }} numberOfLines={1}>{entry.description}</Text>
+                  </View>
+                  <Text style={{ color: palette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{entry.group}</Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+        </View>
+      </View>
+    );
+  };
+
   const renderActiveWebSettingsContent = () => {
     if (activeWebInlinePanel) {
       return renderWebInlinePanel();
@@ -4660,28 +4962,51 @@ export default function SettingsScreen() {
       case 'profile':
         return renderWebSettingsCard(
           'Profile',
-          renderWebSettingsRows(getSettingsItems(['my-account', 'switch-business', 'business-settings', 'payment-accounts', 'team-members', 'invitations'])),
-          'Workspace, account, roles, and team access.'
+          renderWebSettingsRows(getSettingsItems(['my-account', 'switch-business'])),
+          'Your account, password and workspaces.'
+        );
+      case 'business-details':
+        // One page, so it opens straight into the form instead of a list with a single row.
+        return (
+          <View style={{ backgroundColor: colors.bg.primary, borderWidth: 1, borderColor: colors.border.light, borderRadius: 26, overflow: 'hidden', minHeight: Math.max(680, Dimensions.get('window').height - 260) }}>
+            <SettingsBackOverrideProvider onBack={() => selectSettingsNav('profile')}>
+              <BusinessSettingsScreen />
+            </SettingsBackOverrideProvider>
+          </View>
+        );
+      case 'team':
+        return renderWebSettingsCard(
+          'Team & roles',
+          renderWebSettingsRows(getSettingsItems(['team-members', 'invitations'])),
+          'Who can use Fyll, what they can do, and who you have invited.'
+        );
+      case 'payments':
+        return renderWebSettingsCard(
+          'Payments',
+          renderWebSettingsRows(getSettingsItems(['payment-accounts', 'payment-methods'])),
+          'Bank accounts shown on payment links, and the payment methods you record on orders.'
         );
       case 'links':
         return renderWebSettingsCard('Business Links', renderWebLinksContent(), 'Copy customer-facing URLs for tracking, returns, and delivery confirmation.');
-      case 'operations':
-        return renderWebSettingsCard(
-          'Operations',
-          renderWebSettingsRows(getSettingsItems(['fyll-print', 'delivery', 'returns', 'announcements', 'tasks', 'customer-list', 'import-customers', 'finance', 'insights'])),
-          'Daily workflow areas and customer operations.'
-        );
+      case 'all-features':
+        return <FeaturesSettings onConfigure={handleConfigureFeature} />;
       case 'orders':
         return renderWebSettingsCard(
           'Orders',
-          renderWebSettingsRows(getSettingsItems(['order-statuses', 'quality-control-checks', 'order-timelines', 'shipping-zones', 'sale-sources', 'payment-methods', 'logistics-carriers', 'order-automation', 'import-orders'])),
-          'Order workflows, payment labels, timeline rules, and imports.'
+          renderWebSettingsRows(getSettingsItems(['order-statuses', 'quality-control-checks', 'order-timelines', 'sale-sources', 'logistics-carriers', 'order-automation'])),
+          'Order workflows, quality control, fulfillment timelines, sources and carriers.'
         );
       case 'inventory':
         return renderWebSettingsCard(
           'Inventory',
-          renderWebSettingsRows(getSettingsItems(['low-stock-alert', 'warehouse-settings', 'categories', 'product-variables', 'product-options', 'import-products', 'service-catalog', 'addons'])),
-          'Stock alerts, product structure, warehouse settings, and services.'
+          renderWebSettingsRows(getSettingsItems(['low-stock-alert', 'warehouse-settings', 'categories', 'product-variables', 'product-options', 'service-catalog', 'addons'])),
+          'Stock alerts, warehouse, categories, variants and services.'
+        );
+      case 'import-export':
+        return renderWebSettingsCard(
+          'Import & export',
+          renderWebSettingsRows(getSettingsItems(['import-orders', 'import-products', 'import-customers', 'import-ai'])),
+          'Bring orders, products and customers into Fyll.'
         );
       case 'cases':
         return renderWebSettingsCard(
@@ -4714,13 +5039,14 @@ export default function SettingsScreen() {
       'quality-control-checks': 'Quality Control Checks',
       'sale-sources': 'Sale Sources',
       'custom-services': 'Add-ons',
-      'order-timelines': 'Order Timelines',
+      'order-timelines': 'Fulfillment Timelines',
       'shipping-zones': 'Shipping Zones',
       'payment-methods': 'Payment Methods',
       'logistics-carriers': 'Logistics Carriers',
       'case-statuses': 'Case Statuses',
       'resolution-types': 'Resolution Types',
       'recycle-bin': 'Recycle Bin',
+      'all-features': 'Features',
     };
 
     const subtitles: Record<SettingsSection, string> = {
@@ -4728,13 +5054,14 @@ export default function SettingsScreen() {
       'quality-control-checks': 'Manage the QC checklist used before dispatching orders.',
       'sale-sources': 'Define the source labels available when orders are created.',
       'custom-services': 'Manage add-ons and optional service line items.',
-      'order-timelines': 'Set delivery windows, workflow steps, and order-type timing rules.',
+      'order-timelines': 'Choose the states, delivery days and processing days that set each order\'s expected delivery date.',
       'shipping-zones': 'Configure location-based delivery zones and fees.',
       'payment-methods': 'Manage the payment method labels shown across orders and checkout workflows.',
       'logistics-carriers': 'Control the carrier labels available for cases and delivery handling.',
       'case-statuses': 'Manage support workflow statuses for internal case handling.',
       'resolution-types': 'Control the available resolution outcomes for customer cases.',
       'recycle-bin': 'Restore or permanently remove deleted records kept for recovery.',
+      'all-features': 'Turn tools on or off for your team, and see how each one is set up.',
     };
 
     return (
@@ -4779,35 +5106,25 @@ export default function SettingsScreen() {
               <ArrowLeft size={20} color={colors.text.primary} strokeWidth={2.2} />
             </Pressable>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={{ color: colors.text.primary, fontSize: 14, lineHeight: 18, fontWeight: '600', ...(Platform.OS === 'web' ? ({ fontSize: '14px', lineHeight: '18px' } as any) : {}) }} numberOfLines={1}>
+              <MoneyText style={{ color: colors.text.primary, fontSize: 20, lineHeight: 26, letterSpacing: -0.5 }} numberOfLines={1}>
                 {titles[activeSection]}
-              </Text>
+              </MoneyText>
               <Text style={{ color: colors.text.tertiary, fontSize: 13, marginTop: 4, lineHeight: 18 }} numberOfLines={2}>
                 {subtitles[activeSection]}
               </Text>
             </View>
           </View>
 
-          {activeSection !== 'recycle-bin' ? (
+          {activeSection !== 'recycle-bin' && activeSection !== 'all-features' ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               {activeSection === 'order-timelines' ? (
                 <Pressable
                   onPress={openCreateOrderTimelineModal}
                   className="px-4 rounded-full flex-row items-center justify-center active:opacity-80"
-                  style={[primaryPillButtonStyle, { height: 40, minWidth: 110, gap: 8 }]}
+                  style={[primaryPillButtonStyle, { height: 40, minWidth: 130, gap: 8 }]}
                 >
                   <Plus size={14} color={primaryPillTextStyle.color} strokeWidth={2.2} />
-                  <Text style={primaryPillTextStyle} className="text-sm font-semibold">New Type</Text>
-                </Pressable>
-              ) : null}
-              {activeSection === 'shipping-zones' ? (
-                <Pressable
-                  onPress={openCreateShippingZoneModal}
-                  className="px-4 rounded-full flex-row items-center justify-center active:opacity-80"
-                  style={[primaryPillButtonStyle, { height: 40, minWidth: 110, gap: 8 }]}
-                >
-                  <Plus size={14} color={primaryPillTextStyle.color} strokeWidth={2.2} />
-                  <Text style={primaryPillTextStyle} className="text-sm font-semibold">New Zone</Text>
+                  <Text style={primaryPillTextStyle} className="text-sm font-semibold">New Timeline</Text>
                 </Pressable>
               ) : null}
               <Pressable
@@ -4854,81 +5171,17 @@ export default function SettingsScreen() {
                 style={{
                   width: '100%',
                   maxWidth: 1480,
-                  alignSelf: 'center',
+                  alignSelf: 'flex-start',
                   paddingHorizontal: 36,
                   paddingTop: 34,
                 }}
               >
-                <View style={{ marginBottom: 34 }}>
-                  <Text style={{ color: colors.text.primary, fontSize: 28, fontWeight: '600', letterSpacing: 0 }}>
-                    Settings
-                  </Text>
-                  <Text style={{ color: colors.text.tertiary, fontSize: 14, marginTop: 6, ...(Platform.OS === 'web' ? ({ fontSize: '14px' } as any) : {}) }}>
-                    Manage your workspace and account preferences.
-                  </Text>
-                </View>
-
-                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 16 }}>
-                  <View
-                    style={{
-                      width: 174,
-                      flexShrink: 0,
-                      gap: 8,
-                      ...(Platform.OS === 'web' ? ({ position: 'sticky', top: 24, alignSelf: 'flex-start' } as any) : {}),
-                    }}
-                  >
-                    {webSettingsMenuItems.map((item) => {
-                      const selected = activeWebSettingsMenu === item.key;
-                      return (
-                        <Pressable
-                          key={item.key}
-                          onPress={() => {
-                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                            setActiveSection(null);
-                            setActiveWebInlinePanel(null);
-                            setActiveWebSettingsMenu(item.key);
-                            router.replace({ pathname: '/settings', params: { menu: item.key } });
-                          }}
-                          className="active:opacity-80"
-                          style={{
-                            height: 56,
-                            borderRadius: 999,
-                            paddingLeft: 24,
-                            paddingRight: 18,
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            gap: 10,
-                            backgroundColor: selected ? colors.text.primary : 'transparent',
-                          }}
-                        >
-                          {item.icon}
-                          <Text
-                            style={{
-                              color: selected ? colors.bg.primary : colors.text.tertiary,
-                              fontSize: 14,
-                              lineHeight: 18,
-                              fontWeight: selected ? '600' : '500',
-                            }}
-                          >
-                            {item.label}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-
-                  <View style={{ flex: 1, maxWidth: 612 }}>
-                    {renderActiveWebSectionCard()}
-                    <View style={{ marginTop: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                      <Info size={16} color={colors.text.tertiary} strokeWidth={2} />
-                      <Text style={{ color: colors.text.tertiary, fontSize: 16 }}>
-                        Need help? Contact support at support@fyll.app
-                      </Text>
-                    </View>
-                  </View>
-                </View>
+                {renderWebSettingsTopBar()}
+              <View style={{ width: '100%', maxWidth: 960, paddingBottom: 16 }}>
+                {renderActiveWebSectionCard()}
               </View>
-            </KeyboardAwareScrollView>
+            </View>
+          </KeyboardAwareScrollView>
           </SafeAreaView>
 
           {renderToastOverlay()}
@@ -4948,13 +5201,14 @@ export default function SettingsScreen() {
       'quality-control-checks': 'Quality Control Checks',
       'sale-sources': 'Sale Sources',
       'custom-services': 'Add-ons',
-      'order-timelines': 'Order Timelines',
+      'order-timelines': 'Fulfillment Timelines',
       'shipping-zones': 'Shipping Zones',
       'payment-methods': 'Payment Methods',
       'logistics-carriers': 'Logistics Carriers',
       'case-statuses': 'Case Statuses',
       'resolution-types': 'Resolution Types',
       'recycle-bin': 'Recycle Bin',
+      'all-features': 'Features',
     };
 
     return (
@@ -4977,7 +5231,7 @@ export default function SettingsScreen() {
                   <ArrowLeft size={20} color={colors.text.primary} strokeWidth={2} />
                 </Pressable>
                 <View className="flex-1">
-                  <Text style={{ color: colors.text.primary, fontSize: 14, lineHeight: 18, fontWeight: '600' }}>{titles[activeSection]}</Text>
+                  <MoneyText style={{ color: colors.text.primary, fontSize: 17, lineHeight: 22, letterSpacing: -0.4 }}>{titles[activeSection]}</MoneyText>
                   {sectionSaveStatus === 'success' && (
                     <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1">Saved</Text>
                   )}
@@ -4985,26 +5239,16 @@ export default function SettingsScreen() {
                     <Text style={{ color: '#EF4444' }} className="text-xs mt-1">Save failed</Text>
                   )}
                 </View>
-                {activeSection !== 'recycle-bin' ? (
+                {activeSection !== 'recycle-bin' && activeSection !== 'all-features' ? (
                   <View className="flex-row items-center" style={{ gap: 10 }}>
                     {isWebDesktop && activeSection === 'order-timelines' ? (
                       <Pressable
                         onPress={openCreateOrderTimelineModal}
                         className="px-4 rounded-full flex-row items-center justify-center active:opacity-80"
-                        style={[primaryPillButtonStyle, { height: 42, minWidth: 116, gap: 8 }]}
+                        style={[primaryPillButtonStyle, { height: 42, minWidth: 136, gap: 8 }]}
                       >
                         <Plus size={14} color={primaryPillTextStyle.color} strokeWidth={2.2} />
-                        <Text style={primaryPillTextStyle} className="text-sm font-semibold">New Type</Text>
-                      </Pressable>
-                    ) : null}
-                    {isWebDesktop && activeSection === 'shipping-zones' ? (
-                      <Pressable
-                        onPress={openCreateShippingZoneModal}
-                        className="px-4 rounded-full flex-row items-center justify-center active:opacity-80"
-                        style={[primaryPillButtonStyle, { height: 42, minWidth: 118, gap: 8 }]}
-                      >
-                        <Plus size={14} color={primaryPillTextStyle.color} strokeWidth={2.2} />
-                        <Text style={primaryPillTextStyle} className="text-sm font-semibold">New Zone</Text>
+                        <Text style={primaryPillTextStyle} className="text-sm font-semibold">New Timeline</Text>
                       </Pressable>
                     ) : null}
                     <Pressable
@@ -5062,77 +5306,14 @@ export default function SettingsScreen() {
               style={{
                 width: '100%',
                 maxWidth: 1480,
-                alignSelf: 'center',
+                alignSelf: 'flex-start',
                 paddingHorizontal: 36,
                 paddingTop: 34,
               }}
             >
-              <View style={{ marginBottom: 34 }}>
-                <Text style={{ color: colors.text.primary, fontSize: 28, fontWeight: '600', letterSpacing: 0 }}>
-                  Settings
-                </Text>
-                <Text style={{ color: colors.text.tertiary, fontSize: 14, marginTop: 6, ...(Platform.OS === 'web' ? ({ fontSize: '14px' } as any) : {}) }}>
-                  Manage your workspace and account preferences.
-                </Text>
-              </View>
-
-              <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 16 }}>
-                <View
-                  style={{
-                    width: 174,
-                    flexShrink: 0,
-                    gap: 8,
-                    ...(Platform.OS === 'web' ? ({ position: 'sticky', top: 24, alignSelf: 'flex-start' } as any) : {}),
-                  }}
-                >
-                  {webSettingsMenuItems.map((item) => {
-                    const selected = activeWebSettingsMenu === item.key;
-                    return (
-                      <Pressable
-                        key={item.key}
-                        onPress={() => {
-                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                          setActiveWebInlinePanel(null);
-                          setActiveWebSettingsMenu(item.key);
-                          router.replace({ pathname: '/settings', params: { menu: item.key } });
-                        }}
-                        className="active:opacity-80"
-                        style={{
-                          height: 56,
-                          borderRadius: 999,
-                          paddingLeft: 24,
-                          paddingRight: 18,
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          gap: 10,
-                          backgroundColor: selected ? colors.text.primary : 'transparent',
-                        }}
-                      >
-                        {item.icon}
-                        <Text
-                          style={{
-                            color: selected ? colors.bg.primary : colors.text.tertiary,
-                            fontSize: 14,
-                            lineHeight: 18,
-                            fontWeight: selected ? '600' : '500',
-                          }}
-                        >
-                          {item.label}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-
-                <View style={{ flex: 1, maxWidth: 612 }}>
-                  {renderActiveWebSettingsContent()}
-                  <View style={{ marginTop: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                    <Info size={16} color={colors.text.tertiary} strokeWidth={2} />
-                    <Text style={{ color: colors.text.tertiary, fontSize: 16 }}>
-                      Need help? Contact support at support@fyll.app
-                    </Text>
-                  </View>
-                </View>
+              {renderWebSettingsTopBar()}
+              <View style={{ width: '100%', maxWidth: 960, paddingBottom: 16 }}>
+                {renderActiveWebSettingsContent()}
               </View>
             </View>
           </KeyboardAwareScrollView>
@@ -5240,7 +5421,7 @@ export default function SettingsScreen() {
                   <View className="flex-row items-start justify-between">
                     <View>
                       <Text style={{ color: colors.text.tertiary }} className="text-xs font-medium uppercase tracking-wider">Menu</Text>
-                      <Text style={{ color: colors.text.primary, ...pageHeadingStyle }}>More</Text>
+                      <MoneyText style={{ color: colors.text.primary, ...pageHeadingStyle, fontWeight: '400', letterSpacing: -0.8 }}>More</MoneyText>
                     </View>
                     <Pressable
                       onPress={handleRefreshApp}
@@ -5272,12 +5453,12 @@ export default function SettingsScreen() {
               <View className="flex-row items-start justify-between">
                 <View>
                   <Text style={{ color: colors.text.tertiary }} className="text-xs font-medium uppercase tracking-wider">Menu</Text>
-                  <Text style={{ color: colors.text.primary, ...pageHeadingStyle }}>More</Text>
+                  <MoneyText style={{ color: colors.text.primary, ...pageHeadingStyle, fontWeight: '400', letterSpacing: -0.8 }}>More</MoneyText>
                 </View>
                 <Pressable
                   onPress={handleRefreshApp}
-                  className="w-10 h-10 rounded-xl items-center justify-center active:opacity-70"
-                  style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}
+                  className="w-10 h-10 items-center justify-center active:opacity-70"
+                  style={{ borderRadius: 20, backgroundColor: 'transparent', borderWidth: 1, borderColor: settingsPalette.border }}
                 >
                   <RotateCcw size={16} color={colors.text.primary} strokeWidth={2} />
                 </Pressable>
@@ -5345,7 +5526,7 @@ export default function SettingsScreen() {
 
           {!searchQuery.trim() && (
             <>
-              <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase mb-3 tracking-wider">Business</Text>
+              <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Business</Text>
               <View style={mobileSettingsCardStyle}>
                 <SettingsRow
                   title="Switch Business"
@@ -5359,7 +5540,7 @@ export default function SettingsScreen() {
 
           {!searchQuery.trim() && currentUser && (
             <>
-              <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase mt-4 mb-3 tracking-wider">Account</Text>
+              <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Account</Text>
               <View style={mobileSettingsCardStyle}>
                 <SettingsRow
                   title="My Account"
@@ -5372,7 +5553,7 @@ export default function SettingsScreen() {
           )}
 
           {!searchQuery.trim() && (<>
-          <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase mt-4 mb-3 tracking-wider">Business</Text>
+          <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Business</Text>
           <View style={mobileSettingsCardStyle}>
           <SettingsRow
             title="Business Settings"
@@ -5446,7 +5627,7 @@ export default function SettingsScreen() {
           ) : null}
           </View>
 
-          <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase mt-4 mb-3 tracking-wider">Connections</Text>
+          <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Connections</Text>
           <View style={mobileSettingsCardStyle}>
           {canUseStorefront ? (
             <SettingsRow
@@ -5466,7 +5647,7 @@ export default function SettingsScreen() {
           ) : null}
           </View>
 
-          <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase mt-4 mb-3 tracking-wider">Links</Text>
+          <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Links</Text>
           <View style={mobileSettingsCardStyle}>
             {publicLinks.map((link) => (
               <SettingsRow
@@ -5490,7 +5671,7 @@ export default function SettingsScreen() {
 
           {currentUser?.role === 'admin' && businessId ? (
             <>
-              <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase mt-4 mb-3 tracking-wider">Business Identity</Text>
+              <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Business Identity</Text>
               <View style={mobileSettingsCardStyle}>
                 <SettingsRow
                   title="Fyll Business ID"
@@ -5513,7 +5694,7 @@ export default function SettingsScreen() {
 
           {currentUser?.role === 'admin' && canUseTeamMembers && (
             <>
-              <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase mt-4 mb-3 tracking-wider">Team</Text>
+              <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Team</Text>
               <View style={mobileSettingsCardStyle}>
                 <SettingsRow
                   title="Team Members"
@@ -5532,7 +5713,7 @@ export default function SettingsScreen() {
             </>
           )}
 
-          <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase mt-4 mb-3 tracking-wider">Data</Text>
+          <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Data</Text>
           <View style={mobileSettingsCardStyle}>
             <SettingsRow
               title="Recycle Bin"
@@ -5549,15 +5730,8 @@ export default function SettingsScreen() {
             />
           </View>
 
-          <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase mt-4 mb-3 tracking-wider">Customers</Text>
+          <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Import customers</Text>
           <View style={mobileSettingsCardStyle}>
-            <SettingsRow
-              title="Customer List"
-              description="Contacts and history"
-              icon={<Users size={18} color="#10B981" strokeWidth={2} />}
-              rightText={`${customers.length}`}
-              onPress={() => router.push('/customers' as never)}
-            />
             <SettingsRow
               title="Import Customers"
               description="Upload contacts via CSV"
@@ -5566,7 +5740,17 @@ export default function SettingsScreen() {
             />
           </View>
 
-          <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase mt-4 mb-3 tracking-wider">Orders & Sales</Text>
+          <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Features</Text>
+          <View style={mobileSettingsCardStyle}>
+            <SettingsRow
+              title="All features"
+              description="Turn tools on or off and see how each is set up"
+              icon={<LayoutGrid size={18} color="#10B981" strokeWidth={2} />}
+              onPress={() => openSettingsSection('all-features')}
+            />
+          </View>
+
+          <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Orders & Sales</Text>
           <View style={mobileSettingsCardStyle}>
             <SettingsRow
               title="Order Statuses"
@@ -5583,18 +5767,11 @@ export default function SettingsScreen() {
               onPress={() => openSettingsSection('quality-control-checks')}
             />
             <SettingsRow
-              title="Order Timelines"
-              description="Order types and processing ETA rules"
+              title="Fulfillment Timelines"
+              description="Processing and delivery days by state"
               icon={<Clock3 size={18} color="#2563EB" strokeWidth={2} />}
-              rightText={`${orderTimelineSettings.orderTypes.length}`}
+              rightText={`${timelineRows.length}`}
               onPress={() => openSettingsSection('order-timelines')}
-            />
-            <SettingsRow
-              title="Shipping Zones"
-              description="Delivery zones by Nigerian state"
-              icon={<Truck size={18} color="#F59E0B" strokeWidth={2} />}
-              rightText={`${orderTimelineSettings.shippingZones.length}`}
-              onPress={() => openSettingsSection('shipping-zones')}
             />
             <SettingsRow
               title="Sale Sources"
@@ -5633,7 +5810,7 @@ export default function SettingsScreen() {
             />
           </View>
 
-          <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase mt-4 mb-3 tracking-wider">Services</Text>
+          <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Services</Text>
           <View style={mobileSettingsCardStyle}>
             <SettingsRow
               title="Service Catalog"
@@ -5652,7 +5829,7 @@ export default function SettingsScreen() {
 
           {canUseCases ? (
             <>
-              <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase mt-4 mb-3 tracking-wider">Cases</Text>
+              <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Cases</Text>
               <View style={mobileSettingsCardStyle}>
                 <SettingsRow
                   title="All Cases"
@@ -5678,7 +5855,7 @@ export default function SettingsScreen() {
             </>
           ) : null}
 
-          <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase mt-4 mb-3 tracking-wider">Inventory</Text>
+          <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Inventory</Text>
           <View style={mobileSettingsCardStyle}>
             <SettingsRow
               title="Low Stock Alert"
@@ -5726,7 +5903,7 @@ export default function SettingsScreen() {
             />
           </View>
 
-          <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase mt-4 mb-3 tracking-wider">Appearance</Text>
+          <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Appearance</Text>
           <View
             className="rounded-2xl p-4 border"
             style={{ backgroundColor: colors.bg.card, borderColor: colors.border.light }}
@@ -5797,7 +5974,7 @@ export default function SettingsScreen() {
 
           {((Platform.OS === 'web' && notifPermission !== null) || canUseOrderAutomation) && (
           <>
-          <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase mt-4 mb-3 tracking-wider">Notifications</Text>
+          <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Notifications</Text>
           <View style={mobileSettingsCardStyle}>
             {Platform.OS === 'web' && notifPermission !== null && (
               <View>
@@ -5899,7 +6076,7 @@ export default function SettingsScreen() {
           </>
           )}
 
-          <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase mt-4 mb-3 tracking-wider">Sync</Text>
+          <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Sync</Text>
           <View style={mobileSettingsCardStyle}>
             <SettingsRow
               title="Save Global Settings"
@@ -5929,7 +6106,7 @@ export default function SettingsScreen() {
             </Text>
           )}
 
-          <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase mt-4 mb-3 tracking-wider">App</Text>
+          <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>App</Text>
           <View style={mobileSettingsCardStyle}>
             <SettingsRow
               title="Fyll ERP"

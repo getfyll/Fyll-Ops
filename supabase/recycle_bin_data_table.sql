@@ -13,6 +13,8 @@ alter table public.deleted_items drop constraint if exists deleted_items_pkey;
 alter table public.deleted_items add primary key (id, business_id);
 
 create index if not exists deleted_items_business_id_idx on public.deleted_items (business_id);
+create index if not exists deleted_items_business_updated_id_idx
+  on public.deleted_items (business_id, updated_at desc, id desc);
 
 alter table public.deleted_items enable row level security;
 

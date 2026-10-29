@@ -592,6 +592,7 @@ as $$
 declare
   normalized_business_id text := trim(coalesce(business_id_input, ''));
   normalized_feature_access jsonb;
+  current_feature_access jsonb;
 begin
   if not public.is_platform_admin() then
     raise exception 'Platform admin access required';
@@ -616,12 +617,19 @@ begin
     'aiImport', coalesce((feature_access_input->>'aiImport')::boolean, true)
   );
 
-  update public.businesses
-  set data = coalesce(data, '{}'::jsonb) || jsonb_build_object('featureAccess', normalized_feature_access)
+  select data->'featureAccess'
+  into current_feature_access
+  from public.businesses
   where id::text = normalized_business_id;
 
   if not found then
     raise exception 'Business not found';
+  end if;
+
+  if current_feature_access is distinct from normalized_feature_access then
+    update public.businesses
+    set data = coalesce(data, '{}'::jsonb) || jsonb_build_object('featureAccess', normalized_feature_access)
+    where id::text = normalized_business_id;
   end if;
 
   return normalized_feature_access;

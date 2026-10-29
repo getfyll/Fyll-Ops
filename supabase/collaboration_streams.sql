@@ -135,6 +135,8 @@ create index if not exists collaboration_mentions_user_idx
 
 create index if not exists collaboration_notifications_business_id_idx
   on public.collaboration_notifications (business_id);
+create index if not exists collaboration_notifications_business_created_idx
+  on public.collaboration_notifications (business_id, created_at desc);
 create index if not exists collaboration_notifications_user_unread_idx
   on public.collaboration_notifications (user_id, is_read, created_at desc);
 

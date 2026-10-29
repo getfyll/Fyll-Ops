@@ -169,9 +169,9 @@ const buildCheckoutUrl = ({
   businessSlug?: string | null
 }) => {
   const normalizedBusinessSlug = normalizeSlug(businessSlug ?? '')
-  // Customers pay on payment.fyll.app/<business>/<code>, not the staff dashboard.
+  // Customers pay on payment.fyll.app/<business>/bill/<code>, not the staff dashboard.
   if (normalizedBusinessSlug) {
-    return new URL(`/${normalizedBusinessSlug}/${encodeURIComponent(code)}`, PAYMENT_BASE_URL).toString()
+    return new URL(`/${normalizedBusinessSlug}/bill/${encodeURIComponent(code)}`, PAYMENT_BASE_URL).toString()
   }
   const pathname = '/checkout'
   const url = new URL(pathname, APP_BASE_URL)

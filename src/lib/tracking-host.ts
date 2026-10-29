@@ -46,10 +46,10 @@ const CUSTOMER_PORTAL_ROUTES = new Set([
   '[businessSlug]/confirm-delivery', '[businessSlug]/confirm-delivery/[code]',
 ]);
 
-// payment.fyll.app only ever serves the public payment page:
-//   /<business>/<code> (short link), /<business>/checkout/<code> (older shape) and /checkout?code=.
+// payment.fyll.app only serves public payment and quote pages.
 const PAYMENT_PORTAL_ROUTES = new Set([
   'checkout', '[businessSlug]/[code]', '[businessSlug]/checkout/[code]',
+  '[businessSlug]/bill/[code]', 'q/[code]', '[businessSlug]/quote/[code]',
 ]);
 
 export const isCustomerPortalRoute = (routeName: string, hostname?: string | null) =>

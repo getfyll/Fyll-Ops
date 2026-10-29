@@ -80,6 +80,21 @@ serve(async (req: Request) => {
     : businessName
   const label = KIND_LABELS[kind]
 
+  // Save the request so it shows up in the Fyll console (Requests) and can be approved there. The email below
+  // still goes out; if saving fails we still send the email so the request is never lost.
+  const { error: saveError } = await admin.from('business_change_requests').insert({
+    business_id: businessId,
+    kind,
+    current_value: currentValue,
+    requested_value: requestedValue,
+    note: note || null,
+    requester_user_id: user.id,
+    requester_name: requesterName,
+    requester_email: requesterEmail || null,
+  })
+  if (saveError) console.error('send-change-request: could not save the request', saveError.message)
+  const saved = !saveError
+
   const rows: Array<[string, string]> = [
     ['Request', `Change ${label.toLowerCase()}`],
     ['Business', businessName],
@@ -94,7 +109,7 @@ serve(async (req: Request) => {
 <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse">
 ${rows.map(([key, value]) => `<tr><td style="padding:8px 12px 8px 0;color:#6b6c63;vertical-align:top;white-space:nowrap">${escapeHtml(key)}</td><td style="padding:8px 0;font-weight:600">${escapeHtml(value)}</td></tr>`).join('')}
 </table>
-<p style="margin:18px 0 0;color:#6b6c63;font-size:13px">Apply it in the Fyll console (Businesses → this business). Reply to this email to reach the requester.</p>
+<p style="margin:18px 0 0;color:#6b6c63;font-size:13px">Approve or decline it in the Fyll console (Requests tab), or apply it under Businesses → this business. Reply to this email to reach the requester.</p>
 </div>`
   const text = rows.map(([key, value]) => `${key}: ${value}`).join('\n')
 
@@ -112,6 +127,8 @@ ${rows.map(([key, value]) => `<tr><td style="padding:8px 12px 8px 0;color:#6b6c6
   })
   if (!response.ok) {
     console.error('send-change-request: Resend failed', await response.text().catch(() => ''))
+    // Saved in the console even though the email failed: the request is not lost.
+    if (saved) return jsonResponse(200, { success: true, emailed: false })
     return jsonResponse(502, { error: 'Could not send your request. Please try again.' })
   }
   return jsonResponse(200, { success: true })

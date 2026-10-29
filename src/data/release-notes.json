@@ -1,6 +1,31 @@
 {
   "releases": [
     {
+      "version": "2.6.0",
+      "date": "2026-10-29T12:00:00Z",
+      "features": [
+        {
+          "icon": "package",
+          "title": "Settings, reorganised",
+          "body": "A new Settings sidebar groups everything, with search and an All features page where you can switch tools on or off."
+        },
+        {
+          "icon": "truck",
+          "title": "Fulfillment Timelines",
+          "body": "Order timelines and shipping zones are now one setting. Pick the states each timeline covers."
+        },
+        {
+          "icon": "sparkles",
+          "title": "Fresh look for Tasks and Settings",
+          "body": "Tasks, Settings and both sidebars now match the new Fyll style on web and mobile."
+        }
+      ],
+      "fixes": [
+        "WhatsApp alerts are now one per order: Fyll Checkout and Social Checkout send a payment alert, Storefront sends an order alert, and approving a payment sends nothing.",
+        "Orders you add by hand no longer send a WhatsApp alert."
+      ]
+    },
+    {
       "version": "2.5.0",
       "date": "2026-10-27T12:00:00Z",
       "features": [

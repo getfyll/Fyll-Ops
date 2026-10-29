@@ -54,3 +54,27 @@ export const isBusinessFeatureEnabled = (
   access: Partial<Record<BusinessFeatureKey, boolean>> | null | undefined,
   feature: BusinessFeatureKey
 ) => CORE_FEATURE_KEYS.has(feature) || access?.[feature] !== false;
+
+// Merchant layer: owners/admins can switch some features off for their own team (businesses.data.enabledFeatures).
+// A feature is on only when Fyll's own switch (featureAccess) allows it AND the merchant has not turned it off.
+// The merchant layer can only turn things off; it can never enable something Fyll has switched off.
+export type MerchantFeatureSwitches = Partial<Record<BusinessFeatureKey, boolean>>;
+
+export const normalizeMerchantFeatureSwitches = (value: unknown): MerchantFeatureSwitches => {
+  const raw = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  return BUSINESS_FEATURES.reduce<MerchantFeatureSwitches>((acc, feature) => (
+    typeof raw[feature.key] === 'boolean' && !('core' in feature && feature.core)
+      ? { ...acc, [feature.key]: raw[feature.key] as boolean }
+      : acc
+  ), {});
+};
+
+export const applyMerchantFeatureSwitches = (
+  access: BusinessFeatureAccess,
+  merchant: MerchantFeatureSwitches | null | undefined,
+): BusinessFeatureAccess => (
+  BUSINESS_FEATURES.reduce(
+    (acc, feature) => ({ ...acc, [feature.key]: access[feature.key] && merchant?.[feature.key] !== false }),
+    {} as BusinessFeatureAccess
+  )
+);

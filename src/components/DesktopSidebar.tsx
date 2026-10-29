@@ -1,4 +1,4 @@
-import { FYLL_LIME, FYLL_LIME_INK } from '@/components/payments/payments-ui';
+import { usePaymentsPalette } from '@/components/payments/payments-ui';
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, ScrollView, Platform } from 'react-native';
 import { useGlobalSearchParams, usePathname, useRouter, useSegments } from 'expo-router';
@@ -127,9 +127,12 @@ const partnerSubItems: PartnerSubItem[] = [
   { key: 'issues', label: 'Issues', href: '/partners/issues', icon: AlertTriangle },
   { key: 'all', label: 'All partners', href: '/partners/all', icon: Users },
 ];
+import { SettingsSidebar } from '@/components/SettingsSidebar';
+import useSettingsNavStore from '@/lib/state/settings-nav-store';
 
 export function DesktopSidebar() {
   const colors = useThemeColors();
+  const navPalette = usePaymentsPalette();
   const router = useRouter();
   const pathname = usePathname();
   const segments = useSegments();
@@ -148,6 +151,11 @@ export function DesktopSidebar() {
   const expenseRequests = useFyllStore((s) => s.expenseRequests);
   const partnerJobIssues = useFyllStore((s) => s.partnerJobIssues);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const setSettingsLastPath = useSettingsNavStore((state) => state.setLastPath);
+  const isSettingsRoute = pathname === '/settings' || pathname.startsWith('/settings/');
+  useEffect(() => {
+    if (!isSettingsRoute) setSettingsLastPath(pathname);
+  }, [isSettingsRoute, pathname, setSettingsLastPath]);
   const [isFinanceMenuOpen, setIsFinanceMenuOpen] = useState(false);
   const [isInventoryMenuOpen, setIsInventoryMenuOpen] = useState(false);
   const [isAnnouncementMenuOpen, setIsAnnouncementMenuOpen] = useState(false);
@@ -381,6 +389,9 @@ export function DesktopSidebar() {
     return pathname.includes(href.replace('/', ''));
   };
 
+  // Settings takes over the sidebar instead of sitting beside it.
+  if (isSettingsRoute && isInsideTabs) return <SettingsSidebar />;
+
   return (
     <View
       style={{
@@ -535,8 +546,8 @@ export function DesktopSidebar() {
 
           const active = isActive(item.href) || (item.href === '/finance' && pathname.includes('calculator'));
           const Icon = item.icon;
-          const activeBg = FYLL_LIME;
-          const activeFg = FYLL_LIME_INK;
+          const activeBg = navPalette.nudgeBg;
+          const activeFg = navPalette.limeOnSurface;
           const navBadgeCount = item.href === '/threads'
             ? totalUnreadThreads
             : item.href === '/tasks'
@@ -545,7 +556,7 @@ export function DesktopSidebar() {
 
           if (item.href === '/inventory' && !isCollapsed) {
             return (
-              <View key={item.href} style={{ marginHorizontal: 12, marginVertical: 4 }}>
+              <View key={item.href} style={{ marginHorizontal: 12, marginVertical: 2 }}>
                 <Pressable
                   onPress={() => {
                     if (active) {
@@ -563,31 +574,31 @@ export function DesktopSidebar() {
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
-                    paddingHorizontal: 16,
-                    paddingVertical: 14,
-                    borderRadius: 18,
-                    backgroundColor: active ? FYLL_LIME : 'transparent',
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                    borderRadius: 12,
+                    backgroundColor: active ? navPalette.nudgeBg : 'transparent',
                   }}
                 >
                   <View
                     style={{
-                      width: 26,
+                      width: 22,
                       alignItems: 'center',
                       justifyContent: 'center',
-                      marginRight: 14,
+                      marginRight: 12,
                     }}
                   >
                     <Icon
-                      size={20}
-                      color={active ? FYLL_LIME_INK : colors.text.tertiary}
-                      strokeWidth={active ? 2.5 : 2}
+                      size={17}
+                      color={active ? navPalette.limeOnSurface : colors.text.tertiary}
+                      strokeWidth={active ? 2.2 : 1.9}
                     />
                   </View>
                   <Text
                     style={{
-                      fontSize: 15,
-                      fontWeight: active ? '700' : '500',
-                      color: active ? FYLL_LIME_INK : colors.text.secondary,
+                      fontSize: 14,
+                      fontWeight: active ? '600' : '500',
+                      color: active ? navPalette.limeOnSurface : colors.text.secondary,
                     }}
                   >
                     {item.name}
@@ -622,22 +633,22 @@ export function DesktopSidebar() {
                             flexDirection: 'row',
                             alignItems: 'center',
                             paddingHorizontal: 12,
-                            paddingVertical: 12,
+                            paddingVertical: 8,
                             marginBottom: 2,
-                            borderRadius: 16,
+                            borderRadius: 10,
                             backgroundColor: isSubActive ? colors.bg.secondary : 'transparent',
                           }}
                         >
                           <SubIcon
-                            size={18}
-                            color={isSubActive ? colors.text.primary : colors.text.tertiary}
+                            size={16}
+                            color={isSubActive ? navPalette.limeOnSurface : colors.text.tertiary}
                             strokeWidth={isSubActive ? 2.4 : 2}
                           />
                           <Text
                             style={{
                               fontSize: 13,
                               fontWeight: isSubActive ? '700' : '500',
-                              color: isSubActive ? colors.text.primary : colors.text.secondary,
+                              color: isSubActive ? navPalette.limeOnSurface : colors.text.secondary,
                               marginLeft: 10,
                             }}
                           >
@@ -654,7 +665,7 @@ export function DesktopSidebar() {
 
           if (item.href === '/announcements' && !isCollapsed) {
             return (
-              <View key={item.href} style={{ marginHorizontal: 12, marginVertical: 4 }}>
+              <View key={item.href} style={{ marginHorizontal: 12, marginVertical: 2 }}>
                 <Pressable
                   onPress={() => {
                     if (active) {
@@ -672,31 +683,31 @@ export function DesktopSidebar() {
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
-                    paddingHorizontal: 16,
-                    paddingVertical: 14,
-                    borderRadius: 18,
-                    backgroundColor: active ? FYLL_LIME : 'transparent',
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                    borderRadius: 12,
+                    backgroundColor: active ? navPalette.nudgeBg : 'transparent',
                   }}
                 >
                   <View
                     style={{
-                      width: 26,
+                      width: 22,
                       alignItems: 'center',
                       justifyContent: 'center',
-                      marginRight: 14,
+                      marginRight: 12,
                     }}
                   >
                     <Icon
-                      size={20}
-                      color={active ? FYLL_LIME_INK : colors.text.tertiary}
-                      strokeWidth={active ? 2.5 : 2}
+                      size={17}
+                      color={active ? navPalette.limeOnSurface : colors.text.tertiary}
+                      strokeWidth={active ? 2.2 : 1.9}
                     />
                   </View>
                   <Text
                     style={{
-                      fontSize: 15,
-                      fontWeight: active ? '700' : '500',
-                      color: active ? FYLL_LIME_INK : colors.text.secondary,
+                      fontSize: 14,
+                      fontWeight: active ? '600' : '500',
+                      color: active ? navPalette.limeOnSurface : colors.text.secondary,
                     }}
                   >
                     {item.name}
@@ -731,22 +742,22 @@ export function DesktopSidebar() {
                             flexDirection: 'row',
                             alignItems: 'center',
                             paddingHorizontal: 12,
-                            paddingVertical: 12,
+                            paddingVertical: 8,
                             marginBottom: 2,
-                            borderRadius: 16,
+                            borderRadius: 10,
                             backgroundColor: isSubActive ? colors.bg.secondary : 'transparent',
                           }}
                         >
                           <SubIcon
-                            size={18}
-                            color={isSubActive ? colors.text.primary : colors.text.tertiary}
+                            size={16}
+                            color={isSubActive ? navPalette.limeOnSurface : colors.text.tertiary}
                             strokeWidth={isSubActive ? 2.4 : 2}
                           />
                           <Text
                             style={{
                               fontSize: 13,
                               fontWeight: isSubActive ? '700' : '500',
-                              color: isSubActive ? colors.text.primary : colors.text.secondary,
+                              color: isSubActive ? navPalette.limeOnSurface : colors.text.secondary,
                               marginLeft: 10,
                             }}
                           >
@@ -764,7 +775,7 @@ export function DesktopSidebar() {
           if (item.href === '/partners' && !isCollapsed) {
             const partnerActive = isPartnerRoute;
             return (
-              <View key={item.href} style={{ marginHorizontal: 12, marginVertical: 4 }}>
+              <View key={item.href} style={{ marginHorizontal: 12, marginVertical: 2 }}>
                 <Pressable
                   onPress={() => {
                     if (partnerActive) {
@@ -782,33 +793,31 @@ export function DesktopSidebar() {
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
-                    paddingHorizontal: 16,
-                    paddingVertical: 14,
-                    borderRadius: 18,
-                    backgroundColor: partnerActive ? colors.bg.secondary : 'transparent',
-                    borderWidth: partnerActive ? 1 : 0,
-                    borderColor: colors.border.light,
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                    borderRadius: 12,
+                    backgroundColor: partnerActive ? navPalette.nudgeBg : 'transparent',
                   }}
                 >
                   <View
                     style={{
-                      width: 26,
+                      width: 22,
                       alignItems: 'center',
                       justifyContent: 'center',
-                      marginRight: 14,
+                      marginRight: 12,
                     }}
                   >
                     <Icon
-                      size={20}
-                      color={partnerActive ? colors.text.primary : colors.text.tertiary}
-                      strokeWidth={partnerActive ? 2.5 : 2}
+                      size={17}
+                      color={partnerActive ? navPalette.limeOnSurface : colors.text.tertiary}
+                      strokeWidth={partnerActive ? 2.2 : 1.9}
                     />
                   </View>
                   <Text
                     style={{
-                      fontSize: 15,
-                      fontWeight: partnerActive ? '700' : '500',
-                      color: partnerActive ? colors.text.primary : colors.text.secondary,
+                      fontSize: 14,
+                      fontWeight: partnerActive ? '600' : '500',
+                      color: partnerActive ? navPalette.limeOnSurface : colors.text.secondary,
                     }}
                   >
                     {item.name}
@@ -844,22 +853,22 @@ export function DesktopSidebar() {
                             flexDirection: 'row',
                             alignItems: 'center',
                             paddingHorizontal: 12,
-                            paddingVertical: 12,
+                            paddingVertical: 8,
                             marginBottom: 2,
-                            borderRadius: 16,
+                            borderRadius: 10,
                             backgroundColor: isSubActive ? colors.bg.secondary : 'transparent',
                           }}
                         >
                           <SubIcon
-                            size={18}
-                            color={isSubActive ? colors.text.primary : colors.text.tertiary}
+                            size={16}
+                            color={isSubActive ? navPalette.limeOnSurface : colors.text.tertiary}
                             strokeWidth={isSubActive ? 2.4 : 2}
                           />
                           <Text
                             style={{
                               fontSize: 13,
                               fontWeight: isSubActive ? '700' : '500',
-                              color: isSubActive ? colors.text.primary : colors.text.secondary,
+                              color: isSubActive ? navPalette.limeOnSurface : colors.text.secondary,
                               marginLeft: 10,
                             }}
                           >
@@ -900,7 +909,7 @@ export function DesktopSidebar() {
 
           if (item.href === '/finance' && !isCollapsed) {
             return (
-              <View key={item.href} style={{ marginHorizontal: 12, marginVertical: 4 }}>
+              <View key={item.href} style={{ marginHorizontal: 12, marginVertical: 2 }}>
                 <Pressable
                   onPress={() => {
                     if (active) {
@@ -913,31 +922,31 @@ export function DesktopSidebar() {
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
-                    paddingHorizontal: 16,
-                    paddingVertical: 14,
-                    borderRadius: 18,
-                    backgroundColor: active ? FYLL_LIME : 'transparent',
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                    borderRadius: 12,
+                    backgroundColor: active ? navPalette.nudgeBg : 'transparent',
                   }}
                 >
                   <View
                     style={{
-                      width: 26,
+                      width: 22,
                       alignItems: 'center',
                       justifyContent: 'center',
-                      marginRight: 14,
+                      marginRight: 12,
                     }}
                   >
                     <Icon
-                      size={20}
-                      color={active ? FYLL_LIME_INK : colors.text.tertiary}
-                      strokeWidth={active ? 2.5 : 2}
+                      size={17}
+                      color={active ? navPalette.limeOnSurface : colors.text.tertiary}
+                      strokeWidth={active ? 2.2 : 1.9}
                     />
                   </View>
                   <Text
                     style={{
-                      fontSize: 15,
-                      fontWeight: active ? '700' : '500',
-                      color: active ? FYLL_LIME_INK : colors.text.secondary,
+                      fontSize: 14,
+                      fontWeight: active ? '600' : '500',
+                      color: active ? navPalette.limeOnSurface : colors.text.secondary,
                     }}
                   >
                     {item.name}
@@ -1066,10 +1075,10 @@ export function DesktopSidebar() {
                 flexDirection: 'row',
                 alignItems: 'center',
                 marginHorizontal: 12,
-                marginVertical: 4,
-                paddingHorizontal: isCollapsed ? 0 : 16,
-                paddingVertical: isCollapsed ? 12 : 14,
-                borderRadius: 999,
+                marginVertical: 2,
+                paddingHorizontal: isCollapsed ? 0 : 12,
+                paddingVertical: 10,
+                borderRadius: 12,
                 backgroundColor: active ? activeBg : 'transparent',
                 justifyContent: isCollapsed ? 'center' : 'flex-start',
                 position: 'relative',
@@ -1077,22 +1086,22 @@ export function DesktopSidebar() {
             >
               <View
                 style={{
-                  width: 26,
+                  width: 22,
                   alignItems: 'center',
                   justifyContent: 'center',
-                  marginRight: isCollapsed ? 0 : 14,
+                  marginRight: isCollapsed ? 0 : 12,
                 }}
               >
                 <Icon
-                  size={20}
+                  size={17}
                   color={active ? activeFg : colors.text.tertiary}
-                  strokeWidth={active ? 2.5 : 2}
+                  strokeWidth={active ? 2.2 : 1.9}
                 />
               </View>
               {!isCollapsed ? (
                 <Text
                   style={{
-                    fontSize: 15,
+                    fontSize: 14,
                     fontWeight: active ? '600' : '500',
                     color: active ? activeFg : colors.text.secondary,
                   }}

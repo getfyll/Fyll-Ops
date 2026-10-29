@@ -52,8 +52,8 @@ function AmountText({ fontReady, style, ...props }: TextProps & { fontReady: boo
 
 // Public, unauthenticated page — a customer opens this from a link staff
 // shared over WhatsApp/Instagram, no Fyll account involved. Reachable at
-// /checkout?code=... or /${businessSlug}/checkout/${code} (see
-// [businessSlug]/checkout/[code].tsx and tracking-url.ts's
+// /checkout?code=... or /${businessSlug}/bill/${code} (see
+// [businessSlug]/bill/[code].tsx and tracking-url.ts's
 // buildSocialCheckoutPath). Both segments are exempted from the auth
 // redirect in src/app/_layout.tsx the same way order-tracking/track are.
 //

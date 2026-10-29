@@ -860,10 +860,7 @@ const sendBusinessWideOrderNotification = async (
 
   const heading = `New Order #${orderNumber}`
   const content = `${customerName || 'Walk-in'} — ${totalAmount}${createdBy ? ` (by ${createdBy})` : ''}`
-  await sendWhatsAppAlert(admin, businessId, 'orders', `🛍️ New order #${orderNumber}\n${content}\nOpen Fyll to view it.`, {
-    name: 'new_order_alert',
-    params: [`#${orderNumber}`, customerName || 'Walk-in', totalAmount],
-  })
+  // Orders added by hand are already paid, so they get no WhatsApp alert (team push only).
   return await sendPushNotification({
     recipients,
     heading,
@@ -891,6 +888,61 @@ const getBusinessDisplayName = async (admin: ReturnType<typeof getAdminClient>, 
   return fromData || (data?.name as string | undefined)?.trim() || 'Your store'
 }
 
+// One Fyll Checkout purchase can end up as two orders (the checkout order, then the website order that appears
+// when the payment is approved). Only the first one is news, so later orders sharing the checkout reference stay silent.
+const getCheckoutOrderInfo = async (
+  admin: ReturnType<typeof getAdminClient>,
+  businessId: string,
+  orderNumber: string,
+) => {
+  try {
+    const { data: current } = await admin
+      .from('orders')
+      .select('created_at, data')
+      .eq('business_id', businessId)
+      .eq('data->>orderNumber', orderNumber)
+      .limit(1)
+      .maybeSingle()
+    const currentData = (current?.data ?? {}) as Record<string, any>
+    const reference = (currentData.fyllCheckout?.reference ?? '').toString().trim()
+    const isFyllCheckout = String(currentData.source ?? '').toLowerCase().replace(/[_-]+/g, ' ').trim() === 'fyll checkout'
+    if (!current || !reference) return { repeat: false, isFyllCheckout }
+    const { data: earlier } = await admin
+      .from('orders')
+      .select('id')
+      .eq('business_id', businessId)
+      .eq('data->fyllCheckout->>reference', reference)
+      .neq('data->>orderNumber', orderNumber)
+      .lt('created_at', current.created_at)
+      .limit(1)
+    return { repeat: (earlier ?? []).length > 0, isFyllCheckout }
+  } catch (error) {
+    console.error('Repeat checkout order check failed', error)
+    return { repeat: false, isFyllCheckout: false }
+  }
+}
+
+// A payment is announced once per reference. Later status changes (proof uploaded again, approval) are not new.
+const paymentAlreadyAnnounced = async (
+  admin: ReturnType<typeof getAdminClient>,
+  businessId: string,
+  paymentReference: string,
+) => {
+  try {
+    const { data } = await admin
+      .from('collaboration_notifications')
+      .select('id')
+      .eq('business_id', businessId)
+      .eq('payload->>type', 'payment_received')
+      .eq('payload->>paymentReference', paymentReference)
+      .limit(1)
+    return (data ?? []).length > 0
+  } catch (error) {
+    console.error('Payment announced check failed', error)
+    return false
+  }
+}
+
 const notifyStorefrontOrder = async (
   admin: ReturnType<typeof getAdminClient>,
   businessId: string,
@@ -910,20 +962,28 @@ const notifyStorefrontOrder = async (
 
   const recipients = toUniqueIds((profiles ?? []).map((row: { id: string }) => row.id))
 
+  const checkoutOrder = await getCheckoutOrderInfo(admin, businessId, orderNumber)
+  if (checkoutOrder.repeat) {
+    return { message: 'Repeat of an order already announced for this checkout.' }
+  }
+
   // WhatsApp goes to the number saved in Settings -> Notifications, not to app users, so it must not depend on
   // `profiles` rows (Fyll Store merchant logins have none). Sent first, before the "No business recipients" return.
-  const storeName = await getBusinessDisplayName(admin, businessId)
-  await sendWhatsAppAlert(
-    admin,
-    businessId,
-    'orders',
-    `🎉 New storefront order ${orderNumber}\n${customerName || 'A customer'} · ${formatPaymentAmount(totalAmount)}\nOpen Fyll to view it.`,
-    {
-      name: 'new_storefront_order',
-      params: [customerName || 'A customer', orderNumber, storeName, formatPaymentAmount(totalAmount)],
-      buttonParam: orderNumber,
-    },
-  )
+  // Fyll Checkout orders wait for payment approval, so their WhatsApp alert is the payment one, not this.
+  if (!checkoutOrder.isFyllCheckout) {
+    const storeName = await getBusinessDisplayName(admin, businessId)
+    await sendWhatsAppAlert(
+      admin,
+      businessId,
+      'orders',
+      `🎉 New storefront order ${orderNumber}\n${customerName || 'A customer'} · ${formatPaymentAmount(totalAmount)}\nOpen Fyll to view it.`,
+      {
+        name: 'new_storefront_order',
+        params: [customerName || 'A customer', orderNumber, storeName, formatPaymentAmount(totalAmount)],
+        buttonParam: orderNumber,
+      },
+    )
+  }
 
   const notificationPayload = {
     type: 'storefront_order_created' as const,
@@ -1044,6 +1104,17 @@ const notifyPaymentReceived = async (
   const paymentReference = typeof payload.paymentReference === 'string' ? payload.paymentReference.trim() : ''
   if (!businessId || !paymentReference) {
     throw new Error('Missing businessId or paymentReference.')
+  }
+
+  // Approving a Fyll Checkout payment is the merchant's own action, and a payment is only announced once.
+  const approvedStatuses = ['confirmed', 'verified', 'paid']
+  const incomingSource = typeof payload.source === 'string' ? payload.source.trim().toLowerCase() : ''
+  const incomingStatus = typeof payload.status === 'string' ? payload.status.trim().toLowerCase() : ''
+  if (incomingSource === 'fyll_checkout' && approvedStatuses.includes(incomingStatus)) {
+    return { message: 'Approval of a Fyll Checkout payment is not announced.' }
+  }
+  if (await paymentAlreadyAnnounced(admin, businessId, paymentReference)) {
+    return { message: 'Payment already announced.' }
   }
 
   const recipients = await listBusinessRecipientIds(admin, businessId)

@@ -7,8 +7,11 @@ import { slugifyBusinessName } from '@/lib/tracking-url';
 import { resolveStorefrontSlug } from '@/lib/storefront-url';
 import {
   DEFAULT_BUSINESS_FEATURE_ACCESS,
+  applyMerchantFeatureSwitches,
   normalizeBusinessFeatureAccess,
+  normalizeMerchantFeatureSwitches,
   type BusinessFeatureAccess,
+  type MerchantFeatureSwitches,
 } from '@/lib/feature-access';
 
 export interface BusinessSettings {
@@ -28,7 +31,8 @@ export interface BusinessSettings {
   woocommerceConsumerKey: string;
   woocommerceConsumerSecret: string;
   woocommerceAutoLinkOrders: boolean;
-  featureAccess: BusinessFeatureAccess;
+  featureAccess: BusinessFeatureAccess; // Fyll's own switches (never overwritten by the merchant layer)
+  enabledFeatures: MerchantFeatureSwitches; // what the business owner switched off for their team
 }
 
 interface BusinessSettingsResult {
@@ -51,7 +55,9 @@ interface BusinessSettingsResult {
   woocommerceConsumerSecret: string;
   woocommerceAutoLinkOrders: boolean;
   hasWooCommerceConnection: boolean;
-  featureAccess: BusinessFeatureAccess;
+  featureAccess: BusinessFeatureAccess; // effective: Fyll's switch AND the merchant's switch
+  platformFeatureAccess: BusinessFeatureAccess;
+  enabledFeatures: MerchantFeatureSwitches;
   isLoading: boolean;
   updateBusinessName: (name: string) => Promise<{ success: boolean; error?: string }>;
   updateBusinessLogo: (logoUri: string | null) => Promise<void>;
@@ -82,6 +88,7 @@ const DEFAULT_SETTINGS: BusinessSettings = {
   woocommerceConsumerSecret: '',
   woocommerceAutoLinkOrders: false,
   featureAccess: DEFAULT_BUSINESS_FEATURE_ACCESS,
+  enabledFeatures: {},
 };
 
 const normalizeTimestamp = (value: unknown): string | null => {
@@ -211,6 +218,7 @@ const fetchBusinessSettings = async (
           woocommerceConsumerSecret: typeof data?.woocommerceConsumerSecret === 'string' ? data.woocommerceConsumerSecret : '',
           woocommerceAutoLinkOrders: normalizeBoolean(data?.woocommerceAutoLinkOrders),
           featureAccess: normalizeBusinessFeatureAccess(data?.featureAccess),
+          enabledFeatures: normalizeMerchantFeatureSwitches(data?.enabledFeatures),
         };
 
         await persistSettingsCache(businessId, remoteSettings);
@@ -230,6 +238,7 @@ const fetchBusinessSettings = async (
         businessName,
         businessSlug: resolveBusinessSlug(parsed.businessSlug, businessName, parsed.companyName ?? ''),
         featureAccess: normalizeBusinessFeatureAccess(parsed.featureAccess),
+        enabledFeatures: normalizeMerchantFeatureSwitches(parsed.enabledFeatures),
       };
     }
 
@@ -245,6 +254,7 @@ const fetchBusinessSettings = async (
           businessName,
           businessSlug: resolveBusinessSlug(parsed.businessSlug, businessName, parsed.companyName ?? ''),
           featureAccess: normalizeBusinessFeatureAccess(parsed.featureAccess),
+          enabledFeatures: normalizeMerchantFeatureSwitches(parsed.enabledFeatures),
         };
       }
     }
@@ -334,6 +344,7 @@ export function useBusinessSettings(): BusinessSettingsResult {
               woocommerceConsumerSecret: typeof data?.woocommerceConsumerSecret === 'string' ? data.woocommerceConsumerSecret : '',
               woocommerceAutoLinkOrders: normalizeBoolean(data?.woocommerceAutoLinkOrders),
               featureAccess: normalizeBusinessFeatureAccess(data?.featureAccess),
+              enabledFeatures: normalizeMerchantFeatureSwitches(data?.enabledFeatures),
             };
 
             setSettings(updatedSettings);
@@ -546,7 +557,9 @@ export function useBusinessSettings(): BusinessSettingsResult {
       woocommerceConsumerKey: settings.woocommerceConsumerKey,
       woocommerceConsumerSecret: settings.woocommerceConsumerSecret,
       woocommerceAutoLinkOrders: settings.woocommerceAutoLinkOrders,
-      featureAccess: normalizeBusinessFeatureAccess(settings.featureAccess),
+      featureAccess: applyMerchantFeatureSwitches(normalizeBusinessFeatureAccess(settings.featureAccess), settings.enabledFeatures),
+      platformFeatureAccess: normalizeBusinessFeatureAccess(settings.featureAccess),
+      enabledFeatures: settings.enabledFeatures ?? {},
       hasWooCommerceConnection: Boolean(
         settings.woocommerceStoreUrl.trim()
         && settings.woocommerceConsumerKey.trim()

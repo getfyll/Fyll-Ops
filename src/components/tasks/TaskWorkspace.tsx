@@ -18,6 +18,21 @@ import { taskData, type CreateTaskInput, type Task, type TaskItemType, type Task
 import { sendTaskAssignmentNotification, sendTaskCompletionNotification, triggerTaskDueReminders, triggerTaskEventReminders } from '@/hooks/useWebPushNotifications';
 import { getTeamThreadDisplayNameFromEntityId, getTeamThreadSubtitleFromEntityId, isTeamThreadEntityId } from '@/lib/team-threads';
 import { SearchClearButton } from '@/components/SearchClearButton';
+import { FYLL_LIME, FYLL_LIME_INK, MoneyText, usePaymentsPalette } from '@/components/payments/payments-ui';
+
+// The Ops palette under the same names the theme colours use, so the whole Tasks screen picks up the new
+// branding (charcoal cards, soft borders) without rewriting every style.
+function useBrandColors() {
+  const theme = useThemeColors();
+  const palette = usePaymentsPalette();
+  return {
+    ...theme,
+    text: { ...theme.text, primary: palette.text, secondary: palette.textSoft, tertiary: palette.muted, muted: palette.faint },
+    bg: { ...theme.bg, primary: palette.page, card: palette.card, secondary: palette.softFill },
+    border: { ...theme.border, light: palette.border, medium: palette.outline },
+    input: { ...theme.input, bg: palette.inputBg, text: palette.text, placeholder: palette.faint, border: palette.border },
+  };
+}
 
 type TaskFilter = 'all' | 'pending' | 'done';
 type TaskKpiScope = 'all' | 'due_today' | 'overdue' | 'completed_today';
@@ -661,7 +676,7 @@ const getCommentTextSegments = (
 const formatBadgeCount = (count: number) => (count > 99 ? '99+' : String(count));
 
 function TaskPeopleBadges({ overdue, completed, upcoming }: TaskPeopleBadgesProps) {
-  const colors = useThemeColors();
+  const colors = useBrandColors();
   const badges = [
     {
       key: 'overdue',
@@ -914,7 +929,7 @@ function AssigneePicker({
   allowEveryone?: boolean;
   placeholder: string;
 }) {
-  const colors = useThemeColors();
+  const colors = useBrandColors();
   const themeMode = useResolvedThemeMode();
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -1068,7 +1083,7 @@ function PriorityDropdown({
   value: TaskPriority;
   onChange: (priority: TaskPriority) => void;
 }) {
-  const colors = useThemeColors();
+  const colors = useBrandColors();
   const themeMode = useResolvedThemeMode();
   const [isOpen, setIsOpen] = useState(false);
   const fieldBorder = colors.border.light;
@@ -1140,7 +1155,7 @@ function RecurrenceDropdown({
   value: TaskRecurrenceFrequency | null;
   onChange: (frequency: TaskRecurrenceFrequency | null) => void;
 }) {
-  const colors = useThemeColors();
+  const colors = useBrandColors();
   const themeMode = useResolvedThemeMode();
   const [isOpen, setIsOpen] = useState(false);
   const fieldBorder = colors.border.light;
@@ -1213,7 +1228,7 @@ function EventTimezoneDropdown({
   value: string;
   onChange: (timeZone: string) => void;
 }) {
-  const colors = useThemeColors();
+  const colors = useBrandColors();
   const themeMode = useResolvedThemeMode();
   const [isOpen, setIsOpen] = useState(false);
   const fieldBorder = colors.border.light;
@@ -1294,7 +1309,7 @@ function TaskViewToggle({
   value: TaskViewMode;
   onChange: (next: TaskViewMode) => void;
 }) {
-  const colors = useThemeColors();
+  const colors = useBrandColors();
 
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -1310,9 +1325,9 @@ function TaskViewToggle({
             onPress={() => onChange(option.id)}
             style={{
               borderRadius: 999,
-              backgroundColor: active ? colors.text.primary : colors.bg.card,
+              backgroundColor: active ? FYLL_LIME : colors.bg.card,
               borderWidth: 1,
-              borderColor: active ? colors.text.primary : colors.border.light,
+              borderColor: active ? FYLL_LIME : colors.border.light,
               paddingHorizontal: 14,
               minWidth: 110,
               height: 38,
@@ -1322,8 +1337,8 @@ function TaskViewToggle({
               gap: 6,
             }}
           >
-            <Icon size={14} color={active ? colors.bg.primary : colors.text.secondary} strokeWidth={2.2} />
-            <Text style={{ color: active ? colors.bg.primary : colors.text.secondary, fontSize: 13, fontWeight: '600' }}>
+            <Icon size={14} color={active ? FYLL_LIME_INK : colors.text.secondary} strokeWidth={2.2} />
+            <Text style={{ color: active ? FYLL_LIME_INK : colors.text.secondary, fontSize: 13, fontWeight: '600' }}>
               {option.label}
             </Text>
           </Pressable>
@@ -1340,7 +1355,7 @@ function PriorityPills({
   value: TaskPriority;
   onChange: (priority: TaskPriority) => void;
 }) {
-  const colors = useThemeColors();
+  const colors = useBrandColors();
 
   return (
     <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -1400,7 +1415,7 @@ function TaskCreateModal({
   onSubmit: () => void;
   isSubmitting: boolean;
 }) {
-  const colors = useThemeColors();
+  const colors = useBrandColors();
   const themeMode = useResolvedThemeMode();
   const { isDesktop } = useBreakpoint();
   const isMobileModal = !isDesktop;
@@ -1482,13 +1497,13 @@ function TaskCreateModal({
                         minHeight: 40,
                         borderRadius: 999,
                         borderWidth: 1,
-                        borderColor: active ? colors.text.primary : fieldBorder,
-                        backgroundColor: active ? colors.text.primary : fieldBg,
+                        borderColor: active ? FYLL_LIME : fieldBorder,
+                        backgroundColor: active ? FYLL_LIME : fieldBg,
                         alignItems: 'center',
                         justifyContent: 'center',
                       }}
                     >
-                      <Text style={{ color: active ? colors.bg.primary : colors.text.secondary, fontSize: 13, fontWeight: '600' }}>
+                      <Text style={{ color: active ? FYLL_LIME_INK : colors.text.secondary, fontSize: 13, fontWeight: '600' }}>
                         {option.label}
                       </Text>
                     </Pressable>
@@ -1934,15 +1949,15 @@ function TaskCreateModal({
                           style={{
                             borderRadius: 999,
                             borderWidth: 1,
-                            borderColor: active ? colors.text.primary : fieldBorder,
-                            backgroundColor: active ? colors.text.primary : colors.bg.secondary,
+                            borderColor: active ? FYLL_LIME : fieldBorder,
+                            backgroundColor: active ? FYLL_LIME : colors.bg.secondary,
                             paddingHorizontal: 12,
                             height: 34,
                             alignItems: 'center',
                             justifyContent: 'center',
                           }}
                         >
-                          <Text style={{ color: active ? colors.bg.primary : colors.text.secondary, fontSize: 12, fontWeight: '600' }}>
+                          <Text style={{ color: active ? FYLL_LIME_INK : colors.text.secondary, fontSize: 12, fontWeight: '600' }}>
                             {threadOption.name}
                           </Text>
                         </Pressable>
@@ -2005,13 +2020,13 @@ function TaskCreateModal({
                 justifyContent: 'center',
                 backgroundColor: isSubmitting || form.title.trim().length === 0 || form.assigneeUserIds.length === 0
                   ? colors.border.medium
-                  : colors.text.primary,
+                  : FYLL_LIME,
               }}
             >
               {isSubmitting ? (
-                <ActivityIndicator color={colors.bg.primary} />
+                <ActivityIndicator color={FYLL_LIME_INK} />
               ) : (
-                <Text style={{ color: colors.bg.primary, fontWeight: '500' }}>Create {itemTypeLabel(form.itemType)}</Text>
+                <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 15 }}>Create {itemTypeLabel(form.itemType)}</MoneyText>
               )}
             </Pressable>
           </View>
@@ -2022,7 +2037,7 @@ function TaskCreateModal({
 }
 
 function TaskActivityFeed({ businessId, taskId, task, teamMembers, compact = false, scrollable = true }: TaskActivityFeedProps) {
-  const colors = useThemeColors();
+  const colors = useBrandColors();
   const themeMode = useResolvedThemeMode();
   const queryClient = useQueryClient();
   const currentUserId = useAuthStore((s) => s.currentUser?.id ?? null);
@@ -2648,7 +2663,7 @@ function TaskCard({
   onSelect: () => void;
   onToggleDone: () => void;
 }) {
-  const colors = useThemeColors();
+  const colors = useBrandColors();
   const themeMode = useResolvedThemeMode();
   const isCompleted = task.status === 'done';
   const overdue = isTaskOverdue(task);
@@ -2829,7 +2844,7 @@ function TaskTableRow({
   onSelect: () => void;
   onToggleDone: () => void;
 }) {
-  const colors = useThemeColors();
+  const colors = useBrandColors();
   const themeMode = useResolvedThemeMode();
   const isCompleted = task.status === 'done';
   const priority = PRIORITY_META[task.priority];
@@ -2987,7 +3002,7 @@ function TaskCalendarView({
   onOpenTask,
   onToggleDone,
 }: TaskCalendarViewProps) {
-  const colors = useThemeColors();
+  const colors = useBrandColors();
   const monthStart = startOfMonth(displayedMonth);
   const monthEnd = endOfMonth(displayedMonth);
   const calendarDays = eachDayOfInterval({
@@ -3349,7 +3364,7 @@ function TaskDetailPanel({
   onStatusChange: (next: 'todo' | 'in_progress' | 'done') => Promise<void>;
   onClose?: () => void;
 }) {
-  const colors = useThemeColors();
+  const colors = useBrandColors();
   const themeMode = useResolvedThemeMode();
   const { isDesktop } = useBreakpoint();
   const canUseEveryone = useAuthStore((s) => (s.currentUser?.role === 'admin' || s.currentUser?.role === 'manager'));
@@ -3604,13 +3619,13 @@ function TaskDetailPanel({
                     minHeight: 40,
                     borderRadius: 999,
                     borderWidth: 1,
-                    borderColor: active ? colors.text.primary : formFieldBorder,
-                    backgroundColor: active ? colors.text.primary : formFieldBg,
+                    borderColor: active ? FYLL_LIME : formFieldBorder,
+                    backgroundColor: active ? FYLL_LIME : formFieldBg,
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}
                 >
-                  <Text style={{ color: active ? colors.bg.primary : colors.text.secondary, fontSize: 13, fontWeight: '600' }}>
+                  <Text style={{ color: active ? FYLL_LIME_INK : colors.text.secondary, fontSize: 13, fontWeight: '600' }}>
                     {option.label}
                   </Text>
                 </Pressable>
@@ -4073,15 +4088,15 @@ function TaskDetailPanel({
                       style={{
                         borderRadius: 999,
                         borderWidth: 1,
-                        borderColor: active ? colors.text.primary : formFieldBorder,
-                        backgroundColor: active ? colors.text.primary : colors.bg.secondary,
+                        borderColor: active ? FYLL_LIME : formFieldBorder,
+                        backgroundColor: active ? FYLL_LIME : colors.bg.secondary,
                         paddingHorizontal: 12,
                         height: 34,
                         alignItems: 'center',
                         justifyContent: 'center',
                       }}
                     >
-                      <Text style={{ color: active ? colors.bg.primary : colors.text.secondary, fontSize: 12, fontWeight: '600' }}>
+                      <Text style={{ color: active ? FYLL_LIME_INK : colors.text.secondary, fontSize: 12, fontWeight: '600' }}>
                         {threadOption.name}
                       </Text>
                     </Pressable>
@@ -4144,13 +4159,13 @@ function TaskDetailPanel({
             justifyContent: 'center',
             backgroundColor: saveMutation.isPending || form.title.trim().length === 0 || form.assigneeUserIds.length === 0
               ? colors.border.medium
-              : colors.text.primary,
+              : FYLL_LIME,
           }}
         >
           {saveMutation.isPending ? (
-            <ActivityIndicator color={colors.bg.primary} />
+            <ActivityIndicator color={FYLL_LIME_INK} />
           ) : (
-            <Text style={{ color: colors.bg.primary, fontWeight: '500' }}>Save Changes</Text>
+            <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 15 }}>Save Changes</MoneyText>
           )}
         </Pressable>
       </View>
@@ -4737,7 +4752,7 @@ function TaskDetailPanel({
 }
 
 export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
-  const colors = useThemeColors();
+  const colors = useBrandColors();
   const themeMode = useResolvedThemeMode();
   const router = useRouter();
   const goToTasksHome = () => {
@@ -5530,12 +5545,12 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
                 }}
               >
                 <View style={{ minWidth: 0 }}>
-                  <Text
+                  <MoneyText
                     numberOfLines={1}
-                    style={{ color: colors.text.primary, ...pageHeadingStyle }}
+                    style={{ color: colors.text.primary, ...pageHeadingStyle, fontWeight: '400', letterSpacing: -0.8 }}
                   >
                     Tasks
-                  </Text>
+                  </MoneyText>
                   {!isTabletSplitView ? (
                     <Text style={{ color: colors.text.tertiary, fontSize: 13, fontWeight: '500', marginTop: 2 }}>Operations</Text>
                   ) : null}
@@ -5547,9 +5562,8 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
                     style={{
                       height: 38,
                       borderRadius: 999,
-                      backgroundColor: themeMode === 'dark' ? '#FFFFFF' : colors.bg.card,
-                      borderWidth: 1,
-                      borderColor: themeMode === 'dark' ? '#FFFFFF' : colors.border.light,
+                      backgroundColor: FYLL_LIME,
+                      borderWidth: 0,
                       paddingHorizontal: 14,
                       minWidth: 110,
                       flexDirection: 'row',
@@ -5557,8 +5571,8 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
                       gap: 7,
                     }}
                   >
-                    <Plus size={14} color={themeMode === 'dark' ? '#111111' : colors.text.primary} strokeWidth={2.8} />
-                    <Text style={{ color: themeMode === 'dark' ? '#111111' : colors.text.primary, fontSize: 13, fontWeight: '600' }}>Add Task</Text>
+                    <Plus size={14} color={FYLL_LIME_INK} strokeWidth={2.8} />
+                    <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 14 }}>Add Task</MoneyText>
                   </Pressable>
                 </View>
               </View>
@@ -6117,14 +6131,14 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
                                 }}
                                 style={{
                                   borderRadius: 999,
-                                  backgroundColor: active ? colors.text.primary : colors.bg.secondary,
+                                  backgroundColor: active ? FYLL_LIME : colors.bg.secondary,
                                   paddingHorizontal: 14,
                                   height: 32,
                                   alignItems: 'center',
                                   justifyContent: 'center',
                                 }}
                               >
-                                <Text style={{ color: active ? colors.bg.primary : colors.text.secondary, fontSize: 12, fontWeight: '600' }}>
+                                <Text style={{ color: active ? FYLL_LIME_INK : colors.text.secondary, fontSize: 12, fontWeight: '600' }}>
                                   {label}
                                 </Text>
                               </Pressable>
@@ -6249,7 +6263,7 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
               <>
                 <View style={{ paddingHorizontal: 6, paddingTop: 14, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                   <View>
-                    <Text style={{ color: colors.text.primary, ...pageHeadingStyle }}>Tasks</Text>
+                    <MoneyText style={{ color: colors.text.primary, ...pageHeadingStyle, fontWeight: '400', letterSpacing: -0.8 }}>Tasks</MoneyText>
                     <Text style={{ color: colors.text.tertiary, fontSize: 11, marginTop: 2 }}>{pendingCount} pending</Text>
                   </View>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -6275,16 +6289,16 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
                         borderRadius: 999,
                         alignItems: 'center',
                         justifyContent: 'center',
-                        backgroundColor: themeMode === 'dark' ? '#FFFFFF' : '#111111',
+                        backgroundColor: FYLL_LIME,
                         paddingHorizontal: 14,
                         flexDirection: 'row',
                         gap: 6,
                       }}
                     >
-                      <Plus size={15} color={themeMode === 'dark' ? '#111111' : '#FFFFFF'} strokeWidth={2.8} />
-                      <Text style={{ color: themeMode === 'dark' ? '#111111' : '#FFFFFF', fontSize: 13, fontWeight: '700' }}>
+                      <Plus size={15} color={FYLL_LIME_INK} strokeWidth={2.8} />
+                      <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 14 }}>
                         Create Task
-                      </Text>
+                      </MoneyText>
                     </Pressable>
                   </View>
                 </View>
@@ -7038,15 +7052,15 @@ export function TaskWorkspace({ mode, taskId }: TaskWorkspaceProps) {
                   onPress={() => setShowMobileFilterModal(false)}
                   style={{
                     height: 48,
-                    borderRadius: 12,
-                    backgroundColor: colors.text.primary,
+                    borderRadius: 999,
+                    backgroundColor: FYLL_LIME,
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}
                 >
-                  <Text style={{ color: colors.bg.primary, fontSize: 14, fontWeight: '700' }}>
+                  <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 15 }}>
                     Apply
-                  </Text>
+                  </MoneyText>
                 </Pressable>
               </View>
             </ScrollView>

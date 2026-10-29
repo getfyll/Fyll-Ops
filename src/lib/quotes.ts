@@ -1,6 +1,5 @@
-import { getFyllPublicAppOrigin } from '@/lib/fyll-app-url';
 import { formatCurrency } from '@/lib/state/fyll-store';
-import { slugifyBusinessName } from '@/lib/tracking-url';
+import { getPaymentLinkOrigin, slugifyBusinessName } from '@/lib/tracking-url';
 import type { StatusTone } from '@/components/payments/payments-ui';
 
 // A quote is a priced offer sent to a customer for approval before any order exists. It lives in
@@ -142,14 +141,14 @@ export const nextQuoteNumber = (quotes: Pick<Quote, 'quoteNumber'>[]) => {
 
 type QuoteBusiness = { businessName?: string | null; businessSlug?: string | null };
 
-// fyll.app/<business>/quotes/<code>, the same shape as the payment link (/<business>/checkout/<code>).
+// payment.fyll.app/<business>/quote/<code>, alongside the business's payment links.
 export const buildQuotePath = (code: string, business?: QuoteBusiness) => {
   const slug = slugifyBusinessName(business?.businessSlug || business?.businessName || '');
   const encoded = encodeURIComponent(code.trim().toUpperCase());
-  return slug ? `/${slug}/quotes/${encoded}` : `/quotes/${encoded}`;
+  return slug ? `/${slug}/quote/${encoded}` : `/q/${encoded}`;
 };
 
-export const buildQuoteUrl = (code: string, business?: QuoteBusiness) => `${getFyllPublicAppOrigin()}${buildQuotePath(code, business)}`;
+export const buildQuoteUrl = (code: string, business?: QuoteBusiness) => `${getPaymentLinkOrigin()}${buildQuotePath(code, business)}`;
 
 export const quoteLinkLabel = (code: string, business?: QuoteBusiness) => buildQuoteUrl(code, business).replace(/^https?:\/\//, '');
 

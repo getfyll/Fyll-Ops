@@ -279,6 +279,8 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
     || secondSegment === 'start-return'
     || secondSegment === 'track'
     || secondSegment === 'checkout'
+    || secondSegment === 'bill'
+    || secondSegment === 'quote'
     || secondSegment === 'quotes';
   const inPublicRoute = PUBLIC_ROUTE_SEGMENTS.has(firstSegment)
     || secondSegment === 'confirm-delivery'
@@ -286,6 +288,8 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
     || secondSegment === 'start-return'
     || secondSegment === 'track'
     || secondSegment === 'checkout'
+    || secondSegment === 'bill'
+    || secondSegment === 'quote'
     || secondSegment === 'quotes'
     || isCustomerPortalHost
     || isStorefrontHost
@@ -649,6 +653,7 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
           <Stack.Screen name="reset-password" options={{ headerShown: false }} />
           <Stack.Screen name="account-disabled" options={{ headerShown: false }} />
           <Stack.Screen name="[businessSlug]/checkout/[code]" options={{ headerShown: false }} />
+          <Stack.Screen name="[businessSlug]/bill/[code]" options={{ headerShown: false }} />
           <Stack.Screen name="social-checkout/new" options={{ headerShown: false, presentation: 'transparentModal', animation: 'fade', contentStyle: { backgroundColor: 'transparent' } }} />
           <Stack.Screen name="social-checkout/[id]" options={{ headerShown: false }} />
           <Stack.Screen name="quote/new" options={{ headerShown: false }} />
@@ -656,6 +661,7 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
           <Stack.Screen name="q/[code]" options={{ headerShown: false }} />
           <Stack.Screen name="quotes/[code]" options={{ headerShown: false }} />
           <Stack.Screen name="[businessSlug]/quotes/[code]" options={{ headerShown: false }} />
+          <Stack.Screen name="[businessSlug]/quote/[code]" options={{ headerShown: false }} />
           <Stack.Screen name="storefront-payment/[id]" options={{ headerShown: false }} />
           <Stack.Screen name="payment-accounts" options={{ headerShown: false }} />
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
