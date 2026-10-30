@@ -13,7 +13,7 @@
 <meta name="description" content="Fyll is the operations app for Nigerian businesses: orders, payments, delivery, stock, finance and your team in one place.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=JetBrains+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,800&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=JetBrains+Mono:wght@500&display=swap">
 <style>
 /* Layout: the Field glows behind the hero; everything below sits on Ground in frosted Panes.
    One lime action per view. Dark by choice (Fyll Lit Glass customer look). */
@@ -39,7 +39,7 @@
   --radius-pane-lg: 30px;
   --shadow-pane: 0 30px 60px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.12);
   --shadow-signal: 0 8px 24px rgba(213, 224, 87, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.5);
-  --max: 1160px;
+  --max: 1500px;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -60,7 +60,7 @@ a:focus-visible, button:focus-visible { outline: 2px solid var(--signal); outlin
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
 }
-h1, h2, h3 { font-family: var(--font-display); font-weight: 800; margin: 0; text-wrap: balance; letter-spacing: -0.02em; }
+h1, h2, h3 { font-family: var(--font-display); font-weight: 600; margin: 0; text-wrap: balance; letter-spacing: -0.02em; }
 p { margin: 0; }
 .label { font: 700 11px/14px var(--font-sans); letter-spacing: 1.4px; text-transform: uppercase; color: var(--ink-faint); }
 .mono { font-family: var(--font-mono); font-size: 0.9em; }
@@ -150,7 +150,7 @@ section.band { padding-block: 88px; }
 .feature { padding: 24px; border-radius: 22px; background: var(--ground-raised); border: 1px solid rgba(255,255,255,0.07); display: grid; gap: 12px; align-content: start; }
 .feature .ic { width: 44px; height: 44px; border-radius: 13px; background: var(--signal-wash); display: grid; place-items: center; }
 .feature .ic svg { width: 22px; height: 22px; stroke: var(--signal); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.feature h3 { font-size: 21px; line-height: 1.15; font-weight: 600; letter-spacing: -0.01em; }
+.feature h3 { font-size: 21px; line-height: 1.15; font-weight: 500; letter-spacing: -0.01em; }
 .feature p { color: var(--ink-muted); font-size: 15px; line-height: 1.55; }
 .feature .addr { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-faint); overflow-wrap: anywhere; }
 
@@ -161,7 +161,7 @@ section.band { padding-block: 88px; }
 .step .n { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; font: 800 16px/1 var(--font-display); background: var(--ground-raised); border: 1px solid var(--pane-edge); color: var(--ink-muted); position: relative; }
 .step.done .n { background: var(--signal); color: var(--on-signal); border-color: transparent; }
 .step.now .n { background: var(--ground); color: var(--signal); border: 2px solid var(--signal); box-shadow: 0 0 0 6px rgba(213, 224, 87, 0.14); }
-.step h3 { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
+.step h3 { font-size: 18px; font-weight: 500; letter-spacing: -0.01em; }
 .step p { font-size: 14px; color: var(--ink-muted); line-height: 1.5; }
 @media (max-width: 860px) {
   .journey { grid-template-columns: minmax(0, 1fr); gap: 22px; }
@@ -169,6 +169,15 @@ section.band { padding-block: 88px; }
   .step { grid-template-columns: 44px minmax(0, 1fr); column-gap: 16px; padding-right: 0; }
   .step .n { grid-row: span 2; }
 }
+
+/* People photos */
+.photo { margin: 0; position: relative; overflow: hidden; border-radius: var(--radius-pane-lg); border: 1px solid var(--pane-edge); box-shadow: var(--shadow-pane); background: var(--ground-raised); }
+.photo img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.photo.tall { aspect-ratio: 4 / 5; max-width: 480px; width: 100%; justify-self: center; }
+.photo.tall img { object-position: 50% 30%; }
+.photo.wide { aspect-ratio: 16 / 9; margin-bottom: 14px; }
+.photo.wide img { object-position: 50% 14%; }
+@media (max-width: 700px) { .photo.wide { aspect-ratio: 4 / 5; } }
 
 /* Customer side */
 .split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 48px; align-items: center; }
@@ -210,7 +219,7 @@ section.band { padding-block: 88px; }
 }
 .brand-tile { min-height: 96px; padding: 20px 14px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.08); background: var(--ground-raised); display: grid; align-content: center; justify-items: center; gap: 6px; text-align: center; transition: border-color .15s ease, background .15s ease; }
 a.brand-tile:hover { border-color: rgba(213, 224, 87, 0.5); background: rgba(213, 224, 87, 0.06); }
-.brand-tile .name { font: 600 19px/1.15 var(--font-display); letter-spacing: -0.01em; }
+.brand-tile .name { font: 500 19px/1.15 var(--font-display); letter-spacing: -0.01em; }
 .brand-tile .where { font-size: 12.5px; color: var(--ink-faint); }
 .brand-tile .logo { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; background: #ffffff; border: 2px solid rgba(213, 224, 87, 0.6); }
 
@@ -380,6 +389,24 @@ footer { padding-block: 56px 40px; color: var(--ink-faint); font-size: 14px; }
     </div>
   </section>
 
+  <section class="band" aria-labelledby="phone-h" style="padding-top:24px">
+    <div class="wrap split">
+      <figure class="photo tall">
+        <img src="/landing/people-shop.jpg" width="880" height="1100" loading="lazy" alt="A shop owner smiling as she checks an order on her phone at her desk">
+      </figure>
+      <div class="head" style="margin-bottom:0">
+        <span class="label">Run it from your phone</span>
+        <h2 id="phone-h">Orders land while you get on with your day.</h2>
+        <p>New orders, payments and delivery updates reach your phone the moment they happen, so you can keep selling from wherever you are.</p>
+        <ul class="ticks" style="margin-top:8px">
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span><b>Alerts on every phone</b> for new orders and payments.</span></li>
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span><b>WhatsApp alerts</b> when a push notification can't reach you.</span></li>
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span><b>One tap</b> to approve a customer's transfer.</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
   <section class="band" id="features" aria-labelledby="features-h">
     <div class="wrap">
       <div class="head">
@@ -526,6 +553,9 @@ footer { padding-block: 56px 40px; color: var(--ink-faint); font-size: 14px; }
         <span class="label">Made for how Nigeria does business</span>
         <h2 id="local-h">Built in Nigeria, for the future of Nigerian business.</h2>
       </div>
+      <figure class="photo wide">
+        <img src="/landing/people-team.jpg" width="1800" height="2250" loading="lazy" alt="Two Nigerian business owners smiling together in their studio">
+      </figure>
       <div class="facts">
         <div class="fact"><span class="big">₦</span><p>Prices, payments and reports in naira, with bank transfer as a first-class way to pay.</p></div>
         <div class="fact"><span class="big">1 tap</span><p>Approve a customer's transfer and the order, payment and stock all update together.</p></div>

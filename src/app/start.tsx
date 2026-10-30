@@ -3,7 +3,7 @@ import { Platform, Pressable, Text, View, useWindowDimensions } from 'react-nati
 import { useRouter } from 'expo-router';
 import { ArrowRight, Mail, UserPlus } from 'lucide-react-native';
 import { AuthHeader, AuthPrimaryButton, AuthShell } from '@/components/auth/AuthShell';
-import { isHovered, usePaymentsPalette } from '@/components/payments/payments-ui';
+import { MoneyText, isHovered, usePaymentsPalette } from '@/components/payments/payments-ui';
 
 const AUTH_HERO_LOCAL_URI = '/images/auth-hero.png';
 const AUTH_HERO_FALLBACK_URI = 'https://images.unsplash.com/photo-1623177579166-7029cf1d4d7e?auto=format&fit=crop&w=2000&q=80';
@@ -30,7 +30,7 @@ function OptionRow({ icon: Icon, title, hint, onPress }: { icon: typeof Mail; ti
         <Icon size={18} color={palette.textSoft} strokeWidth={2} />
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={{ color: palette.text, fontSize: 15, fontWeight: '600' }}>{title}</Text>
+        <MoneyText style={{ color: palette.text, fontSize: 15 }}>{title}</MoneyText>
         <Text style={{ color: palette.muted, fontSize: 13, marginTop: 2 }}>{hint}</Text>
       </View>
       <ArrowRight size={18} color={palette.faint} strokeWidth={2} />

@@ -2,7 +2,8 @@ import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { View, Text, Pressable, ScrollView, TextInput, Alert, Switch, Platform, Modal, Dimensions, type GestureResponderEvent } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Trash2, Edit2, Check, X, ChevronRight, ChevronUp, ChevronDown, ArrowLeft, Package, ShoppingCart, Tag, RotateCcw, Info, CreditCard, Truck, Wrench, Users, Moon, Sun, Laptop, LogOut, Shield, Building2, AlertTriangle, UserCircle, Upload, FileText, BarChart3, TrendingUp, Zap, Search, Sparkles, ListTodo, Bell, BellOff, Boxes, Clock3, Plus, MoreVertical, Megaphone, Printer, Copy, Link2, Landmark, Store, Mail, LayoutGrid } from 'lucide-react-native';
+import { Trash2, Edit2, Check, X, ChevronRight, ChevronUp, ChevronDown, ArrowLeft, Package, ShoppingCart, Tag, RotateCcw, Info, CreditCard, Truck, Wrench, Users, Moon, Sun, Laptop, LogOut, Shield, Building2, AlertTriangle, UserCircle, Upload, FileText, BarChart3, TrendingUp, Zap, Search, Sparkles, ListTodo, Bell, BellOff, Boxes, Clock3, Plus, MoreVertical, Megaphone, Printer, Copy, Link2, Landmark, Store, Mail, LayoutGrid, Award } from 'lucide-react-native';
+import { MilestoneReplay } from '@/components/milestones/MilestoneReplay';
 import { useWebPushNotifications } from '@/hooks/useWebPushNotifications';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
 import useFyllStore, { formatCurrency, type DeletedItem, type ThemeMode } from '@/lib/state/fyll-store';
@@ -605,6 +606,7 @@ export default function SettingsScreen() {
   const [showAddOrderStatusForm, setShowAddOrderStatusForm] = useState(false);
   const [restoringDeletedItemId, setRestoringDeletedItemId] = useState<string | null>(null);
   const [recycleBinSearchQuery, setRecycleBinSearchQuery] = useState('');
+  const [showMilestoneReplay, setShowMilestoneReplay] = useState<boolean>(false);
   const [recentlyRestoredItems, setRecentlyRestoredItems] = useState<Array<DeletedItem & { restoredAt: string }>>([]);
   const [confirmDeleteItem, setConfirmDeleteItem] = useState<DeletedItem | null>(null);
   const [confirmDeleteText, setConfirmDeleteText] = useState('');
@@ -4189,6 +4191,9 @@ export default function SettingsScreen() {
       { id: 'woocommerce-settings', title: 'WooCommerce', description: 'Store URL and API keys', icon: <ShoppingCart size={18} color="#2563EB" strokeWidth={2} />, onPress: () => openSettingsPanel('woocommerce-settings', '/woocommerce-settings?from=settings') },
     ] : []),
     { id: 'recycle-bin', title: 'Recycle Bin', description: 'Restore deleted orders, products, and finance rows', icon: <Trash2 size={18} color="#EF4444" strokeWidth={2} />, rightText: `${recycleBin.length}`, onPress: () => openSettingsSection('recycle-bin') },
+    ...(currentUser?.role === 'admin' ? [
+      { id: 'milestone-replay', title: 'Replay milestone celebration', description: 'Watch your latest order milestone again', icon: <Award size={18} color="#D5E057" strokeWidth={2} />, onPress: () => setShowMilestoneReplay(true) },
+    ] : []),
     ...(canUseAiImport ? [
       { id: 'import-ai', title: 'AI Import Assistant', description: 'Import orders, customers, products, and expenses', icon: <Sparkles size={18} color="#8B5CF6" strokeWidth={2} />, onPress: () => openSettingsPanel('import-ai', '/import-ai?from=settings') },
     ] : []),
@@ -4364,13 +4369,16 @@ export default function SettingsScreen() {
             style={{
               width: 42,
               height: 42,
-              borderRadius: 999,
+              borderRadius: 13,
               alignItems: 'center',
               justifyContent: 'center',
-              backgroundColor: colors.bg.secondary,
+              backgroundColor: settingsPalette.nudgeBg,
             }}
           >
-            {item.icon}
+            {/* One icon colour for every row (Fyll lime), whatever colour the item passed. */}
+            {React.isValidElement(item.icon)
+              ? React.cloneElement(item.icon as React.ReactElement<{ color?: string }>, { color: settingsPalette.limeOnSurface })
+              : item.icon}
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={{ color: colors.text.primary, fontSize: 14, lineHeight: 18, fontWeight: '600', ...(Platform.OS === 'web' ? ({ fontSize: '14px', lineHeight: '18px' } as any) : {}) }} numberOfLines={1}>
@@ -4441,17 +4449,17 @@ export default function SettingsScreen() {
           style={{
             width: 44,
             height: 44,
-            borderRadius: 999,
-            backgroundColor: colors.bg.secondary,
+            borderRadius: 13,
+            backgroundColor: settingsPalette.nudgeBg,
             alignItems: 'center',
             justifyContent: 'center',
           }}
         >
           {themeMode === 'system'
-            ? <Laptop size={19} color="#6366F1" strokeWidth={2} />
+            ? <Laptop size={19} color={settingsPalette.limeOnSurface} strokeWidth={2} />
             : resolvedThemeMode === 'dark'
-            ? <Moon size={19} color="#8B5CF6" strokeWidth={2} />
-            : <Sun size={19} color="#F59E0B" strokeWidth={2} />}
+            ? <Moon size={19} color={settingsPalette.limeOnSurface} strokeWidth={2} />
+            : <Sun size={19} color={settingsPalette.limeOnSurface} strokeWidth={2} />}
         </View>
       </View>
     </View>
@@ -4477,14 +4485,14 @@ export default function SettingsScreen() {
           style={{
             width: 42,
             height: 42,
-            borderRadius: 999,
+            borderRadius: 13,
             alignItems: 'center',
             justifyContent: 'center',
-            backgroundColor: notifPermission === 'granted' ? '#10B98120' : colors.bg.secondary,
+            backgroundColor: settingsPalette.nudgeBg,
           }}
         >
           {notifPermission === 'granted'
-            ? <Bell size={18} color="#10B981" strokeWidth={2} />
+            ? <Bell size={18} color={settingsPalette.limeOnSurface} strokeWidth={2} />
             : <BellOff size={18} color={colors.text.tertiary} strokeWidth={2} />}
         </View>
         <View style={{ flex: 1 }}>
@@ -4617,13 +4625,13 @@ export default function SettingsScreen() {
             style={{
               width: 42,
               height: 42,
-              borderRadius: 999,
+              borderRadius: 13,
               alignItems: 'center',
               justifyContent: 'center',
-              backgroundColor: colors.bg.secondary,
+              backgroundColor: settingsPalette.nudgeBg,
             }}
           >
-            <Building2 size={18} color="#10B981" strokeWidth={2} />
+            <Building2 size={18} color={settingsPalette.limeOnSurface} strokeWidth={2} />
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={{ color: colors.text.primary, fontSize: 14, lineHeight: 18, fontWeight: '600' }} numberOfLines={1}>
@@ -4671,13 +4679,13 @@ export default function SettingsScreen() {
             style={{
               width: 42,
               height: 42,
-              borderRadius: 999,
+              borderRadius: 13,
               alignItems: 'center',
               justifyContent: 'center',
-              backgroundColor: colors.bg.secondary,
+              backgroundColor: settingsPalette.nudgeBg,
             }}
           >
-            <Link2 size={18} color="#2563EB" strokeWidth={2} />
+            <Link2 size={18} color={settingsPalette.limeOnSurface} strokeWidth={2} />
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={{ color: colors.text.primary, fontSize: 14, lineHeight: 18, fontWeight: '600' }} numberOfLines={1}>
@@ -4730,13 +4738,13 @@ export default function SettingsScreen() {
           style={{
             width: 42,
             height: 42,
-            borderRadius: 999,
+            borderRadius: 13,
             alignItems: 'center',
             justifyContent: 'center',
-            backgroundColor: colors.bg.secondary,
+            backgroundColor: settingsPalette.nudgeBg,
           }}
         >
-          <Upload size={18} color="#10B981" strokeWidth={2} />
+          <Upload size={18} color={settingsPalette.limeOnSurface} strokeWidth={2} />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={{ color: colors.text.primary, fontSize: 14, lineHeight: 18, fontWeight: '600' }}>
@@ -4748,7 +4756,7 @@ export default function SettingsScreen() {
         </View>
         <ChevronRight size={17} color={colors.text.tertiary} strokeWidth={2} />
       </Pressable>
-      {renderWebSettingsRows(getSettingsItems(['recycle-bin', 'import-ai', 'log-out']))}
+      {renderWebSettingsRows(getSettingsItems(['recycle-bin', 'milestone-replay', 'import-ai', 'log-out']))}
       <Pressable
         onPress={handleRefreshApp}
         className="active:opacity-80"
@@ -4769,13 +4777,13 @@ export default function SettingsScreen() {
           style={{
             width: 42,
             height: 42,
-            borderRadius: 999,
+            borderRadius: 13,
             alignItems: 'center',
             justifyContent: 'center',
-            backgroundColor: colors.bg.secondary,
+            backgroundColor: settingsPalette.nudgeBg,
           }}
         >
-          <RotateCcw size={18} color={colors.text.tertiary} strokeWidth={2} />
+          <RotateCcw size={18} color={settingsPalette.limeOnSurface} strokeWidth={2} />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={{ color: colors.text.primary, fontSize: 14, lineHeight: 18, fontWeight: '600' }}>Refresh app</Text>
@@ -5396,6 +5404,7 @@ export default function SettingsScreen() {
             </View>
           </View>
         </Modal>
+        <MilestoneReplay visible={showMilestoneReplay} onClose={() => setShowMilestoneReplay(false)} />
       </View>
     );
   }
@@ -5722,6 +5731,14 @@ export default function SettingsScreen() {
               rightText={`${recycleBin.length}`}
               onPress={() => openSettingsSection('recycle-bin')}
             />
+            {currentUser?.role === 'admin' ? (
+              <SettingsRow
+                title="Replay milestone celebration"
+                description="Watch your latest order milestone again"
+                icon={<Award size={18} color="#D5E057" strokeWidth={2} />}
+                onPress={() => setShowMilestoneReplay(true)}
+              />
+            ) : null}
             <SettingsRow
               title="AI Import Assistant"
               description="Orders, customers, products, expenses"
@@ -6215,6 +6232,7 @@ export default function SettingsScreen() {
       </SafeAreaView>
 
       {renderDeleteSettingModal()}
+      <MilestoneReplay visible={showMilestoneReplay} onClose={() => setShowMilestoneReplay(false)} />
     </View>
   );
 }

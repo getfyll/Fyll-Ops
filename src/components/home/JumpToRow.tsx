@@ -161,7 +161,9 @@ export function JumpToTiles({ items, onPress }: { items: JumpToItem[]; onPress: 
 
   return (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14 }}>
-      {tiles.map(({ key, label, route, Icon, value, caption, attention }, index) => {
+      {tiles.map(({ key, label, route, Icon, value, caption, attention: needsAttention }, index) => {
+        // Light mode keeps every tile plain (like Insights); the lime highlight is for dark mode only.
+        const attention = needsAttention && palette.isDark;
         const spansMobileRow = isMobile && tiles.length % 2 === 1 && index === tiles.length - 1;
         return (
           <Pressable

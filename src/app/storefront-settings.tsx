@@ -11,6 +11,7 @@ import { getSettingsWebPanelStyles, isFromSettingsRoute } from '@/lib/settings-w
 import { useSettingsBack } from '@/lib/useSettingsBack';
 import { useThemeColors } from '@/lib/theme';
 import { ChangeRequestModal } from '@/components/ChangeRequestModal';
+import { MilestoneBadgeSetting } from '@/components/milestones/MilestoneBadgeSetting';
 import {
   buildStorefrontDashboardUrl,
   buildStorefrontDiscoveryUrl,
@@ -321,6 +322,8 @@ export default function StorefrontSettingsScreen() {
                 )}
               </View>
             </View>
+
+            <MilestoneBadgeSetting />
 
             {error ? (
               <Text className="text-red-500 text-xs text-center mb-4">{error}</Text>

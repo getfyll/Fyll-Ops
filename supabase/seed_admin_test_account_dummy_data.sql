@@ -1,5 +1,5 @@
 -- ===================================================================
--- FYLL: SEED ADMIN TEST ACCOUNT WITH PLACEHOLDER DUMMY DATA
+-- FYLL: SEED ADMIN SHOWCASE ACCOUNT WITH REALISTIC DEMO DATA
 -- ===================================================================
 -- Target account:
 --   admin@fyll.com
@@ -7,10 +7,13 @@
 -- What this does:
 -- - Resolves the business_id from public.profiles using admin@fyll.com
 -- - Removes prior rows created by this script only (ids prefixed with demo-)
--- - Seeds realistic placeholder data across key ops areas:
+-- - Seeds a screenshot-ready, high-volume dataset across key ops areas:
 --   products, customers, orders, procurements, expenses, other income,
---   cases, restock logs, audit logs, settings, custom services, logistics,
---   finance rules, warehouse items, and more.
+--   bills/payments, cases, refunds, returns, restock logs, audit logs,
+--   settings, custom services, logistics, finance rules, and more.
+-- - Expected demo volume when the optional tables exist:
+--   50 catalog records, 48 customers, 128 orders, 60 payment links,
+--   24 cases, 16 refund requests, 12 returns, and 30 expenses.
 --
 -- Safe behavior:
 -- - Does NOT delete non-demo records
@@ -41,6 +44,60 @@ begin
   perform set_config('app.seed_business_id', v_business_id, false);
   perform set_config('app.seed_email', v_email_input, false);
 end $$;
+
+-- Keep generated customer identities consistent across customers, orders,
+-- payment links, cases, refunds, and returns. These are fictional names and
+-- use example.com addresses so the showcase never points at a real customer.
+create temporary table if not exists fyll_demo_customer_roster (
+  customer_no integer primary key,
+  full_name text not null,
+  email text not null
+) on commit preserve rows;
+
+truncate table pg_temp.fyll_demo_customer_roster;
+
+insert into pg_temp.fyll_demo_customer_roster (customer_no, full_name, email)
+values
+  (1, 'Aisha Bello', 'aisha.bello@example.com'),
+  (2, 'Tobi Adeyemi', 'tobi.adeyemi@example.com'),
+  (3, 'Amara Okafor', 'amara.okafor@example.com'),
+  (4, 'Daniel Etim', 'daniel.etim@example.com'),
+  (5, 'Kemi Balogun', 'kemi.balogun@example.com'),
+  (6, 'Ifeanyi Nwosu', 'ifeanyi.nwosu@example.com'),
+  (7, 'Temilade Ajayi', 'temilade.ajayi@example.com'),
+  (8, 'Femi Akinola', 'femi.akinola@example.com'),
+  (9, 'Nneka Eze', 'nneka.eze@example.com'),
+  (10, 'Seyi Ogunleye', 'seyi.ogunleye@example.com'),
+  (11, 'Adaobi Obi', 'adaobi.obi@example.com'),
+  (12, 'David Okoro', 'david.okoro@example.com'),
+  (13, 'Zara Lawal', 'zara.lawal@example.com'),
+  (14, 'Chinedu Umeh', 'chinedu.umeh@example.com'),
+  (15, 'Mariam Yusuf', 'mariam.yusuf@example.com'),
+  (16, 'Kunle Dada', 'kunle.dada@example.com'),
+  (17, 'Efe Omoregie', 'efe.omoregie@example.com'),
+  (18, 'Lola Alabi', 'lola.alabi@example.com'),
+  (19, 'Obinna Kalu', 'obinna.kalu@example.com'),
+  (20, 'Ruth Essien', 'ruth.essien@example.com'),
+  (21, 'Hauwa Musa', 'hauwa.musa@example.com'),
+  (22, 'Damilola Peters', 'damilola.peters@example.com'),
+  (23, 'Chisom Anozie', 'chisom.anozie@example.com'),
+  (24, 'Yinka Salami', 'yinka.salami@example.com'),
+  (25, 'Imani Cole', 'imani.cole@example.com'),
+  (26, 'Noah Williams', 'noah.williams@example.com'),
+  (27, 'Sophia Mensah', 'sophia.mensah@example.com'),
+  (28, 'Elijah Grant', 'elijah.grant@example.com'),
+  (29, 'Naomi Clarke', 'naomi.clarke@example.com'),
+  (30, 'Lucas Martin', 'lucas.martin@example.com'),
+  (31, 'Maya Thompson', 'maya.thompson@example.com'),
+  (32, 'Ethan Walker', 'ethan.walker@example.com'),
+  (33, 'Leila Hassan', 'leila.hassan@example.com'),
+  (34, 'Samuel Boateng', 'samuel.boateng@example.com'),
+  (35, 'Isabella Reed', 'isabella.reed@example.com'),
+  (36, 'Jacob Evans', 'jacob.evans@example.com'),
+  (37, 'Fatima Diallo', 'fatima.diallo@example.com'),
+  (38, 'Michael Chen', 'michael.chen@example.com'),
+  (39, 'Olivia Brooks', 'olivia.brooks@example.com'),
+  (40, 'Nathan Scott', 'nathan.scott@example.com');
 
 -- -------------------------------------------------------------------
 -- Clean up prior demo rows only
@@ -114,6 +171,25 @@ begin
         and rr.id like 'demo-%'
     $sql$;
   end if;
+end $$;
+
+do $$
+declare
+  v_table_name text;
+begin
+  foreach v_table_name in array array['social_checkouts', 'payment_accounts', 'returns']
+  loop
+    if exists (
+      select 1 from information_schema.tables t
+      where t.table_schema = 'public' and t.table_name = v_table_name
+    ) then
+      execute format(
+        'delete from public.%I where business_id = %L and (id like ''demo-%%'' or id like ''SC-DEMO%%'')',
+        v_table_name,
+        current_setting('app.seed_business_id')
+      );
+    end if;
+  end loop;
 end $$;
 
 with mb as (select current_setting('app.seed_business_id')::text as business_id)
@@ -293,6 +369,14 @@ cross join (
     ('demo-category-sunglasses', $${"id":"demo-category-sunglasses","name":"Sunglasses"}$$::jsonb),
     ('demo-category-blue-light', $${"id":"demo-category-blue-light","name":"Blue-light"}$$::jsonb),
     ('demo-category-accessories', $${"id":"demo-category-accessories","name":"Accessories"}$$::jsonb),
+    ('demo-category-skincare', $${"id":"demo-category-skincare","name":"Skincare"}$$::jsonb),
+    ('demo-category-fragrance', $${"id":"demo-category-fragrance","name":"Fragrance"}$$::jsonb),
+    ('demo-category-books', $${"id":"demo-category-books","name":"Books"}$$::jsonb),
+    ('demo-category-home', $${"id":"demo-category-home","name":"Home"}$$::jsonb),
+    ('demo-category-wellness', $${"id":"demo-category-wellness","name":"Wellness"}$$::jsonb),
+    ('demo-category-jewelry', $${"id":"demo-category-jewelry","name":"Jewelry"}$$::jsonb),
+    ('demo-category-bags', $${"id":"demo-category-bags","name":"Bags"}$$::jsonb),
+    ('demo-category-tech', $${"id":"demo-category-tech","name":"Tech"}$$::jsonb),
     ('demo-category-services', $${"id":"demo-category-services","name":"Services"}$$::jsonb)
 ) as v(id, data)
 on conflict (id, business_id)
@@ -592,6 +676,136 @@ cross join (
 ) as v(id, data)
 on conflict (id, business_id)
 do update set data = excluded.data, updated_at = now();
+
+-- Add 43 varied retail products to the six physical products and one service
+-- above, giving the showcase business exactly 50 catalog records.
+with
+  mb as (select current_setting('app.seed_business_id')::text as business_id),
+  catalog(n, name, category, price, stock, description, image_url) as (
+    values
+      (1, 'Dewdrop Gel Cleanser', 'Skincare', 12500, 28, 'A gentle daily gel cleanser for balanced, refreshed skin.', 'https://images.unsplash.com/photo-1556228578-0d85b1a4d571?auto=format&fit=crop&w=1200&q=80'),
+      (2, 'Cloud Milk Cleanser', 'Skincare', 14500, 19, 'A creamy low-foam cleanser for dry and sensitive skin.', 'https://images.unsplash.com/photo-1556228578-0d85b1a4d571?auto=format&fit=crop&w=1200&q=80'),
+      (3, 'Vitamin C Brightening Serum', 'Skincare', 18500, 16, 'A lightweight antioxidant serum for a brighter-looking complexion.', 'https://images.unsplash.com/photo-1556228578-0d85b1a4d571?auto=format&fit=crop&w=1200&q=80'),
+      (4, 'Barrier Repair Moisturiser', 'Skincare', 16800, 22, 'Ceramide-rich daily moisture support with a soft finish.', 'https://images.unsplash.com/photo-1556228578-0d85b1a4d571?auto=format&fit=crop&w=1200&q=80'),
+      (5, 'Daily Veil SPF 50', 'Skincare', 15500, 31, 'Broad-spectrum facial sunscreen with no heavy residue.', 'https://images.unsplash.com/photo-1556228578-0d85b1a4d571?auto=format&fit=crop&w=1200&q=80'),
+      (6, 'Rosewater Hydrating Mist', 'Skincare', 9500, 12, 'A fine hydrating mist for a quick midday refresh.', 'https://images.unsplash.com/photo-1556228578-0d85b1a4d571?auto=format&fit=crop&w=1200&q=80'),
+      (7, 'Overnight Renewal Mask', 'Skincare', 21000, 7, 'A nourishing overnight mask for softer-feeling skin by morning.', 'https://images.unsplash.com/photo-1556228578-0d85b1a4d571?auto=format&fit=crop&w=1200&q=80'),
+      (8, 'Shea Lip Treatment', 'Skincare', 6500, 38, 'A rich conditioning balm for smooth, comfortable lips.', 'https://images.unsplash.com/photo-1556228578-0d85b1a4d571?auto=format&fit=crop&w=1200&q=80'),
+      (9, 'Amber No. 7 Eau de Parfum', 'Fragrance', 42000, 14, 'Warm amber, vanilla and soft woods in a lasting eau de parfum.', 'https://images.unsplash.com/photo-1541643600914-78b084683601?auto=format&fit=crop&w=1200&q=80'),
+      (10, 'Citrus Grove Eau de Parfum', 'Fragrance', 38500, 11, 'Bright bergamot, neroli and green citrus notes.', 'https://images.unsplash.com/photo-1541643600914-78b084683601?auto=format&fit=crop&w=1200&q=80'),
+      (11, 'Midnight Oud Parfum Oil', 'Fragrance', 28000, 9, 'A concentrated roll-on blend of oud, spice and musk.', 'https://images.unsplash.com/photo-1541643600914-78b084683601?auto=format&fit=crop&w=1200&q=80'),
+      (12, 'Soft Linen Body Mist', 'Fragrance', 14500, 26, 'A clean floral body mist for everyday layering.', 'https://images.unsplash.com/photo-1541643600914-78b084683601?auto=format&fit=crop&w=1200&q=80'),
+      (13, 'Coastal Fig Eau de Parfum', 'Fragrance', 39500, 8, 'Green fig, sea salt and cedar with a smooth dry-down.', 'https://images.unsplash.com/photo-1541643600914-78b084683601?auto=format&fit=crop&w=1200&q=80'),
+      (14, 'Discovery Scent Set', 'Fragrance', 22000, 18, 'Six miniature fragrances for sampling or gifting.', 'https://images.unsplash.com/photo-1541643600914-78b084683601?auto=format&fit=crop&w=1200&q=80'),
+      (15, 'The Quiet Morning', 'Books', 8500, 24, 'A reflective guide to building calm and intentional routines.', 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?auto=format&fit=crop&w=1200&q=80'),
+      (16, 'Notes on Building Well', 'Books', 11000, 17, 'Practical essays on thoughtful products, teams and businesses.', 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?auto=format&fit=crop&w=1200&q=80'),
+      (17, 'A Table for Everyone', 'Books', 13500, 13, 'A modern cookbook for generous weeknight meals and gatherings.', 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?auto=format&fit=crop&w=1200&q=80'),
+      (18, 'Small Spaces, Beautiful Living', 'Books', 16500, 10, 'Design ideas for warm, functional and expressive small homes.', 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?auto=format&fit=crop&w=1200&q=80'),
+      (19, 'The Creative Practice Journal', 'Books', 7500, 33, 'A guided journal with prompts for consistent creative work.', 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?auto=format&fit=crop&w=1200&q=80'),
+      (20, 'Lagos in Colour', 'Books', 24000, 6, 'A photographic celebration of the city, its people and textures.', 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?auto=format&fit=crop&w=1200&q=80'),
+      (21, 'Silk Twill Scarf', 'Accessories', 18500, 15, 'A printed square scarf for styling around the neck, hair or bag.', 'https://images.unsplash.com/photo-1523779917675-b6ed3a42a561?auto=format&fit=crop&w=1200&q=80'),
+      (22, 'Classic Leather Cardholder', 'Accessories', 15000, 21, 'A slim leather cardholder with four slots and a centre pocket.', 'https://images.unsplash.com/photo-1523779917675-b6ed3a42a561?auto=format&fit=crop&w=1200&q=80'),
+      (23, 'Everyday Canvas Cap', 'Accessories', 9000, 29, 'A softly structured cotton cap with an adjustable back strap.', 'https://images.unsplash.com/photo-1523779917675-b6ed3a42a561?auto=format&fit=crop&w=1200&q=80'),
+      (24, 'Ribbed Cotton Socks Set', 'Accessories', 7800, 35, 'Three pairs of breathable ribbed socks in neutral tones.', 'https://images.unsplash.com/photo-1523779917675-b6ed3a42a561?auto=format&fit=crop&w=1200&q=80'),
+      (25, 'Travel Jewellery Case', 'Accessories', 17500, 12, 'A compact zipped organiser for rings, earrings and chains.', 'https://images.unsplash.com/photo-1523779917675-b6ed3a42a561?auto=format&fit=crop&w=1200&q=80'),
+      (26, 'Woven Key Loop', 'Accessories', 5500, 42, 'A durable woven wrist loop with a polished metal clasp.', 'https://images.unsplash.com/photo-1523779917675-b6ed3a42a561?auto=format&fit=crop&w=1200&q=80'),
+      (27, 'Compact Pocket Mirror', 'Accessories', 6000, 27, 'A slim double mirror designed for bags and travel kits.', 'https://images.unsplash.com/photo-1523779917675-b6ed3a42a561?auto=format&fit=crop&w=1200&q=80'),
+      (28, 'Sandalwood Ceramic Candle', 'Home', 16500, 20, 'A hand-poured candle with sandalwood, tonka and amber notes.', 'https://images.unsplash.com/photo-1603006905003-be475563bc59?auto=format&fit=crop&w=1200&q=80'),
+      (29, 'Linen Room Spray', 'Home', 12000, 23, 'A fresh room mist with cotton blossom and white tea.', 'https://images.unsplash.com/photo-1603006905003-be475563bc59?auto=format&fit=crop&w=1200&q=80'),
+      (30, 'Speckled Stoneware Mug', 'Home', 10500, 16, 'A handmade-style stoneware mug with a tactile glazed finish.', 'https://images.unsplash.com/photo-1603006905003-be475563bc59?auto=format&fit=crop&w=1200&q=80'),
+      (31, 'Woven Catchall Basket', 'Home', 19500, 8, 'A natural fibre basket for shelves, desks or bedside storage.', 'https://images.unsplash.com/photo-1603006905003-be475563bc59?auto=format&fit=crop&w=1200&q=80'),
+      (32, 'Marble Incense Holder', 'Home', 13500, 5, 'A weighty stone incense holder with subtle natural variation.', 'https://images.unsplash.com/photo-1603006905003-be475563bc59?auto=format&fit=crop&w=1200&q=80'),
+      (33, 'Calm Evening Tea Blend', 'Wellness', 8500, 30, 'A caffeine-free blend of chamomile, lemongrass and mint.', 'https://images.unsplash.com/photo-1608571423902-eed4a5ad8108?auto=format&fit=crop&w=1200&q=80'),
+      (34, 'Eucalyptus Bath Salts', 'Wellness', 11000, 17, 'Mineral bath salts scented with eucalyptus and rosemary.', 'https://images.unsplash.com/photo-1608571423902-eed4a5ad8108?auto=format&fit=crop&w=1200&q=80'),
+      (35, 'Cork Yoga Block', 'Wellness', 12500, 14, 'A firm natural cork support for stretching and yoga practice.', 'https://images.unsplash.com/photo-1608571423902-eed4a5ad8108?auto=format&fit=crop&w=1200&q=80'),
+      (36, 'Satin Sleep Mask', 'Wellness', 9500, 25, 'A softly padded sleep mask with a comfortable elastic strap.', 'https://images.unsplash.com/photo-1608571423902-eed4a5ad8108?auto=format&fit=crop&w=1200&q=80'),
+      (37, 'Sculpted Gold Hoop Earrings', 'Jewelry', 22500, 11, 'Polished sculptural hoops with a lightweight feel.', 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&w=1200&q=80'),
+      (38, 'Fine Chain Pendant', 'Jewelry', 28000, 7, 'A delicate adjustable chain with a minimal polished pendant.', 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&w=1200&q=80'),
+      (39, 'Stacking Ring Trio', 'Jewelry', 19500, 9, 'Three slim rings designed to wear together or separately.', 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&w=1200&q=80'),
+      (40, 'Market Day Canvas Tote', 'Bags', 14000, 32, 'A roomy heavyweight canvas tote with an interior pocket.', 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?auto=format&fit=crop&w=1200&q=80'),
+      (41, 'Mini Crossbody Bag', 'Bags', 32000, 10, 'A compact structured crossbody with an adjustable strap.', 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?auto=format&fit=crop&w=1200&q=80'),
+      (42, 'Portable Bluetooth Speaker', 'Tech', 36000, 13, 'A compact wireless speaker with clear sound and all-day battery.', 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=1200&q=80'),
+      (43, 'Braided USB-C Cable', 'Tech', 8500, 40, 'A durable fast-charging cable with reinforced braided housing.', 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=1200&q=80')
+  ),
+  product_images(images) as (
+    values (array[
+      'https://images.unsplash.com/photo-1556228578-8c89e6adf883?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1571781926291-c477ebfd024b?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1598440947619-2c35fc9aa908?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1620916566398-39f1143ab7be?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1608248543803-ba4f8c70ae0b?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1611930022073-b7a4ba5fcccd?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1570194065650-d99fb4b38b7b?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1601049541289-9b1b7bbbfe19?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1541643600914-78b084683601?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1594035910387-fea47794261f?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1588405748880-12d1d2a59f75?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1610461888750-10bfc601b874?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1595425970377-c9703cf48b6d?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1585386959984-a41552231658?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1544947950-fa07a98d237f?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1512820790803-83ca734da794?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1495446815901-a7297e633e8d?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1511108690759-009324a90311?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1532012197267-da84d127e765?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1523779917675-b6ed3a42a561?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1521369909029-2afed882baee?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1586350977771-b3b0abd50c82?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1617038260897-41a1f14a8f59?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1606760227091-3dd870d97f1d?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1619451334792-150fd785ee74?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1603006905003-be475563bc59?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1602874801006-e26b78b9b64b?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1514228742587-6b1558fcca3d?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1618220179428-22790b461013?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1594631252845-29fc4cc8cde9?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1575410229391-19b4da01cc94?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1599447421416-3414500d18a5?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1515377905703-c4788e51af15?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1584917865442-de89df76afd3?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1608043152269-423dbba4e7e1?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1615526675159-e248c3021d3f?auto=format&fit=crop&w=1200&q=80'
+    ]::text[])
+  )
+insert into public.products (id, business_id, data, updated_at)
+select
+  format('demo-product-catalog-%s', lpad(catalog.n::text, 3, '0')),
+  mb.business_id,
+  jsonb_build_object(
+    'id', format('demo-product-catalog-%s', lpad(catalog.n::text, 3, '0')),
+    'name', catalog.name,
+    'description', catalog.description,
+    'categories', jsonb_build_array(catalog.category),
+    'variants', jsonb_build_array(jsonb_build_object(
+      'id', format('demo-variant-catalog-%s', lpad(catalog.n::text, 3, '0')),
+      'sku', format('CAT-%s', lpad(catalog.n::text, 4, '0')),
+      'barcode', format('300200%s', lpad(catalog.n::text, 4, '0')),
+      'variableValues', '{}'::jsonb,
+      'stock', catalog.stock,
+      'sellingPrice', catalog.price,
+      'imageUrl', product_images.images[catalog.n]
+    )),
+    'lowStockThreshold', 5,
+    'createdAt', now() - make_interval(days => 120 - (catalog.n * 2)),
+    'productType', 'product',
+    'imageUrl', product_images.images[catalog.n],
+    'createdBy', 'Admin Demo',
+    'useGlobalStock', true,
+    'globalStock', catalog.stock
+  ),
+  now()
+from mb
+cross join catalog
+cross join product_images
+on conflict (id, business_id)
+do update set data = excluded.data, updated_at = excluded.updated_at;
 
 -- -------------------------------------------------------------------
 -- Orders
@@ -912,6 +1126,407 @@ cross join (
 ) as v(id, data)
 on conflict (id, business_id)
 do update set data = excluded.data, updated_at = now();
+
+-- -------------------------------------------------------------------
+-- Showcase volume: recent, varied data for screenshots and testing
+-- -------------------------------------------------------------------
+
+with
+  mb as (select current_setting('app.seed_business_id')::text as business_id),
+  generated as (
+    select
+      n,
+      format('demo-customer-volume-%s', lpad(n::text, 3, '0')) as id,
+      now() - make_interval(days => 180 - (n * 3)) as created_at
+    from generate_series(1, 40) as n
+  )
+insert into public.customers (id, business_id, data, updated_at)
+select
+  generated.id,
+  mb.business_id,
+  jsonb_build_object(
+    'id', generated.id,
+    'fullName', roster.full_name,
+    'email', roster.email,
+    'phone', format('+23480255%s', lpad(generated.n::text, 5, '0')),
+    'defaultAddress', format('%s Fyll Showcase Avenue', 10 + generated.n),
+    'defaultState', (array['Lagos', 'FCT', 'Rivers', 'Oyo', 'Ogun', 'Enugu'])[((generated.n - 1) % 6) + 1],
+    'createdAt', generated.created_at
+  ),
+  generated.created_at
+from mb
+cross join generated
+join pg_temp.fyll_demo_customer_roster roster on roster.customer_no = generated.n
+on conflict (id, business_id)
+do update set data = excluded.data, updated_at = excluded.updated_at;
+
+with
+  mb as (select current_setting('app.seed_business_id')::text as business_id),
+  generated as (
+    select
+      n,
+      format('demo-order-volume-%s', lpad(n::text, 3, '0')) as id,
+      format('ORD-DEMO-%s', lpad(n::text, 4, '0')) as order_number,
+      format('TRKDEMO%s', lpad(n::text, 4, '0')) as tracking_code,
+      now() - make_interval(days => n - 1, hours => (n % 9) + 8) as ordered_at,
+      (array['Processing', 'Lens Processing', 'Quality Check', 'Pending Delivery', 'Dispatched', 'Delivery Confirmation', 'Delivered', 'Completed', 'Cancelled', 'Refunded'])[((n - 1) % 10) + 1] as status,
+      (array['Instagram', 'WhatsApp', 'Website', 'Walk-in', 'Threads'])[((n - 1) % 5) + 1] as source,
+      (array['Bank Transfer', 'POS', 'Cash'])[((n - 1) % 3) + 1] as payment_method,
+      32000 + ((n % 11) * 4500) as subtotal,
+      case when n % 4 = 0 then 8500 else 4500 end as delivery_fee
+    from generate_series(1, 120) as n
+  )
+insert into public.orders (id, business_id, data, updated_at)
+select
+  generated.id,
+  mb.business_id,
+  jsonb_build_object(
+    'id', generated.id,
+    'orderNumber', generated.order_number,
+    'customerTrackingCode', generated.tracking_code,
+    'customerId', format('demo-customer-volume-%s', lpad((((generated.n - 1) % 40) + 1)::text, 3, '0')),
+    'customerName', (select full_name from pg_temp.fyll_demo_customer_roster where customer_no = ((generated.n - 1) % 40) + 1),
+    'customerEmail', (select email from pg_temp.fyll_demo_customer_roster where customer_no = ((generated.n - 1) % 40) + 1),
+    'customerPhone', format('+23480255%s', lpad((((generated.n - 1) % 40) + 1)::text, 5, '0')),
+    'deliveryState', (array['Lagos', 'FCT', 'Rivers', 'Oyo', 'Ogun', 'Enugu'])[((generated.n - 1) % 6) + 1],
+    'deliveryAddress', format('%s Fyll Showcase Avenue', 10 + (((generated.n - 1) % 40) + 1)),
+    'items', case
+      when generated.n % 12 = 0 then '[]'::jsonb
+      else jsonb_build_array(jsonb_build_object(
+        'productId', (array['demo-product-amina', 'demo-product-zuri', 'demo-product-atlas', 'demo-product-kairo'])[((generated.n - 1) % 4) + 1],
+        'variantId', (array['demo-variant-amina-black', 'demo-variant-zuri-grey', 'demo-variant-atlas-gold', 'demo-variant-kairo-black'])[((generated.n - 1) % 4) + 1],
+        'quantity', case when generated.n % 9 = 0 then 2 else 1 end,
+        'unitPrice', generated.subtotal
+      ))
+    end,
+    'services', case
+      when generated.n % 12 = 0 then jsonb_build_array(jsonb_build_object('serviceId', 'demo-service-eye-test', 'name', 'Eye Test', 'price', 15000))
+      else '[]'::jsonb
+    end,
+    'additionalCharges', case when generated.n % 7 = 0 then 5000 else 0 end,
+    'additionalChargesNote', case when generated.n % 7 = 0 then 'Premium lens coating' else '' end,
+    'deliveryFee', case when generated.n % 12 = 0 then 0 else generated.delivery_fee end,
+    'orderTypeId', case when generated.n % 5 = 0 then 'timeline-custom-lens' else 'timeline-rtw-ng' end,
+    'orderTypeName', case when generated.n % 5 = 0 then 'Custom Lens NG' else 'RTW NG' end,
+    'paymentMethod', generated.payment_method,
+    'orderClassification', case when generated.n % 13 = 0 then 'PR' else 'Sale' end,
+    'status', generated.status,
+    'orderStatus', generated.status,
+    'source', generated.source,
+    'subtotal', case when generated.n % 12 = 0 then 0 else generated.subtotal end,
+    'totalAmount', case when generated.n % 12 = 0 then 15000 else generated.subtotal + generated.delivery_fee + case when generated.n % 7 = 0 then 5000 else 0 end end,
+    'trackingStage', case
+      when generated.status in ('Delivered', 'Completed') then 'delivered'
+      when generated.status in ('Cancelled', 'Refunded') then 'cancelled'
+      when generated.status in ('Dispatched', 'Delivery Confirmation') then 'out-for-delivery'
+      else 'processing'
+    end,
+    'fulfillmentStage', case
+      when generated.status in ('Delivered', 'Completed') then 'completed'
+      when generated.status in ('Cancelled', 'Refunded') then 'cancelled'
+      else 'processing'
+    end,
+    'orderDate', generated.ordered_at,
+    'createdAt', generated.ordered_at,
+    'updatedAt', generated.ordered_at + interval '6 hours',
+    'createdBy', 'Admin Demo',
+    'updatedBy', case when generated.n % 3 = 0 then 'Operations Team' else 'Admin Demo' end,
+    'refund', case when generated.status = 'Refunded' then jsonb_build_object(
+      'id', format('demo-refund-volume-%s', lpad(generated.n::text, 3, '0')),
+      'orderId', generated.id,
+      'amount', generated.subtotal + generated.delivery_fee,
+      'date', generated.ordered_at + interval '2 days',
+      'reason', 'Customer requested a refund during the demo workflow',
+      'createdAt', generated.ordered_at + interval '2 days'
+    ) else null end,
+    'activityLog', jsonb_build_array(
+      jsonb_build_object('staffName', 'Admin Demo', 'action', 'Created order', 'date', generated.ordered_at),
+      jsonb_build_object('staffName', 'Operations Team', 'action', format('Updated status to %s', generated.status), 'date', generated.ordered_at + interval '6 hours')
+    )
+  ),
+  generated.ordered_at + interval '6 hours'
+from mb
+cross join generated
+on conflict (id, business_id)
+do update set data = excluded.data, updated_at = excluded.updated_at;
+
+with
+  mb as (select current_setting('app.seed_business_id')::text as business_id),
+  generated as (
+    select
+      n,
+      format('demo-case-volume-%s', lpad(n::text, 3, '0')) as id,
+      now() - make_interval(days => (n * 3) - 2) as created_at,
+      (array['Open', 'Under Review', 'Awaiting Customer', 'Resolved', 'Closed'])[((n - 1) % 5) + 1] as status,
+      (array['Repair', 'Replacement', 'Refund', 'Return', 'Goodwill', 'Other'])[((n - 1) % 6) + 1] as case_type
+    from generate_series(1, 21) as n
+  )
+insert into public.cases (id, business_id, data, updated_at)
+select
+  generated.id,
+  mb.business_id,
+  jsonb_build_object(
+    'id', generated.id,
+    'caseNumber', format('CASE-DEMO-%s', lpad(generated.n::text, 3, '0')),
+    'orderId', format('demo-order-volume-%s', lpad(generated.n::text, 3, '0')),
+    'orderNumber', format('ORD-DEMO-%s', lpad(generated.n::text, 4, '0')),
+    'customerId', format('demo-customer-volume-%s', lpad((((generated.n - 1) % 40) + 1)::text, 3, '0')),
+    'customerName', (select full_name from pg_temp.fyll_demo_customer_roster where customer_no = ((generated.n - 1) % 40) + 1),
+    'type', generated.case_type,
+    'status', generated.status,
+    'priority', (array['Low', 'Medium', 'High', 'Critical'])[((generated.n - 1) % 4) + 1],
+    'assignedTo', (array['Support Lead', 'Operations Team', 'Finance', 'Workshop'])[((generated.n - 1) % 4) + 1],
+    'source', (array['Email', 'Phone', 'Chat', 'Web', 'In-Store'])[((generated.n - 1) % 5) + 1],
+    'issueSummary', (array['Frame adjustment requested', 'Delivery arrived later than expected', 'Customer requested an exchange', 'Payment requires investigation', 'Lens specification needs correction', 'Return received for inspection'])[((generated.n - 1) % 6) + 1],
+    'originalCustomerMessage', 'This is realistic placeholder content for the Fyll showcase account.',
+    'timeline', jsonb_build_array(
+      jsonb_build_object('id', generated.id || '-timeline-1', 'date', generated.created_at, 'action', 'Case created', 'user', 'Support Lead'),
+      jsonb_build_object('id', generated.id || '-timeline-2', 'date', generated.created_at + interval '3 hours', 'action', format('Status changed to %s', generated.status), 'user', 'Operations Team')
+    ),
+    'resolution', case when generated.status in ('Resolved', 'Closed') then jsonb_build_object(
+      'type', generated.case_type,
+      'notes', 'Resolved successfully for demonstration purposes.',
+      'value', case when generated.case_type = 'Refund' then 25000 else null end,
+      'resolvedAt', generated.created_at + interval '2 days',
+      'resolvedBy', 'Support Lead'
+    ) else null end,
+    'createdAt', generated.created_at,
+    'updatedAt', generated.created_at + interval '3 hours',
+    'createdBy', 'Support Lead',
+    'updatedBy', 'Operations Team'
+  ),
+  generated.created_at + interval '3 hours'
+from mb
+cross join generated
+on conflict (id, business_id)
+do update set data = excluded.data, updated_at = excluded.updated_at;
+
+with
+  mb as (select current_setting('app.seed_business_id')::text as business_id),
+  generated as (
+    select
+      n,
+      format('demo-expense-volume-%s', lpad(n::text, 3, '0')) as id,
+      now() - make_interval(days => n * 4) as expense_at
+    from generate_series(1, 24) as n
+  )
+insert into public.expenses (id, business_id, data, updated_at)
+select
+  generated.id,
+  mb.business_id,
+  jsonb_build_object(
+    'id', generated.id,
+    'category', (array['Inventory', 'Marketing', 'Logistics', 'Rent', 'Utilities', 'Software'])[((generated.n - 1) % 6) + 1],
+    'description', format('Showcase operating expense %s', generated.n),
+    'amount', 18000 + ((generated.n % 8) * 12500),
+    'date', to_char(generated.expense_at, 'YYYY-MM-DD'),
+    'createdAt', generated.expense_at,
+    'createdBy', 'Admin Demo',
+    'status', case when generated.n % 5 = 0 then 'partial' else 'paid' end
+  ),
+  generated.expense_at
+from mb
+cross join generated
+on conflict (id, business_id)
+do update set data = excluded.data, updated_at = excluded.updated_at;
+
+do $$
+begin
+  if exists (
+    select 1 from information_schema.tables
+    where table_schema = 'public' and table_name = 'payment_accounts'
+  ) then
+    execute $sql$
+      with mb as (select current_setting('app.seed_business_id')::text as business_id)
+      insert into public.payment_accounts (id, business_id, data, created_by, updated_at)
+      select
+        'demo-payment-account-primary',
+        mb.business_id,
+        jsonb_build_object(
+          'id', 'demo-payment-account-primary',
+          'bankName', 'Fyll Demo Bank',
+          'accountName', 'Fyll Showcase Store',
+          'accountNumber', '0123456789',
+          'isDefault', true
+        ),
+        'Admin Demo',
+        now()
+      from mb
+      on conflict (id, business_id)
+      do update set data = excluded.data, updated_at = excluded.updated_at
+    $sql$;
+  end if;
+end $$;
+
+do $$
+begin
+  if exists (
+    select 1 from information_schema.tables
+    where table_schema = 'public' and table_name = 'social_checkouts'
+  ) then
+    execute $sql$
+      with
+        mb as (select current_setting('app.seed_business_id')::text as business_id),
+        generated as (
+          select
+            n,
+            format('SC-DEMO%s', lpad(n::text, 4, '0')) as id,
+            now() - make_interval(days => n - 1, hours => 2) as created_at,
+            (array['verified', 'verified', 'payment_submitted', 'awaiting_payment', 'rejected', 'cancelled'])[((n - 1) % 6) + 1] as status
+          from generate_series(1, 60) as n
+        )
+      insert into public.social_checkouts (id, business_id, data, updated_at)
+      select
+        generated.id,
+        mb.business_id,
+        jsonb_build_object(
+          'id', generated.id,
+          'businessId', mb.business_id,
+          'status', generated.status,
+          'billNote', format('Demo bill %s — optical frame, prescription lenses and delivery', generated.n),
+          'amount', 28000 + ((generated.n % 12) * 5500),
+          'bankAccount', jsonb_build_object('bankName', 'Fyll Demo Bank', 'accountName', 'Fyll Showcase Store', 'accountNumber', '0123456789'),
+          'createdBy', 'Admin Demo',
+          'createdByUserId', 'demo-admin-user',
+          'createdAt', generated.created_at,
+          'expiresAt', generated.created_at + interval '1 day',
+          'customerName', (select full_name from pg_temp.fyll_demo_customer_roster where customer_no = ((generated.n - 1) % 40) + 1),
+          'customerPhone', format('+23480255%s', lpad((((generated.n - 1) % 40) + 1)::text, 5, '0')),
+          'customerEmail', (select email from pg_temp.fyll_demo_customer_roster where customer_no = ((generated.n - 1) % 40) + 1),
+          'deliveryAddress', format('%s Fyll Showcase Avenue', 10 + (((generated.n - 1) % 40) + 1)),
+          'deliveryState', (array['Lagos', 'FCT', 'Rivers', 'Oyo', 'Ogun', 'Enugu'])[((generated.n - 1) % 6) + 1],
+          'submittedAt', case when generated.status in ('payment_submitted', 'verified', 'rejected') then generated.created_at + interval '3 hours' else null end,
+          'reviewedBy', case when generated.status in ('verified', 'rejected') then 'Finance Team' else null end,
+          'reviewedAt', case when generated.status in ('verified', 'rejected') then generated.created_at + interval '5 hours' else null end,
+          'convertedOrderId', case when generated.status = 'verified' then format('demo-order-volume-%s', lpad(generated.n::text, 3, '0')) else null end,
+          'updatedAt', generated.created_at + interval '5 hours',
+          'activityLog', jsonb_build_array(
+            jsonb_build_object('id', generated.id || '-activity-1', 'action', 'Payment link created', 'actor', 'Admin Demo', 'createdAt', generated.created_at),
+            jsonb_build_object('id', generated.id || '-activity-2', 'action', format('Payment status: %s', generated.status), 'actor', 'Finance Team', 'createdAt', generated.created_at + interval '5 hours')
+          )
+        ),
+        generated.created_at + interval '5 hours'
+      from mb
+      cross join generated
+      on conflict (id, business_id)
+      do update set data = excluded.data, updated_at = excluded.updated_at
+    $sql$;
+  end if;
+end $$;
+
+do $$
+begin
+  if exists (
+    select 1 from information_schema.tables
+    where table_schema = 'public' and table_name = 'refund_requests'
+  ) then
+    execute $sql$
+      with
+        mb as (select current_setting('app.seed_business_id')::text as business_id),
+        generated as (
+          select
+            n,
+            format('demo-refund-request-volume-%s', lpad(n::text, 3, '0')) as id,
+            now() - make_interval(days => n * 6) as requested_at,
+            (array['draft', 'submitted', 'approved', 'rejected', 'paid'])[((n - 1) % 5) + 1] as status
+          from generate_series(1, 15) as n
+        )
+      insert into public.refund_requests (id, business_id, data, updated_at)
+      select
+        generated.id,
+        mb.business_id,
+        jsonb_build_object(
+          'id', generated.id,
+          'orderId', format('demo-order-volume-%s', lpad((generated.n * 5)::text, 3, '0')),
+          'orderNumber', format('ORD-DEMO-%s', lpad((generated.n * 5)::text, 4, '0')),
+          'customerName', (select full_name from pg_temp.fyll_demo_customer_roster where customer_no = ((generated.n * 5 - 1) % 40) + 1),
+          'customerPhone', format('+23480255%s', lpad((((generated.n * 5 - 1) % 40) + 1)::text, 5, '0')),
+          'customerEmail', (select email from pg_temp.fyll_demo_customer_roster where customer_no = ((generated.n * 5 - 1) % 40) + 1),
+          'amount', 15000 + ((generated.n % 7) * 6500),
+          'requestedDate', to_char(generated.requested_at, 'YYYY-MM-DD'),
+          'reason', (array['Duplicate payment', 'Order cancelled before dispatch', 'Item returned after inspection', 'Incorrect lens specification', 'Goodwill refund approved'])[((generated.n - 1) % 5) + 1],
+          'status', generated.status,
+          'refundType', case when generated.n % 3 = 0 then 'partial' else 'full' end,
+          'source', 'order',
+          'submittedByUserId', 'demo-finance-user',
+          'submittedByName', 'Finance Team',
+          'submittedAt', generated.requested_at,
+          'reviewedByUserId', case when generated.status in ('approved', 'rejected', 'paid') then 'demo-finance-lead' else null end,
+          'reviewedByName', case when generated.status in ('approved', 'rejected', 'paid') then 'Finance Lead' else null end,
+          'reviewedAt', case when generated.status in ('approved', 'rejected', 'paid') then generated.requested_at + interval '1 day' else null end,
+          'rejectionReason', case when generated.status = 'rejected' then 'Request did not meet the refund policy.' else null end,
+          'paidAt', case when generated.status = 'paid' then generated.requested_at + interval '2 days' else null end,
+          'paidByUserId', case when generated.status = 'paid' then 'demo-finance-lead' else null end,
+          'paidByName', case when generated.status = 'paid' then 'Finance Lead' else null end,
+          'paymentReference', case when generated.status = 'paid' then format('RFD-DEMO-%s', lpad(generated.n::text, 3, '0')) else null end,
+          'applyBankCharges', false,
+          'totalDebitAmount', 15000 + ((generated.n % 7) * 6500),
+          'createdAt', generated.requested_at,
+          'updatedAt', generated.requested_at + interval '1 day'
+        ),
+        generated.requested_at + interval '1 day'
+      from mb
+      cross join generated
+      on conflict (id, business_id)
+      do update set data = excluded.data, updated_at = excluded.updated_at
+    $sql$;
+  end if;
+end $$;
+
+do $$
+begin
+  if exists (
+    select 1 from information_schema.tables
+    where table_schema = 'public' and table_name = 'returns'
+  ) then
+    execute $sql$
+      with
+        mb as (select current_setting('app.seed_business_id')::text as business_id),
+        generated as (
+          select
+            n,
+            format('demo-return-volume-%s', lpad(n::text, 3, '0')) as id,
+            now() - make_interval(days => n * 7) as created_at,
+            (array['initiated', 'picked_up', 'received', 'processed'])[((n - 1) % 4) + 1] as status
+          from generate_series(1, 12) as n
+        )
+      insert into public.returns (id, business_id, data, updated_at)
+      select
+        generated.id,
+        mb.business_id,
+        jsonb_build_object(
+          'id', generated.id,
+          'ref', format('RET-DEMO-%s', lpad(generated.n::text, 3, '0')),
+          'caseId', format('demo-case-volume-%s', lpad(generated.n::text, 3, '0')),
+          'orderId', format('demo-order-volume-%s', lpad((generated.n * 4)::text, 3, '0')),
+          'orderNumber', format('ORD-DEMO-%s', lpad((generated.n * 4)::text, 4, '0')),
+          'customerId', format('demo-customer-volume-%s', lpad((((generated.n * 4 - 1) % 40) + 1)::text, 3, '0')),
+          'customerName', (select full_name from pg_temp.fyll_demo_customer_roster where customer_no = ((generated.n * 4 - 1) % 40) + 1),
+          'customerEmail', (select email from pg_temp.fyll_demo_customer_roster where customer_no = ((generated.n * 4 - 1) % 40) + 1),
+          'customerPhone', format('+23480255%s', lpad((((generated.n * 4 - 1) % 40) + 1)::text, 5, '0')),
+          'itemSummary', 'Optical frame and prescription lenses',
+          'reason', (array['wrong_item', 'damaged', 'changed_mind', 'other'])[((generated.n - 1) % 4) + 1],
+          'resolution', case when generated.n % 2 = 0 then 'exchange' else 'refund' end,
+          'shippingPayer', case when generated.n % 3 = 0 then 'customer' else 'seller' end,
+          'status', generated.status,
+          'notes', 'Showcase return workflow record.',
+          'activity', jsonb_build_array(
+            jsonb_build_object('id', generated.id || '-activity-1', 'date', generated.created_at, 'action', 'Return initiated', 'user', 'Support Lead'),
+            jsonb_build_object('id', generated.id || '-activity-2', 'date', generated.created_at + interval '1 day', 'action', format('Return status: %s', generated.status), 'user', 'Operations Team')
+          ),
+          'createdAt', generated.created_at,
+          'updatedAt', generated.created_at + interval '1 day',
+          'createdBy', 'Support Lead',
+          'updatedBy', 'Operations Team'
+        ),
+        generated.created_at + interval '1 day'
+      from mb
+      cross join generated
+      on conflict (id, business_id)
+      do update set data = excluded.data, updated_at = excluded.updated_at
+    $sql$;
+  end if;
+end $$;
 
 -- -------------------------------------------------------------------
 -- Diagnostics

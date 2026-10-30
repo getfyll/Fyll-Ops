@@ -74,6 +74,7 @@ import { NeedsYouCard, NeedsYouCarousel, useDismissedNeeds, useVisibleNeeds } fr
 import { JumpToTiles, buildJumpToItems } from '@/components/home/JumpToRow';
 import { PaymentsCollectedCard } from '@/components/home/PaymentsCollectedCard';
 import { StorefrontCard } from '@/components/home/StorefrontCard';
+import { MilestoneGate } from '@/components/milestones/MilestoneGate';
 import { EmptyLine, HomeCard, HomeCardHeader, HomeLink, HomeRow, KpiStrip, StatusText, HOME_BUTTON_TEXT_STYLE, HOME_GAP, type KpiItem } from '@/components/home/home-ui';
 import useWhatsNewStore from '@/lib/state/whats-new-store';
 import { CURRENT_RELEASE } from '@/lib/release-notes';
@@ -2802,6 +2803,7 @@ export default function DashboardScreen() {
           </Pressable>
         ) : null}
       </SafeAreaView>
+      <MilestoneGate />
     </View>
   );
 }

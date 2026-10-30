@@ -198,6 +198,7 @@ export function AuthPrimaryButton({
   loading?: boolean;
   disabled?: boolean;
 }) {
+  const display = useDisplayFont();
   return (
     <Pressable
       onPress={onPress}
@@ -221,7 +222,7 @@ export function AuthPrimaryButton({
       ]}
     >
       {loading ? <ActivityIndicator size="small" color={FYLL_LIME_INK} style={{ marginRight: 8 }} /> : null}
-      <Text style={{ color: FYLL_LIME_INK, fontSize: 17, fontWeight: '700' }}>{label}</Text>
+      <Text style={[{ color: FYLL_LIME_INK, fontSize: 17 }, display]}>{label}</Text>
     </Pressable>
   );
 }

@@ -1,6 +1,32 @@
 {
   "releases": [
     {
+      "version": "2.7.0",
+      "date": "2026-10-30T12:00:00Z",
+      "features": [
+        {
+          "icon": "sparkles",
+          "title": "Order milestones",
+          "body": "Celebrate 100, 500, 1,000 orders and beyond. Owners and admins get a celebration screen when a milestone is reached."
+        },
+        {
+          "icon": "share",
+          "title": "Share to Story",
+          "body": "Turn a milestone into a ready-made 1080 x 1920 card with your business name and storefront link, and share it in one tap."
+        },
+        {
+          "icon": "zap",
+          "title": "Replay any time",
+          "body": "Settings > System > Replay milestone celebration plays your latest milestone again."
+        }
+      ],
+      "fixes": [
+        "Settings icons now use the Fyll lime colour everywhere.",
+        "Home tiles are plain in light mode instead of tinted.",
+        "Buttons on the start page use the Fyll display font."
+      ]
+    },
+    {
       "version": "2.6.0",
       "date": "2026-10-29T12:00:00Z",
       "features": [
