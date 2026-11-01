@@ -741,7 +741,8 @@ const sendOneSignalDirectSubscriptionNotification = async ({
 // templates, so it works outside the 24h window), otherwise through Twilio. Sending never blocks or fails the
 // main notification: errors are logged and swallowed.
 // buttonParam: the value for a template's dynamic URL button (the order number for new_storefront_order).
-type WhatsAppTemplate = { name: string; params: string[]; buttonParam?: string }
+// fallback: sent instead when Meta says the template does not exist yet (for example while a new one awaits approval).
+type WhatsAppTemplate = { name: string; params: string[]; buttonParam?: string; fallback?: WhatsAppTemplate }
 
 // Meta rejects template values with line breaks, tabs or runs of 4+ spaces.
 const cleanTemplateValue = (value: string) => (value ?? '').replace(/[\n\r\t]+/g, ' ').replace(/ {4,}/g, '   ').trim() || '-'
@@ -773,6 +774,9 @@ const sendWhatsAppAlert = async (
     if (settings[kind] === false) return { skipped: `${kind}_off` }
 
     if (useMeta && template) {
+      const candidates: WhatsAppTemplate[] = [template, ...(template.fallback ? [template.fallback] : [])]
+      for (let attempt = 0; attempt < candidates.length; attempt += 1) {
+      const candidate = candidates[attempt]
       // A template exists per language. "en" matches the older templates; a template created as English (US) or
       // (UK) answers 132001 ("does not exist in the translation") for "en", so those are tried next.
       let response: Response | null = null
@@ -786,12 +790,12 @@ const sendWhatsAppAlert = async (
             to: phone.replace('+', ''),
             type: 'template',
             template: {
-              name: template.name,
+              name: candidate.name,
               language: { code: language },
               components: [
-                { type: 'body', parameters: template.params.map((value) => ({ type: 'text', text: cleanTemplateValue(value) })) },
-                ...(template.buttonParam
-                  ? [{ type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: cleanTemplateValue(template.buttonParam) }] }]
+                { type: 'body', parameters: candidate.params.map((value) => ({ type: 'text', text: cleanTemplateValue(value) })) },
+                ...(candidate.buttonParam
+                  ? [{ type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: cleanTemplateValue(candidate.buttonParam) }] }]
                   : []),
               ],
             },
@@ -800,9 +804,12 @@ const sendWhatsAppAlert = async (
         result = await response.json().catch(() => ({}))
         if (response.ok || (result as { error?: { code?: number } })?.error?.code !== 132001) break
       }
+      const templateMissing = !response!.ok && (result as { error?: { code?: number } })?.error?.code === 132001
+      if (templateMissing && attempt < candidates.length - 1) continue
       if (!response!.ok) console.error('WhatsApp (Meta) alert failed', { businessId, status: response!.status, result })
       const metaError = (result as { error?: { message?: string } })?.error?.message
-      return { provider: 'meta', ok: response!.ok, status: response!.status, error: metaError }
+      return { provider: 'meta', ok: response!.ok, status: response!.status, error: metaError, template: candidate.name }
+      }
     }
 
     const body = new URLSearchParams({
@@ -888,13 +895,17 @@ const getBusinessDisplayName = async (admin: ReturnType<typeof getAdminClient>, 
   return fromData || (data?.name as string | undefined)?.trim() || 'Your store'
 }
 
-// One Fyll Checkout purchase can end up as two orders (the checkout order, then the website order that appears
-// when the payment is approved). Only the first one is news, so later orders sharing the checkout reference stay silent.
+// Where an order really came from, so the alert can say so: a Fyll Checkout purchase, an order placed on the
+// merchant's own website (WooCommerce), or one from the Fyll storefront. One Fyll Checkout purchase can also end up as
+// two orders (the checkout order, then the website order that appears when the payment is approved); only the first
+// one is news, so later orders sharing the checkout reference stay silent.
+type OrderOrigin = 'fyll_checkout' | 'website' | 'storefront'
+
 const getCheckoutOrderInfo = async (
   admin: ReturnType<typeof getAdminClient>,
   businessId: string,
   orderNumber: string,
-) => {
+): Promise<{ repeat: boolean; isFyllCheckout: boolean; origin: OrderOrigin }> => {
   try {
     const { data: current } = await admin
       .from('orders')
@@ -905,8 +916,10 @@ const getCheckoutOrderInfo = async (
       .maybeSingle()
     const currentData = (current?.data ?? {}) as Record<string, any>
     const reference = (currentData.fyllCheckout?.reference ?? '').toString().trim()
-    const isFyllCheckout = String(currentData.source ?? '').toLowerCase().replace(/[_-]+/g, ' ').trim() === 'fyll checkout'
-    if (!current || !reference) return { repeat: false, isFyllCheckout }
+    const source = String(currentData.source ?? '').toLowerCase().replace(/[_-]+/g, ' ').trim()
+    const isFyllCheckout = source === 'fyll checkout' || Boolean(reference)
+    const origin: OrderOrigin = isFyllCheckout ? 'fyll_checkout' : (source === 'website' || source === 'web store') ? 'website' : 'storefront'
+    if (!current || !reference) return { repeat: false, isFyllCheckout, origin }
     const { data: earlier } = await admin
       .from('orders')
       .select('id')
@@ -915,10 +928,10 @@ const getCheckoutOrderInfo = async (
       .neq('data->>orderNumber', orderNumber)
       .lt('created_at', current.created_at)
       .limit(1)
-    return { repeat: (earlier ?? []).length > 0, isFyllCheckout }
+    return { repeat: (earlier ?? []).length > 0, isFyllCheckout, origin }
   } catch (error) {
     console.error('Repeat checkout order check failed', error)
-    return { repeat: false, isFyllCheckout: false }
+    return { repeat: false, isFyllCheckout: false, origin: 'storefront' }
   }
 }
 
@@ -966,11 +979,15 @@ const notifyStorefrontOrder = async (
   if (checkoutOrder.repeat) {
     return { message: 'Repeat of an order already announced for this checkout.' }
   }
+  // A Fyll Checkout purchase is announced by its payment alert ("New Fyll Checkout payment"), not as a new order.
+  if (checkoutOrder.origin === 'fyll_checkout') {
+    return { message: 'Fyll Checkout orders are announced by their payment alert.' }
+  }
+  const isWebsiteOrder = checkoutOrder.origin === 'website'
 
   // WhatsApp goes to the number saved in Settings -> Notifications, not to app users, so it must not depend on
   // `profiles` rows (Fyll Store merchant logins have none). Sent first, before the "No business recipients" return.
-  // Fyll Checkout orders wait for payment approval, so their WhatsApp alert is the payment one, not this.
-  if (!checkoutOrder.isFyllCheckout) {
+  {
     const storeName = await getBusinessDisplayName(admin, businessId)
     await sendWhatsAppAlert(
       admin,
@@ -992,6 +1009,7 @@ const notifyStorefrontOrder = async (
     customerName,
     totalAmount,
     trackingCode: trackingCode ?? null,
+    origin: checkoutOrder.origin,
   }
 
   if (recipients.length > 0) {
@@ -1017,8 +1035,8 @@ const notifyStorefrontOrder = async (
     return { message: 'No business recipients.' }
   }
 
-  const heading = `🎉 New storefront order`
-  const content = `New order · ${formatPaymentAmount(totalAmount)} on Fyll storefront`
+  const heading = isWebsiteOrder ? '🎉 New website order' : '🎉 New storefront order'
+  const content = `New order · ${formatPaymentAmount(totalAmount)} on ${isWebsiteOrder ? 'your website' : 'Fyll storefront'}`
   return await sendPushNotification({
     recipients,
     heading,
@@ -1106,12 +1124,15 @@ const notifyPaymentReceived = async (
     throw new Error('Missing businessId or paymentReference.')
   }
 
-  // Approving a Fyll Checkout payment is the merchant's own action, and a payment is only announced once.
+  // Approving a bank-transfer payment is the merchant's own action, so it is not announced. A card payment has no
+  // approval step (it arrives already confirmed), so its first event is the one to announce. A payment is announced once.
   const approvedStatuses = ['confirmed', 'verified', 'paid']
   const incomingSource = typeof payload.source === 'string' ? payload.source.trim().toLowerCase() : ''
   const incomingStatus = typeof payload.status === 'string' ? payload.status.trim().toLowerCase() : ''
-  if (incomingSource === 'fyll_checkout' && approvedStatuses.includes(incomingStatus)) {
-    return { message: 'Approval of a Fyll Checkout payment is not announced.' }
+  const incomingMethod = typeof payload.paymentMethod === 'string' ? payload.paymentMethod.trim().toLowerCase().replace(/[^a-z]/g, '') : ''
+  const isBankTransfer = incomingMethod.includes('transfer')
+  if (incomingSource === 'fyll_checkout' && isBankTransfer && approvedStatuses.includes(incomingStatus)) {
+    return { message: 'Approval of a Fyll Checkout bank transfer is not announced.' }
   }
   if (await paymentAlreadyAnnounced(admin, businessId, paymentReference)) {
     return { message: 'Payment already announced.' }
@@ -1156,18 +1177,39 @@ const notifyPaymentReceived = async (
   }
 
   const sourceLabel = notificationPayload.sourceLabel
-  const isSocialCheckout = notificationPayload.source.toLowerCase() === 'social_checkout'
-  const heading = `${isSocialCheckout ? '🎉 ' : ''}New ${sourceLabel} payment`
+  const paymentSource = notificationPayload.source.toLowerCase()
+  const isSocialCheckout = paymentSource === 'social_checkout'
+  const isFyllCheckout = paymentSource === 'fyll_checkout'
+  const customerLabel = notificationPayload.customerName || 'A customer'
+  const heading = `${isSocialCheckout ? '🎉 ' : isFyllCheckout ? '💰 ' : ''}New ${sourceLabel} payment`
   const content = isSocialCheckout
-    ? `${notificationPayload.amount} · ${notificationPayload.customerName || 'A customer'}`
-    : `${notificationPayload.customerName || 'A customer'} paid ${notificationPayload.amount} — ${paymentReference}`
+    ? `${notificationPayload.amount} · ${customerLabel}`
+    : isFyllCheckout
+      ? `${customerLabel} · ${notificationPayload.amount} on your website`
+      : `${customerLabel} paid ${notificationPayload.amount} — ${paymentReference}`
   const collapseId = `payment:${businessId}:${paymentReference}:${notificationPayload.status || 'received'}`
   // Storefront orders are announced by the new-order alert; their payments don't also get a WhatsApp message.
-  if (notificationPayload.source.toLowerCase() !== 'storefront') {
-    await sendWhatsAppAlert(admin, businessId, 'payments', `💰 ${heading}\n${content}`, {
+  if (paymentSource !== 'storefront') {
+    // Fyll Checkout has its own WhatsApp template. Until Meta approves it, Meta answers "template does not exist" and the
+    // general payment template is sent instead.
+    const generalTemplate: WhatsAppTemplate = {
       name: 'new_payment_alert',
-      params: [paymentReference, notificationPayload.customerName || 'A customer', notificationPayload.amount],
-    })
+      params: [paymentReference, customerLabel, notificationPayload.amount],
+    }
+    // The template's button opens this payment in Fyll Ops: https://dashboard.fyll.app/storefront-payment/{{1}}
+    const paymentPageId = notificationPayload.paymentId
+    const useFyllCheckoutTemplate = isFyllCheckout && Boolean(paymentPageId)
+    await sendWhatsAppAlert(
+      admin,
+      businessId,
+      'payments',
+      isFyllCheckout
+        ? `💰 ${heading} on your website\nCustomer: ${customerLabel}\nAmount: ${notificationPayload.amount}\nReference: ${paymentReference}${paymentPageId ? `\nView: https://dashboard.fyll.app/storefront-payment/${paymentPageId}` : ''}`
+        : `💰 ${heading}\n${content}`,
+      useFyllCheckoutTemplate
+        ? { name: 'new_fyll_checkout_payment', params: [customerLabel, notificationPayload.amount, paymentReference], buttonParam: paymentPageId, fallback: generalTemplate }
+        : generalTemplate,
+    )
   }
 
   return await sendPushNotification({

@@ -826,6 +826,9 @@ function NotificationPanel({
       if (source === 'social_checkout') {
         return `🎉 New Social Checkout payment${amount ? ` · ${amount}` : ''} · ${customerName}`;
       }
+      if (source === 'fyll_checkout') {
+        return `💰 New Fyll Checkout payment · ${customerName}${amount ? ` · ${amount}` : ''} on your website`;
+      }
       return `${customerName} made a ${sourceLabel} payment${amount ? ` ${amount}` : ''}`;
     }
     if (payload?.type === 'quote_update') {
@@ -857,7 +860,8 @@ function NotificationPanel({
       const orderNumber = typeof payload?.orderNumber === 'string' && payload.orderNumber.trim()
         ? ` #${payload.orderNumber.trim()}`
         : '';
-      return `New storefront order${orderNumber} from ${customerName}`;
+      const orderLabel = payload?.origin === 'website' ? 'New website order' : 'New storefront order';
+      return `${orderLabel}${orderNumber} from ${customerName}`;
     }
 
     if (payload?.type === 'partner_job_event') {

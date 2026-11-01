@@ -1,6 +1,16 @@
 {
   "releases": [
     {
+      "version": "2.7.2",
+      "date": "2026-11-01T18:00:00Z",
+      "features": [],
+      "fixes": [
+        "Fyll Checkout payments now alert as \"New Fyll Checkout payment\" on your website, instead of a storefront order. Card payments are alerted too.",
+        "Orders from your own website now say \"website order\" instead of \"Fyll storefront\".",
+        "Opening a link from an alert while signed out now takes you to that page after you sign in."
+      ]
+    },
+    {
       "version": "2.7.1",
       "date": "2026-11-01T14:00:00Z",
       "features": [],

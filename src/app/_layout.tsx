@@ -572,7 +572,9 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
         router.replace('/start');
       } else {
         const isWooCommerceConnectRoute = firstSegment === 'woocommerce' && secondSegment === 'connect';
-        const returnTo = isWooCommerceConnectRoute && typeof window !== 'undefined'
+        // Pages that WhatsApp, push and email alerts link to: after signing in, open them instead of Home.
+        const isAlertLinkRoute = ['storefront-payment', 'order', 'case', 'task', 'customer', 'social-checkout', 'quote', 'return', 'expense'].includes(firstSegment);
+        const returnTo = (isWooCommerceConnectRoute || isAlertLinkRoute) && typeof window !== 'undefined'
           ? `${window.location.pathname}${window.location.search}`
           : '';
         if (isWooCommerceConnectRoute && typeof window !== 'undefined') {
