@@ -1,4 +1,5 @@
 import { usePaymentsPalette } from '@/components/payments/payments-ui';
+import { POLL_MS } from '@/lib/polling';
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, ScrollView, Platform } from 'react-native';
 import { useGlobalSearchParams, usePathname, useRouter, useSegments } from 'expo-router';
@@ -182,19 +183,19 @@ export function DesktopSidebar() {
     queryKey: ['collaboration-thread-counts', businessId, 'order'],
     enabled: Boolean(businessId) && !isOfflineMode,
     queryFn: () => collaborationData.getUnreadNotificationCountsByEntity(businessId!, 'order'),
-    refetchInterval: 15000,
+    refetchInterval: POLL_MS.badges,
   });
   const teamThreadCountsQuery = useQuery({
     queryKey: ['collaboration-thread-counts', businessId, 'case'],
     enabled: Boolean(businessId) && !isOfflineMode,
     queryFn: () => collaborationData.getUnreadNotificationCountsByEntity(businessId!, 'case'),
-    refetchInterval: 15000,
+    refetchInterval: POLL_MS.badges,
   });
   const taskThreadCountsQuery = useQuery({
     queryKey: ['collaboration-thread-counts', businessId, 'task'],
     enabled: Boolean(businessId) && !isOfflineMode,
     queryFn: () => collaborationData.getUnreadNotificationCountsByEntity(businessId!, 'task'),
-    refetchInterval: 15000,
+    refetchInterval: POLL_MS.badges,
   });
   const totalUnreadThreads = useMemo(() => {
     const orderCounts = threadCountsQuery.data ?? {};

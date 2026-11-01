@@ -1,4 +1,5 @@
 import { formatPersonName } from '@/lib/display-format';
+import { POLL_MS } from '@/lib/polling';
 import React, { useState, useMemo, useEffect } from 'react';
 import { View, Text, ScrollView, FlatList, Pressable, TextInput, Modal, Platform, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -455,7 +456,7 @@ export default function OrdersScreen() {
     queryKey: ['collaboration-thread-counts', businessId, 'order'],
     enabled: Boolean(businessId) && !isOfflineMode,
     queryFn: () => collaborationData.getUnreadNotificationCountsByEntity(businessId!, 'order'),
-    refetchInterval: 15000,
+    refetchInterval: POLL_MS.badges,
   });
   const unreadCounts = threadCountsQuery.data ?? {};
   const paymentsQuery = useQuery({

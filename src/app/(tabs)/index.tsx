@@ -75,6 +75,7 @@ import { JumpToTiles, buildJumpToItems } from '@/components/home/JumpToRow';
 import { PaymentsCollectedCard } from '@/components/home/PaymentsCollectedCard';
 import { StorefrontCard } from '@/components/home/StorefrontCard';
 import { MilestoneGate } from '@/components/milestones/MilestoneGate';
+import { POLL_MS } from '@/lib/polling';
 import { EmptyLine, HomeCard, HomeCardHeader, HomeLink, HomeRow, KpiStrip, StatusText, HOME_BUTTON_TEXT_STYLE, HOME_GAP, type KpiItem } from '@/components/home/home-ui';
 import useWhatsNewStore from '@/lib/state/whats-new-store';
 import { CURRENT_RELEASE } from '@/lib/release-notes';
@@ -1543,7 +1544,7 @@ export default function DashboardScreen() {
     queryKey: ['collaboration-notifications', businessId],
     enabled: Boolean(businessId),
     queryFn: () => collaborationData.listMyNotifications(businessId!, { limit: 30 }),
-    refetchInterval: 15000,
+    refetchInterval: POLL_MS.notifications,
   });
 
   // Realtime: refetch notifications immediately when a new one arrives
@@ -1580,7 +1581,7 @@ export default function DashboardScreen() {
     enabled: Boolean(businessId),
     queryFn: () => fetchSocialCheckoutDrafts(businessId!),
     staleTime: 30_000,
-    refetchInterval: 15000,
+    refetchInterval: POLL_MS.payments,
     refetchOnWindowFocus: true,
   });
 

@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Clipboard from 'expo-clipboard';
 import { Archive, ArrowLeft, Check, CheckCheck, ChevronDown, ChevronUp, Copy, Filter, Hash, MessageSquare, MoreHorizontal, Pin, Plus, Search, X } from 'lucide-react-native';
 import useFyllStore from '@/lib/state/fyll-store';
+import { POLL_MS } from '@/lib/polling';
 import type { Order } from '@/lib/state/fyll-store';
 import useAuthStore from '@/lib/state/auth-store';
 import { useBreakpoint } from '@/lib/useBreakpoint';
@@ -322,7 +323,7 @@ export default function ThreadsScreen() {
     queryKey: ['collaboration-order-threads', businessId],
     enabled: Boolean(businessId) && !isOfflineMode,
     queryFn: () => collaborationData.listThreadsByEntityType(businessId!, 'order'),
-    refetchInterval: 10000,
+    refetchInterval: POLL_MS.badges,
     refetchOnWindowFocus: false,
     placeholderData: (previous) => previous,
   });
@@ -347,7 +348,7 @@ export default function ThreadsScreen() {
     queryKey: ['collaboration-thread-counts', businessId, 'order'],
     enabled: Boolean(businessId) && !isOfflineMode,
     queryFn: () => collaborationData.getUnreadNotificationCountsByEntity(businessId!, 'order'),
-    refetchInterval: 15000,
+    refetchInterval: POLL_MS.badges,
     refetchOnWindowFocus: false,
     placeholderData: (previous) => previous,
   });
@@ -355,7 +356,7 @@ export default function ThreadsScreen() {
     queryKey: ['collaboration-team-threads', businessId],
     enabled: Boolean(businessId) && !isOfflineMode,
     queryFn: () => collaborationData.listThreadsByEntityType(businessId!, 'case'),
-    refetchInterval: 10000,
+    refetchInterval: POLL_MS.badges,
     refetchOnWindowFocus: false,
     placeholderData: (previous) => previous,
   });
@@ -363,7 +364,7 @@ export default function ThreadsScreen() {
     queryKey: ['collaboration-thread-counts', businessId, 'case'],
     enabled: Boolean(businessId) && !isOfflineMode,
     queryFn: () => collaborationData.getUnreadNotificationCountsByEntity(businessId!, 'case'),
-    refetchInterval: 15000,
+    refetchInterval: POLL_MS.badges,
     refetchOnWindowFocus: false,
     placeholderData: (previous) => previous,
   });

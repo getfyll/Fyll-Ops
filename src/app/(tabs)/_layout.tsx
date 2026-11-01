@@ -1,3 +1,4 @@
+
 import React, { useEffect, useMemo, useState } from 'react';
 import { Tabs, usePathname } from 'expo-router';
 import { View, Text, Platform } from 'react-native';
@@ -19,6 +20,7 @@ import { isBusinessFeatureEnabled } from '@/lib/feature-access';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
 import { getTabBarStyle, shouldHideMobileTabBar } from '@/lib/tab-bar-style';
 import { supabaseData } from '@/lib/supabase/data';
+import { POLL_MS } from '@/lib/polling';
 
 const ORDERS_TAB_BADGE_SEEN_KEY_PREFIX = 'orders-tab-badge-seen';
 const getOrdersTabBadgeSeenKey = (businessId: string) =>
@@ -193,26 +195,26 @@ export default function TabLayout() {
     queryKey: ['collaboration-thread-counts', businessId, 'order'],
     enabled: Boolean(businessId) && !isOfflineMode,
     queryFn: () => collaborationData.getUnreadNotificationCountsByEntity(businessId!, 'order'),
-    refetchInterval: 15000,
+    refetchInterval: POLL_MS.badges,
   });
   const teamThreadCountsQuery = useQuery({
     queryKey: ['collaboration-thread-counts', businessId, 'case'],
     enabled: Boolean(businessId) && !isOfflineMode,
     queryFn: () => collaborationData.getUnreadNotificationCountsByEntity(businessId!, 'case'),
-    refetchInterval: 15000,
+    refetchInterval: POLL_MS.badges,
   });
   const taskThreadCountsQuery = useQuery({
     queryKey: ['collaboration-thread-counts', businessId, 'task'],
     enabled: Boolean(businessId) && !isOfflineMode,
     queryFn: () => collaborationData.getUnreadNotificationCountsByEntity(businessId!, 'task'),
-    refetchInterval: 15000,
+    refetchInterval: POLL_MS.badges,
   });
   useQuery({
     queryKey: ['collaboration-order-threads', businessId],
     enabled: Boolean(businessId) && canViewThreads && !isOfflineMode,
     queryFn: () => collaborationData.listThreadsByEntityType(businessId!, 'order'),
     staleTime: 30_000,
-    refetchInterval: 10_000,
+    refetchInterval: POLL_MS.badges,
     refetchOnWindowFocus: false,
   });
   useQuery({
@@ -220,7 +222,7 @@ export default function TabLayout() {
     enabled: Boolean(businessId) && canViewThreads && !isOfflineMode,
     queryFn: () => collaborationData.listThreadsByEntityType(businessId!, 'case'),
     staleTime: 30_000,
-    refetchInterval: 10_000,
+    refetchInterval: POLL_MS.badges,
     refetchOnWindowFocus: false,
   });
   useQuery({
@@ -233,7 +235,7 @@ export default function TabLayout() {
         .filter((payment) => ['storefront', 'fyll_checkout'].includes(payment.source?.trim().toLowerCase() ?? ''));
     },
     staleTime: 30_000,
-    refetchInterval: 30_000,
+    refetchInterval: POLL_MS.payments,
     refetchOnWindowFocus: false,
   });
   const totalUnreadThreads = useMemo(() => {

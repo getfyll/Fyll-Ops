@@ -6,14 +6,14 @@ import { Stack, usePathname, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useColorScheme } from '@/lib/useColorScheme';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import useAuthStore from '@/lib/state/auth-store';
 import useFyllStore from '@/lib/state/fyll-store';
 import { useEffect, useRef, useState } from 'react';
 import { useSupabaseSync } from '@/hooks/useSupabaseSync';
-import { Platform, Pressable, Text, View } from 'react-native';
+import { AppState, Platform, Pressable, Text, View } from 'react-native';
 import { SafeAreaProvider, initialWindowMetrics, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { Bell, LayoutDashboard, Package, ShoppingCart, MoreHorizontal, MessageSquare, X } from 'lucide-react-native';
@@ -743,6 +743,14 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+
+  // On phones, tell React Query when the app goes to the background so background polling pauses (the browser
+  // does this for web tabs already).
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    const subscription = AppState.addEventListener('change', (state) => focusManager.setFocused(state === 'active'));
+    return () => subscription.remove();
+  }, []);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | null>(null);
   const [notificationPromptDismissed, setNotificationPromptDismissed] = useState(false);
   const segments = useSegments();

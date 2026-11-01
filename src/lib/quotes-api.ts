@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import useAuthStore from '@/lib/state/auth-store';
+import { POLL_MS } from '@/lib/polling';
 import { supabaseData } from '@/lib/supabase/data';
 import { newQuoteActivity, type Quote, type QuoteActivity } from '@/lib/quotes';
 
@@ -41,6 +42,6 @@ export function useQuotes() {
     queryKey: quotesQueryKey(businessId),
     enabled: Boolean(businessId),
     queryFn: () => fetchQuotes(businessId as string),
-    refetchInterval: 30000,
+    refetchInterval: POLL_MS.quotes,
   });
 }

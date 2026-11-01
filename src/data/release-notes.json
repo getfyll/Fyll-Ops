@@ -1,6 +1,15 @@
 {
   "releases": [
     {
+      "version": "2.7.1",
+      "date": "2026-11-01T14:00:00Z",
+      "features": [],
+      "fixes": [
+        "Fyll Ops now checks for updates in the background far less often, so it runs lighter and your data stays fast.",
+        "Background checks now pause while the app is closed or in the background."
+      ]
+    },
+    {
       "version": "2.7.0",
       "date": "2026-10-30T12:00:00Z",
       "features": [

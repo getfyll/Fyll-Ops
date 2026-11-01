@@ -1,4 +1,5 @@
 import { formatPersonName } from '@/lib/display-format';
+import { POLL_MS } from '@/lib/polling';
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Platform, RefreshControl, ActivityIndicator, Alert, Modal, useWindowDimensions, type PressableStateCallbackType } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -835,7 +836,7 @@ export default function PaymentsScreen() {
     queryKey: getSocialCheckoutQueryKey(businessId),
     queryFn: () => fetchSocialCheckoutDrafts(businessId!),
     enabled: Boolean(businessId),
-    refetchInterval: 15000,
+    refetchInterval: POLL_MS.payments,
     refetchOnWindowFocus: false,
   });
 
@@ -848,7 +849,7 @@ export default function PaymentsScreen() {
     enabled: Boolean(businessId),
     initialData: cachedOrders.length > 0 ? cachedOrders : undefined,
     initialDataUpdatedAt: 0,
-    refetchInterval: 30000,
+    refetchInterval: POLL_MS.ordersCopy,
     refetchOnWindowFocus: false,
   });
 
@@ -859,7 +860,7 @@ export default function PaymentsScreen() {
       return rows.map((row) => row.data).filter(isSharedIntegrationPayment);
     },
     enabled: Boolean(businessId),
-    refetchInterval: 30000,
+    refetchInterval: POLL_MS.payments,
     refetchOnWindowFocus: false,
   });
 

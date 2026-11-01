@@ -8,6 +8,7 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { useFonts, BricolageGrotesque_700Bold } from '@expo-google-fonts/bricolage-grotesque';
 import { useThemeColors } from '@/lib/theme';
+import { POLL_MS } from '@/lib/polling';
 import useFyllStore, {
   Case,
   CaseStatus,
@@ -102,7 +103,7 @@ export default function CasesScreen() {
     queryKey: ['collaboration-thread-counts', businessId, 'case'],
     enabled: Boolean(businessId),
     queryFn: () => collaborationData.getUnreadNotificationCountsByEntity(businessId!, 'case'),
-    refetchInterval: 15000,
+    refetchInterval: POLL_MS.badges,
   });
   const threadCounts = threadCountsQuery.data ?? {};
 
