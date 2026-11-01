@@ -199,6 +199,8 @@ export interface OrderTypeTimeline {
   maxBusinessDays: number;
   shippingZoneId?: string | null;
   workflowStatusIds?: string[];
+  // 'pickup' timelines are for orders the customer collects: processing days only, no states and no delivery days.
+  fulfillmentMethod?: 'delivery' | 'pickup';
 }
 
 export interface ShippingZoneTimeline {
@@ -413,6 +415,8 @@ export interface Order {
   customerPhone: string;
   deliveryState: string;
   deliveryAddress: string;
+  // 'pickup' = the customer collects the order (no delivery address or fee). Missing means delivery.
+  fulfillmentMethod?: 'delivery' | 'pickup';
   items: OrderItem[];
   services: OrderService[];
   additionalCharges: number;
@@ -1699,6 +1703,7 @@ const sanitizeOrderTypeTimeline = (
     workflowStatusIds: Array.from(
       new Set((item?.workflowStatusIds ?? fallback.workflowStatusIds ?? []).map((statusId) => statusId?.trim()).filter(Boolean))
     ),
+    ...(item?.fulfillmentMethod === 'pickup' ? { fulfillmentMethod: 'pickup' as const } : {}),
   };
 };
 

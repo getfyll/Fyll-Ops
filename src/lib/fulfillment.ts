@@ -182,18 +182,27 @@ export const getOrderFulfillmentStage = (
   return 'processing';
 };
 
+// A pick-up timeline is marked in Settings. Older timelines simply named "Pick up" count too.
+export const isPickupTimeline = (type: { name?: string; fulfillmentMethod?: 'delivery' | 'pickup' }) => (
+  type.fulfillmentMethod === 'pickup'
+  || (type.fulfillmentMethod === undefined && /pick\s*-?\s*up/i.test(type.name ?? ''))
+);
+
 export const resolveOrderTimeline = (
   payload: {
     orderTypeId?: string;
     orderTypeName?: string;
     deliveryState?: unknown;
     deliveryAddress?: unknown;
+    // 'pickup' orders are collected, so they only get processing days and never any delivery days.
+    fulfillmentMethod?: 'delivery' | 'pickup' | string | null;
   },
   settings: OrderTimelineSettings
 ) => {
   const deliveryState = normalizeDeliveryStateValue(payload.deliveryState, payload.deliveryAddress);
-  const shippingZone =
-    settings.shippingZones.find((zone) => (
+  const shippingZone = payload.fulfillmentMethod === 'pickup'
+    ? null
+    : settings.shippingZones.find((zone) => (
       zone.states.some((state) => locationsMatch(state, deliveryState))
     ))
     ?? settings.shippingZones.find((zone) => zone.states.length === 0)
@@ -202,6 +211,9 @@ export const resolveOrderTimeline = (
     !!shippingZoneId && shippingZone?.id === shippingZoneId
   );
   const isGlobalTimeline = (shippingZoneId?: string | null) => !shippingZoneId;
+  // Delivery orders never pick a pick-up timeline by themselves, and pick-up orders prefer one.
+  const isPickupOrder = payload.fulfillmentMethod === 'pickup';
+  const inferFrom = isPickupOrder ? settings.orderTypes : settings.orderTypes.filter((entry) => !isPickupTimeline(entry));
   const orderType =
     // An explicit orderTypeId (e.g. a manual pick from the order type dropdown
     // in FulfillmentEditModal/OrderEditForm) must win outright — previously this
@@ -210,10 +222,12 @@ export const resolveOrderTimeline = (
     // silently fell through to zone/name-based inference and the selection
     // appeared to do nothing.
     settings.orderTypes.find((entry) => entry.id === payload.orderTypeId)
-    ?? settings.orderTypes.find((entry) => normalizeName(entry.name) === normalizeName(payload.orderTypeName) && matchesShippingZone(entry.shippingZoneId))
-    ?? settings.orderTypes.find((entry) => normalizeName(entry.name) === normalizeName(payload.orderTypeName) && isGlobalTimeline(entry.shippingZoneId))
-    ?? settings.orderTypes.find((entry) => matchesShippingZone(entry.shippingZoneId))
-    ?? settings.orderTypes.find((entry) => isGlobalTimeline(entry.shippingZoneId))
+    ?? (isPickupOrder ? settings.orderTypes.find((entry) => isPickupTimeline(entry)) : undefined)
+    ?? inferFrom.find((entry) => normalizeName(entry.name) === normalizeName(payload.orderTypeName) && matchesShippingZone(entry.shippingZoneId))
+    ?? inferFrom.find((entry) => normalizeName(entry.name) === normalizeName(payload.orderTypeName) && isGlobalTimeline(entry.shippingZoneId))
+    ?? inferFrom.find((entry) => matchesShippingZone(entry.shippingZoneId))
+    ?? inferFrom.find((entry) => isGlobalTimeline(entry.shippingZoneId))
+    ?? inferFrom[0]
     ?? settings.orderTypes[0]
     ?? settings.defaultOrderType;
   const processingDays = Math.max(1, Math.round(orderType.maxBusinessDays));

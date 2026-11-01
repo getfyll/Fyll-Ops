@@ -1315,6 +1315,7 @@ const processOrder = async ({
   if (!customerEmail || !code) return { skipped: true, reason: 'missing-code-or-email' }
   if (confirmationStatus === 'confirmed') return { skipped: true, reason: 'already-confirmed' }
   if (currentStatus.includes('cancel')) return { skipped: true, reason: 'cancelled' }
+  if (toTrimmedString(order.fulfillmentMethod).toLowerCase() === 'pickup') return { skipped: true, reason: 'pickup-order' }
   if (isDeliveredStatus) return { skipped: true, reason: 'already-delivered' }
 
   const dispatchBase = getDispatchBaseDate(order)

@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, Switch, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, Text, TextInput, View } from 'react-native';
 import { MessageCircle } from 'lucide-react-native';
 import useAuthStore from '@/lib/state/auth-store';
 import { supabase } from '@/lib/supabase';
-import { useThemeColors } from '@/lib/theme';
-import { FYLL_LIME, FYLL_LIME_INK } from '@/components/payments/payments-ui';
+import { FYLL_LIME, FYLL_LIME_INK, usePaymentsPalette } from '@/components/payments/payments-ui';
+import { LimeToggle } from '@/components/settings/LimeToggle';
 
 type WhatsAppAlerts = { enabled: boolean; phone: string; orders: boolean; payments: boolean };
 
@@ -22,7 +22,7 @@ const normalizePhone = (value: string) => {
 
 // Lives inside the Settings > Notifications container (web and mobile). Admin only.
 export function WhatsAppAlertsCard({ bordered = false }: { bordered?: boolean }) {
-  const colors = useThemeColors();
+  const palette = usePaymentsPalette();
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
   const role = useAuthStore((s) => s.currentUser?.role ?? 'staff');
 
@@ -105,10 +105,10 @@ export function WhatsAppAlertsCard({ bordered = false }: { bordered?: boolean })
   const toggleRow = (label: string, hint: string, value: boolean, onChange: (next: boolean) => void) => (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 }}>
       <View style={{ flex: 1 }}>
-        <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }}>{label}</Text>
-        <Text style={{ color: colors.text.muted, fontSize: 12, marginTop: 1 }}>{hint}</Text>
+        <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>{label}</Text>
+        <Text style={{ color: palette.faint, fontSize: 12, marginTop: 2 }}>{hint}</Text>
       </View>
-      <Switch value={value} onValueChange={onChange} trackColor={{ true: FYLL_LIME, false: colors.border.light }} thumbColor="#FFFFFF" />
+      <LimeToggle value={value} onValueChange={onChange} compact inactiveColor={palette.softFill} inactiveBorderColor={palette.outline} />
     </View>
   );
 
@@ -117,52 +117,56 @@ export function WhatsAppAlertsCard({ bordered = false }: { bordered?: boolean })
       style={bordered ? {
         borderRadius: 14,
         borderWidth: 1,
-        borderColor: colors.border.light,
-        backgroundColor: colors.bg.primary,
+        borderColor: palette.border,
+        backgroundColor: palette.card,
         paddingHorizontal: 18,
         paddingVertical: 16,
-      } : { paddingHorizontal: 16, paddingVertical: 14, borderTopWidth: 1, borderTopColor: colors.border.light }}
+      } : { paddingHorizontal: 18, paddingVertical: 18 }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-        <View style={{ width: 42, height: 42, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: form.enabled ? '#25D36620' : colors.bg.secondary }}>
-          <MessageCircle size={18} color={form.enabled ? '#25D366' : colors.text.tertiary} strokeWidth={2} />
+        <View style={{ width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.nudgeBg }}>
+          <MessageCircle size={18} color={palette.limeOnSurface} strokeWidth={2} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={{ color: colors.text.primary, fontSize: 14, lineHeight: 18, fontWeight: '600' }}>WhatsApp alerts</Text>
-          <Text style={{ color: colors.text.tertiary, fontSize: 12, lineHeight: 16, marginTop: 2 }}>
+          <Text style={{ color: palette.text, fontSize: 14, lineHeight: 18, fontWeight: '600' }}>WhatsApp alerts</Text>
+          <Text style={{ color: palette.faint, fontSize: 12, lineHeight: 16, marginTop: 2 }}>
             {form.enabled ? 'On. Orders and payments also arrive on WhatsApp' : 'Get orders and payments on WhatsApp, even if push does not work'}
           </Text>
         </View>
         {isLoading ? (
-          <ActivityIndicator color={colors.text.muted} />
+          <ActivityIndicator color={palette.muted} />
         ) : (
-          <Switch value={form.enabled} onValueChange={(enabled) => setForm((f) => ({ ...f, enabled }))} trackColor={{ true: FYLL_LIME, false: colors.border.light }} thumbColor="#FFFFFF" />
+          <LimeToggle value={form.enabled} onValueChange={(enabled) => setForm((f) => ({ ...f, enabled }))} inactiveColor={palette.softFill} inactiveBorderColor={palette.outline} />
         )}
       </View>
 
       {form.enabled ? (
-        <View style={{ marginTop: 14, gap: 6 }}>
-          <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>WhatsApp number</Text>
+        <View style={{ marginTop: 18, paddingTop: 18, gap: 8, borderTopWidth: 1, borderTopColor: palette.hairline }}>
+          <Text style={{ color: palette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>WhatsApp number</Text>
           <TextInput
             value={form.phone}
             onChangeText={(phone) => setForm((f) => ({ ...f, phone }))}
             placeholder="+234 801 234 5678"
-            placeholderTextColor={colors.input.placeholder}
+            placeholderTextColor={palette.faint}
             keyboardType="phone-pad"
-            style={[{ height: 44, borderRadius: 999, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.input.bg, color: colors.input.text, paddingHorizontal: 16, fontSize: 14 }, noWebOutline]}
+            selectionColor={FYLL_LIME}
+            style={[{ height: 50, borderRadius: 16, borderWidth: 1, borderColor: palette.outline, backgroundColor: palette.inset, color: palette.text, paddingHorizontal: 16, fontSize: 14 }, noWebOutline]}
           />
-          <Text style={{ color: colors.text.muted, fontSize: 12 }}>Include the country code. A number starting with 0 is treated as Nigerian (+234).</Text>
-          {toggleRow('New orders', 'Storefront and in-app orders', form.orders, (orders) => setForm((f) => ({ ...f, orders })))}
-          {toggleRow('Payments', 'Fyll Checkout and storefront payments', form.payments, (payments) => setForm((f) => ({ ...f, payments })))}
+          <Text style={{ color: palette.faint, fontSize: 12, lineHeight: 17 }}>Include the country code. Numbers starting with 0 are treated as Nigerian (+234).</Text>
+          <View style={{ marginTop: 8, borderRadius: 20, paddingHorizontal: 14, backgroundColor: palette.inset, borderWidth: 1, borderColor: palette.border }}>
+            {toggleRow('New orders', 'Storefront and in-app orders', form.orders, (orders) => setForm((f) => ({ ...f, orders })))}
+            <View style={{ height: 1, backgroundColor: palette.hairline }} />
+            {toggleRow('Payments', 'Fyll Checkout and storefront payments', form.payments, (payments) => setForm((f) => ({ ...f, payments })))}
+          </View>
         </View>
       ) : null}
 
-      {message ? <Text style={{ color: message.ok ? '#059669' : '#DC2626', fontSize: 13, marginTop: 10 }}>{message.text}</Text> : null}
+      {message ? <View style={{ marginTop: 14, padding: 12, borderRadius: 14, backgroundColor: message.ok ? palette.nudgeBg : palette.dangerBg, borderWidth: 1, borderColor: message.ok ? palette.nudgeBorder : palette.dangerBorder }}><Text style={{ color: message.ok ? palette.limeOnSurface : palette.danger, fontSize: 12, lineHeight: 17 }}>{message.text}</Text></View> : null}
 
       <Pressable
         onPress={save}
         disabled={isSaving || isLoading}
-        style={({ pressed }) => ({ marginTop: 14, height: 42, borderRadius: 999, backgroundColor: FYLL_LIME, alignItems: 'center', justifyContent: 'center', opacity: pressed || isSaving ? 0.8 : 1 })}
+        style={({ pressed }) => ({ marginTop: 18, height: 48, borderRadius: 999, backgroundColor: FYLL_LIME, alignItems: 'center', justifyContent: 'center', opacity: pressed || isSaving ? 0.8 : 1 })}
       >
         {isSaving ? <ActivityIndicator color={FYLL_LIME_INK} /> : <Text style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '600' }}>Save WhatsApp settings</Text>}
       </Pressable>
@@ -171,9 +175,9 @@ export function WhatsAppAlertsCard({ bordered = false }: { bordered?: boolean })
         <Pressable
           onPress={sendTest}
           disabled={isTesting || isSaving}
-          style={({ pressed }) => ({ marginTop: 8, height: 40, borderRadius: 999, borderWidth: 1, borderColor: colors.border.light, alignItems: 'center', justifyContent: 'center', opacity: pressed || isTesting ? 0.7 : 1 })}
+          style={({ pressed }) => ({ marginTop: 10, height: 46, borderRadius: 999, borderWidth: 1, borderColor: palette.outline, backgroundColor: palette.softFill, alignItems: 'center', justifyContent: 'center', opacity: pressed || isTesting ? 0.7 : 1 })}
         >
-          {isTesting ? <ActivityIndicator color={colors.text.primary} /> : <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600' }}>Send test message</Text>}
+          {isTesting ? <ActivityIndicator color={palette.text} /> : <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>Send test message</Text>}
         </Pressable>
       ) : null}
     </View>

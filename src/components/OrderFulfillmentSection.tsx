@@ -63,10 +63,11 @@ export function OrderFulfillmentSection({
         orderTypeId: order.orderTypeId,
         orderTypeName: order.orderTypeName,
         deliveryState: order.deliveryState,
+        fulfillmentMethod: order.fulfillmentMethod,
       },
       orderTimelineSettings
     ),
-    [order.deliveryState, order.orderTypeId, order.orderTypeName, orderTimelineSettings]
+    [order.deliveryState, order.fulfillmentMethod, order.orderTypeId, order.orderTypeName, orderTimelineSettings]
   );
   const timelineChip = useMemo(() => {
     if (snapshot.statusMeta.label.toLowerCase().includes('cancel')) {

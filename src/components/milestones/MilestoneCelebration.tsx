@@ -14,6 +14,7 @@ import Animated, {
 import Svg, { Defs, G, Path, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 import { X, Upload } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   BricolageGrotesque_400Regular,
   BricolageGrotesque_600SemiBold,
@@ -181,6 +182,8 @@ function ProgressBar({ target, reduced }: { target: number; reduced: boolean }) 
 
 export interface MilestoneCelebrationProps {
   visible: boolean;
+  /** Explicit user-triggered replays may animate even when the OS requests reduced motion. */
+  forceMotion?: boolean;
   businessName: string;
   businessLogo: string | null;
   storefrontUrl?: string | null;
@@ -191,9 +194,13 @@ export interface MilestoneCelebrationProps {
   onShared: () => void;
 }
 
-export function MilestoneCelebration({ visible, businessName, businessLogo, storefrontUrl, milestone, totalOrders, nextMilestone, onClose, onShared }: MilestoneCelebrationProps) {
-  const reduced = useReducedMotion();
+export function MilestoneCelebration({ visible, forceMotion = false, businessName, businessLogo, storefrontUrl, milestone, totalOrders, nextMilestone, onClose, onShared }: MilestoneCelebrationProps) {
+  const systemReducedMotion = useReducedMotion();
+  // Automatic celebrations still honour the device setting. Choosing "Replay milestone
+  // celebration" is an explicit request to see the motion, so that path can opt in.
+  const reduced = systemReducedMotion && !forceMotion;
   const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const [fontsLoaded] = useFonts({
     BricolageGrotesque_400Regular,
     BricolageGrotesque_600SemiBold,
@@ -291,6 +298,8 @@ export function MilestoneCelebration({ visible, businessName, businessLogo, stor
   const numberSize = formatMilestoneNumber(milestone).length > 4 ? 52 : 72;
   const dateLabel = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   const orderWord = totalOrders === 1 ? 'order' : 'orders';
+  const closeTop = Platform.OS === 'web' ? 18 : Math.max(16, insets.top - 6);
+  const headerHeight = closeTop + 40 + 14 + 30;
 
   if (!visible) return null;
 
@@ -309,18 +318,18 @@ export function MilestoneCelebration({ visible, businessName, businessLogo, stor
             </View>
           ) : null}
 
-          <View style={{ paddingTop: Platform.OS === 'web' ? 36 : 56, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <FadeUp delay={900} reduced={reduced}>
-              <View style={{ height: 30, paddingHorizontal: 13, borderRadius: 999, backgroundColor: 'rgba(213,224,87,0.14)', borderWidth: 1, borderColor: 'rgba(213,224,87,0.35)', justifyContent: 'center' }}>
-                <Text style={[{ color: LIME, fontSize: 12, letterSpacing: 1.4 }, font(700)]}>MILESTONE UNLOCKED</Text>
+          <View style={{ height: headerHeight, alignItems: 'center', justifyContent: 'flex-end' }}>
+            <FadeUp delay={900} reduced={reduced} style={{ alignItems: 'center' }}>
+              <View style={{ height: 30, paddingHorizontal: 16, borderRadius: 999, backgroundColor: 'rgba(213,224,87,0.14)', borderWidth: 1, borderColor: 'rgba(213,224,87,0.35)', alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={[{ color: LIME, fontSize: 12, lineHeight: 15, letterSpacing: 1.4, textAlign: 'center' }, font(700)]}>MILESTONE UNLOCKED</Text>
               </View>
             </FadeUp>
-            <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Close" style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' }}>
+            <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Close" hitSlop={8} style={{ position: 'absolute', right: 12, top: closeTop, width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' }}>
               <X size={16} color="#f4f4ef" strokeWidth={2.4} />
             </Pressable>
           </View>
 
-          <View key={playKey} style={{ height: 300, marginTop: 14, alignItems: 'center', justifyContent: 'center' }}>
+          <View key={playKey} style={{ height: 300, marginTop: 4, alignItems: 'center', justifyContent: 'center' }}>
             <Rays reduced={reduced} />
             {!reduced ? BITS.map((bit, index) => <ConfettiBit key={index} {...bit} />) : null}
             <Pressable onPress={() => setPlayKey((key) => key + 1)} accessibilityRole="button" accessibilityLabel="Play the celebration again">

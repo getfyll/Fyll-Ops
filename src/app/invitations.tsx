@@ -3,10 +3,11 @@ import { View, Text, Pressable, TextInput, ScrollView, ActivityIndicator, Alert,
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useFonts, BricolageGrotesque_700Bold, BricolageGrotesque_800ExtraBold } from '@expo-google-fonts/bricolage-grotesque';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { ArrowLeft, Crown, Copy, Send, Mail, Shield, Clock3, CheckCircle2, Ban, Sparkles, RefreshCcw } from 'lucide-react-native';
-import { useThemeColors } from '@/lib/theme';
+import { useResolvedThemeMode, useThemeColors } from '@/lib/theme';
 import useAuthStore, { type TeamRole, type InviteStatus } from '@/lib/state/auth-store';
 import { supabase } from '@/lib/supabase';
 import { useSettingsBack } from '@/lib/useSettingsBack';
@@ -69,7 +70,19 @@ export default function InvitationsScreen() {
   const { from } = useLocalSearchParams<{ from?: string | string[] }>();
   const goBack = useSettingsBack();
   const colors = useThemeColors();
-  const { isDesktop } = useBreakpoint();
+  const resolvedThemeMode = useResolvedThemeMode();
+  const isDark = resolvedThemeMode === 'dark';
+  const palette = isDark
+    ? {
+        ground: '#141414', surface: '#1E1E1E', ink: '#F4F4EF', muted: '#B9BAB0', faint: '#8C8D84', lime: '#D5E057', limeInk: '#D5E057', limeDeep: '#7D8A00',
+        edge: 'rgba(255,255,255,0.09)', edgeStrong: 'rgba(255,255,255,0.14)', input: 'rgba(255,255,255,0.055)', topGlow: 'rgba(111,125,18,0.55)', topGlowEnd: 'rgba(20,20,20,0)', navButton: 'rgba(255,255,255,0.08)', limeWash: 'rgba(213,224,87,0.14)', limeBorder: 'rgba(213,224,87,0.25)', dangerWash: 'rgba(239,68,68,0.12)', successWash: 'rgba(34,197,94,0.12)',
+      }
+    : {
+        ground: '#F4F3EB', surface: '#FFFFFF', ink: '#202117', muted: '#5E6056', faint: '#85877C', lime: '#D5E057', limeInk: '#667000', limeDeep: '#879400',
+        edge: 'rgba(35,38,25,0.09)', edgeStrong: 'rgba(35,38,25,0.15)', input: '#F7F7F1', topGlow: 'rgba(213,224,87,0.42)', topGlowEnd: 'rgba(244,243,235,0)', navButton: 'rgba(32,33,23,0.07)', limeWash: 'rgba(135,148,0,0.13)', limeBorder: 'rgba(102,112,0,0.22)', dangerWash: 'rgba(239,68,68,0.08)', successWash: 'rgba(34,197,94,0.08)',
+      };
+  const { isDesktop, isMobile } = useBreakpoint();
+  useFonts({ BricolageGrotesque_700Bold, BricolageGrotesque_800ExtraBold });
   const currentUser = useAuthStore((s) => s.currentUser);
   const businessId = useAuthStore((s) => s.businessId);
 
@@ -93,17 +106,17 @@ export default function InvitationsScreen() {
   const useDesktopInviteTable = Platform.OS === 'web' && isDesktop;
   const desktopContentWrapStyle = (
     isWebDesktop
-      ? ({ width: '100%', maxWidth: 1440, alignSelf: 'flex-start' } as const)
+      ? ({ width: '100%', maxWidth: 720, alignSelf: 'center' } as const)
       : undefined
   );
   const screenOuterStyle = {
-    backgroundColor: colors.bg.primary,
+    backgroundColor: palette.ground,
     paddingHorizontal: 0,
     paddingVertical: 0,
   } as const;
   const screenInnerStyle = {
     flex: 1,
-    backgroundColor: colors.bg.primary,
+    backgroundColor: palette.ground,
     ...(showWebSettingsPanel
       ? {
           width: '100%' as const,
@@ -353,24 +366,25 @@ export default function InvitationsScreen() {
       <View className="flex-1" style={screenOuterStyle}>
         <Stack.Screen options={{ headerShown: false }} />
         <View style={screenInnerStyle}>
-        <SafeAreaView className="flex-1" edges={['top']}>
+        <SafeAreaView className="flex-1" edges={['top']} style={{ backgroundColor: palette.ground }}>
+          <LinearGradient pointerEvents="none" colors={[palette.topGlow, palette.topGlowEnd]} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 300 }} />
           <View style={desktopContentWrapStyle}>
             <View
-              className={isWebDesktop ? 'pl-5 pr-7 pt-4 pb-3 flex-row items-center' : 'px-5 pt-4 pb-3 flex-row items-center'}
-              style={isWebDesktop ? { paddingTop: 10, paddingBottom: 10 } : undefined}
+              className="flex-row items-center"
+              style={{ minHeight: isMobile ? 66 : 58, paddingHorizontal: showWebSettingsPanel ? 20 : 10, paddingTop: isMobile ? 12 : 4, paddingBottom: 4 }}
             >
               <Pressable
                 onPress={goBack}
-                className="w-10 h-10 rounded-xl items-center justify-center mr-3 active:opacity-50"
-                style={{ backgroundColor: 'transparent' }}
+                className="w-10 h-10 items-center justify-center mr-3 active:opacity-50"
+                style={{ borderRadius: 20, backgroundColor: palette.navButton }}
               >
-                <ArrowLeft size={20} color={colors.text.primary} strokeWidth={2} />
+                <ArrowLeft size={18} color={palette.ink} strokeWidth={2.2} />
               </Pressable>
               <Text
                 style={{
-                  color: colors.text.primary,
-                  fontSize: Platform.OS === 'web' ? 14 : 20,
-                  lineHeight: Platform.OS === 'web' ? 18 : 24,
+                  color: palette.ink,
+                  fontSize: 17,
+                  lineHeight: 21,
                   fontWeight: '600',
                 }}
               >
@@ -379,9 +393,9 @@ export default function InvitationsScreen() {
             </View>
           </View>
           <View className="flex-1 items-center justify-center px-6">
-            <Shield size={44} color={colors.text.tertiary} strokeWidth={1.5} />
-            <Text style={{ color: colors.text.primary }} className="text-lg font-semibold mt-4">Admin Access Required</Text>
-            <Text style={{ color: colors.text.tertiary }} className="text-center mt-2">
+            <View style={{ width: 68, height: 68, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.limeWash, borderWidth: 1, borderColor: palette.limeBorder }}><Shield size={29} color={palette.limeInk} strokeWidth={1.8} /></View>
+            <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold', fontSize: 22, fontWeight: '400' }} className="mt-4">Admin Access Required</Text>
+            <Text style={{ color: palette.muted }} className="text-center mt-2">
               Only admins can generate founder VIP invites.
             </Text>
           </View>
@@ -395,45 +409,46 @@ export default function InvitationsScreen() {
     <View className="flex-1" style={screenOuterStyle}>
       <Stack.Screen options={{ headerShown: false }} />
       <View style={screenInnerStyle}>
-      <SafeAreaView className="flex-1" edges={['top']}>
-        <View style={{ borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
+      <SafeAreaView className="flex-1" edges={['top']} style={{ backgroundColor: palette.ground }}>
+        <LinearGradient pointerEvents="none" colors={[palette.topGlow, palette.topGlowEnd]} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: showWebSettingsPanel ? 390 : 300 }} />
+        <View>
           <View style={desktopContentWrapStyle}>
             <View
-              className={isWebDesktop ? 'pl-5 pr-7 pt-4 pb-3 flex-row items-center justify-between' : 'px-5 pt-4 pb-3 flex-row items-center justify-between'}
-              style={isWebDesktop ? { paddingTop: 10, paddingBottom: 10 } : undefined}
+              className="flex-row items-center justify-between"
+              style={{ minHeight: isMobile ? 66 : showWebSettingsPanel ? 58 : 56, paddingHorizontal: showWebSettingsPanel ? 20 : 10, paddingTop: isMobile ? 12 : 4, paddingBottom: 4 }}
             >
               <View className="flex-row items-center">
                 <Pressable
                   onPress={goBack}
-                  className="w-10 h-10 rounded-xl items-center justify-center mr-3 active:opacity-50"
-                  style={{ backgroundColor: 'transparent' }}
+                  className="w-10 h-10 items-center justify-center mr-3 active:opacity-50"
+                  style={{ borderRadius: 20, backgroundColor: palette.navButton }}
                 >
-                  <ArrowLeft size={20} color={colors.text.primary} strokeWidth={2} />
+                  <ArrowLeft size={18} color={palette.ink} strokeWidth={2.2} />
                 </Pressable>
                 <View>
+                  <Text style={{ color: palette.faint, fontSize: 9.5, lineHeight: 12, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Settings</Text>
                   <Text
                     style={{
-                      color: colors.text.primary,
-                      fontSize: Platform.OS === 'web' ? 14 : 20,
-                      lineHeight: Platform.OS === 'web' ? 18 : 24,
+                      color: palette.ink,
+                      fontSize: 17,
+                      lineHeight: 21,
                       fontWeight: '600',
                     }}
                   >
-                    Invitations
+                    Invitation Settings
                   </Text>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs">VIP Access controls</Text>
                 </View>
               </View>
               <Pressable
                 onPress={() => { void loadInvitationsData('refresh'); }}
-                className="w-10 h-10 rounded-xl items-center justify-center active:opacity-80"
-                style={{ backgroundColor: colors.bg.secondary, opacity: isRefreshing ? 0.6 : 1 }}
+                className="w-10 h-10 items-center justify-center active:opacity-80"
+                style={{ borderRadius: 20, backgroundColor: palette.navButton, opacity: isRefreshing ? 0.6 : 1 }}
                 disabled={isRefreshing}
               >
                 {isRefreshing ? (
-                  <ActivityIndicator size="small" color={colors.text.primary} />
+                  <ActivityIndicator size="small" color={palette.limeInk} />
                 ) : (
-                  <RefreshCcw size={18} color={colors.text.primary} strokeWidth={2} />
+                  <RefreshCcw size={17} color={palette.ink} strokeWidth={2} />
                 )}
               </Pressable>
             </View>
@@ -442,52 +457,55 @@ export default function InvitationsScreen() {
 
         {isLoading ? (
           <View className="flex-1 items-center justify-center">
-            <ActivityIndicator size="large" color={colors.text.primary} />
-            <Text style={{ color: colors.text.tertiary }} className="text-sm mt-3">Loading invite controls...</Text>
+            <ActivityIndicator size="large" color={palette.limeInk} />
+            <Text style={{ color: palette.faint }} className="text-sm mt-3">Loading invite controls...</Text>
           </View>
         ) : (
           <ScrollView className="flex-1" showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             <View style={desktopContentWrapStyle}>
               <View className={isWebDesktop ? 'pl-5 pr-7 pt-4' : 'px-5 pt-4'}>
                 <LinearGradient
-                  colors={['#0B0B0D', '#121826', '#18181B']}
+                  colors={[palette.surface, palette.surface]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
-                  style={{ borderRadius: 20, padding: 16, marginBottom: 16 }}
+                  style={{ position: 'relative', overflow: 'hidden', borderRadius: 28, padding: 20, marginBottom: 28, borderWidth: 1, borderColor: palette.edge, shadowColor: '#000000', shadowOpacity: isDark ? 0.24 : 0.07, shadowRadius: 24, shadowOffset: { width: 0, height: 10 } }}
                 >
+                  <LinearGradient pointerEvents="none" colors={[palette.limeWash, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -44, right: -36, width: 210, height: 210, borderRadius: 105 }} />
+                  <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, borderBottomLeftRadius: 3, borderBottomRightRadius: 3, backgroundColor: palette.lime }} />
                   <View className="flex-row items-start justify-between">
                     <View className="flex-row items-center flex-1 mr-3">
-                      <View className="w-12 h-12 rounded-2xl items-center justify-center mr-3" style={{ backgroundColor: 'rgba(255,255,255,0.08)' }}>
-                        <Crown size={22} color="#F8D568" strokeWidth={2} />
-                      </View>
+                      <LinearGradient colors={[palette.lime, palette.limeDeep]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 58, height: 58, borderRadius: 19, alignItems: 'center', justifyContent: 'center', marginRight: 13 }}>
+                        <Crown size={24} color="#202117" strokeWidth={2} />
+                      </LinearGradient>
                       <View className="flex-1">
-                        <Text className="text-white font-semibold text-base">VIP Access</Text>
-                        <Text className="text-white/70 text-xs mt-1">Founder referrals for {businessName}</Text>
+                        <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Founder referrals</Text>
+                        <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_800ExtraBold', fontSize: 26, lineHeight: 31, letterSpacing: -0.7 }}>VIP Access</Text>
+                        <Text style={{ color: palette.faint }} className="text-xs mt-1" numberOfLines={1}>{businessName}</Text>
                       </View>
                     </View>
-                    <View className="px-3 py-1.5 rounded-full" style={{ backgroundColor: 'rgba(248,213,104,0.12)', borderWidth: 1, borderColor: 'rgba(248,213,104,0.25)' }}>
-                      <Text style={{ color: '#F8D568' }} className="text-xs font-semibold">Admin Only</Text>
+                    <View className="px-3 py-1.5 rounded-full" style={{ backgroundColor: palette.limeWash, borderWidth: 1, borderColor: palette.limeBorder }}>
+                      <Text style={{ color: palette.limeInk }} className="text-xs font-semibold">Admin only</Text>
                     </View>
                   </View>
 
               <View className="mt-4 flex-row" style={{ gap: 10 }}>
-                <View className="flex-1 rounded-xl p-3" style={{ backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' }}>
-                  <Text className="text-white/60 text-[11px] uppercase">Invite Limit</Text>
-                  <Text className="text-white text-xl font-bold mt-1">{inviteLimitTotal}</Text>
+                <View className="flex-1 rounded-xl p-3" style={{ backgroundColor: palette.input, borderWidth: 1, borderColor: palette.edge }}>
+                  <Text style={{ color: palette.faint }} className="text-[11px] uppercase">Invite limit</Text>
+                  <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold' }} className="text-xl mt-1">{inviteLimitTotal}</Text>
                 </View>
-                <View className="flex-1 rounded-xl p-3" style={{ backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' }}>
-                  <Text className="text-white/60 text-[11px] uppercase">Used</Text>
-                  <Text className="text-white text-xl font-bold mt-1">{usedInviteCount}</Text>
+                <View className="flex-1 rounded-xl p-3" style={{ backgroundColor: palette.input, borderWidth: 1, borderColor: palette.edge }}>
+                  <Text style={{ color: palette.faint }} className="text-[11px] uppercase">Used</Text>
+                  <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold' }} className="text-xl mt-1">{usedInviteCount}</Text>
                 </View>
-                <View className="flex-1 rounded-xl p-3" style={{ backgroundColor: 'rgba(248,213,104,0.08)', borderWidth: 1, borderColor: 'rgba(248,213,104,0.18)' }}>
-                  <Text style={{ color: 'rgba(248,213,104,0.8)' }} className="text-[11px] uppercase">Remaining</Text>
-                  <Text style={{ color: '#F8D568' }} className="text-xl font-bold mt-1">{inviteRemaining}</Text>
+                <View className="flex-1 rounded-xl p-3" style={{ backgroundColor: palette.limeWash, borderWidth: 1, borderColor: palette.limeBorder }}>
+                  <Text style={{ color: palette.limeInk }} className="text-[11px] uppercase">Remaining</Text>
+                  <Text style={{ color: palette.limeInk, fontFamily: 'BricolageGrotesque_700Bold' }} className="text-xl mt-1">{inviteRemaining}</Text>
                 </View>
               </View>
 
               <View className="mt-4 flex-row flex-wrap" style={{ gap: 8 }}>
-                <View className="px-3 py-1.5 rounded-full" style={{ backgroundColor: 'rgba(255,255,255,0.04)' }}>
-                  <Text className="text-white/80 text-xs">Pending {statusCounts.pending}</Text>
+                <View className="px-3 py-1.5 rounded-full" style={{ backgroundColor: palette.input }}>
+                  <Text style={{ color: palette.muted }} className="text-xs">Pending {statusCounts.pending}</Text>
                 </View>
                 <View className="px-3 py-1.5 rounded-full" style={{ backgroundColor: 'rgba(34,197,94,0.12)' }}>
                   <Text className="text-green-300 text-xs">Joined {statusCounts.joined}</Text>
@@ -507,16 +525,17 @@ export default function InvitationsScreen() {
               </View>
             ) : null}
 
-                <View className="rounded-2xl p-4 mb-4" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
+                <Text style={{ color: palette.faint, marginLeft: 6, marginBottom: 10, fontSize: 11, fontWeight: '700', letterSpacing: 1.4, textTransform: 'uppercase' }}>Create invitation</Text>
+                <View className="p-4 mb-6" style={{ borderRadius: 26, backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.edge }}>
               <View className="flex-row items-center mb-3">
-                <Sparkles size={18} color={colors.text.primary} strokeWidth={2} />
-                <Text style={{ color: colors.text.primary }} className="font-semibold ml-2">Create Founder Invite</Text>
+                <View style={{ width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.limeWash }}><Sparkles size={18} color={palette.limeInk} strokeWidth={2} /></View>
+                <View style={{ flex: 1, marginLeft: 12 }}><Text style={{ color: palette.ink, fontSize: isMobile ? 14 : 15, fontWeight: '600' }}>Create founder invite</Text><Text style={{ color: palette.faint, fontSize: 12, marginTop: 2 }}>Generate secure admin access</Text></View>
               </View>
 
               <View className="mb-3">
-                <Text style={{ color: colors.text.secondary }} className="text-xs font-semibold uppercase mb-2 tracking-wider">Founder Email</Text>
-                <View className="rounded-xl px-4 flex-row items-center" style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: formError ? '#EF4444' : colors.border.light, height: 52 }}>
-                  <Mail size={17} color={colors.text.tertiary} strokeWidth={1.8} />
+                <Text style={{ color: palette.muted }} className="text-xs font-semibold uppercase mb-2 tracking-wider">Founder email</Text>
+                <View className="rounded-xl px-4 flex-row items-center" style={{ backgroundColor: palette.input, borderWidth: 1, borderColor: formError ? '#EF4444' : palette.edgeStrong, height: 52 }}>
+                  <Mail size={17} color={palette.faint} strokeWidth={1.8} />
                   <TextInput
                     value={inviteEmail}
                     onChangeText={(text) => {
@@ -564,20 +583,19 @@ export default function InvitationsScreen() {
                   disabled={isGenerating}
                   className="rounded-full items-center justify-center active:opacity-80"
                   style={{
-                    backgroundColor: '#000000',
+                    backgroundColor: palette.lime,
                     height: 50,
-                    width: showWebSettingsPanel ? '30%' : '100%',
-                    minWidth: showWebSettingsPanel ? 190 : undefined,
+                    width: '100%',
                     opacity: isGenerating ? 0.65 : 1,
                   }}
                 >
                   {isGenerating ? (
                     <View className="flex-row items-center">
-                      <ActivityIndicator size="small" color="#FFFFFF" />
-                      <Text className="text-white font-semibold text-sm ml-2">Generating...</Text>
+                      <ActivityIndicator size="small" color="#202117" />
+                      <Text style={{ color: '#202117', fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400' }} className="text-sm ml-2">Generating...</Text>
                     </View>
                   ) : (
-                    <Text className="text-white font-semibold text-sm">Generate Invite Code</Text>
+                    <Text style={{ color: '#202117', fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400' }} className="text-sm">Generate invite code</Text>
                   )}
                 </Pressable>
               </View>
@@ -598,28 +616,28 @@ export default function InvitationsScreen() {
                 </View>
 
                 {latestInvite ? (
-                  <View className="rounded-2xl p-4 mb-4" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
+                  <View className="p-4 mb-6" style={{ borderRadius: 26, backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.limeBorder }}>
                 <View className="flex-row items-center justify-between mb-2">
-                  <Text style={{ color: colors.text.primary }} className="font-semibold">Latest Invite Code</Text>
+                  <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold', fontSize: 18, fontWeight: '400' }}>Latest invite code</Text>
                   <View className="px-2.5 py-1 rounded-full" style={{ backgroundColor: `${roleColors[latestInvite.role]}12` }}>
                     <Text style={{ color: roleColors[latestInvite.role] }} className="text-xs font-semibold">{roleLabels[latestInvite.role]}</Text>
                   </View>
                 </View>
-                <Text style={{ color: colors.text.tertiary }} className="text-xs">{latestInvite.email}</Text>
-                <View className="mt-3 rounded-xl p-4" style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}>
-                  <Text style={{ color: colors.text.primary }} className="text-xl font-bold tracking-widest text-center">{latestInvite.inviteCode}</Text>
+                <Text style={{ color: palette.faint }} className="text-xs">{latestInvite.email}</Text>
+                <View className="mt-3 rounded-xl p-4" style={{ backgroundColor: palette.input, borderWidth: 1, borderColor: palette.edge }}>
+                  <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold' }} className="text-xl tracking-widest text-center">{latestInvite.inviteCode}</Text>
                 </View>
                 <View className="flex-row mt-3" style={{ gap: 10 }}>
-                  <Pressable onPress={() => handleCopyCode(latestInvite)} className="flex-1 rounded-full items-center justify-center active:opacity-80" style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light, height: 46 }}>
+                  <Pressable onPress={() => handleCopyCode(latestInvite)} className="flex-1 rounded-full items-center justify-center active:opacity-80" style={{ backgroundColor: palette.input, borderWidth: 1, borderColor: palette.edgeStrong, height: 46 }}>
                     <View className="flex-row items-center">
-                      <Copy size={15} color={colors.text.primary} strokeWidth={2} />
-                      <Text style={{ color: colors.text.primary }} className="font-semibold text-sm ml-2">Copy</Text>
+                      <Copy size={15} color={palette.ink} strokeWidth={2} />
+                      <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400' }} className="text-sm ml-2">Copy</Text>
                     </View>
                   </Pressable>
-                  <Pressable onPress={() => handleShareInvite(latestInvite)} className="flex-1 rounded-full items-center justify-center active:opacity-80" style={{ backgroundColor: '#111111', height: 46 }}>
+                  <Pressable onPress={() => handleShareInvite(latestInvite)} className="flex-1 rounded-full items-center justify-center active:opacity-80" style={{ backgroundColor: palette.lime, height: 46 }}>
                     <View className="flex-row items-center">
-                      <Send size={15} color="#FFFFFF" strokeWidth={2} />
-                      <Text className="text-white font-semibold text-sm ml-2">Share</Text>
+                      <Send size={15} color="#202117" strokeWidth={2} />
+                      <Text style={{ color: '#202117', fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400' }} className="text-sm ml-2">Share</Text>
                     </View>
                   </Pressable>
                 </View>
@@ -629,32 +647,32 @@ export default function InvitationsScreen() {
                 <View className="mb-6">
               <View className="flex-row items-center justify-between mb-3">
                 <View className="px-1">
-                  <Text style={{ color: colors.text.primary }} className="font-semibold">Invite History</Text>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1">
+                  <Text style={{ color: palette.faint, fontSize: 11, fontWeight: '700', letterSpacing: 1.4, textTransform: 'uppercase' }}>Invite history</Text>
+                  <Text style={{ color: palette.faint }} className="text-xs mt-1">
                     Pending, joined, cancelled, and expired invites.
                   </Text>
                 </View>
-                <View className="px-2.5 py-1 rounded-full" style={{ backgroundColor: colors.bg.secondary }}>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold">{inviteHistory.length}</Text>
+                <View className="px-2.5 py-1 rounded-full" style={{ backgroundColor: palette.limeWash }}>
+                  <Text style={{ color: palette.limeInk }} className="text-xs font-semibold">{inviteHistory.length}</Text>
                 </View>
               </View>
 
               {inviteHistory.length === 0 ? (
-                <View className="rounded-xl p-4" style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}>
-                  <Text style={{ color: colors.text.secondary }} className="text-sm text-center font-medium">No invites yet</Text>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs text-center mt-1">Create your first VIP invite above.</Text>
+                <View className="p-5" style={{ borderRadius: 24, backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.edge }}>
+                  <Text style={{ color: palette.ink }} className="text-sm text-center font-medium">No invites yet</Text>
+                  <Text style={{ color: palette.faint }} className="text-xs text-center mt-1">Create your first VIP invite above.</Text>
                 </View>
               ) : (
                 useDesktopInviteTable ? (
-                  <View className="w-full rounded-2xl overflow-hidden" style={{ borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card }}>
+                  <View className="w-full overflow-hidden" style={{ borderRadius: 24, borderWidth: 1, borderColor: palette.edge, backgroundColor: palette.surface }}>
                     <View
                       style={{
                         flexDirection: 'row',
                         minHeight: 50,
                         borderTopWidth: 1,
                         borderBottomWidth: 1,
-                        borderColor: colors.border.light,
-                        backgroundColor: colors.bg.card,
+                        borderColor: palette.edge,
+                        backgroundColor: palette.surface,
                       }}
                     >
                       <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', flex: 2.2, paddingHorizontal: 20, alignSelf: 'center' }}>
@@ -702,8 +720,8 @@ export default function InvitationsScreen() {
                             minHeight: 88,
                             alignItems: 'center',
                             borderBottomWidth: index < inviteHistory.length - 1 ? 1 : 0,
-                            borderBottomColor: colors.border.light,
-                            backgroundColor: colors.bg.card,
+                            borderBottomColor: palette.edge,
+                            backgroundColor: palette.surface,
                           }}
                         >
                           <View style={{ flex: 2.2, paddingHorizontal: 20, justifyContent: 'center' }}>
@@ -800,15 +818,15 @@ export default function InvitationsScreen() {
                       return (
                         <View
                           key={invite.id}
-                          className="rounded-xl p-4 mb-4"
-                          style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+                          className="p-4 mb-3"
+                          style={{ borderRadius: 24, backgroundColor: palette.surface, borderWidth: 1, borderColor: status === 'pending' ? palette.limeBorder : palette.edge }}
                         >
                           <View className="flex-row items-start justify-between" style={{ gap: 12 }}>
                             <View style={{ flex: 1, minWidth: 0 }}>
-                              <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '500' }} numberOfLines={1}>
+                              <Text style={{ color: palette.ink, fontSize: isMobile ? 14 : 15, fontWeight: '600' }} numberOfLines={1}>
                                 {invite.email}
                               </Text>
-                              <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '400', lineHeight: 16, marginTop: 8 }}>
+                              <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '400', lineHeight: 16, marginTop: 6 }}>
                                 Invited {formatDate(invite.invitedAt)}
                               </Text>
                               {invite.joinedAt ? (
@@ -821,9 +839,9 @@ export default function InvitationsScreen() {
                               onPress={status === 'pending' ? () => handleCancelPendingInvite(invite) : () => handleShareInvite(invite)}
                               className="w-10 h-10 rounded-full items-center justify-center active:opacity-70"
                               style={{
-                                backgroundColor: colors.bg.card,
+                                backgroundColor: palette.input,
                                 borderWidth: 1,
-                                borderColor: status === 'pending' ? 'rgba(239,68,68,0.18)' : colors.border.light,
+                                borderColor: status === 'pending' ? 'rgba(239,68,68,0.18)' : palette.edge,
                               }}
                             >
                               {status === 'pending' ? (
@@ -835,11 +853,11 @@ export default function InvitationsScreen() {
                           </View>
 
                           <View className="flex-row items-center mt-3" style={{ gap: 8 }}>
-                            <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '500' }}>
+                            <Text style={{ color: palette.ink, fontSize: 12, fontWeight: '600', letterSpacing: 0.8 }}>
                               {invite.inviteCode}
                             </Text>
                             <Pressable onPress={() => handleCopyCode(invite)} className="p-1 active:opacity-60">
-                              <Copy size={14} color={colors.text.tertiary} strokeWidth={2} />
+                              <Copy size={14} color={palette.faint} strokeWidth={2} />
                             </Pressable>
                           </View>
 
@@ -857,7 +875,7 @@ export default function InvitationsScreen() {
                             </View>
                           </View>
 
-                          <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '400', lineHeight: 16, marginTop: 10 }}>
+                          <Text style={{ color: palette.faint, fontSize: isMobile ? 10 : 12, fontWeight: '400', lineHeight: 16, marginTop: 10 }}>
                             Expires {formatDateTime(invite.expiresAt)}
                           </Text>
                         </View>

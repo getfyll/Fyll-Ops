@@ -75,6 +75,7 @@ import { JumpToTiles, buildJumpToItems } from '@/components/home/JumpToRow';
 import { PaymentsCollectedCard } from '@/components/home/PaymentsCollectedCard';
 import { StorefrontCard } from '@/components/home/StorefrontCard';
 import { MilestoneGate } from '@/components/milestones/MilestoneGate';
+import { OnboardingChecklistCard, type OnboardingStep } from '@/components/home/OnboardingChecklistCard';
 import { POLL_MS } from '@/lib/polling';
 import { EmptyLine, HomeCard, HomeCardHeader, HomeLink, HomeRow, KpiStrip, StatusText, HOME_BUTTON_TEXT_STYLE, HOME_GAP, type KpiItem } from '@/components/home/home-ui';
 import useWhatsNewStore from '@/lib/state/whats-new-store';
@@ -107,124 +108,6 @@ const getTaskStatusMeta = (status: Task['status']) => {
   if (status === 'in_progress') return { label: 'In progress', color: '#2563EB', background: 'rgba(37,99,235,0.12)' };
   return { label: 'Todo', color: '#B45309', background: 'rgba(180,83,9,0.12)' };
 };
-
-type OnboardingStep = {
-  id: string;
-  title: string;
-  shortLabel: string;
-  description: string;
-  complete: boolean;
-  actionLabel: string;
-  route: string;
-  settingsPanel?: string;
-};
-
-function OnboardingChecklistCard({
-  steps,
-  onDismiss,
-  onStepPress,
-  inset = true,
-}: {
-  steps: OnboardingStep[];
-  onDismiss: () => void;
-  onStepPress: (step: OnboardingStep) => void;
-  inset?: boolean;
-}) {
-  const colors = useThemeColors();
-  const isDark = colors.bg.primary === '#111111';
-  const completedCount = steps.filter((step) => step.complete).length;
-  const progress = steps.length > 0 ? completedCount / steps.length : 0;
-  const nextStep = steps.find((step) => !step.complete);
-
-  return (
-    <View className={inset ? 'px-5 pt-4' : undefined}>
-      <View
-        className="rounded-3xl p-4"
-        style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
-      >
-        <View className="flex-row items-start justify-between" style={{ gap: 12 }}>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ color: colors.text.primary }} className="text-base font-bold">Complete your setup</Text>
-            <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1">
-              {completedCount}/{steps.length} done
-            </Text>
-          </View>
-          <Pressable
-            onPress={onDismiss}
-            className="w-9 h-9 rounded-full items-center justify-center active:opacity-70"
-            style={{ backgroundColor: colors.bg.secondary }}
-          >
-            <X size={16} color={colors.text.tertiary} strokeWidth={2.2} />
-          </Pressable>
-        </View>
-
-        <View className="mt-4 flex-row">
-          <View className="rounded-full overflow-hidden" style={{ width: 120, height: 6, backgroundColor: colors.bg.secondary }}>
-            <View style={{ width: `${Math.round(progress * 100)}%`, height: 6, backgroundColor: colors.text.primary }} />
-          </View>
-        </View>
-
-        <View className="flex-row flex-wrap mt-3" style={{ marginHorizontal: -4 }}>
-          {steps.map((step) => (
-            <Pressable
-              key={step.id}
-              onPress={() => onStepPress(step)}
-              style={{ width: '33.333%', padding: 4 }}
-              className="active:opacity-70"
-            >
-              <View
-                className="rounded-2xl flex-row items-center"
-                style={{
-                  paddingVertical: 12,
-                  paddingHorizontal: 8,
-                  gap: 8,
-                  backgroundColor: isDark ? colors.bg.elevated : colors.bg.secondary,
-                  borderWidth: isDark ? 1 : 0,
-                  borderColor: colors.border.light,
-                }}
-              >
-                <View
-                  className="w-7 h-7 rounded-full items-center justify-center"
-                  style={{
-                    backgroundColor: step.complete ? colors.text.primary : 'transparent',
-                    borderWidth: step.complete ? 0 : 1.5,
-                    borderColor: colors.border.medium ?? colors.border.light,
-                  }}
-                >
-                  {step.complete ? <Check size={15} color={colors.bg.primary} strokeWidth={3} /> : null}
-                </View>
-                <Text
-                  style={{
-                    color: step.complete ? colors.text.tertiary : colors.text.primary,
-                    textDecorationLine: step.complete ? 'line-through' : 'none',
-                  }}
-                  className="text-sm font-semibold flex-1"
-                  numberOfLines={1}
-                >
-                  {step.shortLabel}
-                </Text>
-              </View>
-            </Pressable>
-          ))}
-        </View>
-
-        {nextStep ? (
-          <View className="mt-4 flex-row">
-            <Pressable
-              onPress={() => onStepPress(nextStep)}
-              className="rounded-full items-center justify-center active:opacity-80"
-              style={{ height: 40, paddingHorizontal: 20, backgroundColor: colors.text.primary }}
-            >
-              <Text style={[HOME_BUTTON_TEXT_STYLE, { color: colors.bg.primary }]}>
-                {nextStep.title}
-              </Text>
-            </Pressable>
-          </View>
-        ) : null}
-      </View>
-    </View>
-  );
-}
 
 // Banner titles use Bricolage; falls back to the system bold until the font loads.
 function useBannerTitleStyle() {
@@ -1885,7 +1768,7 @@ export default function DashboardScreen() {
     globalLowStock: { enabled: useGlobalLowStockThreshold, value: globalLowStockThreshold },
     now: new Date(eventNowTick),
   }), [canSeePaymentNeeds, canUseCases, eventNowTick, globalLowStockThreshold, homePaymentsQuery.data, openCasesCount, orderStatuses, orders, partnerJobs, partners, pendingPaymentCount, products, useGlobalLowStockThreshold]);
-  const { dismissed: dismissedNeeds, dismiss: dismissNeed, restore: restoreNeeds } = useDismissedNeeds(businessId);
+  const { dismissed: dismissedNeeds, dismiss: dismissNeed } = useDismissedNeeds(businessId);
   const visibleNeeds = useVisibleNeeds(homeNeeds, dismissedNeeds);
   // Money in: approved payments (storefront / Fyll Checkout / shared) plus verified payment links,
   // counted by the day they were approved.
@@ -2023,8 +1906,8 @@ export default function DashboardScreen() {
       description: 'Add staff who will process orders with you.',
       complete: teamMembers.length > 1 || pendingInvites.some((invite) => invite.status !== 'cancelled'),
       actionLabel: 'Invite',
-      route: '/invitations?from=settings',
-      settingsPanel: 'invitations',
+      route: '/team?from=settings',
+      settingsPanel: 'team',
     },
     ...(canUseStorefront ? [{
       id: 'storefront',
@@ -2050,6 +1933,15 @@ export default function DashboardScreen() {
     if (businessId) {
       void storage.setItem(getOnboardingDismissedKey(businessId), 'true');
     }
+  };
+
+  // "Set up storefront" on the Home card opens Settings > Storefront, where it is switched on.
+  const handleSetUpStorefront = () => {
+    if (Platform.OS === 'web') {
+      router.push({ pathname: '/settings', params: { panel: 'storefront-settings', from: 'settings', menu: 'integrations' } } as any);
+      return;
+    }
+    router.push('/storefront-settings?from=settings' as any);
   };
 
   const handleOnboardingStepPress = (step: OnboardingStep) => {
@@ -2565,13 +2457,21 @@ export default function DashboardScreen() {
                   />
                 ) : null}
 
+                {userRole === 'admin' || userRole === 'manager' ? (
+                  <StorefrontCard
+                    enabled={storefrontEnabled}
+                    storefrontSlug={storefrontSlug}
+                    businessName={businessName || companyName}
+                    onSetUp={handleSetUpStorefront}
+                  />
+                ) : null}
+
                 <KpiStrip items={kpiItems} loading={shouldShowDashboardMetricsSkeleton} />
 
                 <NeedsYouCard
                   needs={visibleNeeds}
                   onAction={handleCardPress}
                   onDismiss={dismissNeed}
-                  onRestore={restoreNeeds}
                 />
 
                 <View style={{ flexDirection: 'row', alignItems: 'stretch', gap: HOME_GAP }}>
@@ -2601,15 +2501,6 @@ export default function DashboardScreen() {
                 </View>
 
                 <JumpToTiles items={jumpToItems} onPress={handleCardPress} />
-
-                {userRole === 'admin' || userRole === 'manager' ? (
-                  <StorefrontCard
-                    enabled={storefrontEnabled}
-                    storefrontSlug={storefrontSlug}
-                    businessName={businessName || companyName}
-                    onConnectWebsite={() => router.push('/woocommerce/connect' as any)}
-                  />
-                ) : null}
 
                 <View style={{ flexDirection: 'row', alignItems: 'stretch', gap: HOME_GAP }}>
                   {(userRole === 'admin' || userRole === 'manager') && (
@@ -2705,13 +2596,21 @@ export default function DashboardScreen() {
                 needs={visibleNeeds}
                 onAction={handleCardPress}
                 onDismiss={dismissNeed}
-                onRestore={restoreNeeds}
               />
             </View>
           ) : null}
 
           <View style={{ gap: HOME_GAP, paddingTop: HOME_GAP }}>
             <View style={{ paddingHorizontal: 20, gap: HOME_GAP }}>
+              {userRole === 'admin' || userRole === 'manager' ? (
+                <StorefrontCard
+                  enabled={storefrontEnabled}
+                  storefrontSlug={storefrontSlug}
+                  businessName={businessName || companyName}
+                  onSetUp={handleSetUpStorefront}
+                />
+              ) : null}
+
               <KpiStrip items={kpiItems} loading={shouldShowDashboardMetricsSkeleton} />
 
               {(userRole === 'admin' || userRole === 'manager') ? renderRevenueTrend(170) : null}
@@ -2738,15 +2637,6 @@ export default function DashboardScreen() {
               />
 
               <JumpToTiles items={jumpToItems} onPress={handleCardPress} />
-
-              {userRole === 'admin' || userRole === 'manager' ? (
-                <StorefrontCard
-                  enabled={storefrontEnabled}
-                  storefrontSlug={storefrontSlug}
-                  businessName={businessName || companyName}
-                  onConnectWebsite={() => router.push('/woocommerce/connect' as any)}
-                />
-              ) : null}
 
               {renderRecentOrders(5, (id) => `/order/${id}`)}
 

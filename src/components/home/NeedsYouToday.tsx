@@ -28,8 +28,7 @@ const getDayKey = () => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 };
 
-// "Handled" ticks last for the day: a cleared item stays cleared until tomorrow,
-// or until the person taps "Bring them back".
+// "Handled" ticks last for the day: a cleared item stays cleared until tomorrow.
 export function useDismissedNeeds(businessId: string | null) {
   const [dismissed, setDismissed] = useState<string[]>([]);
   const storageKey = businessId ? `home-needs-dismissed:${businessId}:${getDayKey()}` : null;
@@ -80,47 +79,25 @@ function NeedIcon({ need, size, palette }: { need: HomeNeed; size: number; palet
   );
 }
 
-function AllCaught({ palette, onRestore, compact }: { palette: PaymentsPalette; onRestore: () => void; compact?: boolean }) {
-  return (
-    <View style={{ alignItems: 'center', gap: 8, paddingVertical: compact ? 22 : 40 }}>
-      <View style={{ width: compact ? 48 : 56, height: compact ? 48 : 56, borderRadius: 28, backgroundColor: palette.tones.verified.bg, alignItems: 'center', justifyContent: 'center' }}>
-        <Check size={compact ? 22 : 26} color={palette.tones.verified.ink} strokeWidth={2.6} />
-      </View>
-      <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>You're all caught up</Text>
-      <Text style={{ color: palette.faint, fontSize: 12, lineHeight: 17, textAlign: 'center', maxWidth: 240 }}>Nothing needs you right now. New items appear here as they come up.</Text>
-      <Pressable
-        onPress={onRestore}
-        className="active:opacity-80"
-        style={{ height: 34, paddingHorizontal: 16, borderRadius: 999, borderWidth: 1, borderColor: palette.outline, alignItems: 'center', justifyContent: 'center', marginTop: 4 }}
-      >
-        <Text style={[HOME_BUTTON_TEXT_STYLE, { color: palette.text }]}>Bring them back</Text>
-      </Pressable>
-    </View>
-  );
-}
-
 type NeedsProps = {
   needs: HomeNeed[];
   onAction: (route: string) => void;
   onDismiss: (id: string) => void;
-  onRestore: () => void;
 };
 
 // Desktop: the full list as a card, most urgent first.
-export function NeedsYouCard({ needs, onAction, onDismiss, onRestore }: NeedsProps) {
+export function NeedsYouCard({ needs, onAction, onDismiss }: NeedsProps) {
   const palette = usePaymentsPalette();
+  // Once everything is marked as handled the card closes. Items return by themselves the next day.
+  if (needs.length === 0) return null;
   return (
     <HomeCard flush>
       <HomeCardHeader
         flushPadding
-        title={`Needs you today${needs.length ? ` \u00b7 ${needs.length}` : ''}`}
+        title={`Needs you today \u00b7 ${needs.length}`}
         subtitle="Most urgent first"
       />
-      {needs.length === 0 ? (
-        <View style={{ borderTopWidth: 1, borderTopColor: palette.hairline }}>
-          <AllCaught palette={palette} onRestore={onRestore} />
-        </View>
-      ) : needs.map((need) => (
+      {needs.map((need) => (
         <HomeRow key={need.id} first={false} padded style={{ gap: 14, paddingVertical: 14 }}>
           <NeedIcon need={need} size={38} palette={palette} />
           <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
@@ -150,7 +127,7 @@ export function NeedsYouCard({ needs, onAction, onDismiss, onRestore }: NeedsPro
 
 // Mobile: swipeable compact cards so the list never takes over the screen.
 // "See all" opens every item in a sheet.
-export function NeedsYouCarousel({ needs, onAction, onDismiss, onRestore }: NeedsProps) {
+export function NeedsYouCarousel({ needs, onAction, onDismiss }: NeedsProps) {
   const palette = usePaymentsPalette();
   const { width } = useWindowDimensions();
   const [showAll, setShowAll] = useState<boolean>(false);
@@ -164,7 +141,12 @@ export function NeedsYouCarousel({ needs, onAction, onDismiss, onRestore }: Need
 
   useEffect(() => {
     setPage((current) => Math.min(current, Math.max(0, needs.length - 1)));
+    // The "see all" sheet must not reopen by itself when items come back later.
+    if (needs.length === 0) setShowAll(false);
   }, [needs.length]);
+
+  // Once everything is marked as handled the carousel closes. Items return by themselves the next day.
+  if (needs.length === 0) return null;
 
   const header = (
     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, marginBottom: 12 }}>
@@ -183,12 +165,7 @@ export function NeedsYouCarousel({ needs, onAction, onDismiss, onRestore }: Need
   return (
     <View>
       {header}
-      {needs.length === 0 ? (
-        <View style={{ marginHorizontal: 20, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, borderRadius: 18 }}>
-          <AllCaught palette={palette} onRestore={onRestore} compact />
-        </View>
-      ) : (
-        <>
+      <>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -238,8 +215,7 @@ export function NeedsYouCarousel({ needs, onAction, onDismiss, onRestore }: Need
               ))}
             </View>
           ) : null}
-        </>
-      )}
+      </>
 
       <Modal visible={showAll} animationType="slide" transparent onRequestClose={() => setShowAll(false)}>
         <Pressable onPress={() => setShowAll(false)} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}>
@@ -258,9 +234,7 @@ export function NeedsYouCarousel({ needs, onAction, onDismiss, onRestore }: Need
               </Pressable>
             </View>
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 8 }}>
-              {needs.length === 0 ? (
-                <AllCaught palette={palette} onRestore={() => { onRestore(); setShowAll(false); }} compact />
-              ) : needs.map((need) => (
+              {needs.map((need) => (
                 <View key={need.id} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingVertical: 14, borderTopWidth: 1, borderTopColor: palette.hairline }}>
                   <NeedIcon need={need} size={38} palette={palette} />
                   <View style={{ flex: 1, minWidth: 0, gap: 8 }}>

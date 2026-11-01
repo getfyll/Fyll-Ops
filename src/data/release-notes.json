@@ -1,6 +1,36 @@
 {
   "releases": [
     {
+      "version": "2.8.0",
+      "date": "2026-11-01T20:00:00Z",
+      "features": [
+        {
+          "icon": "truck",
+          "title": "Pick up orders",
+          "body": "Choose Delivery or Pick up on a new order. Pick up skips the address and delivery fee, and can have its own fulfillment timeline in Settings."
+        },
+        {
+          "icon": "share",
+          "title": "Your store link on Home",
+          "body": "A compact store link card now sits at the top of Home, with Copy and Open store."
+        },
+        {
+          "icon": "home",
+          "title": "A calmer Home",
+          "body": "The setup checklist is compact and collapsible, tiles are plain, and Needs you today closes once everything is handled."
+        },
+        {
+          "icon": "sparkles",
+          "title": "Fresh Settings",
+          "body": "Settings pages, WhatsApp settings and switches now match the new Fyll look."
+        }
+      ],
+      "fixes": [
+        "The variants table on a product no longer overlaps on iPad and narrow windows.",
+        "The Team step in the setup checklist now opens your team page."
+      ]
+    },
+    {
       "version": "2.7.2",
       "date": "2026-11-01T18:00:00Z",
       "features": [],

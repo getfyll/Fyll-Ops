@@ -161,9 +161,7 @@ export function JumpToTiles({ items, onPress }: { items: JumpToItem[]; onPress: 
 
   return (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14 }}>
-      {tiles.map(({ key, label, route, Icon, value, caption, attention: needsAttention }, index) => {
-        // Light mode keeps every tile plain (like Insights); the lime highlight is for dark mode only.
-        const attention = needsAttention && palette.isDark;
+      {tiles.map(({ key, label, route, Icon, value, caption }, index) => {
         const spansMobileRow = isMobile && tiles.length % 2 === 1 && index === tiles.length - 1;
         return (
           <Pressable
@@ -178,8 +176,9 @@ export function JumpToTiles({ items, onPress }: { items: JumpToItem[]; onPress: 
               padding: isMobile ? 14 : 16,
               borderRadius: 18,
               borderWidth: 1,
-              borderColor: attention ? palette.nudgeBorder : isHovered(state) ? palette.outline : palette.border,
-              backgroundColor: attention ? palette.nudgeBg : isHovered(state) ? palette.cardHover : palette.card,
+              // Every tile is plain, like Insights: no lime background, whatever the count.
+              borderColor: isHovered(state) ? palette.outline : palette.border,
+              backgroundColor: isHovered(state) ? palette.cardHover : palette.card,
               justifyContent: 'space-between',
               opacity: state.pressed ? 0.85 : 1,
             })}

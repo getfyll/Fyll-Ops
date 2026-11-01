@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Banknote, ClipboardList, FileText, Info, Megaphone, Printer, RotateCcw, Truck } from 'lucide-react-native';
+import { useFonts, BricolageGrotesque_700Bold } from '@expo-google-fonts/bricolage-grotesque';
 import { FYLL_LIME, FYLL_LIME_INK, MoneyText, usePaymentsPalette } from '@/components/payments/payments-ui';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
 import { supabase } from '@/lib/supabase';
@@ -9,6 +10,7 @@ import useAuthStore from '@/lib/state/auth-store';
 import useFyllStore from '@/lib/state/fyll-store';
 import { getFyllPrintQueue } from '@/lib/fyll-print-queue';
 import { normalizeMerchantFeatureSwitches, type BusinessFeatureKey } from '@/lib/feature-access';
+import { LimeToggle } from '@/components/settings/LimeToggle';
 
 export type FeatureRowKey = 'delivery' | 'returns' | 'fyllPrint' | 'tasks' | 'cases' | 'finance' | 'announcements';
 
@@ -34,6 +36,7 @@ export function FeaturesSettings({ onConfigure }: { onConfigure: (feature: Featu
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
   const isAdmin = useAuthStore((s) => s.currentUser?.role === 'admin');
   const { platformFeatureAccess, enabledFeatures } = useBusinessSettings();
+  useFonts({ BricolageGrotesque_700Bold });
 
   const cases = useFyllStore((s) => s.cases);
   const returns = useFyllStore((s) => s.returns);
@@ -117,14 +120,11 @@ export function FeaturesSettings({ onConfigure }: { onConfigure: (feature: Featu
   };
 
   return (
-    <View style={{ gap: 18 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16 }}>
-        <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
-          <MoneyText style={{ color: palette.text, fontSize: 26, letterSpacing: -0.8 }}>Features</MoneyText>
-          <Text style={{ color: palette.faint, fontSize: 14, lineHeight: 20 }}>Turn tools on or off for your team, and see how each one is set up.</Text>
-        </View>
-        <View style={{ height: 28, paddingHorizontal: 12, borderRadius: 999, backgroundColor: palette.nudgeBg, justifyContent: 'center' }}>
-          <Text style={{ color: palette.limeOnSurface, fontSize: 12, fontWeight: '600' }}>{onCount} of {rows.length} on</Text>
+    <View style={{ gap: wide ? 18 : 16 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingHorizontal: wide ? 0 : 2 }}>
+        <Text style={{ flex: 1, color: palette.faint, fontSize: wide ? 14 : 12.5, lineHeight: wide ? 20 : 18 }}>Turn tools on or off for your team, and see how each one is set up.</Text>
+        <View style={{ height: 28, paddingHorizontal: 11, borderRadius: 999, backgroundColor: palette.nudgeBg, justifyContent: 'center', flexShrink: 0 }}>
+          <Text style={{ color: palette.limeOnSurface, fontSize: 11, fontWeight: '700' }}>{onCount} of {rows.length} on</Text>
         </View>
       </View>
 
@@ -140,55 +140,46 @@ export function FeaturesSettings({ onConfigure }: { onConfigure: (feature: Featu
         </View>
       ) : null}
 
-      <View style={{ borderRadius: 22, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, paddingHorizontal: 22 }}>
+      <View style={{ borderRadius: 26, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, paddingHorizontal: wide ? 22 : 16, overflow: 'hidden' }}>
         {rows.map((row, index) => {
           const Icon = row.Icon;
           const canFlip = isAdmin && row.platformOn;
           return (
             <View
               key={row.key}
-              style={{ flexDirection: 'row', alignItems: 'center', flexWrap: wide ? 'nowrap' : 'wrap', gap: 16, paddingVertical: 16, borderTopWidth: index === 0 ? 0 : 1, borderTopColor: palette.hairline, opacity: row.platformOn ? (row.on ? 1 : 0.75) : 0.55 }}
+              style={{ paddingVertical: wide ? 16 : 18, borderTopWidth: index === 0 ? 0 : 1, borderTopColor: palette.hairline, opacity: row.platformOn ? (row.on ? 1 : 0.75) : 0.55 }}
             >
-              <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: palette.softFill, alignItems: 'center', justifyContent: 'center' }}>
-                <Icon size={19} color={palette.textSoft} strokeWidth={1.9} />
+              <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: wide ? 16 : 12 }}>
+                <View style={{ width: wide ? 40 : 44, height: wide ? 40 : 44, borderRadius: wide ? 12 : 14, backgroundColor: palette.softFill, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Icon size={wide ? 19 : 20} color={palette.textSoft} strokeWidth={1.9} />
+                </View>
+                <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+                  <Text style={{ color: palette.text, fontSize: wide ? 15 : 14, fontWeight: '600' }}>{row.name}</Text>
+                  <Text style={{ color: palette.faint, fontSize: wide ? 13 : 12, lineHeight: wide ? 17 : 16 }}>{row.what}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: wide ? 7 : 10 }}>
+                    <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: row.on ? palette.tones.verified.dot : palette.outline, flexShrink: 0 }} />
+                    <Text style={{ color: row.on ? palette.textSoft : palette.faint, fontSize: wide ? 13 : 12, lineHeight: 17, flex: 1 }} numberOfLines={2}>{row.status}</Text>
+                  </View>
+                </View>
+                <View style={{ width: wide ? 112 : 104, alignItems: 'flex-end', gap: 12, flexShrink: 0 }}>
+                  {savingKey === row.key ? (
+                    <View style={{ width: 50, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: row.on ? FYLL_LIME : palette.softFill }}><ActivityIndicator size="small" color={row.on ? FYLL_LIME_INK : palette.text} /></View>
+                  ) : (
+                    <LimeToggle compact value={row.on} onValueChange={() => flip(row)} disabled={!canFlip || savingKey !== null} accessibilityLabel={`${row.name} ${row.on ? 'on' : 'off'}`} activeColor={FYLL_LIME} inactiveColor={palette.softFill} inactiveBorderColor={palette.outline} />
+                  )}
+                  <Pressable onPress={() => onConfigure(row.key)} disabled={!row.on} style={({ pressed }) => ({ width: '100%', height: 38, borderRadius: 999, borderWidth: 1, borderColor: palette.outline, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? palette.softFill : 'transparent', opacity: row.on ? 1 : 0.4 })}>
+                    <Text style={{ color: palette.text, fontFamily: 'BricolageGrotesque_700Bold', fontSize: wide ? 13 : 12, fontWeight: '400' }}>Configure</Text>
+                  </Pressable>
+                </View>
               </View>
-              <View style={{ flex: 1, minWidth: 160, gap: 3 }}>
-                <Text style={{ color: palette.text, fontSize: 15, fontWeight: '600' }}>{row.name}</Text>
-                <Text style={{ color: palette.faint, fontSize: 13 }}>{row.what}</Text>
-              </View>
-              <View style={{ width: wide ? 230 : undefined, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: row.on ? palette.tones.verified.dot : palette.outline }} />
-                <Text style={{ color: row.on ? palette.textSoft : palette.faint, fontSize: 13, flexShrink: 1 }} numberOfLines={2}>{row.status}</Text>
-              </View>
-              <Pressable
-                accessibilityRole="switch"
-                accessibilityState={{ checked: row.on, disabled: !canFlip }}
-                accessibilityLabel={`${row.name} ${row.on ? 'on' : 'off'}`}
-                onPress={() => flip(row)}
-                disabled={!canFlip || savingKey !== null}
-                style={{ width: 44, height: 26, borderRadius: 13, padding: 3, justifyContent: 'center', alignItems: row.on ? 'flex-end' : 'flex-start', backgroundColor: row.on ? FYLL_LIME : palette.outline, opacity: canFlip ? 1 : 0.6 }}
-              >
-                {savingKey === row.key ? (
-                  <ActivityIndicator size="small" color={row.on ? FYLL_LIME_INK : palette.text} style={{ alignSelf: 'center' }} />
-                ) : (
-                  <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: row.on ? FYLL_LIME_INK : palette.textSoft }} />
-                )}
-              </Pressable>
-              <Pressable
-                onPress={() => onConfigure(row.key)}
-                disabled={!row.on}
-                style={{ height: 36, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: palette.outline, alignItems: 'center', justifyContent: 'center', opacity: row.on ? 1 : 0.4 }}
-              >
-                <Text style={{ color: palette.text, fontSize: 13, fontWeight: '600' }}>Configure</Text>
-              </Pressable>
             </View>
           );
         })}
       </View>
 
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 16, paddingHorizontal: 20, borderRadius: 18, borderWidth: 1, borderStyle: 'dashed', borderColor: palette.outline }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 16, paddingHorizontal: wide ? 20 : 16, borderRadius: 22, borderWidth: 1, borderStyle: 'dashed', borderColor: palette.outline, backgroundColor: palette.softFill }}>
         <Info size={18} color={palette.limeOnSurface} strokeWidth={2} />
-        <Text style={{ flex: 1, color: palette.textSoft, fontSize: 13.5, lineHeight: 20 }}>
+        <Text style={{ flex: 1, color: palette.textSoft, fontSize: wide ? 13.5 : 12, lineHeight: wide ? 20 : 18 }}>
           Customers now has its own place in the main menu. Importing contacts lives in Data → Import & export.
         </Text>
       </View>

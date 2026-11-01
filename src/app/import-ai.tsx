@@ -8,7 +8,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
-import { useThemeColors } from '@/lib/theme';
+import { useResolvedThemeMode, useThemeColors } from '@/lib/theme';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import useAuthStore from '@/lib/state/auth-store';
 import useFyllStore, {
@@ -36,6 +36,8 @@ import {
 } from '@/lib/ai-import-assistant';
 import { getSettingsWebPanelStyles, isFromSettingsRoute } from '@/lib/settings-web-panel';
 import { useSettingsBack } from '@/lib/useSettingsBack';
+import { FYLL_LIME, FYLL_LIME_INK, MoneyText, usePaymentsPalette } from '@/components/payments/payments-ui';
+import { useTabBarHeight } from '@/lib/useTabBarHeight';
 
 type ParseStats = {
   totalRows: number;
@@ -125,7 +127,7 @@ const IMPORT_RECOMMENDED_STEP: Partial<Record<ImportEntityType, number>> = {
   expenses: 4,
 };
 
-const AI_GRADIENT_COLORS = ['#4C1D95', '#7C3AED', '#A855F7'] as const;
+const AI_GRADIENT_COLORS = [FYLL_LIME, '#B8C52C', '#879400'] as const;
 
 const normalizeLookupValue = (value: string) => value.trim().toLowerCase();
 
@@ -201,9 +203,12 @@ export default function ImportAiScreen() {
   const { from } = useLocalSearchParams<{ from?: string | string[] }>();
   const goBack = useSettingsBack();
   const colors = useThemeColors();
+  const palette = usePaymentsPalette();
+  const resolvedThemeMode = useResolvedThemeMode();
+  const tabBarHeight = useTabBarHeight();
   const openedFromSettings = isFromSettingsRoute(from);
   const panelStyles = getSettingsWebPanelStyles(openedFromSettings, colors.bg.primary, colors.border.light);
-  const { isDesktop } = useBreakpoint();
+  const { isDesktop, isMobile } = useBreakpoint();
   const useImportTypeGrid = Platform.OS === 'web' && isDesktop;
 
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
@@ -972,42 +977,36 @@ export default function ImportAiScreen() {
   return (
     <View style={panelStyles.outer}>
       <View style={panelStyles.inner}>
-        <SafeAreaView className="flex-1" style={{ backgroundColor: colors.bg.primary }} edges={['top']}>
-          <View className="flex-row items-center px-5 py-4 border-b" style={{ borderBottomColor: colors.border.light }}>
+        <SafeAreaView className="flex-1" style={{ backgroundColor: palette.page }} edges={['top']}>
+          <LinearGradient pointerEvents="none" colors={resolvedThemeMode === 'dark' ? ['rgba(111,125,18,0.55)', 'rgba(20,20,20,0)'] : ['rgba(213,224,87,0.42)', 'rgba(244,243,235,0)']} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 360 }} />
+          <View className="flex-row items-center" style={{ minHeight: isMobile ? 66 : 58, paddingHorizontal: 10, paddingTop: isMobile ? 12 : 4, paddingBottom: 4 }}>
             <Pressable
               onPress={goBack}
-              className="w-10 h-10 rounded-xl items-center justify-center mr-3 active:opacity-50"
-              style={{ backgroundColor: 'transparent' }}
+              className="w-10 h-10 rounded-full items-center justify-center mr-3 active:opacity-50"
+              style={{ backgroundColor: palette.softFill }}
             >
-              <ArrowLeft size={24} color={colors.text.primary} strokeWidth={2} />
+              <ArrowLeft size={20} color={palette.text} strokeWidth={2} />
             </Pressable>
             <View style={{ flex: 1 }}>
-              <Text
-                style={{
-                  color: colors.text.primary,
-                  fontSize: Platform.OS === 'web' ? 14 : 20,
-                  lineHeight: Platform.OS === 'web' ? 18 : 24,
-                  fontWeight: '600',
-                }}
-              >
-                AI Import Assistant
-              </Text>
-              <Text style={{ color: colors.text.tertiary }} className="text-sm mt-0.5">Choose what to import, then upload one CSV file.</Text>
+              <Text style={{ color: palette.faint, fontSize: 9.5, lineHeight: 12, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Settings</Text>
+              <Text style={{ color: palette.text, fontSize: 17, lineHeight: 21, fontWeight: '600' }}>AI Import Assistant</Text>
             </View>
           </View>
 
-          <ScrollView className="flex-1 px-5 py-5" showsVerticalScrollIndicator={false}>
-            <View className="rounded-2xl p-4 overflow-hidden" style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}>
-              <LinearGradient
-                colors={['rgba(124,58,237,0.18)', 'rgba(59,130,246,0.06)', 'rgba(217,70,239,0.16)']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={StyleSheet.absoluteFillObject}
-              />
+          <ScrollView className="flex-1" contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 18, paddingBottom: isDesktop ? 64 : tabBarHeight + 40 }} showsVerticalScrollIndicator={false}>
+            <View style={{ width: '100%', maxWidth: 760, alignSelf: 'center' }}>
+            <View style={{ position: 'relative', overflow: 'hidden', minHeight: 156, marginBottom: 20, padding: 20, justifyContent: 'center', borderRadius: 28, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, shadowColor: '#000', shadowOpacity: resolvedThemeMode === 'dark' ? 0.24 : 0.07, shadowRadius: 24, shadowOffset: { width: 0, height: 10 } }}>
+              <LinearGradient pointerEvents="none" colors={[palette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -44, right: -36, width: 210, height: 210, borderRadius: 105 }} />
+              <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 15 }}><LinearGradient colors={[FYLL_LIME, '#879400']} style={{ width: 66, height: 66, borderRadius: 22, alignItems: 'center', justifyContent: 'center' }}><Sparkles size={28} color={FYLL_LIME_INK} strokeWidth={2.1} /></LinearGradient><View style={{ flex: 1 }}><Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Smart data setup</Text><MoneyText style={{ color: palette.text, fontSize: 26, lineHeight: 31 }}>Import with AI</MoneyText><Text style={{ color: palette.faint, fontSize: 12.5, marginTop: 3 }}>Map and validate CSV files automatically</Text></View></View>
+            </View>
+
+            <Text style={{ color: palette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Choose import type</Text>
+            <View className="rounded-3xl p-4 overflow-hidden" style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}>
               <View className="flex-row items-center justify-between mb-3">
-                <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">Choose Import Type</Text>
-                <View className="rounded-full px-2.5 py-1" style={{ borderWidth: 1, borderColor: 'rgba(168,85,247,0.45)', backgroundColor: 'rgba(76,29,149,0.35)' }}>
-                  <Text style={{ color: '#DDD6FE' }} className="text-[10px] font-semibold">AI Powered</Text>
+                <Text style={{ color: palette.text }} className="text-sm font-semibold">What are you importing?</Text>
+                <View className="rounded-full px-2.5 py-1" style={{ borderWidth: 1, borderColor: palette.nudgeBorder, backgroundColor: palette.nudgeBg }}>
+                  <Text style={{ color: palette.limeOnSurface }} className="text-[10px] font-semibold">AI powered</Text>
                 </View>
               </View>
               <Text style={{ color: colors.text.tertiary }} className="text-xs mb-3">
@@ -1026,10 +1025,8 @@ export default function ImportAiScreen() {
                       className={`rounded-xl ${useImportTypeGrid ? 'p-3' : 'p-3.5 flex-row items-center'}`}
                       style={{
                         borderWidth: 1,
-                        borderColor: active ? '#8B5CF6' : colors.border.light,
-                        backgroundColor: active
-                          ? (isAiOption ? 'rgba(124,58,237,0.22)' : colors.bg.card)
-                          : (isAiOption ? 'rgba(76,29,149,0.12)' : colors.bg.primary),
+                        borderColor: active ? FYLL_LIME : palette.border,
+                        backgroundColor: active ? palette.nudgeBg : palette.inset,
                         ...(useImportTypeGrid
                           ? {
                               flexBasis: '24%',
@@ -1042,8 +1039,8 @@ export default function ImportAiScreen() {
                       {useImportTypeGrid ? (
                         <>
                           <View className="flex-row items-center justify-between">
-                            <View className="w-8 h-8 rounded-lg items-center justify-center" style={{ backgroundColor: isAiOption ? 'rgba(76,29,149,0.35)' : colors.bg.secondary }}>
-                              <Icon size={16} color={active ? '#DDD6FE' : colors.text.tertiary} strokeWidth={2} />
+                            <View className="w-8 h-8 rounded-lg items-center justify-center" style={{ backgroundColor: palette.nudgeBg }}>
+                              <Icon size={16} color={active ? palette.limeOnSurface : palette.faint} strokeWidth={2} />
                             </View>
                             <View className="flex-row items-center" style={{ gap: 8 }}>
                               {recommendedStep ? (
@@ -1067,8 +1064,8 @@ export default function ImportAiScreen() {
                         </>
                       ) : (
                         <>
-                          <View className="w-8 h-8 rounded-lg items-center justify-center" style={{ backgroundColor: isAiOption ? 'rgba(76,29,149,0.35)' : colors.bg.secondary }}>
-                            <Icon size={16} color={active ? '#DDD6FE' : colors.text.tertiary} strokeWidth={2} />
+                          <View className="w-8 h-8 rounded-lg items-center justify-center" style={{ backgroundColor: palette.nudgeBg }}>
+                            <Icon size={16} color={active ? palette.limeOnSurface : palette.faint} strokeWidth={2} />
                           </View>
                           <View className="ml-3" style={{ flex: 1 }}>
                             <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">{option.title}</Text>
@@ -1096,13 +1093,7 @@ export default function ImportAiScreen() {
               </View>
             </View>
 
-            <View className="mt-4 rounded-2xl p-5 overflow-hidden" style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light, borderStyle: 'dashed' }}>
-              <LinearGradient
-                colors={['rgba(124,58,237,0.18)', 'rgba(2,6,23,0)', 'rgba(168,85,247,0.12)']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={StyleSheet.absoluteFillObject}
-              />
+            <View className="mt-4 rounded-3xl p-5 overflow-hidden" style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.nudgeBorder, borderStyle: 'dashed' }}>
               <Text style={{ color: colors.text.primary }} className="text-sm font-semibold mb-2">Upload CSV File</Text>
               <Text style={{ color: colors.text.tertiary }} className="text-xs mb-3">
                 V1 accepts CSV files. AI maps columns, then you approve import.
@@ -1114,8 +1105,8 @@ export default function ImportAiScreen() {
                 style={{
                   height: 48,
                   borderWidth: 1,
-                  borderColor: '#8B5CF6',
-                  backgroundColor: isAnalyzing || isImporting ? 'rgba(76,29,149,0.22)' : 'transparent',
+                  borderColor: FYLL_LIME,
+                  backgroundColor: isAnalyzing || isImporting ? palette.nudgeBg : 'transparent',
                   opacity: isImporting ? 0.6 : 1,
                   overflow: 'hidden',
                 }}
@@ -1130,23 +1121,23 @@ export default function ImportAiScreen() {
                 ) : null}
                 {isAnalyzing ? (
                   <View className="flex-row items-center">
-                    <ActivityIndicator size="small" color="#DDD6FE" />
-                    <Text style={{ color: '#DDD6FE' }} className="font-semibold ml-2">AI Analyzing CSV...</Text>
+                    <ActivityIndicator size="small" color={palette.limeOnSurface} />
+                    <Text style={{ color: palette.limeOnSurface, fontSize: 14 }} className="font-semibold ml-2">AI Analyzing CSV...</Text>
                   </View>
                 ) : (
                   <View className="flex-row items-center">
-                    <Upload size={16} color="#F8FAFC" strokeWidth={2} />
-                    <Text style={{ color: '#F8FAFC' }} className="font-semibold ml-2">Choose and Analyze CSV</Text>
+                    <Upload size={16} color={FYLL_LIME_INK} strokeWidth={2} />
+                    <Text style={{ color: FYLL_LIME_INK, fontSize: 14 }} className="font-semibold ml-2">Choose and Analyze CSV</Text>
                   </View>
                 )}
               </Pressable>
               {isAnalyzing ? (
                 <View
                   className="mt-3 rounded-xl px-3 py-3 overflow-hidden"
-                  style={{ borderWidth: 1, borderColor: 'rgba(168,85,247,0.55)', backgroundColor: 'rgba(76,29,149,0.3)' }}
+                  style={{ borderWidth: 1, borderColor: palette.nudgeBorder, backgroundColor: palette.nudgeBg }}
                 >
                   <LinearGradient
-                    colors={['rgba(124,58,237,0.24)', 'rgba(59,130,246,0.14)', 'rgba(217,70,239,0.22)']}
+                    colors={[palette.nudgeBg, 'transparent']}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
                     style={StyleSheet.absoluteFillObject}
@@ -1168,7 +1159,7 @@ export default function ImportAiScreen() {
                         AI is reading headers and mapping your fields...
                       </Text>
                     </View>
-                    <Sparkles size={14} color="#DDD6FE" strokeWidth={2} />
+                    <Sparkles size={14} color={palette.limeOnSurface} strokeWidth={2} />
                   </View>
                   <View
                     className="mt-2"
@@ -1206,12 +1197,12 @@ export default function ImportAiScreen() {
                 style={{
                   backgroundColor: colors.bg.card,
                   borderWidth: 1,
-                  borderColor: mappingSuggestion.usedAI ? '#8B5CF6' : colors.border.light,
+                  borderColor: mappingSuggestion.usedAI ? palette.nudgeBorder : palette.border,
                 }}
               >
                 {mappingSuggestion.usedAI ? (
                   <LinearGradient
-                    colors={['rgba(124,58,237,0.22)', 'rgba(59,130,246,0.08)', 'rgba(217,70,239,0.16)']}
+                    colors={[palette.nudgeBg, 'transparent']}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
                     style={StyleSheet.absoluteFillObject}
@@ -1226,7 +1217,7 @@ export default function ImportAiScreen() {
                       Confidence: {mappingSuggestion.confidence.toUpperCase()} • {mappingSuggestion.usedAI ? 'AI mapping' : 'Smart header mapping'}
                     </Text>
                   </View>
-                  <Sparkles size={16} color={mappingSuggestion.usedAI ? '#C4B5FD' : colors.text.tertiary} strokeWidth={2} />
+                  <Sparkles size={16} color={mappingSuggestion.usedAI ? palette.limeOnSurface : colors.text.tertiary} strokeWidth={2} />
                 </View>
                 <Text style={{ color: colors.text.secondary }} className="text-xs mt-2">{mappingSuggestion.note}</Text>
 
@@ -1319,7 +1310,7 @@ export default function ImportAiScreen() {
                   height: 50,
                   backgroundColor: !canImport || isImporting ? colors.bg.secondary : 'transparent',
                   borderWidth: 1,
-                  borderColor: !canImport || isImporting ? colors.border.light : '#8B5CF6',
+                  borderColor: !canImport || isImporting ? palette.border : FYLL_LIME,
                   opacity: !businessId ? 0.6 : 1,
                   overflow: 'hidden',
                 }}
@@ -1335,7 +1326,7 @@ export default function ImportAiScreen() {
                 {isImporting ? (
                   <ActivityIndicator size="small" color={colors.text.primary} />
                 ) : (
-                  <Text style={{ color: canImport ? '#F8FAFC' : colors.text.primary }} className="font-semibold">
+                  <Text style={{ color: canImport ? FYLL_LIME_INK : colors.text.primary, fontSize: 14 }} className="font-semibold">
                     {canImport
                       ? `Import ${resolvedType ? resolvedType.charAt(0).toUpperCase() + resolvedType.slice(1) : ''}`
                       : 'Fix rows to enable import'}
@@ -1362,6 +1353,7 @@ export default function ImportAiScreen() {
                 </Text>
               </View>
             ) : null}
+            </View>
           </ScrollView>
         </SafeAreaView>
       </View>

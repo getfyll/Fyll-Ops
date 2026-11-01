@@ -3,7 +3,9 @@ import { View, Text, ScrollView, Pressable, TextInput, Modal, Share, Alert, Acti
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Trash2, Edit2, User as UserIcon, Shield, X, Mail, Clock, Copy, Send, UserCog } from 'lucide-react-native';
-import { useThemeColors } from '@/lib/theme';
+import { useResolvedThemeMode, useThemeColors } from '@/lib/theme';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useFonts, BricolageGrotesque_700Bold, BricolageGrotesque_800ExtraBold } from '@expo-google-fonts/bricolage-grotesque';
 import useAuthStore, { TeamMember, TeamRole, PendingInvite } from '@/lib/state/auth-store';
 import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
@@ -43,13 +45,27 @@ export default function TeamManagementScreen() {
   const { from } = useLocalSearchParams<{ from?: string | string[] }>();
   const goBack = useSettingsBack();
   const colors = useThemeColors();
-  const { isDesktop } = useBreakpoint();
+  const resolvedThemeMode = useResolvedThemeMode();
+  const isDark = resolvedThemeMode === 'dark';
+  const palette = isDark
+    ? {
+        ground: '#141414', surface: '#1E1E1E', ink: '#F4F4EF', muted: '#B9BAB0', faint: '#8C8D84', lime: '#D5E057', limeInk: '#D5E057', limeDeep: '#7D8A00',
+        edge: 'rgba(255,255,255,0.09)', edgeStrong: 'rgba(255,255,255,0.14)', input: 'rgba(255,255,255,0.055)', topGlow: 'rgba(111,125,18,0.55)', topGlowEnd: 'rgba(20,20,20,0)', navButton: 'rgba(255,255,255,0.08)', limeWash: 'rgba(213,224,87,0.14)', limeBorder: 'rgba(213,224,87,0.25)', dangerWash: 'rgba(239,68,68,0.12)',
+      }
+    : {
+        ground: '#F4F3EB', surface: '#FFFFFF', ink: '#202117', muted: '#5E6056', faint: '#85877C', lime: '#D5E057', limeInk: '#667000', limeDeep: '#879400',
+        edge: 'rgba(35,38,25,0.09)', edgeStrong: 'rgba(35,38,25,0.15)', input: '#F7F7F1', topGlow: 'rgba(213,224,87,0.42)', topGlowEnd: 'rgba(244,243,235,0)', navButton: 'rgba(32,33,23,0.07)', limeWash: 'rgba(135,148,0,0.13)', limeBorder: 'rgba(102,112,0,0.22)', dangerWash: 'rgba(239,68,68,0.08)',
+      };
+  const { isDesktop, isMobile } = useBreakpoint();
+  useFonts({ BricolageGrotesque_700Bold, BricolageGrotesque_800ExtraBold });
   const primaryPillButtonStyle = {
-    backgroundColor: colors.text.primary,
+    backgroundColor: palette.lime,
     borderRadius: 999,
   } as const;
   const primaryPillTextStyle = {
-    color: colors.bg.primary,
+    color: '#202117',
+    fontFamily: 'BricolageGrotesque_700Bold',
+    fontWeight: '400' as const,
   } as const;
 
   const currentUser = useAuthStore((s) => s.currentUser);
@@ -95,17 +111,17 @@ export default function TeamManagementScreen() {
   const isWebDesktop = Platform.OS === 'web' && isDesktop;
   const desktopContentWrapStyle = (
     isWebDesktop
-      ? ({ width: '100%', maxWidth: 1440, alignSelf: 'flex-start' } as const)
+      ? ({ width: '100%', maxWidth: 720, alignSelf: 'center' } as const)
       : undefined
   );
   const screenOuterStyle = {
-    backgroundColor: colors.bg.primary,
+    backgroundColor: palette.ground,
     paddingHorizontal: 0,
     paddingVertical: 0,
   } as const;
   const screenInnerStyle = {
     flex: 1,
-    backgroundColor: colors.bg.primary,
+    backgroundColor: palette.ground,
     ...(showWebSettingsPanel
       ? {
           width: '100%' as const,
@@ -336,24 +352,25 @@ export default function TeamManagementScreen() {
     return (
       <View className="flex-1" style={screenOuterStyle}>
         <View style={screenInnerStyle}>
-        <SafeAreaView className="flex-1" edges={['top']}>
+        <SafeAreaView className="flex-1" edges={['top']} style={{ backgroundColor: palette.ground }}>
+          <LinearGradient pointerEvents="none" colors={[palette.topGlow, palette.topGlowEnd]} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 300 }} />
           <View style={desktopContentWrapStyle}>
             <View
-              className={isWebDesktop ? 'pl-5 pr-7 pt-4 pb-3 flex-row items-center' : 'px-5 pt-4 pb-3 flex-row items-center'}
-              style={isWebDesktop ? { paddingTop: 10, paddingBottom: 10 } : undefined}
+              className="flex-row items-center"
+              style={{ minHeight: isMobile ? 66 : 58, paddingHorizontal: showWebSettingsPanel ? 20 : 10, paddingTop: isMobile ? 12 : 4, paddingBottom: 4 }}
             >
               <Pressable
                 onPress={goBack}
-                className="w-10 h-10 rounded-xl items-center justify-center mr-3 active:opacity-50"
-                style={{ backgroundColor: 'transparent' }}
+                className="w-10 h-10 items-center justify-center mr-3 active:opacity-50"
+                style={{ borderRadius: 20, backgroundColor: palette.navButton }}
               >
-                <ArrowLeft size={20} color={colors.text.primary} strokeWidth={2} />
+                <ArrowLeft size={18} color={palette.ink} strokeWidth={2.2} />
               </Pressable>
               <Text
                 style={{
-                  color: colors.text.primary,
-                  fontSize: Platform.OS === 'web' ? 14 : 20,
-                  lineHeight: Platform.OS === 'web' ? 18 : 24,
+                  color: palette.ink,
+                  fontSize: 17,
+                  lineHeight: 21,
                   fontWeight: '600',
                 }}
               >
@@ -362,11 +379,11 @@ export default function TeamManagementScreen() {
             </View>
           </View>
           <View className="flex-1 items-center justify-center px-6">
-            <Shield size={48} color={colors.text.tertiary} strokeWidth={1.5} />
-            <Text style={{ color: colors.text.primary }} className="text-lg font-semibold mt-4">
+            <View style={{ width: 68, height: 68, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.limeWash, borderWidth: 1, borderColor: palette.limeBorder }}><Shield size={29} color={palette.limeInk} strokeWidth={1.8} /></View>
+            <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold', fontSize: 22, fontWeight: '400' }} className="mt-4">
               Admin Access Required
             </Text>
-            <Text style={{ color: colors.text.tertiary }} className="text-center mt-2">
+            <Text style={{ color: palette.muted }} className="text-center mt-2">
               Only administrators can manage team members.
             </Text>
           </View>
@@ -379,47 +396,38 @@ export default function TeamManagementScreen() {
   return (
     <View className="flex-1" style={screenOuterStyle}>
       <View style={screenInnerStyle}>
-      <SafeAreaView className="flex-1" edges={['top']}>
+      <SafeAreaView className="flex-1" edges={['top']} style={{ backgroundColor: palette.ground }}>
+        <LinearGradient pointerEvents="none" colors={[palette.topGlow, palette.topGlowEnd]} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: showWebSettingsPanel ? 390 : 300 }} />
         {/* Header */}
-        <View style={{ borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
+        <View>
           <View style={desktopContentWrapStyle}>
             <View
-              className={isWebDesktop ? 'pl-5 pr-7 pt-4 pb-3 flex-row items-center justify-between' : 'px-5 pt-4 pb-3 flex-row items-center justify-between'}
-              style={isWebDesktop ? { paddingTop: 10, paddingBottom: 10 } : undefined}
+              className="flex-row items-center justify-between"
+              style={{ minHeight: isMobile ? 66 : showWebSettingsPanel ? 58 : 56, paddingHorizontal: showWebSettingsPanel ? 20 : 10, paddingTop: isMobile ? 12 : 4, paddingBottom: 4 }}
             >
               <View className="flex-row items-center">
                 <Pressable
                   onPress={goBack}
-                  className="w-10 h-10 rounded-xl items-center justify-center mr-3 active:opacity-50"
-                  style={{ backgroundColor: 'transparent' }}
+                  className="w-10 h-10 items-center justify-center mr-3 active:opacity-50"
+                  style={{ borderRadius: 20, backgroundColor: palette.navButton }}
                 >
-                  <ArrowLeft size={20} color={colors.text.primary} strokeWidth={2} />
+                  <ArrowLeft size={18} color={palette.ink} strokeWidth={2.2} />
                 </Pressable>
                 <View>
+                  <Text style={{ color: palette.faint, fontSize: 9.5, lineHeight: 12, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Settings</Text>
                   <Text
                     style={{
-                      color: colors.text.primary,
-                      fontSize: Platform.OS === 'web' ? 14 : 20,
-                      lineHeight: Platform.OS === 'web' ? 18 : 24,
+                      color: palette.ink,
+                      fontSize: 17,
+                      lineHeight: 21,
                       fontWeight: '600',
                     }}
                   >
-                    Team
+                    Team Settings
                   </Text>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs">{teamMembers.length} members</Text>
                 </View>
               </View>
-              <Pressable
-                onPress={() => {
-                  resetInviteForm();
-                  setShowInviteModal(true);
-                }}
-                className="flex-row items-center px-4 rounded-full active:opacity-80"
-                style={[primaryPillButtonStyle, { height: 42 }]}
-              >
-                <Mail size={16} color={colors.bg.primary} strokeWidth={2} />
-                <Text style={primaryPillTextStyle} className="font-semibold ml-2 text-sm">Invite</Text>
-              </Pressable>
+              <View style={{ height: 28, paddingHorizontal: 10, borderRadius: 14, flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: palette.limeWash, borderWidth: 1, borderColor: palette.limeBorder }}><UserCog size={13} color={palette.limeInk} strokeWidth={2.2} /><Text style={{ color: palette.limeInk, fontSize: 11, fontWeight: '700' }}>{teamMembers.length} members</Text></View>
             </View>
           </View>
         </View>
@@ -427,27 +435,41 @@ export default function TeamManagementScreen() {
         <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
           <View style={desktopContentWrapStyle}>
             <View className={isWebDesktop ? 'pl-5 pr-7 pt-4' : 'px-5 pt-4'}>
+              <View style={{ position: 'relative', overflow: 'hidden', minHeight: 184, marginBottom: 28, padding: 20, borderRadius: 28, borderWidth: 1, borderColor: palette.edge, backgroundColor: palette.surface, shadowColor: '#000000', shadowOpacity: isDark ? 0.24 : 0.07, shadowRadius: 24, shadowOffset: { width: 0, height: 10 } }}>
+                <LinearGradient pointerEvents="none" colors={[palette.limeWash, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -44, right: -36, width: 210, height: 210, borderRadius: 105 }} />
+                <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, borderBottomLeftRadius: 3, borderBottomRightRadius: 3, backgroundColor: palette.lime }} />
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 15 }}>
+                  <LinearGradient colors={[palette.lime, palette.limeDeep]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 66, height: 66, borderRadius: 22, alignItems: 'center', justifyContent: 'center' }}><UserCog size={28} color="#202117" strokeWidth={2.1} /></LinearGradient>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Workspace access</Text>
+                    <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_800ExtraBold', fontSize: 29, lineHeight: 34, letterSpacing: -0.8, marginTop: 2 }}>{teamMembers.length} {teamMembers.length === 1 ? 'member' : 'members'}</Text>
+                    <Text style={{ color: palette.faint, fontSize: 12.5, marginTop: 2 }}>{pendingInvitesFiltered.length > 0 ? `${pendingInvitesFiltered.length} invitation${pendingInvitesFiltered.length === 1 ? '' : 's'} pending` : 'Roles and access are up to date'}</Text>
+                  </View>
+                </View>
+                <Pressable onPress={() => { resetInviteForm(); setShowInviteModal(true); }} style={({ pressed }) => ({ height: 44, marginTop: 18, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, backgroundColor: palette.lime, opacity: pressed ? 0.78 : 1 })}><Mail size={16} color="#202117" strokeWidth={2.5} /><Text style={{ color: '#202117', fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: isMobile ? 14 : 15 }}>Invite team member</Text></Pressable>
+              </View>
+
               {/* Pending Invites Section */}
               {pendingInvitesFiltered.length > 0 && (
                 <View className="mb-6">
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase mb-3 tracking-wider">
+                  <Text style={{ color: palette.faint, marginLeft: 6, fontSize: 11, fontWeight: '700', letterSpacing: 1.4 }} className="uppercase mb-3">
                     Pending Invites ({pendingInvitesFiltered.length})
                   </Text>
                   {pendingInvitesFiltered.map((invite) => (
                     <View
                       key={invite.id}
-                      className="rounded-xl p-4 mb-3"
-                      style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+                      className="p-4 mb-3"
+                      style={{ borderRadius: 24, backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.edge }}
                     >
                       <View className="flex-row items-center">
                         <View
                           className="w-10 h-10 rounded-full items-center justify-center mr-3"
-                          style={{ backgroundColor: colors.bg.secondary }}
+                          style={{ backgroundColor: palette.limeWash }}
                         >
-                          <Mail size={18} color={colors.text.tertiary} strokeWidth={2} />
+                          <Mail size={18} color={palette.limeInk} strokeWidth={2} />
                         </View>
                         <View className="flex-1">
-                      <Text style={{ color: colors.text.primary }} className="font-medium text-sm">
+                      <Text style={{ color: palette.ink }} className="font-medium text-sm">
                         {invite.email}
                       </Text>
                       <View className="flex-row items-center mt-1">
@@ -475,26 +497,26 @@ export default function TeamManagementScreen() {
                     </View>
                   </View>
 
-                  <View className="flex-row items-center mt-3 pt-3" style={{ borderTopWidth: 1, borderTopColor: colors.border.light }}>
-                    <View className="flex-1 flex-row items-center mr-2 px-3 py-2 rounded-lg" style={{ backgroundColor: colors.bg.secondary }}>
-                      <Text style={{ color: colors.text.secondary }} className="text-xs font-mono flex-1">
+                  <View className="flex-row items-center mt-3 pt-3" style={{ borderTopWidth: 1, borderTopColor: palette.edge }}>
+                    <View className="flex-1 flex-row items-center mr-2 px-3 py-2 rounded-lg" style={{ backgroundColor: palette.input }}>
+                      <Text style={{ color: palette.muted }} className="text-xs font-mono flex-1">
                         {invite.inviteCode}
                       </Text>
                       <Pressable onPress={() => handleCopyInviteCode(invite.inviteCode)} className="active:opacity-50">
-                        <Copy size={14} color={colors.text.tertiary} strokeWidth={2} />
+                        <Copy size={14} color={palette.faint} strokeWidth={2} />
                       </Pressable>
                     </View>
                     <Pressable
                       onPress={() => handleShareInvite(invite)}
                       className="p-2 rounded-lg mr-1 active:opacity-50"
-                      style={{ backgroundColor: colors.bg.secondary }}
+                      style={{ backgroundColor: palette.input }}
                     >
-                      <Send size={16} color={colors.text.tertiary} strokeWidth={2} />
+                      <Send size={16} color={palette.faint} strokeWidth={2} />
                     </Pressable>
                     <Pressable
                       onPress={() => handleCancelInvite(invite)}
                       className="p-2 rounded-lg active:opacity-50"
-                      style={{ backgroundColor: colors.bg.secondary }}
+                      style={{ backgroundColor: palette.dangerWash }}
                     >
                       <Trash2 size={16} color="#EF4444" strokeWidth={2} />
                     </Pressable>
@@ -508,14 +530,14 @@ export default function TeamManagementScreen() {
               )}
 
               {/* Team Members Section */}
-              <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase mb-3 tracking-wider">
+              <Text style={{ color: palette.faint, marginLeft: 6, fontSize: 11, fontWeight: '700', letterSpacing: 1.4 }} className="uppercase mb-3">
                 Team Members ({teamMembers.length})
               </Text>
               {teamMembers.map((member) => (
                 <View
                   key={member.id}
-                  className="rounded-xl p-4 mb-3"
-                  style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+                  className="p-4 mb-3"
+                  style={{ borderRadius: 24, backgroundColor: palette.surface, borderWidth: 1, borderColor: member.id === currentUser?.id ? palette.limeBorder : palette.edge }}
                 >
                   <View className="flex-row items-center">
                     <View
@@ -528,16 +550,16 @@ export default function TeamManagementScreen() {
                     </View>
                     <View className="flex-1">
                       <View className="flex-row items-center">
-                        <Text style={{ color: colors.text.primary }} className="font-semibold text-base mr-2">
+                        <Text style={{ color: palette.ink, fontSize: isMobile ? 14 : 15.5, fontWeight: '600' }} className="mr-2">
                           {member.name}
                         </Text>
                         {member.id === currentUser?.id && (
-                          <View className="px-2 py-0.5 rounded-full" style={{ backgroundColor: colors.bg.secondary }}>
-                            <Text style={{ color: colors.text.tertiary }} className="text-xs">You</Text>
+                          <View className="px-2 py-0.5 rounded-full" style={{ backgroundColor: palette.limeWash }}>
+                            <Text style={{ color: palette.limeInk, fontSize: 10, fontWeight: '700' }}>You</Text>
                           </View>
                         )}
                       </View>
-                      <Text style={{ color: colors.text.tertiary }} className="text-sm">{member.email}</Text>
+                      <Text style={{ color: palette.faint, fontSize: isMobile ? 12 : 13.5, marginTop: 3 }}>{member.email}</Text>
                     </View>
                     <View
                       className="flex-row items-center px-2 py-1 rounded-full"
@@ -550,23 +572,23 @@ export default function TeamManagementScreen() {
                     </View>
                   </View>
 
-                  <View className="flex-row items-center justify-between mt-3 pt-3" style={{ borderTopWidth: 1, borderTopColor: colors.border.light }}>
-                    <Text style={{ color: colors.text.muted }} className="text-xs">
+                  <View className="flex-row items-center justify-between mt-3 pt-3" style={{ borderTopWidth: 1, borderTopColor: palette.edge }}>
+                    <Text style={{ color: palette.faint, fontSize: isMobile ? 10 : 13 }}>
                       Last login: {formatDate(member.lastLogin)}
                     </Text>
                     <View className="flex-row">
                       <Pressable
                         onPress={() => openEditModal(member)}
                         className="p-2 rounded-lg mr-1 active:opacity-50"
-                        style={{ backgroundColor: colors.bg.secondary }}
+                        style={{ backgroundColor: palette.input }}
                       >
-                        <Edit2 size={16} color={colors.text.tertiary} strokeWidth={2} />
+                        <Edit2 size={16} color={palette.faint} strokeWidth={2} />
                       </Pressable>
                       {member.id !== currentUser?.id && (
                         <Pressable
                           onPress={() => handleDelete(member)}
                           className="p-2 rounded-lg active:opacity-50"
-                          style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)' }}
+                          style={{ backgroundColor: palette.dangerWash }}
                         >
                           <Trash2 size={16} color="#EF4444" strokeWidth={2} />
                         </Pressable>
@@ -589,22 +611,22 @@ export default function TeamManagementScreen() {
         >
           <Pressable
             className="flex-1 items-center justify-center px-5"
-            style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
+            style={{ backgroundColor: 'rgba(0,0,0,0.72)' }}
             onPress={() => { setShowInviteModal(false); resetInviteForm(); }}
           >
             <Pressable onPress={() => {}}>
             <View
               className="rounded-3xl px-5 pt-6 pb-6"
               style={{
-                backgroundColor: colors.bg.primary,
+                backgroundColor: palette.surface,
                 width: '100%',
                 maxWidth: 520,
                 borderWidth: 1,
-                borderColor: colors.border.light,
+                borderColor: palette.edge,
               }}
             >
               <View className="flex-row items-center justify-between mb-6">
-                <Text style={{ color: colors.text.primary, fontSize: 14, lineHeight: 18, fontWeight: '600' }}>
+                <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold', fontSize: 22, lineHeight: 27, fontWeight: '400' }}>
                   {lastCreatedInvite ? 'Invite Created' : 'Invite Member'}
                 </Text>
                 <Pressable
@@ -613,7 +635,7 @@ export default function TeamManagementScreen() {
                     resetInviteForm();
                   }}
                   className="w-8 h-8 rounded-full items-center justify-center active:opacity-50"
-                  style={{ backgroundColor: colors.bg.secondary }}
+                  style={{ backgroundColor: palette.input }}
                 >
                   <X size={18} color={colors.text.tertiary} strokeWidth={2} />
                 </Pressable>
@@ -658,7 +680,7 @@ export default function TeamManagementScreen() {
                       className="flex-1 flex-row items-center justify-center rounded-full active:opacity-80"
                       style={[primaryPillButtonStyle, { height: 50 }]}
                     >
-                      <Send size={18} color={colors.bg.primary} strokeWidth={2} />
+                      <Send size={18} color="#202117" strokeWidth={2} />
                       <Text style={primaryPillTextStyle} className="font-semibold ml-2">Share</Text>
                     </Pressable>
                   </View>
@@ -671,7 +693,7 @@ export default function TeamManagementScreen() {
                     <Text style={{ color: colors.text.secondary }} className="text-sm font-medium mb-2">Email Address</Text>
                     <View
                       className="rounded-xl px-4 flex-row items-center"
-                      style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light, height: 50 }}
+                      style={{ backgroundColor: palette.input, borderWidth: 1, borderColor: palette.edgeStrong, height: 50 }}
                     >
                       <Mail size={18} color={colors.text.tertiary} strokeWidth={1.5} />
                       <TextInput
@@ -744,7 +766,7 @@ export default function TeamManagementScreen() {
                   >
                     {isInviteSubmitting ? (
                       <View className="flex-row items-center">
-                        <ActivityIndicator color={colors.bg.primary} />
+                        <ActivityIndicator color="#202117" />
                         <Text style={primaryPillTextStyle} className="font-semibold ml-2">Creating...</Text>
                       </View>
                     ) : (
@@ -767,20 +789,20 @@ export default function TeamManagementScreen() {
         >
           <Pressable
             className="flex-1 justify-end"
-            style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
+            style={{ backgroundColor: 'rgba(0,0,0,0.72)' }}
             onPress={() => { setShowEditModal(false); resetEditForm(); }}
           >
             <Pressable onPress={() => {}}>
-            <View className="rounded-t-3xl px-5 pt-6 pb-10" style={{ backgroundColor: colors.bg.primary }}>
+            <View className="rounded-t-3xl px-5 pt-6 pb-10" style={{ backgroundColor: palette.surface, borderTopWidth: 1, borderColor: palette.edge }}>
               <View className="flex-row items-center justify-between mb-6">
-                <Text style={{ color: colors.text.primary, fontSize: 14, lineHeight: 18, fontWeight: '600' }}>Edit Member</Text>
+                <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold', fontSize: 22, lineHeight: 27, fontWeight: '400' }}>Edit Member</Text>
                 <Pressable
                   onPress={() => {
                     setShowEditModal(false);
                     resetEditForm();
                   }}
                   className="w-8 h-8 rounded-full items-center justify-center active:opacity-50"
-                  style={{ backgroundColor: colors.bg.secondary }}
+                  style={{ backgroundColor: palette.input }}
                 >
                   <X size={18} color={colors.text.tertiary} strokeWidth={2} />
                 </Pressable>
@@ -791,7 +813,7 @@ export default function TeamManagementScreen() {
                 <Text style={{ color: colors.text.secondary }} className="text-sm font-medium mb-2">Name</Text>
                 <View
                   className="rounded-xl px-4"
-                  style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light, height: 50, justifyContent: 'center' }}
+                  style={{ backgroundColor: palette.input, borderWidth: 1, borderColor: palette.edgeStrong, height: 50, justifyContent: 'center' }}
                 >
                   <TextInput
                     value={formName}
@@ -809,7 +831,7 @@ export default function TeamManagementScreen() {
                 <Text style={{ color: colors.text.secondary }} className="text-sm font-medium mb-2">Email</Text>
                 <View
                   className="rounded-xl px-4"
-                  style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light, height: 50, justifyContent: 'center' }}
+                  style={{ backgroundColor: palette.input, borderWidth: 1, borderColor: palette.edgeStrong, height: 50, justifyContent: 'center' }}
                 >
                   <TextInput
                     value={formEmail}
@@ -829,7 +851,7 @@ export default function TeamManagementScreen() {
                 <Text style={{ color: colors.text.secondary }} className="text-sm font-medium mb-2">New Password (optional)</Text>
                 <View
                   className="rounded-xl px-4"
-                  style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light, height: 50, flexDirection: 'row', alignItems: 'center' }}
+                  style={{ backgroundColor: palette.input, borderWidth: 1, borderColor: palette.edgeStrong, height: 50, flexDirection: 'row', alignItems: 'center' }}
                 >
                   <TextInput
                     value={formPassword}

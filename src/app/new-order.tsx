@@ -32,7 +32,7 @@ import { useWooCommerceAvailable } from '@/hooks/useWooCommerceAvailable';
 import { buildWhatsAppUrl } from '@/lib/quotes';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { sendOrderNotification } from '@/hooks/useWebPushNotifications';
-import { addBusinessDays, getCustomerTrackingCode, resolveOrderTimeline } from '@/lib/fulfillment';
+import { addBusinessDays, getCustomerTrackingCode, isPickupTimeline, resolveOrderTimeline } from '@/lib/fulfillment';
 import { useThemeColors } from '@/lib/theme';
 import { PrescriptionSection } from '@/components/PrescriptionSection';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
@@ -308,6 +308,7 @@ export default function NewOrderScreen() {
     deliveryAddress?: string;
     deliveryState?: string;
     deliveryFee?: string;
+    fulfillmentMethod?: string;
     websiteOrderReference?: string;
     notes?: string;
     source?: string;
@@ -418,7 +419,9 @@ export default function NewOrderScreen() {
   const [customerPhone, setCustomerPhone] = useState(params.customerPhone || '');
   const [deliveryState, setDeliveryState] = useState(() => normalizeDeliveryStateValue(params.deliveryState || ''));
   const [deliveryAddress, setDeliveryAddress] = useState(params.deliveryAddress || '');
-  const [orderTypeId, setOrderTypeId] = useState(orderTimelineSettings.orderTypes[0]?.id ?? orderTimelineSettings.defaultOrderType.id);
+  const [orderTypeId, setOrderTypeId] = useState(
+    (orderTimelineSettings.orderTypes.find((type) => !isPickupTimeline(type)) ?? orderTimelineSettings.orderTypes[0])?.id ?? orderTimelineSettings.defaultOrderType.id
+  );
   const [showOrderTypeMenu, setShowOrderTypeMenu] = useState(false);
   const [orderFlowMode, setOrderFlowMode] = useState<OrderFlowMode>(() => {
     if (params.services && !params.items) return 'service';
@@ -443,7 +446,7 @@ export default function NewOrderScreen() {
   useEffect(() => {
     const hasSelectedType = orderTimelineSettings.orderTypes.some((type) => type.id === orderTypeId);
     if (!hasSelectedType) {
-      setOrderTypeId(orderTimelineSettings.orderTypes[0]?.id ?? orderTimelineSettings.defaultOrderType.id);
+      setOrderTypeId((orderTimelineSettings.orderTypes.find((type) => !isPickupTimeline(type)) ?? orderTimelineSettings.orderTypes[0])?.id ?? orderTimelineSettings.defaultOrderType.id);
     }
   }, [orderTimelineSettings.defaultOrderType.id, orderTimelineSettings.orderTypes, orderTypeId]);
 
@@ -490,6 +493,8 @@ export default function NewOrderScreen() {
   const [optionPickerOptionName, setOptionPickerOptionName] = useState<string | null>(null);
   const [optionPickerSearch, setOptionPickerSearch] = useState('');
   const [deliveryFee, setDeliveryFee] = useState(params.deliveryFee || '');
+  // Delivery (default) or pick up. A pick-up order has no delivery address or fee; it is kept as a record.
+  const [fulfillmentMethod, setFulfillmentMethod] = useState<'delivery' | 'pickup'>(params.fulfillmentMethod === 'pickup' ? 'pickup' : 'delivery');
   const [additionalCharges, setAdditionalCharges] = useState(params.quoteAdditionalCharges || '');
   const [additionalChargesNote, setAdditionalChargesNote] = useState(params.quoteAdditionalNote || '');
   const [discountCode] = useState('');
@@ -864,7 +869,34 @@ export default function NewOrderScreen() {
     return services.reduce((sum, service) => sum + service.price, 0);
   }, [services]);
 
-  const deliveryFeeNum = isServiceOrder ? 0 : parseFloat(deliveryFee) || 0;
+  const isPickup = !isServiceOrder && fulfillmentMethod === 'pickup';
+  // A timeline set to Pick up (Settings > Fulfillment Timelines) is chosen automatically
+  // when Pick up is selected, and the previous timeline comes back when Delivery is selected again.
+  const pickupOrderType = useMemo(
+    () => orderTimelineSettings.orderTypes.find((type) => isPickupTimeline(type)) ?? null,
+    [orderTimelineSettings.orderTypes]
+  );
+  // The Order Type menu lists pick-up timelines for pick-up orders and delivery timelines for delivery orders.
+  const availableOrderTypes = useMemo(() => {
+    const matching = orderTimelineSettings.orderTypes.filter((type) => isPickupTimeline(type) === isPickup);
+    return matching.length > 0 ? matching : orderTimelineSettings.orderTypes;
+  }, [isPickup, orderTimelineSettings.orderTypes]);
+  const orderTypeBeforePickupRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!pickupOrderType) return;
+    if (fulfillmentMethod === 'pickup') {
+      setOrderTypeId((current) => {
+        if (current === pickupOrderType.id) return current;
+        orderTypeBeforePickupRef.current = current;
+        return pickupOrderType.id;
+      });
+    } else if (orderTypeBeforePickupRef.current) {
+      const previous = orderTypeBeforePickupRef.current;
+      orderTypeBeforePickupRef.current = null;
+      setOrderTypeId((current) => (current === pickupOrderType.id ? previous : current));
+    }
+  }, [fulfillmentMethod, pickupOrderType]);
+  const deliveryFeeNum = isServiceOrder || isPickup ? 0 : parseFloat(deliveryFee) || 0;
   const additionalChargesNum = parseFloat(additionalCharges) || 0;
   const discountAmountNum = parseFloat(discountAmount) || 0;
 
@@ -878,8 +910,8 @@ export default function NewOrderScreen() {
   };
 
   const fulfillmentTimelinePreview = useMemo(() => (
-    resolveOrderTimeline({ orderTypeId, deliveryState: isServiceOrder ? '' : deliveryState }, orderTimelineSettings)
-  ), [deliveryState, isServiceOrder, orderTimelineSettings, orderTypeId]);
+    resolveOrderTimeline({ orderTypeId, deliveryState: isServiceOrder || isPickup ? '' : deliveryState, fulfillmentMethod: isPickup ? 'pickup' : 'delivery' }, orderTimelineSettings)
+  ), [deliveryState, isPickup, isServiceOrder, orderTimelineSettings, orderTypeId]);
   const selectedOrderType = fulfillmentTimelinePreview.orderType;
   const orderDateValueForPreview = orderDateType === 'today' ? new Date() : selectedDate;
   const estimatedDeliveryPreview = useMemo(() => {
@@ -1339,7 +1371,7 @@ export default function NewOrderScreen() {
       const orderDateValue = orderDateType === 'today' ? new Date() : selectedDate;
       const orderNumber = generateOrderNumber();
       const orderDateIso = orderDateValue.toISOString();
-      const resolvedTimeline = resolveOrderTimeline({ orderTypeId, deliveryState: isServiceOrder ? '' : deliveryState }, orderTimelineSettings);
+      const resolvedTimeline = resolveOrderTimeline({ orderTypeId, deliveryState: isServiceOrder || isPickup ? '' : deliveryState, fulfillmentMethod: isPickup ? 'pickup' : 'delivery' }, orderTimelineSettings);
       const fulfillmentOriginalEta = addBusinessDays(new Date(orderDateValue), resolvedTimeline.maxBusinessDays);
 
       const order = {
@@ -1353,15 +1385,16 @@ export default function NewOrderScreen() {
         customerNote: customerPrescription?.text?.trim() || undefined,
         customerEmail: customerEmail.trim(),
         customerPhone: customerPhone.trim(),
-        deliveryState: isServiceOrder ? '' : deliveryState,
-        deliveryAddress: isServiceOrder ? '' : deliveryAddress.trim(),
+        deliveryState: isServiceOrder || isPickup ? '' : deliveryState,
+        deliveryAddress: isServiceOrder || isPickup ? '' : deliveryAddress.trim(),
+        fulfillmentMethod: isServiceOrder ? undefined : fulfillmentMethod,
         orderTypeId: resolvedTimeline.orderType.id,
         orderTypeName: resolvedTimeline.orderType.name,
         items,
         services,
         additionalCharges: additionalChargesNum,
         additionalChargesNote: additionalChargesNote.trim(),
-        deliveryFee: isServiceOrder ? 0 : deliveryFeeNum,
+        deliveryFee: isServiceOrder || isPickup ? 0 : deliveryFeeNum,
         discountCode: discountCode.trim() || undefined,
         discountAmount: discountAmountNum || undefined,
         paymentMethod,
@@ -1803,7 +1836,7 @@ export default function NewOrderScreen() {
                     className="mt-2 rounded-2xl overflow-hidden"
                     style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
                   >
-                    {orderTimelineSettings.orderTypes.map((type, index) => {
+                    {availableOrderTypes.map((type, index) => {
                       const isSelected = type.id === selectedOrderType.id;
                       return (
                         <Pressable
@@ -1841,7 +1874,7 @@ export default function NewOrderScreen() {
                   return (
                     <View style={{ marginTop: 12, borderRadius: 18, padding: 16, gap: 14, backgroundColor: palette.inset, borderWidth: 1, borderColor: palette.border }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                        <Text style={{ color: palette.muted, fontSize: 12, fontWeight: '500' }}>Estimated delivery</Text>
+                        <Text style={{ color: palette.muted, fontSize: 12, fontWeight: '500' }}>{isPickup ? 'Estimated ready for pick up' : 'Estimated delivery'}</Text>
                         <View style={{ height: 24, paddingHorizontal: 10, borderRadius: 999, justifyContent: 'center', backgroundColor: palette.nudgeBg }}>
                           <Text style={{ color: palette.limeOnSurface, fontSize: 11.5, fontWeight: '600' }}>
                             {fulfillmentTimelinePreview.minBusinessDays === fulfillmentTimelinePreview.maxBusinessDays ? `${fulfillmentTimelinePreview.maxBusinessDays} business days` : `${fulfillmentTimelinePreview.minBusinessDays}-${fulfillmentTimelinePreview.maxBusinessDays} business days`}
@@ -2235,8 +2268,54 @@ export default function NewOrderScreen() {
             </>
           );
 
+          // Delivery or pick up. Pick up hides the delivery fields and the delivery fee, and the order is kept as a record.
+          const fulfillmentToggle = (
+            <View style={{ gap: 8 }}>
+              {fieldLabel('How will they get it?')}
+              <View style={{ flexDirection: 'row', padding: 4, gap: 4, borderRadius: 999, borderWidth: 1, borderColor: palette.outline, backgroundColor: palette.inset }}>
+                {([
+                  { key: 'delivery' as const, label: 'Delivery' },
+                  { key: 'pickup' as const, label: 'Pick up' },
+                ]).map(({ key, label }) => {
+                  const active = fulfillmentMethod === key;
+                  return (
+                    <Pressable
+                      key={key}
+                      accessibilityRole="tab"
+                      accessibilityState={{ selected: active }}
+                      onPress={() => setFulfillmentMethod(key)}
+                      style={(state) => ({
+                        flex: 1,
+                        height: 42,
+                        borderRadius: 999,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: active ? FYLL_LIME : !active && isHovered(state) ? palette.softFill : 'transparent',
+                      })}
+                    >
+                      <Text style={{ color: active ? FYLL_LIME_INK : palette.text, fontSize: 14, fontWeight: active ? '700' : '600' }}>{label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              {isPickup ? (
+                <Text style={{ color: palette.faint, fontSize: 12, lineHeight: 17 }}>The customer collects this order. No delivery address or fee is needed.</Text>
+              ) : null}
+            </View>
+          );
+
           const customerStep = (
-            <StepCard n={1} title="Customer" compact={compact} palette={palette}>
+            <StepCard
+              n={1}
+              title="Customer"
+              compact={compact}
+              palette={palette}
+              right={selectedCustomer ? (
+                <Pressable accessibilityRole="button" onPress={handleClearCustomer} style={(state) => ({ ...outlinePill, height: 34, paddingHorizontal: 14, backgroundColor: isHovered(state) ? palette.softFill : 'transparent' })}>
+                  <Text style={{ color: palette.text, fontSize: 13, fontWeight: '600' }}>Change</Text>
+                </Pressable>
+              ) : undefined}
+            >
               {selectedCustomer ? (
                 <View style={{ ...innerBox, padding: 16, flexDirection: 'row', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
                   <View style={{ width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center', backgroundColor: FYLL_LIME }}>
@@ -2256,9 +2335,6 @@ export default function NewOrderScreen() {
                       <Text key={line} style={{ color: palette.muted, fontSize: 12, lineHeight: 17 }} selectable>{line}</Text>
                     ))}
                   </View>
-                  <Pressable accessibilityRole="button" onPress={handleClearCustomer} style={(state) => ({ ...outlinePill, backgroundColor: isHovered(state) ? palette.softFill : 'transparent' })}>
-                    <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>Change</Text>
-                  </Pressable>
                 </View>
               ) : (
                 <>
@@ -2304,7 +2380,8 @@ export default function NewOrderScreen() {
                   </View>
                 </>
               )}
-              {isServiceOrder ? null : (!selectedCustomer || !deliveryState.trim() || !deliveryAddress.trim()) ? deliveryFields : null}
+              {isServiceOrder ? null : fulfillmentToggle}
+              {isServiceOrder || isPickup ? null : (!selectedCustomer || !deliveryState.trim() || !deliveryAddress.trim()) ? deliveryFields : null}
             </StepCard>
           );
 
@@ -2858,7 +2935,7 @@ export default function NewOrderScreen() {
           // Extra charges and discounts sit in their own step, just above payment.
           const chargesStep = (
             <StepCard n={3} title="Charges" compact={compact} palette={palette}>
-              {isServiceOrder ? null : (
+              {isServiceOrder || isPickup ? null : (
                 <View>
                   {fieldLabel('Delivery fee')}
                   <FocusInput placeholder="0" placeholderTextColor={palette.faint} value={deliveryFee} onChangeText={setDeliveryFee} keyboardType="numeric" style={fieldInput} />
@@ -2954,7 +3031,7 @@ export default function NewOrderScreen() {
               ))}
               <View style={{ height: 1, backgroundColor: palette.hairline }} />
               {summaryRow('Subtotal', formatCurrency(subtotal + servicesTotal))}
-              {!isServiceOrder ? summaryRow('Delivery', formatCurrency(deliveryFeeNum)) : null}
+              {!isServiceOrder ? summaryRow(isPickup ? 'Pick up' : 'Delivery', isPickup ? 'No delivery fee' : formatCurrency(deliveryFeeNum)) : null}
               {additionalChargesNum > 0 ? summaryRow('Additional charges', formatCurrency(additionalChargesNum)) : null}
               {discountAmountNum > 0 ? summaryRow('Discount', `-${formatCurrency(discountAmountNum)}`) : null}
               {showDiscountInput ? (

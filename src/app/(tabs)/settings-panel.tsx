@@ -8,7 +8,9 @@ import StorefrontSettingsScreen from '@/app/storefront-settings';
 import WooCommerceSettingsScreen from '@/app/woocommerce-settings';
 import OrderAutomationScreen from '@/app/order-automation';
 import EmailSettingsScreen from '@/app/email-settings';
+import WhatsAppSettingsScreen from '@/app/whatsapp-settings';
 import AccountSettingsScreen from '@/app/account-settings';
+import PaymentAccountsScreen from '@/app/payment-accounts';
 import DebugBusinessScreen from '@/app/debug-business';
 import CategoryManagerScreen from '@/app/category-manager';
 import ProductVariablesScreen from '@/app/product-variables';
@@ -38,15 +40,19 @@ export default function SettingsPanelScreen() {
     case 'business-settings':
       return <BusinessSettingsScreen />;
     case 'storefront-settings':
-      return <StorefrontSettingsScreen />;
+      return <StorefrontSettingsScreen embeddedInSettings />;
     case 'woocommerce-settings':
       return <WooCommerceSettingsScreen />;
     case 'order-automation':
       return <OrderAutomationScreen />;
     case 'email-settings':
       return <EmailSettingsScreen />;
+    case 'whatsapp-settings':
+      return <WhatsAppSettingsScreen />;
     case 'account-settings':
       return <AccountSettingsScreen />;
+    case 'payment-accounts':
+      return <PaymentAccountsScreen embeddedInSettings />;
     case 'debug-business':
       return <DebugBusinessScreen />;
     case 'category-manager':

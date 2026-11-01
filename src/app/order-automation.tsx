@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Platform, View, Text, Pressable, TextInput, Switch, Modal, ScrollView, useWindowDimensions } from 'react-native';
+import { Platform, View, Text, Pressable, TextInput, Modal, ScrollView, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Zap, ChevronDown, X, Check, Plus, Trash2, MoreVertical, Pencil } from 'lucide-react-native';
-import { useThemeColors } from '@/lib/theme';
+import { ArrowLeft, Zap, ChevronDown, X, Check, Plus, Trash2, Pencil } from 'lucide-react-native';
+import { useResolvedThemeMode, useThemeColors } from '@/lib/theme';
+import { LinearGradient } from 'expo-linear-gradient';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import * as Haptics from 'expo-haptics';
 import { getSettingsWebPanelStyles, isFromSettingsRoute } from '@/lib/settings-web-panel';
@@ -11,6 +12,8 @@ import { sortOrderStatusesForFulfillment } from '@/lib/order-status';
 import { useSettingsBack } from '@/lib/useSettingsBack';
 import useFyllStore, { type OrderAutomationRule } from '@/lib/state/fyll-store';
 import useAuthStore from '@/lib/state/auth-store';
+import { FYLL_LIME, FYLL_LIME_INK, MoneyText, usePaymentsPalette } from '@/components/payments/payments-ui';
+import { LimeToggle } from '@/components/settings/LimeToggle';
 
 type PickerTarget = {
   ruleId: string;
@@ -23,6 +26,8 @@ export default function OrderAutomationScreen() {
   const { from } = useLocalSearchParams<{ from?: string | string[] }>();
   const goBack = useSettingsBack();
   const colors = useThemeColors();
+  const resolvedThemeMode = useResolvedThemeMode();
+  const settingsPalette = usePaymentsPalette();
   const openedFromSettings = isFromSettingsRoute(from);
   const panelStyles = getSettingsWebPanelStyles(
     openedFromSettings,
@@ -54,7 +59,6 @@ export default function OrderAutomationScreen() {
   const [dayInputs, setDayInputs] = useState<Record<string, string>>({});
   const [activeDayInputRuleId, setActiveDayInputRuleId] = useState<string | null>(null);
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
-  const [actionMenuRuleId, setActionMenuRuleId] = useState<string | null>(null);
   const hasInitializedAutoSaveRef = useRef(false);
   const lastSavedSignatureRef = useRef('');
 
@@ -170,11 +174,12 @@ export default function OrderAutomationScreen() {
   };
 
   const primaryPillButtonStyle = {
-    backgroundColor: colors.text.primary,
+    backgroundColor: FYLL_LIME,
     borderRadius: 999,
   } as const;
   const primaryPillTextStyle = {
-    color: colors.bg.primary,
+    color: FYLL_LIME_INK,
+    fontFamily: 'BricolageGrotesque_700Bold',
   } as const;
   const fieldHeight = 56;
   const settingsContentWidthStyle = (
@@ -193,7 +198,7 @@ export default function OrderAutomationScreen() {
     statusName ? (
       <View
         className="flex-row items-center rounded-full px-2.5 py-1"
-        style={{ backgroundColor: colors.bg.secondary, maxWidth, minWidth: 0 }}
+        style={{ backgroundColor: settingsPalette.inset, borderWidth: 1, borderColor: settingsPalette.border, maxWidth, minWidth: 0 }}
       >
         <View className="w-2 h-2 rounded-full mr-1.5" style={{ backgroundColor: getStatusColor(statusName) }} />
         <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '500', flexShrink: 1 }} numberOfLines={1}>
@@ -227,7 +232,6 @@ export default function OrderAutomationScreen() {
       toStatus: '',
     });
     setEditingRuleId(nextId);
-    setActionMenuRuleId(null);
   };
 
   const handleSave = async () => {
@@ -256,9 +260,17 @@ export default function OrderAutomationScreen() {
     <View style={panelStyles.outer}>
       <View style={panelStyles.inner}>
         <SafeAreaView className="flex-1" edges={['top']}>
+          <LinearGradient
+            pointerEvents="none"
+            colors={resolvedThemeMode === 'dark' ? ['rgba(111,125,18,0.55)', 'rgba(17,17,17,0)'] : ['rgba(213,224,87,0.42)', 'rgba(244,243,235,0)']}
+            locations={[0, 1]}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+            style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 360 }}
+          />
           <View
-            className={isWebDesktop ? 'pl-5 pr-7 pt-5 pb-4 flex-row items-center justify-between' : 'px-5 pt-4 pb-3 flex-row items-center justify-between'}
-            style={{ borderBottomWidth: 1, borderBottomColor: colors.border.light }}
+            className={isWebDesktop ? 'pl-5 pr-7 pt-5 pb-4 flex-row items-center justify-between' : 'px-3 pt-3 pb-1 flex-row items-center justify-between'}
+            style={{ borderBottomWidth: 1, borderBottomColor: settingsPalette.hairline }}
           >
             <View style={settingsContentWidthStyle} className="flex-row items-center justify-between">
               <View className="flex-row items-center flex-1">
@@ -267,28 +279,14 @@ export default function OrderAutomationScreen() {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                     goBack();
                   }}
-                  className="w-10 h-10 rounded-xl items-center justify-center mr-3 active:opacity-50"
-                  style={{ backgroundColor: 'transparent' }}
+                  className="w-10 h-10 rounded-full items-center justify-center mr-3 active:opacity-50"
+                  style={{ backgroundColor: settingsPalette.softFill }}
                 >
                   <ArrowLeft size={20} color={colors.text.primary} strokeWidth={2} />
                 </Pressable>
                 <View className="flex-1">
-                  <Text
-                    style={{
-                      color: colors.text.primary,
-                      fontSize: Platform.OS === 'web' ? 14 : 20,
-                      lineHeight: Platform.OS === 'web' ? 18 : 24,
-                      fontWeight: '600',
-                    }}
-                  >
-                    Order Automation
-                  </Text>
-                  {saveStatus === 'saved' && (
-                    <Text style={{ color: '#10B981' }} className="text-xs mt-0.5">Saved</Text>
-                  )}
-                  {saveStatus === 'error' && (
-                    <Text style={{ color: '#EF4444' }} className="text-xs mt-0.5">Save failed</Text>
-                  )}
+                  <Text style={{ color: settingsPalette.faint, fontSize: 9.5, lineHeight: 12, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Settings</Text>
+                  <Text style={{ color: settingsPalette.text, fontSize: isWebDesktop ? 14 : 17, lineHeight: isWebDesktop ? 18 : 21, fontWeight: '600' }}>Order Automation</Text>
                 </View>
               </View>
 
@@ -299,14 +297,9 @@ export default function OrderAutomationScreen() {
                 style={[primaryPillButtonStyle, { opacity: saveStatus === 'saving' ? 0.7 : 1, minWidth: 80 }]}
               >
                 {saveStatus === 'saving' ? (
-                  <Text style={primaryPillTextStyle} className="font-semibold text-sm">Saving…</Text>
-                ) : saveStatus === 'saved' ? (
-                  <View className="flex-row items-center">
-                    <Check size={14} color={colors.bg.primary} strokeWidth={2.5} />
-                    <Text style={primaryPillTextStyle} className="font-semibold text-sm ml-1">Saved</Text>
-                  </View>
+                  <Text style={[primaryPillTextStyle, { fontSize: 14, fontWeight: '600' }]}>Saving…</Text>
                 ) : (
-                  <Text style={primaryPillTextStyle} className="font-semibold text-sm">Save</Text>
+                  <Text style={[primaryPillTextStyle, { fontSize: 14, fontWeight: '600' }]}>Save</Text>
                 )}
               </Pressable>
             </View>
@@ -323,56 +316,57 @@ export default function OrderAutomationScreen() {
               className={isWebDesktop ? 'pl-5 pr-7 pt-4' : 'px-5 pt-5'}
             >
               <View
-                className="rounded-2xl p-4 mb-5"
-                style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+                className="rounded-3xl overflow-hidden mb-5"
+                style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}
               >
-                <View className="flex-row items-center mb-1">
-                  <View
-                    className="w-9 h-9 rounded-xl items-center justify-center mr-3"
-                    style={{ backgroundColor: autoCompleteOrders ? '#FEF3C7' : colors.bg.secondary }}
-                  >
-                    <Zap size={18} color={autoCompleteOrders ? '#F59E0B' : colors.text.tertiary} strokeWidth={2} />
+                <LinearGradient colors={resolvedThemeMode === 'dark' ? ['#DDEB3F', '#9EAD00'] : ['#E3EC54', '#B9C722']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ height: 5 }} />
+                <View style={{ padding: isWebDesktop ? 24 : 18 }}>
+                  <View className="flex-row items-center" style={{ gap: 14 }}>
+                    <LinearGradient colors={['#E8F15A', '#A9B700']} style={{ width: isWebDesktop ? 54 : 48, height: isWebDesktop ? 54 : 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }}>
+                      <Zap size={isWebDesktop ? 25 : 22} color={FYLL_LIME_INK} strokeWidth={2.2} />
+                    </LinearGradient>
+                    <View className="flex-1">
+                      <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Workflow automation</Text>
+                      <MoneyText style={{ color: settingsPalette.text, fontSize: isWebDesktop ? 28 : 24, fontWeight: '700', marginTop: 2 }}>
+                        {orderAutomations.length} {orderAutomations.length === 1 ? 'rule' : 'rules'}
+                      </MoneyText>
+                    </View>
+                    <LimeToggle
+                      compact
+                      value={autoCompleteOrders}
+                      onValueChange={(value) => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        setAutoCompleteOrders(value);
+                        if (value && orderAutomations.length === 0) {
+                          addOrderAutomation({ id: createRuleId(), enabled: true, fromStatus: autoCompleteFromStatus, toStatus: autoCompleteToStatus, afterDays: autoCompleteAfterDays });
+                        }
+                      }}
+                      accessibilityLabel="Order automation"
+                      activeColor={FYLL_LIME}
+                      inactiveColor={settingsPalette.softFill}
+                      inactiveBorderColor={settingsPalette.outline}
+                    />
                   </View>
-                  <View className="flex-1 mr-3">
-                    <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">Auto-complete orders</Text>
-                    <Text style={{ color: colors.text.muted }} className="text-xs mt-0.5">
-                      Automatically move stale orders to a new status
-                    </Text>
-                  </View>
-                  <Switch
-                    value={autoCompleteOrders}
-                    onValueChange={(value) => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      setAutoCompleteOrders(value);
-                      if (value && orderAutomations.length === 0) {
-                        addOrderAutomation({
-                          id: createRuleId(),
-                          enabled: true,
-                          fromStatus: autoCompleteFromStatus,
-                          toStatus: autoCompleteToStatus,
-                          afterDays: autoCompleteAfterDays,
-                        });
-                      }
-                    }}
-                    trackColor={{ false: colors.bg.secondary, true: colors.text.primary }}
-                    thumbColor="#FFFFFF"
-                  />
+                  <Text style={{ color: settingsPalette.muted, fontSize: isWebDesktop ? 13 : 12, lineHeight: isWebDesktop ? 20 : 18, marginTop: 14 }}>
+                    Automatically move stale orders through your workflow after a set number of days.
+                  </Text>
                 </View>
               </View>
 
               {autoCompleteOrders && (
                 <>
                 <View className="flex-row items-center justify-between mb-3">
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase tracking-wider">
-                    Rules
-                  </Text>
+                  <View>
+                    <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Automation rules</Text>
+                    <Text style={{ color: settingsPalette.text, fontSize: 12, marginTop: 2 }}>{orderAutomations.filter((rule) => rule.enabled).length} active</Text>
+                  </View>
                   <Pressable
                     onPress={handleAddRule}
-                    className="px-3 h-8 rounded-full flex-row items-center active:opacity-70"
-                    style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}
+                    className="px-4 rounded-full flex-row items-center justify-center active:opacity-70"
+                    style={{ minHeight: 40, backgroundColor: FYLL_LIME }}
                   >
-                    <Plus size={14} color={colors.text.primary} strokeWidth={2} />
-                    <Text style={{ color: colors.text.primary }} className="text-xs font-semibold ml-1.5">Add rule</Text>
+                    <Plus size={14} color={FYLL_LIME_INK} strokeWidth={2.3} />
+                    <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '700', marginLeft: 6 }}>Add rule</MoneyText>
                   </Pressable>
                 </View>
 
@@ -392,12 +386,12 @@ export default function OrderAutomationScreen() {
 
                 {orderAutomations.length > 0 ? (
                   <View
-                    className="rounded-2xl overflow-visible mb-5"
-                    style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+                    className={isWebDesktop ? 'rounded-3xl overflow-visible mb-5' : 'mb-5'}
+                    style={isWebDesktop ? { backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border } : undefined}
                   >
-                    <View
+                    {isWebDesktop ? <View
                       className="flex-row items-center px-4 py-3"
-                      style={{ borderBottomWidth: 1, borderBottomColor: colors.border.light }}
+                      style={{ borderBottomWidth: 1, borderBottomColor: settingsPalette.hairline }}
                     >
                       <Text style={{ color: colors.text.tertiary, flex: 0.85, fontSize: 10, fontWeight: '600', letterSpacing: 1.1, textTransform: 'uppercase' }}>
                         Name
@@ -409,22 +403,22 @@ export default function OrderAutomationScreen() {
                         Toggle
                       </Text>
                       <View style={{ width: 42 }} />
-                    </View>
+                    </View> : null}
 
                     {orderAutomations.map((rule, index) => {
                       const fromStatus = rule.fromStatus?.trim() ?? '';
                       const toStatus = rule.toStatus?.trim() ?? '';
                       const afterDays = Number.isFinite(rule.afterDays) && rule.afterDays > 0 ? rule.afterDays : 10;
-                      const actionMenuOpen = actionMenuRuleId === rule.id;
-
                       return (
-                        <View key={rule.id} style={{ position: 'relative', zIndex: actionMenuOpen ? 10 : 1 }}>
+                        <View key={rule.id} style={{ position: 'relative' }}>
                           <View
-                            className="flex-row items-center px-4 py-3"
-                            style={index > 0 ? { borderTopWidth: 1, borderTopColor: colors.border.light } : undefined}
+                            className={isWebDesktop ? 'flex-row items-center px-4 py-3' : 'px-4 py-4'}
+                            style={isWebDesktop
+                              ? (index > 0 ? { borderTopWidth: 1, borderTopColor: settingsPalette.hairline } : undefined)
+                              : { marginBottom: 10, borderRadius: 24, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: rule.enabled ? settingsPalette.nudgeBorder : settingsPalette.border }}
                           >
-                            <View style={{ flex: 0.85, paddingRight: 10 }}>
-                              <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '500' }}>
+                            <View style={isWebDesktop ? { flex: 0.85, paddingRight: 10 } : { paddingRight: 70 }}>
+                              <Text style={{ color: settingsPalette.text, fontSize: isWebDesktop ? 13 : 14, fontWeight: '700' }}>
                                 Rule {index + 1}
                               </Text>
                               <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 2 }}>
@@ -432,77 +426,50 @@ export default function OrderAutomationScreen() {
                               </Text>
                             </View>
 
-                            <View className="flex-row items-center" style={{ flex: 1.95, gap: 6, minWidth: 0, paddingRight: 12, overflow: 'hidden' }}>
-                              {renderStatusChip(fromStatus, 160)}
+                            <View className="flex-row items-center" style={isWebDesktop ? { flex: 1.95, gap: 6, minWidth: 0, paddingRight: 12, overflow: 'hidden' } : { gap: 6, minWidth: 0, marginTop: 14, paddingRight: 4, overflow: 'hidden' }}>
+                              {renderStatusChip(fromStatus, isWebDesktop ? 160 : 125)}
                               <Text style={{ color: colors.text.muted, fontSize: 12 }}>→</Text>
-                              {renderStatusChip(toStatus, 160)}
+                              {renderStatusChip(toStatus, isWebDesktop ? 160 : 125)}
                             </View>
 
-                            <View style={{ width: 104, alignItems: 'center' }}>
-                              <Switch
+                            <View style={isWebDesktop ? { width: 104, alignItems: 'center' } : { position: 'absolute', top: 10, right: 14 }}>
+                              <LimeToggle
+                                compact
                                 value={rule.enabled}
                                 onValueChange={(value) => {
                                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                                   updateOrderAutomation(rule.id, { enabled: value });
                                 }}
-                                trackColor={{ false: colors.bg.secondary, true: colors.text.primary }}
-                                thumbColor="#FFFFFF"
+                                accessibilityLabel={`Rule ${index + 1}`}
+                                activeColor={FYLL_LIME}
+                                inactiveColor={settingsPalette.softFill}
+                                inactiveBorderColor={settingsPalette.outline}
                               />
                             </View>
-
-                            <Pressable
-                              onPress={() => setActionMenuRuleId((current) => (current === rule.id ? null : rule.id))}
-                              className="w-10 h-10 rounded-full items-center justify-center active:opacity-70"
-                            >
-                              <MoreVertical size={17} color={colors.text.secondary} strokeWidth={2.3} />
-                            </Pressable>
+                            {isWebDesktop ? (
+                              <Pressable
+                                onPress={() => setEditingRuleId(rule.id)}
+                                className="w-10 h-10 rounded-full items-center justify-center active:opacity-70"
+                                style={{ backgroundColor: settingsPalette.softFill }}
+                                accessibilityRole="button"
+                                accessibilityLabel={`Edit automation rule ${index + 1}`}
+                              >
+                                <Pencil size={14} color={settingsPalette.textSoft} strokeWidth={2} />
+                              </Pressable>
+                            ) : null}
+                            {!isWebDesktop ? (
+                              <Pressable
+                                onPress={() => setEditingRuleId(rule.id)}
+                                className="flex-row items-center self-start active:opacity-70"
+                                style={{ marginTop: 13, gap: 6, minHeight: 30, paddingRight: 12 }}
+                                accessibilityRole="button"
+                                accessibilityLabel={`Edit automation rule ${index + 1}`}
+                              >
+                                <Pencil size={12} color={settingsPalette.faint} strokeWidth={2} />
+                                <Text style={{ color: settingsPalette.faint, fontSize: 14, fontWeight: '600' }}>Edit rule</Text>
+                              </Pressable>
+                            ) : null}
                           </View>
-
-                          {actionMenuOpen ? (
-                            <View
-                              style={{
-                                position: 'absolute',
-                                right: 12,
-                                top: 48,
-                                width: 156,
-                                borderRadius: 16,
-                                overflow: 'hidden',
-                                backgroundColor: colors.bg.card,
-                                borderWidth: 1,
-                                borderColor: colors.border.light,
-                                shadowColor: '#000000',
-                                shadowOpacity: 0.12,
-                                shadowRadius: 16,
-                                shadowOffset: { width: 0, height: 8 },
-                                elevation: 8,
-                                zIndex: 20,
-                              }}
-                            >
-                              <Pressable
-                                onPress={() => {
-                                  setEditingRuleId(rule.id);
-                                  setActionMenuRuleId(null);
-                                }}
-                                className="flex-row items-center px-3 py-3 active:opacity-70"
-                              >
-                                <Pencil size={14} color={colors.text.primary} strokeWidth={2} />
-                                <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '500', marginLeft: 8 }}>Edit</Text>
-                              </Pressable>
-                              <Pressable
-                                onPress={() => {
-                                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                  deleteOrderAutomation(rule.id);
-                                  setActionMenuRuleId(null);
-                                  setEditingRuleId((current) => (current === rule.id ? null : current));
-                                }}
-                                className="flex-row items-center px-3 py-3 active:opacity-70"
-                                style={{ borderTopWidth: 1, borderTopColor: colors.border.light }}
-                              >
-                                <Trash2 size={14} color="#B91C1C" strokeWidth={2} />
-                                <Text style={{ color: '#B91C1C', fontSize: 13, fontWeight: '500', marginLeft: 8 }}>Delete</Text>
-                              </Pressable>
-                            </View>
-                          ) : null}
                         </View>
                       );
                     })}
@@ -515,6 +482,62 @@ export default function OrderAutomationScreen() {
             </View>
           </KeyboardAwareScrollView>
 
+          {saveStatus === 'saved' || saveStatus === 'error' ? (
+            <View
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                left: 20,
+                right: 20,
+                bottom: 28,
+                alignItems: 'center',
+                zIndex: 50,
+              }}
+            >
+              <View
+                className="flex-row items-center"
+                style={{
+                  minHeight: 54,
+                  maxWidth: 390,
+                  width: '100%',
+                  paddingHorizontal: 14,
+                  borderRadius: 20,
+                  backgroundColor: settingsPalette.card,
+                  borderWidth: 1,
+                  borderColor: saveStatus === 'saved' ? settingsPalette.nudgeBorder : settingsPalette.dangerBorder,
+                  shadowColor: '#000000',
+                  shadowOpacity: resolvedThemeMode === 'dark' ? 0.36 : 0.16,
+                  shadowRadius: 20,
+                  shadowOffset: { width: 0, height: 10 },
+                  elevation: 12,
+                }}
+              >
+                <View
+                  className="items-center justify-center"
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 16,
+                    marginRight: 11,
+                    backgroundColor: saveStatus === 'saved' ? settingsPalette.nudgeBg : settingsPalette.dangerBg,
+                  }}
+                >
+                  {saveStatus === 'saved'
+                    ? <Check size={17} color={settingsPalette.limeOnSurface} strokeWidth={2.7} />
+                    : <X size={17} color={settingsPalette.danger} strokeWidth={2.7} />}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '700' }}>
+                    {saveStatus === 'saved' ? 'Automation saved' : 'Couldn’t save changes'}
+                  </Text>
+                  <Text style={{ color: settingsPalette.muted, fontSize: 12, marginTop: 2 }}>
+                    {saveStatus === 'saved' ? 'Your order rules are up to date.' : 'Please check your connection and try again.'}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          ) : null}
+
           <Modal
             visible={Boolean(editingRule)}
             transparent
@@ -523,7 +546,7 @@ export default function OrderAutomationScreen() {
           >
             <Pressable
               className="flex-1 items-center justify-center px-5"
-              style={{ backgroundColor: 'rgba(0,0,0,0.42)' }}
+              style={{ backgroundColor: 'rgba(0,0,0,0.72)' }}
               onPress={() => setEditingRuleId(null)}
             >
               {editingRule ? (
@@ -532,9 +555,9 @@ export default function OrderAutomationScreen() {
                   className="w-full rounded-3xl overflow-hidden"
                   style={{
                     maxWidth: 520,
-                    backgroundColor: colors.bg.card,
+                    backgroundColor: settingsPalette.card,
                     borderWidth: 1,
-                    borderColor: colors.border.light,
+                    borderColor: settingsPalette.border,
                   }}
                 >
                   <View
@@ -542,9 +565,9 @@ export default function OrderAutomationScreen() {
                     style={{ borderBottomWidth: 1, borderBottomColor: colors.border.light }}
                   >
                     <View>
-                      <Text style={{ color: colors.text.primary, fontSize: 16, fontWeight: '600' }}>
+                      <MoneyText style={{ color: settingsPalette.text, fontSize: isWebDesktop ? 22 : 18, fontWeight: '700' }}>
                         Edit automation
-                      </Text>
+                      </MoneyText>
                       <Text style={{ color: colors.text.muted, fontSize: 12, marginTop: 2 }}>
                         Update the status rule and delay.
                       </Text>
@@ -552,7 +575,7 @@ export default function OrderAutomationScreen() {
                     <Pressable
                       onPress={() => setEditingRuleId(null)}
                       className="w-9 h-9 rounded-full items-center justify-center active:opacity-70"
-                      style={{ backgroundColor: colors.bg.secondary }}
+                      style={{ backgroundColor: settingsPalette.softFill }}
                     >
                       <X size={17} color={colors.text.secondary} strokeWidth={2} />
                     </Pressable>
@@ -598,7 +621,6 @@ export default function OrderAutomationScreen() {
                               selectionColor={colors.text.primary}
                             />
                           </View>
-                          <Text style={{ color: colors.text.secondary }} className="ml-3 text-sm font-medium">days</Text>
                         </View>
                       </View>
 
@@ -670,13 +692,28 @@ export default function OrderAutomationScreen() {
                         </View>
                       ) : null}
 
-                      <Pressable
-                        onPress={() => setEditingRuleId(null)}
-                        className="rounded-full h-12 items-center justify-center mt-5 active:opacity-80"
-                        style={{ backgroundColor: colors.text.primary }}
-                      >
-                        <Text style={{ color: colors.bg.primary, fontSize: 14, fontWeight: '600' }}>Save</Text>
-                      </Pressable>
+                      <View className="flex-row mt-5" style={{ gap: 10 }}>
+                        <Pressable
+                          onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                            deleteOrderAutomation(editingRule.id);
+                            setEditingRuleId(null);
+                          }}
+                          className="rounded-full h-12 items-center justify-center active:opacity-80"
+                          style={{ width: 52, backgroundColor: settingsPalette.dangerBg, borderWidth: 1, borderColor: settingsPalette.dangerBorder }}
+                          accessibilityRole="button"
+                          accessibilityLabel="Delete automation rule"
+                        >
+                          <Trash2 size={17} color={settingsPalette.danger} strokeWidth={2.2} />
+                        </Pressable>
+                        <Pressable
+                          onPress={() => setEditingRuleId(null)}
+                          className="rounded-full h-12 items-center justify-center active:opacity-80"
+                          style={{ flex: 1, backgroundColor: FYLL_LIME }}
+                        >
+                          <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '700' }}>Save rule</MoneyText>
+                        </Pressable>
+                      </View>
                     </View>
                   </ScrollView>
                 </Pressable>

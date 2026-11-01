@@ -4,15 +4,19 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import { ArrowLeft, Upload, Check, X, AlertCircle } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useFonts, BricolageGrotesque_700Bold, BricolageGrotesque_800ExtraBold } from '@expo-google-fonts/bricolage-grotesque';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
-import { useThemeColors } from '@/lib/theme';
+import { useResolvedThemeMode, useThemeColors } from '@/lib/theme';
 import useAuthStore from '@/lib/state/auth-store';
 import useFyllStore, { Customer } from '@/lib/state/fyll-store';
 import { parseCsv } from '@/lib/csv';
 import { getSettingsWebPanelStyles, isFromSettingsRoute } from '@/lib/settings-web-panel';
 import { useSettingsBack } from '@/lib/useSettingsBack';
+import { useBreakpoint } from '@/lib/useBreakpoint';
+import { useTabBarHeight } from '@/lib/useTabBarHeight';
 
 type ImportRow = {
   name: string;
@@ -68,8 +72,18 @@ export default function ImportCustomersScreen() {
   const { from } = useLocalSearchParams<{ from?: string | string[] }>();
   const goBack = useSettingsBack();
   const colors = useThemeColors();
+  const isDark = useResolvedThemeMode() === 'dark';
+  const palette = isDark
+    ? {
+        ground: '#141414', surface: '#1E1E1E', ink: '#F4F4EF', muted: '#B9BAB0', faint: '#8C8D84', lime: '#D5E057', limeInk: '#D5E057', limeDeep: '#7D8A00', edge: 'rgba(255,255,255,0.09)', edgeStrong: 'rgba(255,255,255,0.14)', input: 'rgba(255,255,255,0.055)', topGlow: 'rgba(111,125,18,0.55)', topGlowEnd: 'rgba(20,20,20,0)', navButton: 'rgba(255,255,255,0.08)', limeWash: 'rgba(213,224,87,0.14)', limeBorder: 'rgba(213,224,87,0.25)', dangerWash: 'rgba(239,68,68,0.12)', successWash: 'rgba(16,185,129,0.12)',
+      }
+    : {
+        ground: '#F4F3EB', surface: '#FFFFFF', ink: '#202117', muted: '#5E6056', faint: '#85877C', lime: '#D5E057', limeInk: '#667000', limeDeep: '#879400', edge: 'rgba(35,38,25,0.09)', edgeStrong: 'rgba(35,38,25,0.15)', input: '#F7F7F1', topGlow: 'rgba(213,224,87,0.42)', topGlowEnd: 'rgba(244,243,235,0)', navButton: 'rgba(32,33,23,0.07)', limeWash: 'rgba(135,148,0,0.13)', limeBorder: 'rgba(102,112,0,0.22)', dangerWash: 'rgba(239,68,68,0.08)', successWash: 'rgba(16,185,129,0.08)',
+      };
+  const { isDesktop, isMobile } = useBreakpoint();
+  const tabBarHeight = useTabBarHeight();
   const openedFromSettings = isFromSettingsRoute(from);
-  const panelStyles = getSettingsWebPanelStyles(openedFromSettings, colors.bg.primary, colors.border.light);
+  const panelStyles = getSettingsWebPanelStyles(openedFromSettings, palette.ground, palette.edge);
   const businessId = useAuthStore((s) => s.businessId);
   const existingCustomers = useFyllStore((s) => s.customers);
   const addCustomer = useFyllStore((s) => s.addCustomer);
@@ -82,6 +96,8 @@ export default function ImportCustomersScreen() {
   const [templateNotice, setTemplateNotice] = useState('');
   const [isParsing, setIsParsing] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+
+  useFonts({ BricolageGrotesque_700Bold, BricolageGrotesque_800ExtraBold });
 
   const preview = useMemo(() => rows.slice(0, 5), [rows]);
 
@@ -257,50 +273,55 @@ export default function ImportCustomersScreen() {
   return (
     <View style={panelStyles.outer}>
       <View style={panelStyles.inner}>
-    <SafeAreaView className="flex-1" style={{ backgroundColor: colors.bg.primary }} edges={['top']}>
+    <SafeAreaView className="flex-1" style={{ backgroundColor: palette.ground }} edges={['top']}>
+      <LinearGradient pointerEvents="none" colors={[palette.topGlow, palette.topGlowEnd]} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: openedFromSettings ? 390 : 300 }} />
       {/* Header */}
       <View
-        className="flex-row items-center px-5 py-4 border-b"
-        style={{ borderBottomColor: colors.border.light }}
+        className="flex-row items-center"
+        style={{ minHeight: isMobile ? 66 : openedFromSettings ? 58 : 56, paddingHorizontal: openedFromSettings ? 20 : 10, paddingTop: isMobile ? 12 : 4, paddingBottom: 4 }}
       >
         <Pressable
           onPress={goBack}
-          className="w-10 h-10 rounded-xl items-center justify-center mr-3 active:opacity-50"
-          style={{ backgroundColor: 'transparent' }}
+          className="w-10 h-10 items-center justify-center mr-3 active:opacity-50"
+          style={{ borderRadius: 20, backgroundColor: palette.navButton }}
         >
-          <ArrowLeft size={24} color={colors.text.primary} strokeWidth={2} />
+          <ArrowLeft size={18} color={palette.ink} strokeWidth={2.2} />
         </Pressable>
         <View className="flex-1">
+          <Text style={{ color: palette.faint, fontSize: 9.5, lineHeight: 12, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Settings</Text>
           <Text
             style={{
-              color: colors.text.primary,
-              fontSize: Platform.OS === 'web' ? 14 : 20,
-              lineHeight: Platform.OS === 'web' ? 18 : 24,
+              color: palette.ink,
+              fontSize: 17,
+              lineHeight: 21,
               fontWeight: '600',
             }}
           >
             Import Customers
           </Text>
-          <Text style={{ color: colors.text.tertiary }} className="text-sm mt-0.5">
-            Upload a CSV file with customer data
-          </Text>
         </View>
       </View>
 
-      <ScrollView className="flex-1 px-5 py-6" showsVerticalScrollIndicator={false}>
+      <ScrollView className="flex-1" contentContainerStyle={{ paddingHorizontal: 16, paddingTop: openedFromSettings ? 22 : 12, paddingBottom: isDesktop ? 64 : tabBarHeight + 48 }} showsVerticalScrollIndicator={false}>
+        <View style={{ width: '100%', maxWidth: openedFromSettings ? 720 : 520, alignSelf: 'center' }}>
+        <View style={{ position: 'relative', overflow: 'hidden', minHeight: 156, marginBottom: 28, padding: 20, borderRadius: 28, borderWidth: 1, borderColor: palette.edge, backgroundColor: palette.surface, shadowColor: '#000000', shadowOpacity: isDark ? 0.24 : 0.07, shadowRadius: 24, shadowOffset: { width: 0, height: 10 } }}>
+          <LinearGradient pointerEvents="none" colors={[palette.limeWash, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -44, right: -36, width: 210, height: 210, borderRadius: 105 }} />
+          <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, borderBottomLeftRadius: 3, borderBottomRightRadius: 3, backgroundColor: palette.lime }} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 15 }}><LinearGradient colors={[palette.lime, palette.limeDeep]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 66, height: 66, borderRadius: 22, alignItems: 'center', justifyContent: 'center' }}><Upload size={28} color="#202117" strokeWidth={2.1} /></LinearGradient><View style={{ flex: 1, minWidth: 0 }}><Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Customer data</Text><Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_800ExtraBold', fontSize: 26, lineHeight: 31, letterSpacing: -0.7 }}>CSV import</Text><Text style={{ color: palette.faint, fontSize: 12.5, marginTop: 3 }}>{summary ? `${summary.totalRows} rows processed` : rows.length ? `${rows.length} customers ready` : 'Upload, preview, then import'}</Text></View></View>
+        </View>
         {/* Instructions */}
         {!rows.length && !summary && (
-          <View className="rounded-2xl p-5 mb-6" style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}>
+          <View className="p-5 mb-6" style={{ borderRadius: 26, backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.edge }}>
             <View className="flex-row items-start mb-3">
-              <AlertCircle size={20} color={colors.accent.primary} strokeWidth={2} />
+              <View style={{ width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.limeWash }}><AlertCircle size={19} color={palette.limeInk} strokeWidth={2} /></View>
               <View className="flex-1 ml-3">
-                <Text style={{ color: colors.text.primary }} className="font-semibold text-base mb-2">
-                  CSV Format Requirements
+                <Text style={{ color: palette.ink, fontSize: isMobile ? 14 : 15, fontWeight: '600' }} className="mb-2">
+                  CSV format requirements
                 </Text>
-                <Text style={{ color: colors.text.secondary }} className="text-sm leading-5 mb-2">
+                <Text style={{ color: palette.muted, fontSize: 12.5 }} className="leading-5 mb-2">
                   Your CSV must have a header row with at least a <Text className="font-bold">name</Text> column.
                 </Text>
-                <Text style={{ color: colors.text.secondary }} className="text-sm leading-5 mb-2">
+                <Text style={{ color: palette.muted, fontSize: 12.5 }} className="leading-5 mb-2">
                   Optional columns: <Text className="font-bold">email</Text>, <Text className="font-bold">phone</Text>, <Text className="font-bold">address</Text>, <Text className="font-bold">city</Text>, <Text className="font-bold">state</Text>
                 </Text>
                 <Text style={{ color: colors.text.tertiary }} className="text-xs mt-2">
@@ -308,11 +329,11 @@ export default function ImportCustomersScreen() {
                 </Text>
                 <Pressable
                   onPress={handleDownloadTemplate}
-                  className="mt-3 px-4 py-2 rounded-lg self-start active:opacity-80"
-                  style={{ backgroundColor: colors.bg.primary, borderWidth: 1, borderColor: colors.border.light }}
+                  className="mt-3 px-4 rounded-full self-start items-center justify-center active:opacity-80"
+                  style={{ height: 40, backgroundColor: palette.input, borderWidth: 1, borderColor: palette.edgeStrong }}
                 >
-                  <Text style={{ color: colors.text.primary }} className="text-xs font-semibold">
-                    Download CSV Template
+                  <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400' }} className="text-xs">
+                    Download CSV template
                   </Text>
                 </Pressable>
                 {templateNotice ? (
@@ -330,18 +351,19 @@ export default function ImportCustomersScreen() {
           <Pressable
             onPress={handlePickFile}
             disabled={isParsing || isImporting}
-            className="rounded-2xl p-8 items-center justify-center mb-6 active:opacity-80"
+            className="p-8 items-center justify-center mb-6 active:opacity-80"
             style={{
-              backgroundColor: colors.bg.secondary,
+              backgroundColor: palette.surface,
+              borderRadius: 26,
               borderWidth: 2,
-              borderColor: colors.border.light,
+              borderColor: palette.limeBorder,
               borderStyle: 'dashed',
             }}
           >
             {isParsing ? (
               <>
-                <ActivityIndicator size="large" color={colors.accent.primary} />
-                <Text style={{ color: colors.text.tertiary }} className="text-sm mt-3">
+                <ActivityIndicator size="large" color={palette.limeInk} />
+                <Text style={{ color: palette.faint }} className="text-sm mt-3">
                   Reading file...
                 </Text>
               </>
@@ -349,14 +371,14 @@ export default function ImportCustomersScreen() {
               <>
                 <View
                   className="w-16 h-16 rounded-full items-center justify-center mb-3"
-                  style={{ backgroundColor: colors.accent.primary + '20' }}
+                  style={{ backgroundColor: palette.limeWash }}
                 >
-                  <Upload size={28} color={colors.accent.primary} strokeWidth={2} />
+                  <Upload size={28} color={palette.limeInk} strokeWidth={2} />
                 </View>
-                <Text style={{ color: colors.text.primary, fontSize: 14, lineHeight: 18, fontWeight: '600' }}>
-                  Choose CSV File
+                <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold', fontSize: 15, lineHeight: 19, fontWeight: '400' }}>
+                  Choose CSV file
                 </Text>
-                <Text style={{ color: colors.text.tertiary }} className="text-sm mt-1">
+                <Text style={{ color: palette.faint, fontSize: 12 }} className="mt-1">
                   Tap to select a file from your device
                 </Text>
               </>
@@ -369,54 +391,54 @@ export default function ImportCustomersScreen() {
           <View className="mb-6">
             <View className="flex-row items-center justify-between mb-3">
               <View>
-                <Text style={{ color: colors.text.primary, fontSize: 14, lineHeight: 18, fontWeight: '600' }}>
+                <Text style={{ color: palette.ink, fontSize: 15, lineHeight: 19, fontWeight: '600' }}>
                   Preview
                 </Text>
-                <Text style={{ color: colors.text.tertiary }} className="text-sm">
+                <Text style={{ color: palette.faint, fontSize: 12 }}>
                   {fileName} • {rows.length} customers
                 </Text>
               </View>
               <Pressable
                 onPress={handlePickFile}
                 className="px-4 py-2 rounded-lg active:opacity-70"
-                style={{ backgroundColor: colors.bg.secondary }}
+                style={{ backgroundColor: palette.input, borderRadius: 999, borderWidth: 1, borderColor: palette.edgeStrong }}
               >
-                <Text style={{ color: colors.accent.primary }} className="font-semibold text-sm">
-                  Change File
+                <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400' }} className="text-sm">
+                  Change file
                 </Text>
               </Pressable>
             </View>
 
-            <View className="rounded-2xl overflow-hidden" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
+            <View className="overflow-hidden" style={{ borderRadius: 26, backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.edge }}>
               {preview.map((row, index) => (
                 <View
                   key={index}
                   className="p-4"
-                  style={index < preview.length - 1 ? { borderBottomWidth: 1, borderBottomColor: colors.border.light } : undefined}
+                  style={index < preview.length - 1 ? { borderBottomWidth: 1, borderBottomColor: palette.edge } : undefined}
                 >
-                  <Text style={{ color: colors.text.primary }} className="font-semibold text-base mb-1">
+                  <Text style={{ color: palette.ink, fontSize: isMobile ? 14 : 15.5, fontWeight: '600' }} className="mb-1">
                     {row.name}
                   </Text>
                   {row.email && (
-                    <Text style={{ color: colors.text.tertiary }} className="text-sm">
+                    <Text style={{ color: palette.faint, fontSize: 12 }}>
                       Email: {row.email}
                     </Text>
                   )}
                   {row.phone && (
-                    <Text style={{ color: colors.text.tertiary }} className="text-sm">
+                    <Text style={{ color: palette.faint, fontSize: 12 }}>
                       Phone: {row.phone}
                     </Text>
                   )}
                   {(row.address || row.city || row.state) && (
-                    <Text style={{ color: colors.text.tertiary }} className="text-sm">
+                    <Text style={{ color: palette.faint, fontSize: 12 }}>
                       Address: {[row.address, row.city, row.state].filter(Boolean).join(', ')}
                     </Text>
                   )}
                 </View>
               ))}
               {rows.length > 5 && (
-                <View className="p-4 items-center" style={{ backgroundColor: colors.bg.secondary }}>
-                  <Text style={{ color: colors.text.tertiary }} className="text-sm">
+                <View className="p-4 items-center" style={{ backgroundColor: palette.input }}>
+                  <Text style={{ color: palette.faint }} className="text-sm">
                     + {rows.length - 5} more customers
                   </Text>
                 </View>
@@ -427,14 +449,14 @@ export default function ImportCustomersScreen() {
             <Pressable
               onPress={handleImport}
               disabled={isImporting}
-              className="rounded-2xl p-4 items-center justify-center mt-6 active:opacity-80"
-              style={{ backgroundColor: colors.accent.primary }}
+              className="rounded-full items-center justify-center mt-6 active:opacity-80"
+              style={{ height: 54, backgroundColor: palette.lime }}
             >
               {isImporting ? (
-                <ActivityIndicator size="small" color={colors.bg.primary} />
+                <ActivityIndicator size="small" color="#202117" />
               ) : (
-                <Text style={{ color: colors.bg.primary === '#111111' ? '#000000' : '#FFFFFF' }} className="font-bold text-base">
-                  Import {rows.length} Customers
+                <Text style={{ color: '#202117', fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: isMobile ? 14 : 15 }}>
+                  Import {rows.length} customers
                 </Text>
               )}
             </Pressable>
@@ -450,23 +472,23 @@ export default function ImportCustomersScreen() {
             >
               <Check size={32} color="#10B981" strokeWidth={2.5} />
             </View>
-            <Text style={{ color: colors.text.primary }} className="font-bold text-2xl text-center mb-2">
-              Import Complete!
+            <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_800ExtraBold', fontWeight: '400' }} className="text-2xl text-center mb-2">
+              Import complete!
             </Text>
-            <Text style={{ color: colors.text.tertiary }} className="text-base text-center mb-6">
+            <Text style={{ color: palette.faint, fontSize: 13 }} className="text-center mb-6">
               Your customer data has been imported successfully
             </Text>
 
-            <View className="rounded-2xl overflow-hidden mb-6" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
-              <View className="p-4 flex-row items-center justify-between" style={{ borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
+            <View className="overflow-hidden mb-6" style={{ borderRadius: 26, backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.edge }}>
+              <View className="p-4 flex-row items-center justify-between" style={{ borderBottomWidth: 1, borderBottomColor: palette.edge }}>
                 <Text style={{ color: colors.text.secondary }} className="text-sm">Total Rows</Text>
                 <Text style={{ color: colors.text.primary }} className="font-bold text-base">{summary.totalRows}</Text>
               </View>
-              <View className="p-4 flex-row items-center justify-between" style={{ borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
+              <View className="p-4 flex-row items-center justify-between" style={{ borderBottomWidth: 1, borderBottomColor: palette.edge }}>
                 <Text style={{ color: colors.text.secondary }} className="text-sm">New Customers</Text>
                 <Text className="text-emerald-500 font-bold text-base">{summary.totalNew}</Text>
               </View>
-              <View className="p-4 flex-row items-center justify-between" style={{ borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
+              <View className="p-4 flex-row items-center justify-between" style={{ borderBottomWidth: 1, borderBottomColor: palette.edge }}>
                 <Text style={{ color: colors.text.secondary }} className="text-sm">Updated Existing</Text>
                 <Text className="text-blue-500 font-bold text-base">{summary.totalUpdated}</Text>
               </View>
@@ -480,10 +502,10 @@ export default function ImportCustomersScreen() {
 
             <Pressable
               onPress={handleDone}
-              className="rounded-2xl p-4 items-center justify-center active:opacity-80"
-              style={{ backgroundColor: colors.accent.primary }}
+              className="rounded-full items-center justify-center active:opacity-80"
+              style={{ height: 54, backgroundColor: palette.lime }}
             >
-              <Text style={{ color: colors.bg.primary === '#111111' ? '#000000' : '#FFFFFF' }} className="font-bold text-base">
+              <Text style={{ color: '#202117', fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: isMobile ? 14 : 15 }}>
                 Done
               </Text>
             </Pressable>
@@ -497,6 +519,7 @@ export default function ImportCustomersScreen() {
             <Text className="text-red-500 text-sm ml-3 flex-1">{error}</Text>
           </View>
         )}
+        </View>
       </ScrollView>
     </SafeAreaView>
       </View>

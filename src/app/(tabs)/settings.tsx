@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { View, Text, Pressable, ScrollView, TextInput, Alert, Switch, Platform, Modal, Dimensions, type GestureResponderEvent } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Trash2, Edit2, Check, X, ChevronRight, ChevronUp, ChevronDown, ArrowLeft, Package, ShoppingCart, Tag, RotateCcw, Info, CreditCard, Truck, Wrench, Users, Moon, Sun, Laptop, LogOut, Shield, Building2, AlertTriangle, UserCircle, Upload, FileText, BarChart3, TrendingUp, Zap, Search, Sparkles, ListTodo, Bell, BellOff, Boxes, Clock3, Plus, MoreVertical, Megaphone, Printer, Copy, Link2, Landmark, Store, Mail, LayoutGrid, Award } from 'lucide-react-native';
+import { Trash2, Edit2, Check, X, ChevronRight, ChevronUp, ChevronDown, ArrowLeft, Package, ShoppingCart, Tag, RotateCcw, Info, CreditCard, Truck, Wrench, Users, Moon, Sun, Laptop, LogOut, Shield, Building2, AlertTriangle, UserCircle, Upload, FileText, BarChart3, TrendingUp, Zap, Search, Sparkles, ListTodo, Bell, BellOff, Boxes, Clock3, Plus, MoreVertical, Megaphone, Printer, Copy, Link2, Landmark, Store, Mail, LayoutGrid, Award, MessageCircle } from 'lucide-react-native';
 import { MilestoneReplay } from '@/components/milestones/MilestoneReplay';
 import { useWebPushNotifications } from '@/hooks/useWebPushNotifications';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
@@ -10,8 +10,11 @@ import useFyllStore, { formatCurrency, type DeletedItem, type ThemeMode } from '
 import useAuthStore, { ROLE_PERMISSIONS } from '@/lib/state/auth-store';
 import { useResolvedThemeMode, useThemeColors } from '@/lib/theme';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
+import * as Application from 'expo-application';
+import Constants from 'expo-constants';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { canShowFinanceNavigation, getDefaultFinanceSectionForRole } from '@/lib/finance-access';
@@ -30,12 +33,12 @@ import AccountSettingsScreen from '@/app/account-settings';
 import BusinessSettingsScreen from '@/app/business-settings';
 import StorefrontSettingsScreen from '@/app/storefront-settings';
 import PaymentAccountsScreen from '@/app/payment-accounts';
-import { WhatsAppAlertsCard } from '@/components/WhatsAppAlertsCard';
 import TeamManagementScreen from '@/app/team';
 import InvitationsScreen from '@/app/invitations';
 import WooCommerceSettingsScreen from '@/app/woocommerce-settings';
 import OrderAutomationScreen from '@/app/order-automation';
 import EmailSettingsScreen from '@/app/email-settings';
+import WhatsAppSettingsScreen from '@/app/whatsapp-settings';
 import WarehouseSettingsScreen from '@/app/warehouse-settings';
 import CategoryManagerScreen from '@/app/category-manager';
 import ProductVariablesScreen from '@/app/product-variables';
@@ -47,7 +50,9 @@ import ImportAiScreen from '@/app/import-ai';
 import TasksScreen from '@/app/(tabs)/tasks';
 import { SearchClearButton } from '@/components/SearchClearButton';
 import { FYLL_LIME, FYLL_LIME_INK, MoneyText, usePaymentsPalette } from '@/components/payments/payments-ui';
+import { isPickupTimeline } from '@/lib/fulfillment';
 import { FeaturesSettings, type FeatureRowKey } from '@/components/FeaturesSettings';
+import { LimeToggle } from '@/components/settings/LimeToggle';
 import { SETTINGS_NAV, getSettingsNavItem, normalizeSettingsNavKey, searchSettings, type SettingsNavKey, type SettingsSearchEntry } from '@/lib/settings-nav';
 import useSettingsNavStore from '@/lib/state/settings-nav-store';
 
@@ -72,7 +77,7 @@ const SETTINGS_SECTION_MENU_MAP: Record<SettingsSection, WebSettingsMenuKey> = {
   'order-statuses': 'orders',
   'quality-control-checks': 'orders',
   'sale-sources': 'orders',
-  'custom-services': 'inventory',
+  'custom-services': 'orders',
   'order-timelines': 'orders',
   'shipping-zones': 'orders',
   'payment-methods': 'payments',
@@ -93,6 +98,7 @@ type WebInlineSettingsPanel =
   | 'woocommerce-settings'
   | 'order-automation'
   | 'email-settings'
+  | 'whatsapp-settings'
   | 'warehouse-settings'
   | 'category-manager'
   | 'product-variables'
@@ -113,6 +119,7 @@ const WEB_INLINE_SETTINGS_PANELS: WebInlineSettingsPanel[] = [
   'woocommerce-settings',
   'order-automation',
   'email-settings',
+  'whatsapp-settings',
   'warehouse-settings',
   'category-manager',
   'product-variables',
@@ -162,6 +169,7 @@ const PANEL_NAV_KEY: Record<WebInlineSettingsPanel, WebSettingsMenuKey> = {
   'woocommerce-settings': 'integrations',
   'order-automation': 'orders',
   'email-settings': 'notifications',
+  'whatsapp-settings': 'notifications',
   'warehouse-settings': 'inventory',
   'category-manager': 'inventory',
   'product-variables': 'inventory',
@@ -232,6 +240,7 @@ interface EditableItemProps {
   showDescription?: boolean;
   showTrackingStage?: boolean;
   showWooCommerceStatusSlug?: boolean;
+  modern?: boolean;
 }
 
 function EditableItem({
@@ -243,8 +252,10 @@ function EditableItem({
   showDescription = false,
   showTrackingStage = false,
   showWooCommerceStatusSlug = false,
+  modern = false,
 }: EditableItemProps) {
   const colors = useThemeColors();
+  const palette = usePaymentsPalette();
   const primaryPillButtonStyle = {
     backgroundColor: FYLL_LIME,
     borderRadius: 999,
@@ -278,6 +289,10 @@ function EditableItem({
     '#EC4899',
     '#F43F5E',
     '#6B7280',
+    '#65A30D',
+    '#0F766E',
+    '#0284C7',
+    '#C026D3',
   ];
 
   const handleSave = () => {
@@ -297,7 +312,7 @@ function EditableItem({
 
   return (
     <View className="mb-2">
-      <View className="rounded-xl" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
+      <View style={{ borderRadius: modern ? 24 : 12, overflow: 'hidden', backgroundColor: modern ? palette.card : colors.bg.card, borderWidth: 1, borderColor: modern ? palette.border : colors.border.light }}>
         {isEditing ? (
           <View className="p-4">
             <View className="rounded-xl px-4 mb-3" style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light, height: 50, justifyContent: 'center' }}>
@@ -407,7 +422,7 @@ function EditableItem({
                 className="flex-1 rounded-full items-center active:opacity-80"
                 style={[primaryPillButtonStyle, { height: 50, justifyContent: 'center' }]}
               >
-                <Text style={primaryPillTextStyle} className="font-semibold text-sm">Save</Text>
+                <Text style={[primaryPillTextStyle, { fontSize: 14, fontWeight: '600' }]}>Save</Text>
               </Pressable>
               <Pressable
                 onPress={() => {
@@ -427,7 +442,7 @@ function EditableItem({
             </View>
           </View>
         ) : (
-          <View className="flex-row items-center p-4">
+          <View className="flex-row items-center p-4" style={{ minHeight: modern ? 76 : undefined }}>
             {showColor && (
               <View
                 className="w-4 h-4 rounded-full mr-3"
@@ -435,7 +450,7 @@ function EditableItem({
               />
             )}
             <View className="flex-1">
-              <Text style={{ color: colors.text.primary }} className="font-medium text-sm">{item.name}</Text>
+              <Text style={{ color: modern ? palette.text : colors.text.primary, fontSize: modern ? 14 : undefined, fontWeight: modern ? '600' : undefined }} className={modern ? '' : 'font-medium text-sm'}>{item.name}</Text>
               {showPrice && item.defaultPrice !== undefined && (
                 <Text style={{ color: colors.text.tertiary }} className="text-xs">{formatCurrency(item.defaultPrice)}</Text>
               )}
@@ -461,6 +476,7 @@ function EditableItem({
                 setIsEditing(true);
               }}
               className="p-2 active:opacity-50"
+              style={modern ? { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.softFill, marginRight: 6 } : undefined}
             >
               <Edit2 size={16} color={colors.text.tertiary} strokeWidth={2} />
             </Pressable>
@@ -470,6 +486,7 @@ function EditableItem({
                 onDelete();
               }}
               className="p-2 active:opacity-50"
+              style={modern ? { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.dangerBg } : undefined}
             >
               <Trash2 size={16} color="#EF4444" strokeWidth={2} />
             </Pressable>
@@ -556,6 +573,9 @@ function SettingsRow({
 
 export default function SettingsScreen() {
   const router = useRouter();
+  const appVersion = Application.nativeApplicationVersion ?? Constants.expoConfig?.version ?? '1.0.0';
+  const appBuild = Application.nativeBuildVersion;
+  const appVersionLabel = appBuild ? `Version ${appVersion} · Build ${appBuild}` : `Version ${appVersion}`;
   const { businessName, businessSlug, featureAccess } = useBusinessSettings();
   const { section: sectionParam, menu: menuParam, panel: panelParam } = useLocalSearchParams<{ section?: SettingsSection; menu?: WebSettingsMenuKey; panel?: string }>();
   const normalizedSectionParam = normalizeSettingsSectionParam(sectionParam);
@@ -604,6 +624,13 @@ export default function SettingsScreen() {
     type: SettingsSection;
   } | null>(null);
   const [showAddOrderStatusForm, setShowAddOrderStatusForm] = useState(false);
+  const [showAddQcCheckForm, setShowAddQcCheckForm] = useState(false);
+  const [showAddSaleSourceForm, setShowAddSaleSourceForm] = useState(false);
+  const [showAddPaymentMethodForm, setShowAddPaymentMethodForm] = useState(false);
+  const [showAddLogisticsCarrierForm, setShowAddLogisticsCarrierForm] = useState(false);
+  const [showAddCustomServiceForm, setShowAddCustomServiceForm] = useState(false);
+  const [showAddCaseStatusForm, setShowAddCaseStatusForm] = useState(false);
+  const [showAddResolutionTypeForm, setShowAddResolutionTypeForm] = useState(false);
   const [restoringDeletedItemId, setRestoringDeletedItemId] = useState<string | null>(null);
   const [recycleBinSearchQuery, setRecycleBinSearchQuery] = useState('');
   const [showMilestoneReplay, setShowMilestoneReplay] = useState<boolean>(false);
@@ -794,7 +821,7 @@ export default function SettingsScreen() {
     >
       <Pressable
         className="flex-1 items-center justify-center"
-        style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)' }}
+        style={{ backgroundColor: 'rgba(0, 0, 0, 0.72)' }}
         onPress={() => setPendingDeleteSetting(null)}
       >
         <Pressable
@@ -838,18 +865,18 @@ export default function SettingsScreen() {
     >
       <Pressable
         className="flex-1 items-center justify-center px-5"
-        style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)' }}
+        style={{ backgroundColor: 'rgba(0, 0, 0, 0.72)' }}
         onPress={() => setShowOrderStatusModal(false)}
       >
         <Pressable
           onPress={(e) => e.stopPropagation()}
           className="w-full rounded-3xl overflow-hidden"
-          style={{ backgroundColor: colors.bg.primary, maxWidth: 520 }}
+          style={{ backgroundColor: settingsPalette.card, maxWidth: 520, borderWidth: 1, borderColor: settingsPalette.border }}
         >
-          <View className="px-5 py-4" style={{ borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
+          <View className="px-5 py-4" style={{ borderBottomWidth: 1, borderBottomColor: settingsPalette.hairline }}>
             <View className="flex-row items-center justify-between">
               <View className="flex-1 pr-4">
-                <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600' }}>
+                <Text style={{ color: settingsPalette.text, fontFamily: 'BricolageGrotesque_700Bold', fontSize: isMobile ? 18 : 22, lineHeight: isMobile ? 22 : 27, fontWeight: '400' }}>
                   {editingOrderStatusId ? 'Edit Order Status' : 'New Order Status'}
                 </Text>
                 <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 4 }}>
@@ -861,7 +888,7 @@ export default function SettingsScreen() {
               <Pressable
                 onPress={() => setShowOrderStatusModal(false)}
                 className="w-10 h-10 rounded-2xl items-center justify-center active:opacity-70"
-                style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}
+                style={{ backgroundColor: settingsPalette.softFill, borderWidth: 1, borderColor: settingsPalette.border }}
               >
                 <X size={18} color={colors.text.tertiary} strokeWidth={2} />
               </Pressable>
@@ -875,7 +902,7 @@ export default function SettingsScreen() {
               </Text>
               <View
                 className="rounded-2xl px-4"
-                style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light, minHeight: 50, justifyContent: 'center' }}
+                style={{ backgroundColor: settingsPalette.softFill, borderWidth: 1, borderColor: settingsPalette.outline, minHeight: 50, justifyContent: 'center' }}
               >
                 <TextInput
                   placeholder="Dispatched"
@@ -905,14 +932,14 @@ export default function SettingsScreen() {
                         paddingHorizontal: 12,
                         alignItems: 'center',
                         justifyContent: 'center',
-                        backgroundColor: selected ? colors.text.primary : colors.bg.secondary,
+                        backgroundColor: selected ? FYLL_LIME : settingsPalette.softFill,
                         borderWidth: 1,
-                        borderColor: selected ? colors.text.primary : colors.border.light,
+                        borderColor: selected ? FYLL_LIME : settingsPalette.outline,
                       }}
                     >
                       <Text
                         style={{
-                          color: selected ? colors.bg.primary : colors.text.primary,
+                          color: selected ? FYLL_LIME_INK : settingsPalette.text,
                           fontSize: 12,
                           fontWeight: '500',
                         }}
@@ -931,7 +958,7 @@ export default function SettingsScreen() {
               </Text>
               <View
                 className="rounded-2xl px-4"
-                style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light, minHeight: 50, justifyContent: 'center' }}
+                style={{ backgroundColor: settingsPalette.softFill, borderWidth: 1, borderColor: settingsPalette.outline, minHeight: 50, justifyContent: 'center' }}
               >
                 <TextInput
                   placeholder="delivered"
@@ -979,7 +1006,7 @@ export default function SettingsScreen() {
             <Pressable
               onPress={() => setShowOrderStatusModal(false)}
               className="flex-1 rounded-full items-center justify-center active:opacity-80"
-              style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light, minHeight: 48 }}
+              style={{ backgroundColor: settingsPalette.softFill, borderWidth: 1, borderColor: settingsPalette.outline, minHeight: 48 }}
             >
               <Text style={{ color: colors.text.tertiary, fontWeight: '600' }}>Cancel</Text>
             </Pressable>
@@ -1007,28 +1034,30 @@ export default function SettingsScreen() {
     >
       <Pressable
         className="flex-1 items-center justify-center px-5"
-        style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)' }}
+        style={{ backgroundColor: 'rgba(0, 0, 0, 0.72)' }}
         onPress={() => setShowOrderTimelineModal(false)}
       >
         <Pressable
           onPress={(e) => e.stopPropagation()}
           className="w-full rounded-3xl overflow-hidden"
-          style={{ backgroundColor: colors.bg.primary, maxWidth: 780, maxHeight: '92%' }}
+          style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border, maxWidth: 780, maxHeight: '92%' }}
         >
           <View className="px-5 py-4" style={{ borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
             <View className="flex-row items-center justify-between">
               <View className="flex-1 pr-4">
-                <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600' }}>
+                <MoneyText style={{ color: settingsPalette.text, fontSize: isWebDesktop ? 22 : 18, fontWeight: '700' }}>
                   {editingOrderTimelineId || editingTimelineZoneId ? 'Edit Fulfillment Timeline' : 'New Fulfillment Timeline'}
-                </Text>
+                </MoneyText>
                 <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 4 }}>
-                  'Choose the states, how many business days delivery takes there, and how many days processing takes before it ships.'
+                  {newOrderTypeFulfillmentMethod === 'pickup'
+                    ? 'Set how long it takes to get an order ready for collection.'
+                    : 'Choose the states, delivery window, and processing time before shipping.'}
                 </Text>
               </View>
               <Pressable
                 onPress={() => setShowOrderTimelineModal(false)}
                 className="w-10 h-10 rounded-2xl items-center justify-center active:opacity-70"
-                style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}
+                style={{ backgroundColor: settingsPalette.inset, borderWidth: 1, borderColor: settingsPalette.border }}
               >
                 <X size={18} color={colors.text.tertiary} strokeWidth={2} />
               </Pressable>
@@ -1045,7 +1074,7 @@ export default function SettingsScreen() {
                 style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light, minHeight: 50, justifyContent: 'center' }}
               >
                 <TextInput
-                  placeholder="e.g. Lagos delivery"
+                  placeholder={newOrderTypeFulfillmentMethod === 'pickup' ? 'e.g. Store pick up' : 'e.g. Lagos delivery'}
                   placeholderTextColor={colors.input.placeholder}
                   value={newOrderTypeName}
                   onChangeText={setNewOrderTypeName}
@@ -1055,6 +1084,38 @@ export default function SettingsScreen() {
               </View>
             </View>
 
+            <View>
+              <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '600', textTransform: 'uppercase', marginBottom: 7 }}>
+                Fulfillment Type
+              </Text>
+              <View style={{ flexDirection: 'row', padding: 4, gap: 4, borderRadius: 999, borderWidth: 1, borderColor: settingsPalette.outline, backgroundColor: settingsPalette.inset }}>
+                {([
+                  { key: 'delivery' as const, label: 'Delivery' },
+                  { key: 'pickup' as const, label: 'Pick up' },
+                ]).map(({ key, label }) => {
+                  const active = newOrderTypeFulfillmentMethod === key;
+                  return (
+                    <Pressable
+                      key={key}
+                      accessibilityRole="tab"
+                      accessibilityState={{ selected: active }}
+                      onPress={() => setNewOrderTypeFulfillmentMethod(key)}
+                      style={{ flex: 1, height: 42, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: active ? FYLL_LIME : 'transparent' }}
+                    >
+                      <Text style={{ color: active ? FYLL_LIME_INK : settingsPalette.text, fontSize: 14, fontWeight: active ? '700' : '600' }}>{label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 8 }}>
+                {newOrderTypeFulfillmentMethod === 'pickup'
+                  ? 'For orders the customer collects. Only processing days apply: no states and no delivery days.'
+                  : 'For orders that are delivered. Add the states it covers and the delivery days below.'}
+              </Text>
+            </View>
+
+            {newOrderTypeFulfillmentMethod === 'pickup' ? null : (
+              <>
             <View>
               <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '600', textTransform: 'uppercase', marginBottom: 7 }}>
                 States
@@ -1210,6 +1271,9 @@ export default function SettingsScreen() {
                 </View>
               </View>
             </View>
+
+              </>
+            )}
 
             <View>
               <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '600', textTransform: 'uppercase', marginBottom: 7 }}>
@@ -1611,25 +1675,29 @@ export default function SettingsScreen() {
               top: orderTimelineMenu.top,
               left: orderTimelineMenu.left,
               width: 148,
-              borderRadius: 14,
-              backgroundColor: colors.bg.card,
+              borderRadius: 18,
+              backgroundColor: settingsPalette.card,
               borderWidth: 1,
-              borderColor: colors.border.light,
+              borderColor: settingsPalette.border,
               overflow: 'hidden',
+              shadowColor: '#000000',
+              shadowOpacity: 0.18,
+              shadowRadius: 16,
+              shadowOffset: { width: 0, height: 8 },
             }}
           >
             <Pressable
               onPress={() => handleEditOrderTimeline(orderTimelineMenu.id)}
               className="flex-row items-center active:opacity-80"
-              style={{ minHeight: 44, paddingHorizontal: 12, gap: 8, borderBottomWidth: 1, borderBottomColor: colors.border.light }}
+              style={{ minHeight: 46, paddingHorizontal: 14, gap: 9, borderBottomWidth: 1, borderBottomColor: settingsPalette.hairline }}
             >
-              <Edit2 size={14} color={colors.text.primary} strokeWidth={2} />
-              <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '500' }}>Edit</Text>
+              <Edit2 size={14} color={settingsPalette.text} strokeWidth={2} />
+              <Text style={{ color: settingsPalette.text, fontSize: 12, fontWeight: '600' }}>Edit</Text>
             </Pressable>
             <Pressable
               onPress={() => handleDeleteOrderTimeline(orderTimelineMenu.id)}
               className="flex-row items-center active:opacity-80"
-              style={{ minHeight: 44, paddingHorizontal: 12, gap: 8 }}
+              style={{ minHeight: 46, paddingHorizontal: 14, gap: 9, backgroundColor: settingsPalette.dangerBg }}
             >
               <Trash2 size={14} color="#EF4444" strokeWidth={2} />
               <Text style={{ color: '#EF4444', fontSize: 12, fontWeight: '500' }}>Delete</Text>
@@ -1755,31 +1823,6 @@ export default function SettingsScreen() {
   const canUseAiImport = isBusinessFeatureEnabled(featureAccess, 'aiImport');
   const financeSettingsRoute = `/finance?section=${getDefaultFinanceSectionForRole(userRole)}&from=settings`;
 
-  const handleSaveGlobalSettings = async () => {
-    if (!businessId) {
-      setSaveStatus('error');
-      setSaveMessage('No business selected.');
-      return;
-    }
-
-    setSaveStatus('saving');
-    setSaveMessage(null);
-    const result = await saveGlobalSettings(businessId);
-    if (result.success) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setSaveStatus('success');
-      setSaveMessage('Saved for all devices.');
-    } else {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      setSaveStatus('error');
-      setSaveMessage(result.error ?? 'Save failed.');
-    }
-
-    setTimeout(() => {
-      setSaveStatus('idle');
-    }, 2500);
-  };
-
   const handleSectionSave = async () => {
     if (!businessId) {
       setSectionSaveStatus('error');
@@ -1873,6 +1916,7 @@ export default function SettingsScreen() {
     setNewShippingZoneStateSearch('');
     setNewTimelineDeliveryMin('1');
     setNewTimelineDeliveryMax('3');
+    setNewOrderTypeFulfillmentMethod('delivery');
     setEditingTimelineZoneId(null);
     setOrderTimelineMenu(null);
     setShowOrderTimelineModal(true);
@@ -1935,6 +1979,7 @@ export default function SettingsScreen() {
     setNewShippingZoneStateSearch('');
     setNewTimelineDeliveryMin(String(row.deliveryMin ?? 1));
     setNewTimelineDeliveryMax(String(row.deliveryMax ?? 3));
+    setNewOrderTypeFulfillmentMethod(row.fulfillmentMethod);
     setOrderTimelineMenu(null);
     setShowOrderTimelineModal(true);
   };
@@ -2014,7 +2059,7 @@ export default function SettingsScreen() {
   const handleSubmitOrderTypeTimeline = async () => {
     const name = newOrderTypeName.trim();
     if (!name) return;
-    const states = newShippingZoneSelectedStates;
+    const states = newOrderTypeFulfillmentMethod === 'pickup' ? [] : newShippingZoneSelectedStates;
     const stateKey = [...states].sort().join('|');
     const alreadyExists = timelineRows.some((row) => (
       row.key !== (editingOrderTimelineId ?? (editingTimelineZoneId ? `zone:${editingTimelineZoneId}` : null))
@@ -2056,7 +2101,7 @@ export default function SettingsScreen() {
       shippingZones = shippingZones.filter((zone) => zone.id !== currentZoneId);
     }
 
-    const nextType = { name, minBusinessDays, maxBusinessDays, shippingZoneId, workflowStatusIds };
+    const nextType = { name, minBusinessDays, maxBusinessDays, shippingZoneId, workflowStatusIds, fulfillmentMethod: newOrderTypeFulfillmentMethod };
     const result = await saveTimelineSettings({
       ...orderTimelineSettings,
       shippingZones,
@@ -2306,6 +2351,7 @@ export default function SettingsScreen() {
     if (!isNaN(parsed) && parsed >= 0) {
       setGlobalLowStockThreshold(parsed);
       triggerGlobalSave();
+      showToast('Low stock alert updated.');
     } else {
       setTempThreshold(globalLowStockThreshold.toString());
     }
@@ -2405,6 +2451,8 @@ export default function SettingsScreen() {
   const [showShippingZoneModal, setShowShippingZoneModal] = useState(false);
   const [newTimelineDeliveryMin, setNewTimelineDeliveryMin] = useState('1');
   const [newTimelineDeliveryMax, setNewTimelineDeliveryMax] = useState('3');
+  // Delivery timelines have states and delivery days; pick-up timelines are processing days only.
+  const [newOrderTypeFulfillmentMethod, setNewOrderTypeFulfillmentMethod] = useState<'delivery' | 'pickup'>('delivery');
   const [editingTimelineZoneId, setEditingTimelineZoneId] = useState<string | null>(null);
   const [editingOrderStatusId, setEditingOrderStatusId] = useState<string | null>(null);
   const [editingOrderTimelineId, setEditingOrderTimelineId] = useState<string | null>(null);
@@ -2438,6 +2486,7 @@ export default function SettingsScreen() {
   const [shippingZoneStateSearch, setShippingZoneStateSearch] = useState<Record<string, string>>({});
   const [newShippingZoneFee, setNewShippingZoneFee] = useState('0');
   const mainMenuScrollYRef = useRef(settingsMainScrollYMemory);
+  const mainMenuScrollRef = useRef<any>(null);
   const primaryPillButtonStyle = {
     backgroundColor: FYLL_LIME,
     borderRadius: 999,
@@ -2694,6 +2743,7 @@ export default function SettingsScreen() {
       processingMin: number;
       processingMax: number;
       workflowStatusIds: string[];
+      fulfillmentMethod: 'delivery' | 'pickup';
     };
     const rows: TimelineRow[] = orderTimelineSettings.orderTypes.map((type) => {
       const zone = type.shippingZoneId ? zoneById.get(type.shippingZoneId) ?? null : null;
@@ -2709,6 +2759,7 @@ export default function SettingsScreen() {
         processingMin: type.minBusinessDays,
         processingMax: type.maxBusinessDays,
         workflowStatusIds: type.workflowStatusIds ?? [],
+        fulfillmentMethod: isPickupTimeline(type) ? 'pickup' : 'delivery',
       };
     });
     orderTimelineSettings.shippingZones.filter((zone) => !linkedZoneIds.has(zone.id)).forEach((zone) => {
@@ -2723,6 +2774,7 @@ export default function SettingsScreen() {
         processingMin: orderTimelineSettings.defaultOrderType.minBusinessDays,
         processingMax: orderTimelineSettings.defaultOrderType.maxBusinessDays,
         workflowStatusIds: [],
+        fulfillmentMethod: 'delivery',
       });
     });
     return rows;
@@ -2747,6 +2799,28 @@ export default function SettingsScreen() {
       return;
     }
   };
+
+  useEffect(() => {
+    if (activeSection || activeMobileInlinePanel) return;
+
+    const restoreMainMenuScroll = () => {
+      const scrollY = mainMenuScrollYRef.current;
+      if (scrollY <= 0 || !mainMenuScrollRef.current) return;
+
+      if (typeof mainMenuScrollRef.current.scrollToPosition === 'function') {
+        mainMenuScrollRef.current.scrollToPosition(0, scrollY, false);
+        return;
+      }
+      mainMenuScrollRef.current.scrollTo?.({ x: 0, y: scrollY, animated: false });
+    };
+
+    const frame = requestAnimationFrame(restoreMainMenuScroll);
+    const timer = setTimeout(restoreMainMenuScroll, 80);
+    return () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(timer);
+    };
+  }, [activeMobileInlinePanel, activeSection]);
 
   useEffect(() => {
     if (activeSection !== 'order-statuses') {
@@ -2904,6 +2978,24 @@ export default function SettingsScreen() {
     if (activeSection === 'order-statuses') {
       setShowAddOrderStatusForm(false);
     }
+    if (activeSection === 'sale-sources') {
+      setShowAddSaleSourceForm(false);
+    }
+    if (activeSection === 'payment-methods') {
+      setShowAddPaymentMethodForm(false);
+    }
+    if (activeSection === 'logistics-carriers') {
+      setShowAddLogisticsCarrierForm(false);
+    }
+    if (activeSection === 'custom-services') {
+      setShowAddCustomServiceForm(false);
+    }
+    if (activeSection === 'case-statuses') {
+      setShowAddCaseStatusForm(false);
+    }
+    if (activeSection === 'resolution-types') {
+      setShowAddResolutionTypeForm(false);
+    }
   };
 
   const formatDeletedAt = (value: string) => {
@@ -2973,47 +3065,46 @@ export default function SettingsScreen() {
         case 'recycle-bin':
           return (
             <View className="pt-1">
-              <View className="rounded-xl p-4 mb-4" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
-                <View className="flex-row items-center justify-between" style={{ gap: 12 }}>
-                  <Text style={{ color: colors.text.primary }} className="font-semibold text-sm">Recycle Bin</Text>
-                  <View className="rounded-full px-2.5 py-1" style={{ backgroundColor: colors.bg.secondary }}>
-                    <Text style={{ color: colors.text.tertiary }} className="text-[11px] font-semibold">
-                      {filteredRecycleBin.length}/{recycleBin.length}
-                    </Text>
+              <View className="p-5 mb-5" style={{ position: 'relative', overflow: 'hidden', minHeight: 156, justifyContent: 'center', borderRadius: 28, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border, shadowColor: '#000000', shadowOpacity: resolvedThemeMode === 'dark' ? 0.24 : 0.07, shadowRadius: 24, shadowOffset: { width: 0, height: 10 } }}>
+                <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -44, right: -36, width: 210, height: 210, borderRadius: 105 }} />
+                <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
+                <View className="flex-row items-center" style={{ gap: 15 }}>
+                  <LinearGradient colors={[FYLL_LIME, '#879400']} style={{ width: 66, height: 66, borderRadius: 22, alignItems: 'center', justifyContent: 'center' }}><Trash2 size={28} color={FYLL_LIME_INK} strokeWidth={2.1} /></LinearGradient>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ color: settingsPalette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Recovery centre</Text>
+                    <MoneyText style={{ color: settingsPalette.text, fontSize: 27, lineHeight: 32 }}>{recycleBin.length} deleted {recycleBin.length === 1 ? 'item' : 'items'}</MoneyText>
+                    <Text style={{ color: settingsPalette.faint, fontSize: 12.5, marginTop: 2 }}>Restore records or remove them permanently</Text>
                   </View>
                 </View>
-                <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1">
-                  Deleted orders, products, procurement rows, finance records, customers, and cases are kept here so you can restore them.
-                </Text>
+              </View>
+
+              <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Deleted items</Text>
+              <View className="rounded-3xl p-4 mb-4" style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
                 <View
-                  className="rounded-full flex-row items-center px-3 mt-4"
-                  style={{ height: 42, backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light }}
+                  className="rounded-2xl flex-row items-center px-4"
+                  style={{ height: 48, backgroundColor: settingsPalette.inset, borderWidth: 1, borderColor: settingsPalette.outline }}
                 >
-                  <Search size={15} color={colors.text.tertiary} strokeWidth={2.2} />
+                  <Search size={16} color={settingsPalette.faint} strokeWidth={2.2} />
                   <TextInput
                     placeholder="Search deleted items"
                     placeholderTextColor={colors.input.placeholder}
                     value={recycleBinSearchQuery}
                     onChangeText={setRecycleBinSearchQuery}
-                    style={{ color: colors.input.text, fontSize: 14, flex: 1, marginLeft: 8 }}
-                    selectionColor={colors.text.primary}
+                    style={{ color: settingsPalette.text, fontSize: 14, flex: 1, marginLeft: 9 }}
+                    selectionColor={FYLL_LIME}
                   />
                   <SearchClearButton visible={Boolean(recycleBinSearchQuery.trim())} onPress={() => setRecycleBinSearchQuery('')} />
-                  {recycleBinSearchQuery ? (
-                    <Pressable onPress={() => setRecycleBinSearchQuery('')} className="w-7 h-7 rounded-full items-center justify-center active:opacity-70" style={{ backgroundColor: colors.bg.secondary }}>
-                      <X size={13} color={colors.text.tertiary} strokeWidth={2.3} />
-                    </Pressable>
-                  ) : null}
                 </View>
+                <Text style={{ color: settingsPalette.faint, fontSize: 11, marginTop: 10, marginLeft: 2 }}>{filteredRecycleBin.length} of {recycleBin.length} items shown</Text>
               </View>
 
               {recentlyRestoredItems.length > 0 ? (
-                <View className="rounded-xl p-4 mb-4" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
+                <View className="rounded-3xl p-4 mb-4" style={{ backgroundColor: settingsPalette.nudgeBg, borderWidth: 1, borderColor: settingsPalette.nudgeBorder }}>
                   <View className="flex-row items-center justify-between" style={{ gap: 12 }}>
-                    <Text style={{ color: colors.text.primary }} className="font-semibold text-sm">Recently restored</Text>
-                    <Text style={{ color: colors.text.muted }} className="text-[11px]">{recentlyRestoredItems.length}</Text>
+                    <Text style={{ color: settingsPalette.text }} className="font-semibold text-sm">Recently restored</Text>
+                    <Text style={{ color: settingsPalette.faint }} className="text-[11px]">{recentlyRestoredItems.length}</Text>
                   </View>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1">
+                  <Text style={{ color: settingsPalette.nudgeSub }} className="text-xs mt-1">
                     Tap a chip to copy its name, then search for it in the relevant page if you need to delete it again.
                   </Text>
                   <View className="flex-row flex-wrap mt-3" style={{ gap: 8 }}>
@@ -3022,13 +3113,13 @@ export default function SettingsScreen() {
                         key={`restored-${item.id}`}
                         onPress={() => void handleCopyRecentlyRestoredItem(item)}
                         className="rounded-full flex-row items-center active:opacity-75"
-                        style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light, paddingHorizontal: 10, paddingVertical: 7, gap: 6 }}
+                        style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border, paddingHorizontal: 10, paddingVertical: 7, gap: 6 }}
                       >
                         <RotateCcw size={12} color="#059669" strokeWidth={2.2} />
-                        <Text style={{ color: colors.text.primary }} className="text-xs font-semibold" numberOfLines={1}>
+                        <Text style={{ color: settingsPalette.text }} className="text-xs font-semibold" numberOfLines={1}>
                           {item.label}
                         </Text>
-                        <Text style={{ color: colors.text.muted }} className="text-[10px]" numberOfLines={1}>
+                        <Text style={{ color: settingsPalette.faint }} className="text-[10px]" numberOfLines={1}>
                           {getDeletedItemTypeLabel(item)}
                         </Text>
                       </Pressable>
@@ -3038,15 +3129,15 @@ export default function SettingsScreen() {
               ) : null}
 
               {recycleBin.length === 0 ? (
-                <View className="rounded-xl p-5 items-center" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
-                  <Trash2 size={24} color={colors.text.tertiary} strokeWidth={2} />
-                  <Text style={{ color: colors.text.primary }} className="font-semibold mt-3">Nothing deleted</Text>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs text-center mt-1">
+                <View className="rounded-3xl p-7 items-center" style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+                  <View style={{ width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: settingsPalette.nudgeBg }}><Trash2 size={21} color={settingsPalette.limeOnSurface} strokeWidth={2} /></View>
+                  <Text style={{ color: settingsPalette.text }} className="font-semibold mt-3">Nothing deleted</Text>
+                  <Text style={{ color: settingsPalette.faint }} className="text-xs text-center mt-1">
                     Deleted items will appear here before they are permanently removed.
                   </Text>
                 </View>
               ) : filteredRecycleBin.length === 0 ? (
-                <View className="rounded-xl p-5 items-center" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
+                <View className="rounded-3xl p-7 items-center" style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
                   <Search size={24} color={colors.text.tertiary} strokeWidth={2} />
                   <Text style={{ color: colors.text.primary }} className="font-semibold mt-3">No deleted items found</Text>
                   <Text style={{ color: colors.text.tertiary }} className="text-xs text-center mt-1">
@@ -3057,18 +3148,18 @@ export default function SettingsScreen() {
                 filteredRecycleBin.map((item) => {
                   const isRestoring = restoringDeletedItemId === item.id;
                   return (
-                    <View key={item.id} className="rounded-xl p-4 mb-2" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
+                    <View key={item.id} className="rounded-3xl p-4 mb-3" style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
                       <View className="flex-row items-center">
-                        <View className="w-9 h-9 rounded-lg items-center justify-center mr-3" style={{ backgroundColor: colors.bg.secondary }}>
-                          <Trash2 size={16} color="#EF4444" strokeWidth={2} />
+                        <View className="w-[42px] h-[42px] rounded-[13px] items-center justify-center mr-3" style={{ backgroundColor: settingsPalette.dangerBg }}>
+                          <Trash2 size={17} color={settingsPalette.danger} strokeWidth={2} />
                         </View>
                         <View className="flex-1">
-                          <Text style={{ color: colors.text.primary }} className="font-semibold text-sm">{item.label}</Text>
-                          <Text style={{ color: colors.text.tertiary }} className="text-[11px] mt-0.5">
+                          <Text style={{ color: settingsPalette.text }} className="font-semibold text-sm">{item.label}</Text>
+                          <Text style={{ color: settingsPalette.faint }} className="text-[11px] mt-0.5">
                             {getDeletedItemTypeLabel(item)} · Deleted {formatDeletedAt(item.deletedAt)}
                           </Text>
                           {item.parentLabel ? (
-                            <Text style={{ color: colors.text.muted }} className="text-[11px] mt-0.5">
+                            <Text style={{ color: settingsPalette.muted }} className="text-[11px] mt-0.5">
                               From {item.parentLabel}
                             </Text>
                           ) : null}
@@ -3077,17 +3168,17 @@ export default function SettingsScreen() {
                           <Pressable
                             onPress={() => handleRestoreDeletedItem(item)}
                             disabled={isRestoring}
-                            className="w-8 h-8 rounded-full items-center justify-center active:opacity-70"
-                            style={{ backgroundColor: '#22C55E', opacity: isRestoring ? 0.6 : 1 }}
+                            className="w-9 h-9 rounded-full items-center justify-center active:opacity-70"
+                            style={{ backgroundColor: FYLL_LIME, opacity: isRestoring ? 0.6 : 1 }}
                           >
-                            <RotateCcw size={14} color="#FFFFFF" strokeWidth={2.5} />
+                            <RotateCcw size={14} color={FYLL_LIME_INK} strokeWidth={2.5} />
                           </Pressable>
                           <Pressable
                             onPress={() => { setConfirmDeleteText(''); setConfirmDeleteItem(item); }}
-                            className="w-8 h-8 rounded-full items-center justify-center active:opacity-70"
-                            style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}
+                            className="w-9 h-9 rounded-full items-center justify-center active:opacity-70"
+                            style={{ backgroundColor: settingsPalette.dangerBg }}
                           >
-                            <Trash2 size={13} color={colors.text.tertiary} strokeWidth={2} />
+                            <Trash2 size={13} color={settingsPalette.danger} strokeWidth={2} />
                           </Pressable>
                         </View>
                       </View>
@@ -3107,10 +3198,10 @@ export default function SettingsScreen() {
                 >
                   <Pressable
                     onPress={(event) => event.stopPropagation()}
-                    style={{ width: '100%', maxWidth: 380, borderRadius: 18, padding: 20, backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light, gap: 12 }}
+                    style={{ width: '100%', maxWidth: 380, borderRadius: 26, padding: 20, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border, gap: 12 }}
                   >
-                    <View className="w-11 h-11 rounded-full items-center justify-center" style={{ backgroundColor: colors.bg.secondary }}>
-                      <Trash2 size={18} color="#EF4444" strokeWidth={2} />
+                    <View className="w-11 h-11 rounded-2xl items-center justify-center" style={{ backgroundColor: settingsPalette.dangerBg }}>
+                      <Trash2 size={18} color={settingsPalette.danger} strokeWidth={2} />
                     </View>
                     <Text style={{ color: colors.text.primary }} className="font-bold text-base">Delete forever?</Text>
                     <Text style={{ color: colors.text.tertiary }} className="text-xs">
@@ -3126,14 +3217,15 @@ export default function SettingsScreen() {
                       autoCorrect={false}
                       placeholder="DELETE"
                       placeholderTextColor={colors.text.tertiary}
-                      className="rounded-lg px-3"
-                      style={{ height: 44, borderWidth: 1, borderColor: colors.border.light, color: colors.text.primary, backgroundColor: colors.bg.secondary }}
+                      className="rounded-2xl px-4"
+                      selectionColor={FYLL_LIME}
+                      style={{ height: 50, borderWidth: 1, borderColor: settingsPalette.outline, color: settingsPalette.text, backgroundColor: settingsPalette.inset, fontSize: 14 }}
                     />
                     <View className="flex-row gap-2 mt-1">
                       <Pressable
                         onPress={() => setConfirmDeleteItem(null)}
                         className="flex-1 rounded-full items-center justify-center active:opacity-70"
-                        style={{ height: 42, backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}
+                        style={{ height: 46, backgroundColor: settingsPalette.softFill, borderWidth: 1, borderColor: settingsPalette.outline }}
                       >
                         <Text style={{ color: colors.text.primary }} className="font-semibold text-sm">Cancel</Text>
                       </Pressable>
@@ -3145,7 +3237,7 @@ export default function SettingsScreen() {
                           setConfirmDeleteItem(null);
                         }}
                         className="flex-1 rounded-full items-center justify-center active:opacity-80"
-                        style={{ height: 42, backgroundColor: '#EF4444', opacity: confirmDeleteText.trim().toUpperCase() === 'DELETE' ? 1 : 0.4 }}
+                        style={{ height: 46, backgroundColor: settingsPalette.danger, opacity: confirmDeleteText.trim().toUpperCase() === 'DELETE' ? 1 : 0.4 }}
                       >
                         <Text style={{ color: '#FFFFFF' }} className="font-semibold text-sm">Delete forever</Text>
                       </Pressable>
@@ -3158,29 +3250,27 @@ export default function SettingsScreen() {
       case 'order-statuses':
         return (
           <View className="pt-1">
-            <View className="rounded-xl p-4 mb-4" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
+            <View className="p-5 mb-7" style={{ position: 'relative', overflow: 'hidden', borderRadius: 28, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border, shadowColor: '#000000', shadowOpacity: resolvedThemeMode === 'dark' ? 0.24 : 0.07, shadowRadius: 24, shadowOffset: { width: 0, height: 10 } }}>
+              <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -44, right: -36, width: 210, height: 210, borderRadius: 105 }} />
+              <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, borderBottomLeftRadius: 3, borderBottomRightRadius: 3, backgroundColor: FYLL_LIME }} />
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 15, marginBottom: 18 }}>
+                <LinearGradient colors={[FYLL_LIME, '#879400']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 66, height: 66, borderRadius: 22, alignItems: 'center', justifyContent: 'center' }}><ShoppingCart size={28} color={FYLL_LIME_INK} strokeWidth={2.1} /></LinearGradient>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ color: settingsPalette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Order workflow</Text>
+                  <MoneyText style={{ color: settingsPalette.text, fontSize: 27, lineHeight: 32, letterSpacing: -0.7 }}>{orderStatuses.length} statuses</MoneyText>
+                  <Text style={{ color: settingsPalette.faint, fontSize: 12.5, marginTop: 2 }}>{fulfillmentOrderStatuses.length} in fulfillment · {exceptionOrderStatuses.length} exceptions</Text>
+                </View>
+              </View>
               <Pressable
-                onPress={() => setShowAddOrderStatusForm((value) => !value)}
-                className="flex-row items-center active:opacity-80"
-                style={{ minHeight: 38, gap: 12 }}
+                onPress={openCreateOrderStatusModal}
+                className="flex-row items-center justify-center active:opacity-80"
+                style={{ height: 46, borderRadius: 999, gap: 8, backgroundColor: FYLL_LIME }}
               >
-                <View className="w-9 h-9 rounded-full items-center justify-center" style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}>
-                  <Plus size={16} color={colors.text.primary} strokeWidth={2.2} />
-                </View>
-                <View className="flex-1">
-                  <Text style={{ color: colors.text.primary }} className="font-semibold text-sm">Add New Status</Text>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1">
-                    Create another step in this fulfillment flow.
-                  </Text>
-                </View>
-                {showAddOrderStatusForm ? (
-                  <ChevronUp size={18} color={colors.text.tertiary} strokeWidth={2.2} />
-                ) : (
-                  <ChevronDown size={18} color={colors.text.tertiary} strokeWidth={2.2} />
-                )}
+                <Plus size={16} color={FYLL_LIME_INK} strokeWidth={2.5} />
+                <Text style={{ color: FYLL_LIME_INK, fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: isMobile ? 14 : 15 }}>Add new status</Text>
               </Pressable>
 
-              {showAddOrderStatusForm ? (
+              {false && showAddOrderStatusForm ? (
                 <View className="mt-4">
                   <View className="rounded-xl px-4 mb-3" style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light, height: 50, justifyContent: 'center' }}>
                     <TextInput
@@ -3262,86 +3352,81 @@ export default function SettingsScreen() {
               ) : null}
             </View>
 
-            <View className="mb-3">
-              <Text style={{ color: colors.text.primary }} className="font-semibold text-sm">Fulfillment Flow</Text>
-              <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1">
+            <View className="mb-3" style={{ paddingHorizontal: 4 }}>
+              <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '700', letterSpacing: 1.35, textTransform: 'uppercase' }}>Fulfillment flow</Text>
+              <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 17, marginTop: 4 }}>
                 Move progress statuses into the order your business processes an order.
               </Text>
             </View>
 
-            {fulfillmentOrderStatuses.map((status, index) => (
+            {isMobile ? (
+              <View style={{ marginLeft: 3 }}>
+                {fulfillmentOrderStatuses.map((status, index) => {
+                  const trackingLabel = ORDER_TRACKING_STAGE_OPTIONS.find((option) => option.value === (status.trackingStage ?? 'received'))?.label ?? 'Order Received';
+                  return (
+                    <View key={status.id} style={{ flexDirection: 'row', minHeight: 104 }}>
+                      <View style={{ width: 38, alignItems: 'center' }}>
+                        {index > 0 ? <View style={{ position: 'absolute', top: 0, width: 2, height: 16, backgroundColor: settingsPalette.outline }} /> : null}
+                        {index < fulfillmentOrderStatuses.length - 1 ? <View style={{ position: 'absolute', top: 34, bottom: 0, width: 2, backgroundColor: settingsPalette.outline }} /> : null}
+                        <View style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: settingsPalette.nudgeBg, borderWidth: 1, borderColor: settingsPalette.outline, zIndex: 1 }}>
+                          <Text style={{ color: settingsPalette.limeOnSurface, fontFamily: 'BricolageGrotesque_700Bold', fontSize: 12, fontWeight: '400' }}>{index + 1}</Text>
+                        </View>
+                      </View>
+                      <View style={{ flex: 1, marginLeft: 8, marginBottom: 12, minHeight: 88, padding: 14, borderRadius: 22, borderWidth: 1, borderColor: settingsPalette.border, backgroundColor: settingsPalette.card, flexDirection: 'row', alignItems: 'center', gap: 11 }}>
+                        <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: status.color || '#6B7280', flexShrink: 0 }} />
+                        <Pressable onPress={() => openEditOrderStatusModal(status.id)} style={{ flex: 1, minWidth: 0 }}>
+                          <Text numberOfLines={1} style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '600' }}>{status.name}</Text>
+                          <Text numberOfLines={1} style={{ color: settingsPalette.faint, fontSize: 11.5, marginTop: 4 }}>{trackingLabel}</Text>
+                          {status.wooCommerceStatusSlug ? <Text numberOfLines={1} style={{ color: settingsPalette.muted, fontSize: 10, marginTop: 3 }}>WooCommerce · {status.wooCommerceStatusSlug}</Text> : null}
+                        </Pressable>
+                        <View style={{ gap: 5 }}>
+                          <Pressable onPress={() => handleMoveOrderStatus(status.id, -1)} disabled={index === 0} style={({ pressed }) => ({ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: settingsPalette.softFill, opacity: index === 0 ? 0.28 : pressed ? 0.65 : 1 })}><ChevronUp size={15} color={settingsPalette.text} strokeWidth={2.2} /></Pressable>
+                          <Pressable onPress={() => handleMoveOrderStatus(status.id, 1)} disabled={index === fulfillmentOrderStatuses.length - 1} style={({ pressed }) => ({ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: settingsPalette.softFill, opacity: index === fulfillmentOrderStatuses.length - 1 ? 0.28 : pressed ? 0.65 : 1 })}><ChevronDown size={15} color={settingsPalette.text} strokeWidth={2.2} /></Pressable>
+                        </View>
+                        <Pressable onPress={(event) => openOrderStatusMenu(status.id, event)} style={({ pressed }) => ({ width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: settingsPalette.softFill, opacity: pressed ? 0.65 : 1 })}><MoreVertical size={16} color={settingsPalette.faint} strokeWidth={2.2} /></Pressable>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : fulfillmentOrderStatuses.map((status, index) => (
               <View key={status.id} style={{ marginBottom: 10 }}>
                 <View className="flex-row items-center mb-2" style={{ gap: 8 }}>
-                  <View
-                    className="rounded-full items-center justify-center"
-                    style={{ minWidth: 28, height: 28, backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}
-                  >
-                    <Text style={{ color: colors.text.primary }} className="text-xs font-bold">
-                      {index + 1}
-                    </Text>
-                  </View>
-                  <Text style={{ color: colors.text.tertiary }} className="flex-1 text-xs font-semibold">
-                    Step {index + 1}
-                  </Text>
-                  <Pressable
-                    onPress={() => handleMoveOrderStatus(status.id, -1)}
-                    disabled={index === 0}
-                    className="w-9 h-9 rounded-full items-center justify-center active:opacity-70"
-                    style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light, opacity: index === 0 ? 0.35 : 1 }}
-                  >
-                    <ChevronUp size={17} color={colors.text.primary} strokeWidth={2.2} />
-                  </Pressable>
-                  <Pressable
-                    onPress={() => handleMoveOrderStatus(status.id, 1)}
-                    disabled={index === fulfillmentOrderStatuses.length - 1}
-                    className="w-9 h-9 rounded-full items-center justify-center active:opacity-70"
-                    style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light, opacity: index === fulfillmentOrderStatuses.length - 1 ? 0.35 : 1 }}
-                  >
-                    <ChevronDown size={17} color={colors.text.primary} strokeWidth={2.2} />
-                  </Pressable>
+                  <View className="rounded-full items-center justify-center" style={{ minWidth: 28, height: 28, backgroundColor: settingsPalette.nudgeBg, borderWidth: 1, borderColor: settingsPalette.outline }}><Text style={{ color: settingsPalette.limeOnSurface, fontFamily: 'BricolageGrotesque_700Bold', fontSize: 12, fontWeight: '400' }}>{index + 1}</Text></View>
+                  <Text style={{ color: settingsPalette.faint }} className="flex-1 text-xs font-semibold">Step {index + 1}</Text>
+                  <Pressable onPress={() => handleMoveOrderStatus(status.id, -1)} disabled={index === 0} className="w-9 h-9 rounded-full items-center justify-center active:opacity-70" style={{ backgroundColor: settingsPalette.softFill, borderWidth: 1, borderColor: settingsPalette.outline, opacity: index === 0 ? 0.35 : 1 }}><ChevronUp size={17} color={settingsPalette.text} strokeWidth={2.2} /></Pressable>
+                  <Pressable onPress={() => handleMoveOrderStatus(status.id, 1)} disabled={index === fulfillmentOrderStatuses.length - 1} className="w-9 h-9 rounded-full items-center justify-center active:opacity-70" style={{ backgroundColor: settingsPalette.softFill, borderWidth: 1, borderColor: settingsPalette.outline, opacity: index === fulfillmentOrderStatuses.length - 1 ? 0.35 : 1 }}><ChevronDown size={17} color={settingsPalette.text} strokeWidth={2.2} /></Pressable>
                 </View>
-                <EditableItem
-                  item={status}
-                  showColor
-                  showTrackingStage
-                  showWooCommerceStatusSlug
-                  onUpdate={(name, color, _, __, trackingStage, wooCommerceStatusSlug) => {
-                    updateOrderStatus(status.id, { name, color, trackingStage, wooCommerceStatusSlug });
-                    triggerGlobalSave();
-                  }}
-                  onDelete={() => {
-                    openDeleteSetting('order-statuses', status);
-                  }}
-                />
+                <EditableItem item={status} showColor showTrackingStage showWooCommerceStatusSlug modern onUpdate={(name, color, _, __, trackingStage, wooCommerceStatusSlug) => { updateOrderStatus(status.id, { name, color, trackingStage, wooCommerceStatusSlug }); triggerGlobalSave(); }} onDelete={() => openDeleteSetting('order-statuses', status)} />
               </View>
             ))}
 
             {exceptionOrderStatuses.length > 0 ? (
               <View className="mt-4">
-                <View className="mb-3">
-                  <Text style={{ color: colors.text.primary }} className="font-semibold text-sm">Exception Statuses</Text>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1">
+                <View className="mb-3" style={{ paddingHorizontal: 4 }}>
+                  <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '700', letterSpacing: 1.35, textTransform: 'uppercase' }}>Exception statuses</Text>
+                  <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 17, marginTop: 4 }}>
                     Used when an order leaves the normal fulfillment flow.
                   </Text>
                 </View>
 
-                {exceptionOrderStatuses.map((status) => (
-                  <View key={status.id} style={{ marginBottom: 10 }}>
-                    <EditableItem
-                      item={status}
-                      showColor
-                      showTrackingStage
-                      showWooCommerceStatusSlug
-                      onUpdate={(name, color, _, __, trackingStage, wooCommerceStatusSlug) => {
-                        updateOrderStatus(status.id, { name, color, trackingStage, wooCommerceStatusSlug });
-                        triggerGlobalSave();
-                      }}
-                      onDelete={() => {
-                        openDeleteSetting('order-statuses', status);
-                      }}
-                    />
-                  </View>
-                ))}
+                {exceptionOrderStatuses.map((status) => {
+                  const trackingLabel = ORDER_TRACKING_STAGE_OPTIONS.find((option) => option.value === (status.trackingStage ?? 'cancelled'))?.label ?? 'Cancelled';
+                  return isMobile ? (
+                    <View key={status.id} style={{ minHeight: 76, marginBottom: 10, padding: 14, borderRadius: 22, borderWidth: 1, borderColor: settingsPalette.border, backgroundColor: settingsPalette.card, flexDirection: 'row', alignItems: 'center', gap: 11 }}>
+                      <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: status.color || '#EF4444' }} />
+                      <Pressable onPress={() => openEditOrderStatusModal(status.id)} style={{ flex: 1, minWidth: 0 }}>
+                        <Text numberOfLines={1} style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '600' }}>{status.name}</Text>
+                        <Text numberOfLines={1} style={{ color: settingsPalette.faint, fontSize: 11.5, marginTop: 4 }}>{trackingLabel}</Text>
+                      </Pressable>
+                      <Pressable onPress={(event) => openOrderStatusMenu(status.id, event)} style={({ pressed }) => ({ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: settingsPalette.softFill, opacity: pressed ? 0.65 : 1 })}><MoreVertical size={16} color={settingsPalette.faint} strokeWidth={2.2} /></Pressable>
+                    </View>
+                  ) : (
+                    <View key={status.id} style={{ marginBottom: 10 }}>
+                      <EditableItem item={status} showColor showTrackingStage showWooCommerceStatusSlug modern onUpdate={(name, color, _, __, trackingStage, wooCommerceStatusSlug) => { updateOrderStatus(status.id, { name, color, trackingStage, wooCommerceStatusSlug }); triggerGlobalSave(); }} onDelete={() => openDeleteSetting('order-statuses', status)} />
+                    </View>
+                  );
+                })}
               </View>
             ) : null}
           </View>
@@ -3350,64 +3435,74 @@ export default function SettingsScreen() {
       case 'quality-control-checks':
         return (
           <View className="pt-1">
-            <View className="rounded-xl p-4 mb-4" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
-              <Text style={{ color: colors.text.primary }} className="font-semibold text-sm mb-3">Add Quality Control Check</Text>
-              <View className="rounded-xl px-4 mb-3" style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light, height: 50, justifyContent: 'center' }}>
-                <TextInput
-                  placeholder="Check label"
-                  placeholderTextColor={colors.input.placeholder}
-                  value={newItemName}
-                  onChangeText={setNewItemName}
-                  style={{ color: colors.input.text, fontSize: 14 }}
-                  selectionColor={colors.text.primary}
-                />
+            <View className="p-5 mb-7" style={{ position: 'relative', overflow: 'hidden', borderRadius: 28, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border, shadowColor: '#000000', shadowOpacity: resolvedThemeMode === 'dark' ? 0.24 : 0.07, shadowRadius: 24, shadowOffset: { width: 0, height: 10 } }}>
+              <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -44, right: -36, width: 210, height: 210, borderRadius: 105 }} />
+              <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, borderBottomLeftRadius: 3, borderBottomRightRadius: 3, backgroundColor: FYLL_LIME }} />
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 15, marginBottom: 18 }}>
+                <LinearGradient colors={[FYLL_LIME, '#879400']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 66, height: 66, borderRadius: 22, alignItems: 'center', justifyContent: 'center' }}><ListTodo size={28} color={FYLL_LIME_INK} strokeWidth={2.1} /></LinearGradient>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ color: settingsPalette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Dispatch proof</Text>
+                  <MoneyText style={{ color: settingsPalette.text, fontSize: 27, lineHeight: 32, letterSpacing: -0.7 }}>{qcChecklistRequirements.length} {qcChecklistRequirements.length === 1 ? 'check' : 'checks'}</MoneyText>
+                  <Text style={{ color: settingsPalette.faint, fontSize: 12.5, marginTop: 2 }}>Required before an order is dispatched</Text>
+                </View>
               </View>
-              <View className="flex-row flex-wrap" style={{ gap: 10 }}>
-                <Pressable
-                  onPress={handleAddItem}
-                  className="rounded-full items-center active:opacity-80"
-                  style={[primaryPillButtonStyle, { height: 46, justifyContent: 'center', paddingHorizontal: 18 }]}
-                >
-                  <Text style={primaryPillTextStyle} className="font-semibold">Add Check</Text>
-                </Pressable>
+              <View style={{ gap: 10 }}>
+                {showAddQcCheckForm ? (
+                  <View>
+                    <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 8 }}>New check</Text>
+                    <View className="rounded-2xl px-4 mb-3" style={{ backgroundColor: settingsPalette.softFill, borderWidth: 1, borderColor: settingsPalette.outline, height: 52, justifyContent: 'center' }}>
+                      <TextInput autoFocus placeholder="e.g. Confirm lenses are clean" placeholderTextColor={colors.input.placeholder} value={newItemName} onChangeText={setNewItemName} style={{ color: settingsPalette.text, fontSize: isMobile ? 14 : 15 }} selectionColor={colors.text.primary} />
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 10 }}>
+                      <Pressable onPress={() => { setNewItemName(''); setShowAddQcCheckForm(false); }} className="rounded-full items-center justify-center active:opacity-70" style={{ flex: 1, height: 46, backgroundColor: settingsPalette.softFill, borderWidth: 1, borderColor: settingsPalette.outline }}><Text style={{ color: settingsPalette.text, fontFamily: 'BricolageGrotesque_700Bold', fontSize: 13, fontWeight: '400' }}>Cancel</Text></Pressable>
+                      <Pressable onPress={() => { if (!newItemName.trim()) return; handleAddItem(); setShowAddQcCheckForm(false); }} className="rounded-full flex-row items-center justify-center active:opacity-80" style={[primaryPillButtonStyle, { flex: 1.4, height: 46, gap: 8 }]}><Plus size={16} color={FYLL_LIME_INK} strokeWidth={2.5} /><Text style={[primaryPillTextStyle, { fontSize: isMobile ? 14 : 15 }]}>Add check</Text></Pressable>
+                    </View>
+                  </View>
+                ) : (
+                  <Pressable onPress={() => { setNewItemName(''); setShowAddQcCheckForm(true); }} className="rounded-full flex-row items-center justify-center active:opacity-80" style={[primaryPillButtonStyle, { height: 46, gap: 8 }]}><Plus size={16} color={FYLL_LIME_INK} strokeWidth={2.5} /><Text style={[primaryPillTextStyle, { fontSize: isMobile ? 14 : 15 }]}>New check</Text></Pressable>
+                )}
                 <Pressable
                   onPress={() => {
                     resetQcChecklistRequirements();
                     triggerGlobalSave();
                   }}
                   className="rounded-full flex-row items-center active:opacity-80"
-                  style={{ height: 46, justifyContent: 'center', paddingHorizontal: 18, gap: 8, backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}
+                  style={{ height: 44, justifyContent: 'center', gap: 8, backgroundColor: settingsPalette.softFill, borderWidth: 1, borderColor: settingsPalette.outline }}
                 >
-                  <RotateCcw size={15} color={colors.text.primary} strokeWidth={2} />
-                  <Text style={{ color: colors.text.primary }} className="font-semibold">Restore Defaults</Text>
+                  <RotateCcw size={15} color={settingsPalette.text} strokeWidth={2} />
+                  <Text style={{ color: settingsPalette.text, fontFamily: 'BricolageGrotesque_700Bold', fontSize: 13, fontWeight: '400' }}>Restore defaults</Text>
                 </Pressable>
               </View>
             </View>
 
-            <View style={{ gap: 10 }}>
+            <View style={{ paddingHorizontal: 4, marginBottom: 10 }}>
+              <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '700', letterSpacing: 1.35, textTransform: 'uppercase' }}>Dispatch checklist</Text>
+              <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 17, marginTop: 4 }}>Team members complete these checks before dispatch.</Text>
+            </View>
+            <View style={{ borderRadius: 26, borderWidth: 1, borderColor: settingsPalette.border, backgroundColor: settingsPalette.card, paddingHorizontal: 16, overflow: 'hidden' }}>
               {qcChecklistRequirements.length === 0 ? (
-                <View className="rounded-xl p-4" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
-                  <Text style={{ color: colors.text.primary }} className="font-semibold text-sm">No checks configured</Text>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1">
+                <View className="p-5">
+                  <Text style={{ color: settingsPalette.text }} className="font-semibold text-sm">No checks configured</Text>
+                  <Text style={{ color: settingsPalette.faint }} className="text-xs mt-1">
                     Add checks for the dispatch proof your business needs.
                   </Text>
                 </View>
-              ) : qcChecklistRequirements.map((item) => (
+              ) : qcChecklistRequirements.map((item, index) => (
                 <View
                   key={item.key}
-                  className="rounded-xl px-4 py-3 flex-row items-center"
-                  style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light, gap: 12 }}
+                  className="py-4 flex-row items-center"
+                  style={{ minHeight: 72, gap: 12, borderTopWidth: index === 0 ? 0 : 1, borderTopColor: settingsPalette.hairline }}
                 >
-                  <View className="w-8 h-8 rounded-xl items-center justify-center" style={{ backgroundColor: colors.bg.secondary }}>
-                    <Check size={16} color="#10B981" strokeWidth={2.4} />
+                  <View className="w-10 h-10 rounded-2xl items-center justify-center" style={{ backgroundColor: settingsPalette.nudgeBg }}>
+                    <Check size={17} color={settingsPalette.limeOnSurface} strokeWidth={2.6} />
                   </View>
-                  <Text style={{ color: colors.text.primary }} className="flex-1 font-semibold text-sm">
+                  <Text style={{ color: settingsPalette.text, fontSize: isMobile ? 14 : 15 }} className="flex-1 font-semibold">
                     {item.label}
                   </Text>
                   <Pressable
                     onPress={() => openDeleteSetting('quality-control-checks', { id: item.key, name: item.label })}
                     className="w-9 h-9 rounded-full items-center justify-center active:opacity-70"
-                    style={{ backgroundColor: colors.bg.secondary }}
+                    style={{ backgroundColor: settingsPalette.dangerBg }}
                   >
                     <Trash2 size={16} color="#EF4444" strokeWidth={2} />
                   </Pressable>
@@ -3420,29 +3515,42 @@ export default function SettingsScreen() {
       case 'case-statuses':
         return (
           <View className="pt-1">
-            <View className="rounded-xl p-4 mb-4" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
-              <Text style={{ color: colors.text.primary }} className="font-semibold text-sm mb-3">Add Case Status</Text>
-              <View className="rounded-xl px-4 mb-3" style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light, height: 50, justifyContent: 'center' }}>
-                <TextInput
-                  placeholder="Status name"
-                  placeholderTextColor={colors.input.placeholder}
-                  value={newItemName}
-                  onChangeText={setNewItemName}
-                  style={{ color: colors.input.text, fontSize: 14 }}
-                  selectionColor={colors.text.primary}
-                />
+            <View className="rounded-3xl overflow-hidden mb-4" style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+              <LinearGradient colors={resolvedThemeMode === 'dark' ? ['#DDEB3F', '#9EAD00'] : ['#E3EC54', '#B9C722']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ height: 5 }} />
+              <View style={{ padding: isWebDesktop ? 24 : 18 }}>
+                <View className="flex-row items-center" style={{ gap: 14 }}>
+                  <LinearGradient colors={resolvedThemeMode === 'dark' ? ['#E5EF50', '#A9B700'] : ['#E8F15A', '#C4D12B']} style={{ width: isWebDesktop ? 54 : 48, height: isWebDesktop ? 54 : 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }}>
+                    <FileText size={isWebDesktop ? 25 : 22} color={FYLL_LIME_INK} strokeWidth={2.2} />
+                  </LinearGradient>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Case workflow</Text>
+                    <MoneyText style={{ color: settingsPalette.text, fontSize: isWebDesktop ? 28 : 24, fontWeight: '700', marginTop: 2 }}>
+                      {caseStatuses.length} {caseStatuses.length === 1 ? 'status' : 'statuses'}
+                    </MoneyText>
+                  </View>
+                </View>
+                <Text style={{ color: settingsPalette.muted, fontSize: isWebDesktop ? 13 : 12, lineHeight: isWebDesktop ? 20 : 18, marginTop: 14 }}>
+                  Define the stages your team uses to track customer issues from opening to resolution.
+                </Text>
               </View>
-              <View className="rounded-xl px-4 mb-3" style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light, minHeight: 50, justifyContent: 'center' }}>
-                <TextInput
-                  placeholder="Description (optional)"
-                  placeholderTextColor={colors.input.placeholder}
-                  value={newItemDescription}
-                  onChangeText={setNewItemDescription}
-                  style={{ color: colors.input.text, fontSize: 14 }}
-                  selectionColor={colors.text.primary}
-                />
-              </View>
-              <View className="flex-row flex-wrap gap-2 mb-3">
+            </View>
+
+            <Pressable onPress={() => setShowAddCaseStatusForm((value) => !value)} className="rounded-full flex-row items-center justify-center active:opacity-80 mb-4" style={{ minHeight: 48, gap: 8, backgroundColor: FYLL_LIME }}>
+              {showAddCaseStatusForm ? <X size={16} color={FYLL_LIME_INK} strokeWidth={2.4} /> : <Plus size={16} color={FYLL_LIME_INK} strokeWidth={2.4} />}
+              <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '700' }}>{showAddCaseStatusForm ? 'Close' : 'New case status'}</MoneyText>
+            </Pressable>
+
+            {showAddCaseStatusForm ? (
+              <View className="rounded-3xl p-4 mb-5" style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+                <Text style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '700', marginBottom: 12 }}>Add case status</Text>
+                <View className="rounded-2xl px-4 mb-3" style={{ backgroundColor: settingsPalette.inset, borderWidth: 1, borderColor: settingsPalette.outline, height: 50, justifyContent: 'center' }}>
+                  <TextInput autoFocus placeholder="e.g. Investigating" placeholderTextColor={colors.input.placeholder} value={newItemName} onChangeText={setNewItemName} style={{ color: settingsPalette.text, fontSize: 14 }} selectionColor={FYLL_LIME} />
+                </View>
+                <View className="rounded-2xl px-4 mb-3" style={{ backgroundColor: settingsPalette.inset, borderWidth: 1, borderColor: settingsPalette.outline, minHeight: 50, justifyContent: 'center' }}>
+                  <TextInput placeholder="Description (optional)" placeholderTextColor={colors.input.placeholder} value={newItemDescription} onChangeText={setNewItemDescription} style={{ color: settingsPalette.text, fontSize: 14 }} selectionColor={FYLL_LIME} />
+                </View>
+                <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 9 }}>Status colour</Text>
+                <View className="flex-row flex-wrap gap-2 mb-4">
                 {colorOptions.map((color) => (
                   <Pressable
                     key={color}
@@ -3450,32 +3558,31 @@ export default function SettingsScreen() {
                       Haptics.selectionAsync();
                       setNewItemColor(color);
                     }}
-                    className="w-8 h-8 rounded-full items-center justify-center"
+                    className="w-9 h-9 rounded-full items-center justify-center"
                     style={{
                       backgroundColor: color,
-                      borderWidth: newItemColor === color ? 2 : 0,
-                      borderColor: colors.border.light,
+                      borderWidth: newItemColor === color ? 3 : 0,
+                      borderColor: settingsPalette.text,
                     }}
                   >
                     {newItemColor === color && <Check size={14} color="#FFFFFF" strokeWidth={3} />}
                   </Pressable>
                 ))}
               </View>
-              <Pressable
-                onPress={handleAddItem}
-                className="rounded-full items-center active:opacity-80"
-                style={[primaryPillButtonStyle, { height: 50, justifyContent: 'center' }]}
-              >
-                <Text style={primaryPillTextStyle} className="font-semibold">Add Status</Text>
+              <Pressable onPress={handleAddItem} className="rounded-full items-center active:opacity-80" style={{ minHeight: 48, justifyContent: 'center', backgroundColor: FYLL_LIME }}>
+                <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '700' }}>Save status</MoneyText>
               </Pressable>
-            </View>
+              </View>
+            ) : null}
 
+            <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Case statuses</Text>
             {caseStatuses.map((status) => (
               <EditableItem
                 key={status.id}
                 item={status}
                 showColor
                 showDescription
+                modern
                 onUpdate={(name, color, _, description) => {
                   updateCaseStatus(status.id, { name, color, description });
                   triggerGlobalSave();
@@ -3491,31 +3598,68 @@ export default function SettingsScreen() {
       case 'sale-sources':
         return (
           <View className="pt-1">
-            <View className="rounded-xl p-4 mb-4" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
-              <Text style={{ color: colors.text.primary }} className="font-semibold text-sm mb-3">Add New Source</Text>
-              <View className="rounded-xl px-4 mb-3" style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light, height: 50, justifyContent: 'center' }}>
-                <TextInput
-                  placeholder="Source name"
-                  placeholderTextColor={colors.input.placeholder}
-                  value={newItemName}
-                  onChangeText={setNewItemName}
-                  style={{ color: colors.input.text, fontSize: 14 }}
-                  selectionColor={colors.text.primary}
-                />
+            <View className="rounded-3xl overflow-hidden mb-4" style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+              <LinearGradient colors={resolvedThemeMode === 'dark' ? ['#DDEB3F', '#9EAD00'] : ['#E3EC54', '#B9C722']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ height: 5 }} />
+              <View style={{ padding: isWebDesktop ? 24 : 18 }}>
+                <View className="flex-row items-center" style={{ gap: 14 }}>
+                  <LinearGradient
+                    colors={resolvedThemeMode === 'dark' ? ['#E5EF50', '#A9B700'] : ['#E8F15A', '#C4D12B']}
+                    style={{ width: isWebDesktop ? 54 : 48, height: isWebDesktop ? 54 : 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    <Tag size={isWebDesktop ? 25 : 22} color={FYLL_LIME_INK} strokeWidth={2.2} />
+                  </LinearGradient>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Order attribution</Text>
+                    <MoneyText style={{ color: settingsPalette.text, fontSize: isWebDesktop ? 28 : 24, fontWeight: '700', marginTop: 2 }}>
+                      {saleSources.length} {saleSources.length === 1 ? 'source' : 'sources'}
+                    </MoneyText>
+                  </View>
+                </View>
+                <Text style={{ color: settingsPalette.muted, fontSize: isWebDesktop ? 13 : 12, lineHeight: isWebDesktop ? 20 : 18, marginTop: 14 }}>
+                  Keep every sales channel organised so you can see where orders and revenue originate.
+                </Text>
               </View>
-              <Pressable
-                onPress={handleAddItem}
-                className="rounded-full items-center active:opacity-80"
-                style={[primaryPillButtonStyle, { height: 50, justifyContent: 'center' }]}
-              >
-                <Text style={primaryPillTextStyle} className="font-semibold">Add Source</Text>
-              </Pressable>
             </View>
 
+            <Pressable
+              onPress={() => setShowAddSaleSourceForm((value) => !value)}
+              className="rounded-full flex-row items-center justify-center active:opacity-80 mb-4"
+              style={{ minHeight: 48, gap: 8, backgroundColor: FYLL_LIME }}
+            >
+              {showAddSaleSourceForm ? <X size={16} color={FYLL_LIME_INK} strokeWidth={2.4} /> : <Plus size={16} color={FYLL_LIME_INK} strokeWidth={2.4} />}
+              <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '700' }}>
+                {showAddSaleSourceForm ? 'Close' : 'New source'}
+              </MoneyText>
+            </Pressable>
+
+            {showAddSaleSourceForm ? (
+              <View className="rounded-3xl p-4 mb-5" style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+                <Text style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '700', marginBottom: 12 }}>Add sale source</Text>
+                <View className="rounded-2xl px-4 mb-3" style={{ backgroundColor: settingsPalette.inset, borderWidth: 1, borderColor: settingsPalette.outline, height: 50, justifyContent: 'center' }}>
+                  <TextInput
+                    autoFocus
+                    placeholder="e.g. Instagram, walk-in or website"
+                    placeholderTextColor={colors.input.placeholder}
+                    value={newItemName}
+                    onChangeText={setNewItemName}
+                    onSubmitEditing={handleAddItem}
+                    returnKeyType="done"
+                    style={{ color: settingsPalette.text, fontSize: 14 }}
+                    selectionColor={FYLL_LIME}
+                  />
+                </View>
+                <Pressable onPress={handleAddItem} className="rounded-full items-center active:opacity-80" style={{ minHeight: 48, justifyContent: 'center', backgroundColor: FYLL_LIME }}>
+                  <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '700' }}>Save source</MoneyText>
+                </Pressable>
+              </View>
+            ) : null}
+
+            <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Saved sources</Text>
             {saleSources.map((source) => (
               <EditableItem
                 key={source.id}
                 item={source}
+                modern
                 onUpdate={(name) => {
                   updateSaleSource(source.id, { name });
                   triggerGlobalSave();
@@ -3531,43 +3675,53 @@ export default function SettingsScreen() {
       case 'custom-services':
         return (
           <View className="pt-1">
-            <View className="rounded-xl p-4 mb-4" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
-              <Text style={{ color: colors.text.primary }} className="font-semibold text-sm mb-3">Add New Add-on</Text>
-              <View className="rounded-xl px-4 mb-3" style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light, height: 50, justifyContent: 'center' }}>
-                <TextInput
-                  placeholder="Add-on name"
-                  placeholderTextColor={colors.input.placeholder}
-                  value={newItemName}
-                  onChangeText={setNewItemName}
-                  style={{ color: colors.input.text, fontSize: 14 }}
-                  selectionColor={colors.text.primary}
-                />
+            <View className="rounded-3xl overflow-hidden mb-4" style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+              <LinearGradient colors={resolvedThemeMode === 'dark' ? ['#DDEB3F', '#9EAD00'] : ['#E3EC54', '#B9C722']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ height: 5 }} />
+              <View style={{ padding: isWebDesktop ? 24 : 18 }}>
+                <View className="flex-row items-center" style={{ gap: 14 }}>
+                  <LinearGradient colors={resolvedThemeMode === 'dark' ? ['#E5EF50', '#A9B700'] : ['#E8F15A', '#C4D12B']} style={{ width: isWebDesktop ? 54 : 48, height: isWebDesktop ? 54 : 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }}>
+                    <Wrench size={isWebDesktop ? 25 : 22} color={FYLL_LIME_INK} strokeWidth={2.2} />
+                  </LinearGradient>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Order extras</Text>
+                    <MoneyText style={{ color: settingsPalette.text, fontSize: isWebDesktop ? 28 : 24, fontWeight: '700', marginTop: 2 }}>
+                      {customServices.length} {customServices.length === 1 ? 'add-on' : 'add-ons'}
+                    </MoneyText>
+                  </View>
+                </View>
+                <Text style={{ color: settingsPalette.muted, fontSize: isWebDesktop ? 13 : 12, lineHeight: isWebDesktop ? 20 : 18, marginTop: 14 }}>
+                  Create optional extras such as lens coatings, gift wrapping, or express delivery.
+                </Text>
               </View>
-              <View className="rounded-xl px-4 mb-3" style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light, height: 50, justifyContent: 'center' }}>
-                <TextInput
-                  placeholder="Default price (optional)"
-                  placeholderTextColor={colors.input.placeholder}
-                  value={newItemPrice}
-                  onChangeText={setNewItemPrice}
-                  keyboardType="numeric"
-                  style={{ color: colors.input.text, fontSize: 14 }}
-                  selectionColor={colors.text.primary}
-                />
-              </View>
-              <Pressable
-                onPress={handleAddItem}
-                className="rounded-full items-center active:opacity-80"
-                style={[primaryPillButtonStyle, { height: 50, justifyContent: 'center' }]}
-              >
-                <Text style={[primaryPillTextStyle, { fontSize: 12, fontWeight: '600' }]}>Add Add-on</Text>
-              </Pressable>
             </View>
 
+            <Pressable onPress={() => setShowAddCustomServiceForm((value) => !value)} className="rounded-full flex-row items-center justify-center active:opacity-80 mb-4" style={{ minHeight: 48, gap: 8, backgroundColor: FYLL_LIME }}>
+              {showAddCustomServiceForm ? <X size={16} color={FYLL_LIME_INK} strokeWidth={2.4} /> : <Plus size={16} color={FYLL_LIME_INK} strokeWidth={2.4} />}
+              <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '700' }}>{showAddCustomServiceForm ? 'Close' : 'New add-on'}</MoneyText>
+            </Pressable>
+
+            {showAddCustomServiceForm ? (
+              <View className="rounded-3xl p-4 mb-5" style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+                <Text style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '700', marginBottom: 12 }}>Add order extra</Text>
+                <View className="rounded-2xl px-4 mb-3" style={{ backgroundColor: settingsPalette.inset, borderWidth: 1, borderColor: settingsPalette.outline, height: 50, justifyContent: 'center' }}>
+                  <TextInput autoFocus placeholder="e.g. Anti-glare coating" placeholderTextColor={colors.input.placeholder} value={newItemName} onChangeText={setNewItemName} style={{ color: settingsPalette.text, fontSize: 14 }} selectionColor={FYLL_LIME} />
+                </View>
+                <View className="rounded-2xl px-4 mb-3" style={{ backgroundColor: settingsPalette.inset, borderWidth: 1, borderColor: settingsPalette.outline, height: 50, justifyContent: 'center' }}>
+                  <TextInput placeholder="Default price (optional)" placeholderTextColor={colors.input.placeholder} value={newItemPrice} onChangeText={setNewItemPrice} onSubmitEditing={handleAddItem} returnKeyType="done" keyboardType="numeric" style={{ color: settingsPalette.text, fontSize: 14 }} selectionColor={FYLL_LIME} />
+                </View>
+                <Pressable onPress={handleAddItem} className="rounded-full items-center active:opacity-80" style={{ minHeight: 48, justifyContent: 'center', backgroundColor: FYLL_LIME }}>
+                  <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '700' }}>Save add-on</MoneyText>
+                </Pressable>
+              </View>
+            ) : null}
+
+            <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Saved add-ons</Text>
             {customServices.map((service) => (
               <EditableItem
                 key={service.id}
                 item={service}
                 showPrice
+                modern
                 onUpdate={(name, _, defaultPrice) => {
                   updateCustomService(service.id, { name, defaultPrice });
                   triggerGlobalSave();
@@ -3584,15 +3738,42 @@ export default function SettingsScreen() {
         return (
           <View className="pt-1">
             <View
-              className="rounded-2xl p-5 mb-5"
-              style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+              className="rounded-3xl overflow-hidden mb-4"
+              style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}
             >
-              <Text style={{ color: colors.text.primary, fontSize: 15, fontWeight: '600', letterSpacing: 0.2 }}>
-                Default Fulfillment Timeline
-              </Text>
-              <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '400', lineHeight: 18, marginTop: 6 }}>
-                Applies when an order type does not have a more specific timeline match. The due-soon threshold controls when ops starts seeing warning badges.
-              </Text>
+              <LinearGradient colors={resolvedThemeMode === 'dark' ? ['#DDEB3F', '#9EAD00'] : ['#E3EC54', '#B9C722']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ height: 5 }} />
+              <View style={{ padding: isWebDesktop ? 24 : 18 }}>
+                <View className="flex-row items-center" style={{ gap: 14 }}>
+                  <LinearGradient
+                    colors={resolvedThemeMode === 'dark' ? ['#E5EF50', '#A9B700'] : ['#E8F15A', '#C4D12B']}
+                    style={{ width: isWebDesktop ? 54 : 48, height: isWebDesktop ? 54 : 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    <Clock3 size={isWebDesktop ? 25 : 22} color={FYLL_LIME_INK} strokeWidth={2.2} />
+                  </LinearGradient>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Delivery planning</Text>
+                    <MoneyText style={{ color: settingsPalette.text, fontSize: isWebDesktop ? 28 : 24, fontWeight: '700', marginTop: 2 }}>
+                      {timelineRows.length} {timelineRows.length === 1 ? 'timeline' : 'timelines'}
+                    </MoneyText>
+                  </View>
+                </View>
+                <Text style={{ color: settingsPalette.muted, fontSize: isWebDesktop ? 13 : 12, lineHeight: isWebDesktop ? 20 : 18, marginTop: 14 }}>
+                  Set processing and delivery windows by location so every order has a clear expected date.
+                </Text>
+              </View>
+            </View>
+
+            <Pressable onPress={openCreateOrderTimelineModal} className="rounded-full flex-row items-center justify-center active:opacity-80 mb-5" style={{ minHeight: 48, gap: 8, backgroundColor: FYLL_LIME }}>
+              <Plus size={16} color={FYLL_LIME_INK} strokeWidth={2.4} />
+              <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '700' }}>New timeline</MoneyText>
+            </Pressable>
+
+            <View
+              className="rounded-3xl mb-4"
+              style={{ padding: isWebDesktop ? 22 : 16, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}
+            >
+              <Text style={{ color: settingsPalette.text, fontSize: isWebDesktop ? 15 : 14, fontWeight: '700' }}>Default timeline</Text>
+              <Text style={{ color: settingsPalette.muted, fontSize: 12, lineHeight: 18, marginTop: 5 }}>Used when an order has no more specific timeline match.</Text>
 
               <View className="flex-row mt-4" style={{ gap: 12 }}>
                 <View style={{ flex: 1 }}>
@@ -3610,7 +3791,7 @@ export default function SettingsScreen() {
                       onChangeText={setDefaultOrderTypeMinDays}
                       onEndEditing={commitDefaultOrderTimelineSettings}
                       keyboardType="numeric"
-                      style={{ color: colors.input.text, fontSize: 15, fontWeight: '500' }}
+                      style={{ color: colors.input.text, fontSize: isWebDesktop ? 15 : 14, fontWeight: '500' }}
                       selectionColor={colors.text.primary}
                     />
                   </View>
@@ -3631,7 +3812,7 @@ export default function SettingsScreen() {
                       onChangeText={setDefaultOrderTypeMaxDays}
                       onEndEditing={commitDefaultOrderTimelineSettings}
                       keyboardType="numeric"
-                      style={{ color: colors.input.text, fontSize: 15, fontWeight: '500' }}
+                      style={{ color: colors.input.text, fontSize: isWebDesktop ? 15 : 14, fontWeight: '500' }}
                       selectionColor={colors.text.primary}
                     />
                   </View>
@@ -3662,7 +3843,7 @@ export default function SettingsScreen() {
                       onChangeText={setDefaultOrderTimelineThreshold}
                       onEndEditing={commitDefaultOrderTimelineSettings}
                       keyboardType="numeric"
-                      style={{ color: colors.input.text, fontSize: 15, fontWeight: '500', textAlign: 'center' }}
+                      style={{ color: colors.input.text, fontSize: isWebDesktop ? 15 : 14, fontWeight: '500', textAlign: 'center' }}
                       selectionColor={colors.text.primary}
                     />
                   </View>
@@ -3682,19 +3863,13 @@ export default function SettingsScreen() {
               </View>
             </View>
 
-            <View className="mb-4">
-              <Text style={{ color: colors.text.tertiary, fontSize: 12, lineHeight: 18 }}>
-                Each fulfillment timeline sets the delivery days for the states you choose, plus the processing days before it ships. Together they give every order its expected delivery date and its on-track or overdue status.
-              </Text>
-            </View>
-
             <View
-              className="rounded-2xl p-4 mb-4"
-              style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+              className="rounded-3xl p-4 mb-5"
+              style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}
             >
               <View className="flex-row items-start justify-between" style={{ gap: 12 }}>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600' }}>
+                    <Text style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '700' }}>
                     Customer tracking page
                   </Text>
                   <Text style={{ color: colors.text.tertiary, fontSize: 12, lineHeight: 18, marginTop: 6 }}>
@@ -3732,16 +3907,7 @@ export default function SettingsScreen() {
               </View>
             </View>
 
-            {!isWebDesktop ? (
-              <Pressable
-                onPress={openCreateOrderTimelineModal}
-                className="rounded-full flex-row items-center justify-center active:opacity-80 mb-4"
-                style={[primaryPillButtonStyle, { height: 46, gap: 8 }]}
-              >
-                <Plus size={14} color={primaryPillTextStyle.color} strokeWidth={2.2} />
-                <Text style={primaryPillTextStyle} className="text-sm font-semibold">New Timeline</Text>
-              </Pressable>
-            ) : null}
+            <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Fulfillment timelines</Text>
 
             {isWebDesktop ? (
               <View
@@ -3804,7 +3970,7 @@ export default function SettingsScreen() {
                           {row.states.join(', ')}
                         </Text>
                       ) : (
-                        <Text style={{ color: colors.text.muted, fontSize: 12 }}>All states</Text>
+                        <Text style={{ color: colors.text.muted, fontSize: 12 }}>{row.fulfillmentMethod === 'pickup' ? 'Pick up only' : 'All states'}</Text>
                       )}
                     </View>
                     <Text style={{ color: colors.text.primary, flex: 0.9, fontSize: 12, fontWeight: '500', paddingHorizontal: 20 }}>
@@ -3830,20 +3996,25 @@ export default function SettingsScreen() {
                 {timelineRows.map((row) => (
                   <View
                     key={row.key}
-                    className="rounded-xl p-4 mb-4"
-                    style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+                    className="rounded-3xl p-4 mb-3"
+                    style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}
                   >
                     <View className="flex-row items-start justify-between" style={{ gap: 12 }}>
                       <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }} numberOfLines={1}>
+                        <Text style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '700' }} numberOfLines={1}>
                           {row.name}
                         </Text>
                         <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '400', lineHeight: 17, marginTop: 8 }}>
-                          {row.states.length > 0 ? row.states.join(', ') : 'All states'}
+                          {row.fulfillmentMethod === 'pickup' ? 'Pick up only' : row.states.length > 0 ? row.states.join(', ') : 'All states'}
                         </Text>
-                        <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '500', marginTop: 8 }}>
-                          Delivery {row.deliveryMin != null && row.deliveryMax != null ? `${row.deliveryMin}-${row.deliveryMax} days` : '—'}  ·  Processing {row.processingMin}-{row.processingMax} days
-                        </Text>
+                        <View className="flex-row" style={{ gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                          <View className="rounded-full" style={{ paddingHorizontal: 10, paddingVertical: 6, backgroundColor: settingsPalette.nudgeBg }}>
+                            <Text style={{ color: settingsPalette.text, fontSize: 10, fontWeight: '700' }}>Delivery {row.deliveryMin != null && row.deliveryMax != null ? `${row.deliveryMin}-${row.deliveryMax}d` : '—'}</Text>
+                          </View>
+                          <View className="rounded-full" style={{ paddingHorizontal: 10, paddingVertical: 6, backgroundColor: settingsPalette.inset }}>
+                            <Text style={{ color: settingsPalette.text, fontSize: 10, fontWeight: '700' }}>Processing {row.processingMin}-{row.processingMax}d</Text>
+                          </View>
+                        </View>
                         <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '400', lineHeight: 16, marginTop: 6 }}>
                           {row.workflowStatusIds
                             .map((statusId) => orderStatuses.find((status) => status.id === statusId)?.name)
@@ -3854,7 +4025,7 @@ export default function SettingsScreen() {
                       <Pressable
                         onPress={(event) => openOrderTimelineMenu(row.key, event)}
                         className="w-10 h-10 rounded-full items-center justify-center active:opacity-70"
-                        style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+                        style={{ backgroundColor: settingsPalette.inset, borderWidth: 1, borderColor: settingsPalette.border }}
                       >
                         <MoreVertical size={16} color={colors.text.secondary} strokeWidth={2} />
                       </Pressable>
@@ -4002,31 +4173,68 @@ export default function SettingsScreen() {
       case 'payment-methods':
         return (
           <View className="pt-1">
-            <View className="rounded-xl p-4 mb-4" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
-              <Text style={{ color: colors.text.primary }} className="font-semibold text-sm mb-3">Add New Payment Method</Text>
-              <View className="rounded-xl px-4 mb-3" style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light, height: 50, justifyContent: 'center' }}>
-                <TextInput
-                  placeholder="Payment method name"
-                  placeholderTextColor={colors.input.placeholder}
-                  value={newItemName}
-                  onChangeText={setNewItemName}
-                  style={{ color: colors.input.text, fontSize: 14 }}
-                  selectionColor={colors.text.primary}
-                />
+            <View className="rounded-3xl overflow-hidden mb-4" style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+              <LinearGradient colors={resolvedThemeMode === 'dark' ? ['#DDEB3F', '#9EAD00'] : ['#E3EC54', '#B9C722']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ height: 5 }} />
+              <View style={{ padding: isWebDesktop ? 24 : 18 }}>
+                <View className="flex-row items-center" style={{ gap: 14 }}>
+                  <LinearGradient
+                    colors={resolvedThemeMode === 'dark' ? ['#E5EF50', '#A9B700'] : ['#E8F15A', '#C4D12B']}
+                    style={{ width: isWebDesktop ? 54 : 48, height: isWebDesktop ? 54 : 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    <CreditCard size={isWebDesktop ? 25 : 22} color={FYLL_LIME_INK} strokeWidth={2.2} />
+                  </LinearGradient>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Checkout options</Text>
+                    <MoneyText style={{ color: settingsPalette.text, fontSize: isWebDesktop ? 28 : 24, fontWeight: '700', marginTop: 2 }}>
+                      {paymentMethods.length} {paymentMethods.length === 1 ? 'method' : 'methods'}
+                    </MoneyText>
+                  </View>
+                </View>
+                <Text style={{ color: settingsPalette.muted, fontSize: isWebDesktop ? 13 : 12, lineHeight: isWebDesktop ? 20 : 18, marginTop: 14 }}>
+                  Manage the payment choices available when orders are recorded and checked out.
+                </Text>
               </View>
-              <Pressable
-                onPress={handleAddItem}
-                className="rounded-full items-center active:opacity-80"
-                style={[primaryPillButtonStyle, { height: 50, justifyContent: 'center' }]}
-              >
-                <Text style={primaryPillTextStyle} className="font-semibold">Add Payment Method</Text>
-              </Pressable>
             </View>
 
+            <Pressable
+              onPress={() => setShowAddPaymentMethodForm((value) => !value)}
+              className="rounded-full flex-row items-center justify-center active:opacity-80 mb-4"
+              style={{ minHeight: 48, gap: 8, backgroundColor: FYLL_LIME }}
+            >
+              {showAddPaymentMethodForm ? <X size={16} color={FYLL_LIME_INK} strokeWidth={2.4} /> : <Plus size={16} color={FYLL_LIME_INK} strokeWidth={2.4} />}
+              <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '700' }}>
+                {showAddPaymentMethodForm ? 'Close' : 'New payment method'}
+              </MoneyText>
+            </Pressable>
+
+            {showAddPaymentMethodForm ? (
+              <View className="rounded-3xl p-4 mb-5" style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+                <Text style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '700', marginBottom: 12 }}>Add payment method</Text>
+                <View className="rounded-2xl px-4 mb-3" style={{ backgroundColor: settingsPalette.inset, borderWidth: 1, borderColor: settingsPalette.outline, height: 50, justifyContent: 'center' }}>
+                  <TextInput
+                    autoFocus
+                    placeholder="e.g. Bank transfer or POS"
+                    placeholderTextColor={colors.input.placeholder}
+                    value={newItemName}
+                    onChangeText={setNewItemName}
+                    onSubmitEditing={handleAddItem}
+                    returnKeyType="done"
+                    style={{ color: settingsPalette.text, fontSize: 14 }}
+                    selectionColor={FYLL_LIME}
+                  />
+                </View>
+                <Pressable onPress={handleAddItem} className="rounded-full items-center active:opacity-80" style={{ minHeight: 48, justifyContent: 'center', backgroundColor: FYLL_LIME }}>
+                  <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '700' }}>Save payment method</MoneyText>
+                </Pressable>
+              </View>
+            ) : null}
+
+            <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Payment methods</Text>
             {paymentMethods.map((method) => (
               <EditableItem
                 key={method.id}
                 item={method}
+                modern
                 onUpdate={(name) => {
                   updatePaymentMethod(method.id, { name }, businessId);
                   triggerGlobalSave();
@@ -4038,9 +4246,12 @@ export default function SettingsScreen() {
             ))}
 
             {unmappedOrderPaymentMethods.length > 0 && paymentMethods.length > 0 ? (
-              <View className="rounded-xl p-4 mt-4" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
-                <Text style={{ color: colors.text.primary }} className="font-semibold text-sm">Order payment labels to clean up</Text>
-                <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1 mb-3">
+              <View className="rounded-3xl p-4 mt-4" style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.nudgeBorder }}>
+                <View className="flex-row items-center" style={{ gap: 9 }}>
+                  <AlertTriangle size={17} color={settingsPalette.limeOnSurface} strokeWidth={2.2} />
+                  <Text style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '700' }}>Payment labels to clean up</Text>
+                </View>
+                <Text style={{ color: settingsPalette.muted, fontSize: 12, lineHeight: 18, marginTop: 6, marginBottom: 10 }}>
                   These labels exist on saved orders but not in your current payment methods. Merge them into the correct method.
                 </Text>
 
@@ -4048,11 +4259,11 @@ export default function SettingsScreen() {
                   <View
                     key={legacyMethod.name}
                     className="py-3"
-                    style={{ borderTopWidth: 1, borderTopColor: colors.border.light }}
+                    style={{ borderTopWidth: 1, borderTopColor: settingsPalette.hairline }}
                   >
                     <View className="flex-row items-center justify-between" style={{ gap: 12 }}>
                       <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text style={{ color: colors.text.primary }} className="font-semibold text-sm" numberOfLines={1}>
+                        <Text style={{ color: settingsPalette.text, fontSize: 13, fontWeight: '700' }} numberOfLines={1}>
                           {legacyMethod.name}
                         </Text>
                         <Text style={{ color: colors.text.tertiary }} className="text-xs mt-0.5">
@@ -4066,9 +4277,9 @@ export default function SettingsScreen() {
                           key={`${legacyMethod.name}-${method.id}`}
                           onPress={() => handleMergeOrderPaymentMethod(legacyMethod.name, method.name)}
                           className="rounded-full px-3 items-center justify-center active:opacity-80"
-                          style={{ height: 34, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.input.bg }}
+                          style={{ minHeight: 36, borderWidth: 1, borderColor: settingsPalette.outline, backgroundColor: settingsPalette.inset }}
                         >
-                          <Text style={{ color: colors.text.primary }} className="text-xs font-semibold">
+                          <Text style={{ color: settingsPalette.text, fontSize: 12, fontWeight: '600' }}>
                             Merge into {method.name}
                           </Text>
                         </Pressable>
@@ -4084,31 +4295,68 @@ export default function SettingsScreen() {
       case 'logistics-carriers':
         return (
           <View className="pt-1">
-            <View className="rounded-xl p-4 mb-4" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
-              <Text style={{ color: colors.text.primary }} className="font-semibold text-sm mb-3">Add New Carrier</Text>
-              <View className="rounded-xl px-4 mb-3" style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light, height: 50, justifyContent: 'center' }}>
-                <TextInput
-                  placeholder="Carrier name"
-                  placeholderTextColor={colors.input.placeholder}
-                  value={newItemName}
-                  onChangeText={setNewItemName}
-                  style={{ color: colors.input.text, fontSize: 14 }}
-                  selectionColor={colors.text.primary}
-                />
+            <View className="rounded-3xl overflow-hidden mb-4" style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+              <LinearGradient colors={resolvedThemeMode === 'dark' ? ['#DDEB3F', '#9EAD00'] : ['#E3EC54', '#B9C722']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ height: 5 }} />
+              <View style={{ padding: isWebDesktop ? 24 : 18 }}>
+                <View className="flex-row items-center" style={{ gap: 14 }}>
+                  <LinearGradient
+                    colors={resolvedThemeMode === 'dark' ? ['#E5EF50', '#A9B700'] : ['#E8F15A', '#C4D12B']}
+                    style={{ width: isWebDesktop ? 54 : 48, height: isWebDesktop ? 54 : 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    <Truck size={isWebDesktop ? 25 : 22} color={FYLL_LIME_INK} strokeWidth={2.2} />
+                  </LinearGradient>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Delivery partners</Text>
+                    <MoneyText style={{ color: settingsPalette.text, fontSize: isWebDesktop ? 28 : 24, fontWeight: '700', marginTop: 2 }}>
+                      {logisticsCarriers.length} {logisticsCarriers.length === 1 ? 'carrier' : 'carriers'}
+                    </MoneyText>
+                  </View>
+                </View>
+                <Text style={{ color: settingsPalette.muted, fontSize: isWebDesktop ? 13 : 12, lineHeight: isWebDesktop ? 20 : 18, marginTop: 14 }}>
+                  Manage the delivery companies available when assigning and tracking order shipments.
+                </Text>
               </View>
-              <Pressable
-                onPress={handleAddItem}
-                className="rounded-full items-center active:opacity-80"
-                style={[primaryPillButtonStyle, { height: 50, justifyContent: 'center' }]}
-              >
-                <Text style={primaryPillTextStyle} className="font-semibold">Add Carrier</Text>
-              </Pressable>
             </View>
 
+            <Pressable
+              onPress={() => setShowAddLogisticsCarrierForm((value) => !value)}
+              className="rounded-full flex-row items-center justify-center active:opacity-80 mb-4"
+              style={{ minHeight: 48, gap: 8, backgroundColor: FYLL_LIME }}
+            >
+              {showAddLogisticsCarrierForm ? <X size={16} color={FYLL_LIME_INK} strokeWidth={2.4} /> : <Plus size={16} color={FYLL_LIME_INK} strokeWidth={2.4} />}
+              <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '700' }}>
+                {showAddLogisticsCarrierForm ? 'Close' : 'New carrier'}
+              </MoneyText>
+            </Pressable>
+
+            {showAddLogisticsCarrierForm ? (
+              <View className="rounded-3xl p-4 mb-5" style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+                <Text style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '700', marginBottom: 12 }}>Add logistics carrier</Text>
+                <View className="rounded-2xl px-4 mb-3" style={{ backgroundColor: settingsPalette.inset, borderWidth: 1, borderColor: settingsPalette.outline, height: 50, justifyContent: 'center' }}>
+                  <TextInput
+                    autoFocus
+                    placeholder="e.g. DHL or local dispatch"
+                    placeholderTextColor={colors.input.placeholder}
+                    value={newItemName}
+                    onChangeText={setNewItemName}
+                    onSubmitEditing={handleAddItem}
+                    returnKeyType="done"
+                    style={{ color: settingsPalette.text, fontSize: 14 }}
+                    selectionColor={FYLL_LIME}
+                  />
+                </View>
+                <Pressable onPress={handleAddItem} className="rounded-full items-center active:opacity-80" style={{ minHeight: 48, justifyContent: 'center', backgroundColor: FYLL_LIME }}>
+                  <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '700' }}>Save carrier</MoneyText>
+                </Pressable>
+              </View>
+            ) : null}
+
+            <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Saved carriers</Text>
             {logisticsCarriers.map((carrier) => (
               <EditableItem
                 key={carrier.id}
                 item={carrier}
+                modern
                 onUpdate={(name) => {
                   updateLogisticsCarrier(carrier.id, { name });
                   triggerGlobalSave();
@@ -4124,42 +4372,53 @@ export default function SettingsScreen() {
       case 'resolution-types':
         return (
           <View className="pt-1">
-            <View className="rounded-xl p-4 mb-4" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
-              <Text style={{ color: colors.text.primary }} className="font-semibold text-sm mb-3">Add Resolution Type</Text>
-              <View className="rounded-xl px-4 mb-3" style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light, height: 50, justifyContent: 'center' }}>
-                <TextInput
-                  placeholder="Resolution type name"
-                  placeholderTextColor={colors.input.placeholder}
-                  value={newItemName}
-                  onChangeText={setNewItemName}
-                  style={{ color: colors.input.text, fontSize: 14 }}
-                  selectionColor={colors.text.primary}
-                />
+            <View className="rounded-3xl overflow-hidden mb-4" style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+              <LinearGradient colors={resolvedThemeMode === 'dark' ? ['#DDEB3F', '#9EAD00'] : ['#E3EC54', '#B9C722']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ height: 5 }} />
+              <View style={{ padding: isWebDesktop ? 24 : 18 }}>
+                <View className="flex-row items-center" style={{ gap: 14 }}>
+                  <LinearGradient colors={resolvedThemeMode === 'dark' ? ['#E5EF50', '#A9B700'] : ['#E8F15A', '#C4D12B']} style={{ width: isWebDesktop ? 54 : 48, height: isWebDesktop ? 54 : 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }}>
+                    <Check size={isWebDesktop ? 25 : 22} color={FYLL_LIME_INK} strokeWidth={2.5} />
+                  </LinearGradient>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Case outcomes</Text>
+                    <MoneyText style={{ color: settingsPalette.text, fontSize: isWebDesktop ? 28 : 24, fontWeight: '700', marginTop: 2 }}>
+                      {resolutionTypes.length} {resolutionTypes.length === 1 ? 'resolution' : 'resolutions'}
+                    </MoneyText>
+                  </View>
+                </View>
+                <Text style={{ color: settingsPalette.muted, fontSize: isWebDesktop ? 13 : 12, lineHeight: isWebDesktop ? 20 : 18, marginTop: 14 }}>
+                  Define the outcomes your team records when a customer case is resolved.
+                </Text>
               </View>
-              <View className="rounded-xl px-4 mb-3" style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light, minHeight: 50, justifyContent: 'center' }}>
-                <TextInput
-                  placeholder="Description (optional)"
-                  placeholderTextColor={colors.input.placeholder}
-                  value={newItemDescription}
-                  onChangeText={setNewItemDescription}
-                  style={{ color: colors.input.text, fontSize: 14 }}
-                  selectionColor={colors.text.primary}
-                />
-              </View>
-              <Pressable
-                onPress={handleAddItem}
-                className="rounded-full items-center active:opacity-80"
-                style={[primaryPillButtonStyle, { height: 50, justifyContent: 'center' }]}
-              >
-                <Text style={primaryPillTextStyle} className="font-semibold">Add Resolution Type</Text>
-              </Pressable>
             </View>
 
+            <Pressable onPress={() => setShowAddResolutionTypeForm((value) => !value)} className="rounded-full flex-row items-center justify-center active:opacity-80 mb-4" style={{ minHeight: 48, gap: 8, backgroundColor: FYLL_LIME }}>
+              {showAddResolutionTypeForm ? <X size={16} color={FYLL_LIME_INK} strokeWidth={2.4} /> : <Plus size={16} color={FYLL_LIME_INK} strokeWidth={2.4} />}
+              <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '700' }}>{showAddResolutionTypeForm ? 'Close' : 'New resolution type'}</MoneyText>
+            </Pressable>
+
+            {showAddResolutionTypeForm ? (
+              <View className="rounded-3xl p-4 mb-5" style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+                <Text style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '700', marginBottom: 12 }}>Add resolution type</Text>
+                <View className="rounded-2xl px-4 mb-3" style={{ backgroundColor: settingsPalette.inset, borderWidth: 1, borderColor: settingsPalette.outline, height: 50, justifyContent: 'center' }}>
+                  <TextInput autoFocus placeholder="e.g. Refund issued" placeholderTextColor={colors.input.placeholder} value={newItemName} onChangeText={setNewItemName} style={{ color: settingsPalette.text, fontSize: 14 }} selectionColor={FYLL_LIME} />
+                </View>
+                <View className="rounded-2xl px-4 mb-3" style={{ backgroundColor: settingsPalette.inset, borderWidth: 1, borderColor: settingsPalette.outline, minHeight: 50, justifyContent: 'center' }}>
+                  <TextInput placeholder="Description (optional)" placeholderTextColor={colors.input.placeholder} value={newItemDescription} onChangeText={setNewItemDescription} onSubmitEditing={handleAddItem} returnKeyType="done" style={{ color: settingsPalette.text, fontSize: 14 }} selectionColor={FYLL_LIME} />
+                </View>
+                <Pressable onPress={handleAddItem} className="rounded-full items-center active:opacity-80" style={{ minHeight: 48, justifyContent: 'center', backgroundColor: FYLL_LIME }}>
+                  <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '700' }}>Save resolution type</MoneyText>
+                </Pressable>
+              </View>
+            ) : null}
+
+            <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Resolution types</Text>
             {resolutionTypes.map((type) => (
               <EditableItem
                 key={type.id}
                 item={type}
                 showDescription
+                modern
                 onUpdate={(name, _, __, description) => {
                   updateResolutionType(type.id, { name, description });
                   triggerGlobalSave();
@@ -4402,10 +4661,13 @@ export default function SettingsScreen() {
   );
 
   const renderWebAppearanceContent = () => (
-    <View style={{ gap: 26 }}>
-      <View>
-        <Text style={{ color: colors.text.primary, fontSize: 15, fontWeight: '600', marginBottom: 14 }}>Theme</Text>
-        <View style={{ flexDirection: 'row', gap: 10 }}>
+    <View style={{ gap: 18 }}>
+      <View style={{ padding: 18, borderRadius: 26, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+        <View style={{ marginBottom: 16 }}>
+          <Text style={{ color: settingsPalette.text, fontSize: 15, fontWeight: '700' }}>Workspace theme</Text>
+          <Text style={{ color: settingsPalette.faint, fontSize: 12, marginTop: 3 }}>{themeMode === 'system' ? `Following device · ${resolvedThemeMode === 'dark' ? 'Dark' : 'Light'}` : `${themeMode === 'dark' ? 'Dark' : 'Light'} mode selected`}</Text>
+        </View>
+        <View style={{ flexDirection: 'row', gap: 6, padding: 4, borderRadius: 999, backgroundColor: settingsPalette.inset, borderWidth: 1, borderColor: settingsPalette.border }}>
           {themeOptions.map((option) => {
             const isSelected = themeMode === option.mode;
             return (
@@ -4417,17 +4679,15 @@ export default function SettingsScreen() {
                 }}
                 className="active:opacity-80"
                 style={{
+                  flex: 1,
                   height: 42,
-                  minWidth: 92,
                   borderRadius: 999,
                   alignItems: 'center',
                   justifyContent: 'center',
-                  backgroundColor: isSelected ? FYLL_LIME : colors.bg.primary,
-                  borderWidth: isSelected ? 0 : 1,
-                  borderColor: colors.border.medium,
+                  backgroundColor: isSelected ? FYLL_LIME : 'transparent',
                 }}
               >
-                <Text style={{ color: isSelected ? FYLL_LIME_INK : colors.text.primary, fontSize: 14, fontWeight: isSelected ? '600' : '500' }}>
+                <Text style={{ color: isSelected ? FYLL_LIME_INK : settingsPalette.faint, fontSize: 14, fontWeight: '700' }}>
                   {option.label}
                 </Text>
               </Pressable>
@@ -4435,50 +4695,21 @@ export default function SettingsScreen() {
           })}
         </View>
       </View>
-      <View style={{ height: 1, backgroundColor: colors.border.light }} />
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 24 }}>
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: colors.text.primary, fontSize: 14, lineHeight: 18, fontWeight: '600' }}>Current mode</Text>
-          <Text style={{ color: colors.text.tertiary, fontSize: 12, lineHeight: 16, marginTop: 2 }}>
-            {themeMode === 'system'
-              ? `Following device: ${resolvedThemeMode === 'dark' ? 'Dark' : 'Light'}`
-              : `Manually set: ${themeMode === 'dark' ? 'Dark' : 'Light'}`}
-          </Text>
-        </View>
-        <View
-          style={{
-            width: 44,
-            height: 44,
-            borderRadius: 13,
-            backgroundColor: settingsPalette.nudgeBg,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          {themeMode === 'system'
-            ? <Laptop size={19} color={settingsPalette.limeOnSurface} strokeWidth={2} />
-            : resolvedThemeMode === 'dark'
-            ? <Moon size={19} color={settingsPalette.limeOnSurface} strokeWidth={2} />
-            : <Sun size={19} color={settingsPalette.limeOnSurface} strokeWidth={2} />}
-        </View>
-      </View>
     </View>
   );
 
   const renderWebNotificationsContent = () => (
-    <View style={{ gap: 14 }}>
+    <View style={{ borderRadius: 22, overflow: 'hidden', backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
       <View
         style={{
           minHeight: 72,
-          borderRadius: 14,
-          borderWidth: 1,
-          borderColor: colors.border.light,
-          backgroundColor: colors.bg.primary,
           paddingHorizontal: 18,
           paddingVertical: 14,
           flexDirection: 'row',
           alignItems: 'center',
           gap: 14,
+          borderBottomWidth: 1,
+          borderBottomColor: settingsPalette.hairline,
         }}
       >
         <View
@@ -4493,7 +4724,7 @@ export default function SettingsScreen() {
         >
           {notifPermission === 'granted'
             ? <Bell size={18} color={settingsPalette.limeOnSurface} strokeWidth={2} />
-            : <BellOff size={18} color={colors.text.tertiary} strokeWidth={2} />}
+            : <BellOff size={18} color={settingsPalette.limeOnSurface} strokeWidth={2} />}
         </View>
         <View style={{ flex: 1 }}>
           <Text style={{ color: colors.text.primary, fontSize: 14, lineHeight: 18, fontWeight: '600' }}>Push notifications</Text>
@@ -4501,104 +4732,44 @@ export default function SettingsScreen() {
             {notifPermission === 'granted' ? 'Enabled for browser alerts' : notifPermission === 'denied' ? 'Blocked in browser settings' : 'Not enabled yet'}
           </Text>
         </View>
-        {notifPermission !== 'granted' && notifPermission !== 'denied' ? (
+        {notifPermission !== 'denied' ? (
           <Pressable
             onPress={() => {
-              promptForPermission();
-              setTimeout(() => setNotifPermission(window.Notification?.permission ?? null), 1500);
+              if (notifPermission === 'granted') void sendTestPushToThisDevice();
+              else {
+                promptForPermission();
+                setTimeout(() => setNotifPermission(window.Notification?.permission ?? null), 1500);
+              }
             }}
-            disabled={!notifReady}
+            disabled={!notifReady || isSendingTestPush}
             className="active:opacity-80"
-            style={[primaryPillButtonStyle, { height: 38, minWidth: 88, alignItems: 'center', justifyContent: 'center', opacity: notifReady ? 1 : 0.5 }]}
+            style={{ height: 36, minWidth: 78, paddingHorizontal: 14, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: FYLL_LIME, opacity: notifReady && !isSendingTestPush ? 1 : 0.5 }}
           >
-            <Text style={primaryPillTextStyle} className="text-sm font-semibold">Enable</Text>
+            <Text style={{ color: FYLL_LIME_INK, fontSize: 12, fontWeight: '700' }}>{isSendingTestPush ? 'Sending…' : notifPermission === 'granted' ? 'Test' : 'Enable'}</Text>
           </Pressable>
         ) : null}
       </View>
 
-      {notifPermission === 'granted' ? (
-        <View
-          style={{
-            borderRadius: 14,
-            borderWidth: 1,
-            borderColor: colors.border.light,
-            backgroundColor: colors.bg.primary,
-            paddingHorizontal: 18,
-            paddingVertical: 16,
-          }}
-        >
-          <Text style={{ color: colors.text.primary, fontSize: 14, lineHeight: 18, fontWeight: '600' }}>Test this device</Text>
-          <Text style={{ color: colors.text.tertiary, fontSize: 12, lineHeight: 16, marginTop: 2, marginBottom: 14 }}>
-            Sends a real push notification straight to this browser, so you can confirm delivery actually works.
-          </Text>
-          <Pressable
-            onPress={sendTestPushToThisDevice}
-            disabled={isSendingTestPush || !notifReady}
-            className="active:opacity-80"
-            style={{
-              height: 42,
-              borderRadius: 999,
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: colors.bg.secondary,
-              borderWidth: 1,
-              borderColor: colors.border.light,
-              opacity: isSendingTestPush || !notifReady ? 0.6 : 1,
-            }}
-          >
-            <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">
-              {isSendingTestPush ? 'Sending…' : 'Send test notification to this device'}
-            </Text>
-          </Pressable>
-          {testPushResult ? (
-            <Text
-              style={{ color: testPushResult.ok ? '#10B981' : '#EF4444', fontSize: 12, marginTop: 10, textAlign: 'center' }}
-            >
-              {testPushResult.message}
-            </Text>
-          ) : null}
-        </View>
+      {currentUser?.role === 'admin' ? (
+        <SettingsRow
+          title="WhatsApp alerts"
+          description="Orders and payments sent to WhatsApp"
+          icon={<MessageCircle size={18} color={settingsPalette.limeOnSurface} strokeWidth={2} />}
+          onPress={() => openSettingsPanel('whatsapp-settings', '/whatsapp-settings?from=settings')}
+          showDivider={canUseOrderAutomation}
+        />
       ) : null}
-
-      <WhatsAppAlertsCard bordered />
 
       {canUseOrderAutomation ? (
-        <Pressable
+        <SettingsRow
+          title="Emails"
+          description="Order status updates and delivery confirmations"
+          icon={<Mail size={18} color={settingsPalette.limeOnSurface} strokeWidth={2} />}
           onPress={() => openSettingsPanel('email-settings', '/email-settings?from=settings')}
-          className="active:opacity-80"
-          style={{
-            borderRadius: 14,
-            borderWidth: 1,
-            borderColor: colors.border.light,
-            backgroundColor: colors.bg.primary,
-            paddingHorizontal: 18,
-            paddingVertical: 16,
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 14,
-          }}
-        >
-          <View
-            style={{
-              width: 42,
-              height: 42,
-              borderRadius: 999,
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: colors.bg.secondary,
-            }}
-          >
-            <Mail size={18} color={colors.text.tertiary} strokeWidth={2} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={{ color: colors.text.primary, fontSize: 14, lineHeight: 18, fontWeight: '600' }}>Emails</Text>
-            <Text style={{ color: colors.text.tertiary, fontSize: 12, lineHeight: 16, marginTop: 2 }}>
-              Order status update and delivery confirmation emails
-            </Text>
-          </View>
-          <ChevronRight size={18} color={colors.text.tertiary} strokeWidth={2} />
-        </Pressable>
+          showDivider={false}
+        />
       ) : null}
+      {testPushResult ? <Text style={{ color: testPushResult.ok ? '#10B981' : '#EF4444', fontSize: 12, paddingHorizontal: 18, paddingBottom: 12 }}>{testPushResult.message}</Text> : null}
     </View>
   );
 
@@ -4716,46 +4887,6 @@ export default function SettingsScreen() {
 
   const renderWebSystemContent = () => (
     <View style={{ gap: 14 }}>
-      <Pressable
-        onPress={handleSaveGlobalSettings}
-        disabled={saveStatus === 'saving'}
-        className="active:opacity-80"
-        style={{
-          minHeight: 72,
-          borderRadius: 14,
-          borderWidth: 1,
-          borderColor: colors.border.light,
-          backgroundColor: colors.bg.primary,
-          paddingHorizontal: 18,
-          paddingVertical: 14,
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 14,
-          opacity: saveStatus === 'saving' ? 0.6 : 1,
-        }}
-      >
-        <View
-          style={{
-            width: 42,
-            height: 42,
-            borderRadius: 13,
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: settingsPalette.nudgeBg,
-          }}
-        >
-          <Upload size={18} color={settingsPalette.limeOnSurface} strokeWidth={2} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: colors.text.primary, fontSize: 14, lineHeight: 18, fontWeight: '600' }}>
-            {saveStatus === 'saving' ? 'Saving global settings' : 'Save global settings'}
-          </Text>
-          <Text style={{ color: saveStatus === 'error' ? '#EF4444' : colors.text.tertiary, fontSize: 12, lineHeight: 16, marginTop: 2 }}>
-            {saveMessage || 'Sync settings across devices'}
-          </Text>
-        </View>
-        <ChevronRight size={17} color={colors.text.tertiary} strokeWidth={2} />
-      </Pressable>
       {renderWebSettingsRows(getSettingsItems(['recycle-bin', 'milestone-replay', 'import-ai', 'log-out']))}
       <Pressable
         onPress={handleRefreshApp}
@@ -4804,6 +4935,7 @@ export default function SettingsScreen() {
     'woocommerce-settings': 'WooCommerce',
     'order-automation': 'Order Automation',
     'email-settings': 'Emails',
+    'whatsapp-settings': 'WhatsApp Alerts',
     'warehouse-settings': 'Warehouse Settings',
     'category-manager': 'Categories',
     'product-variables': 'Product Variables',
@@ -4822,9 +4954,9 @@ export default function SettingsScreen() {
       case 'business-settings':
         return <BusinessSettingsScreen />;
       case 'storefront-settings':
-        return <StorefrontSettingsScreen />;
+        return <StorefrontSettingsScreen embeddedInSettings />;
       case 'payment-accounts':
-        return <PaymentAccountsScreen />;
+        return <PaymentAccountsScreen embeddedInSettings />;
       case 'team':
         return <TeamManagementScreen />;
       case 'invitations':
@@ -4835,6 +4967,8 @@ export default function SettingsScreen() {
         return <OrderAutomationScreen />;
       case 'email-settings':
         return <EmailSettingsScreen />;
+      case 'whatsapp-settings':
+        return <WhatsAppSettingsScreen />;
       case 'warehouse-settings':
         return <WarehouseSettingsScreen />;
       case 'category-manager':
@@ -5001,13 +5135,13 @@ export default function SettingsScreen() {
       case 'orders':
         return renderWebSettingsCard(
           'Orders',
-          renderWebSettingsRows(getSettingsItems(['order-statuses', 'quality-control-checks', 'order-timelines', 'sale-sources', 'logistics-carriers', 'order-automation'])),
-          'Order workflows, quality control, fulfillment timelines, sources and carriers.'
+          renderWebSettingsRows(getSettingsItems(['order-statuses', 'quality-control-checks', 'order-timelines', 'sale-sources', 'addons', 'logistics-carriers', 'order-automation'])),
+          'Order workflows, quality control, fulfillment timelines, sources, add-ons and carriers.'
         );
       case 'inventory':
         return renderWebSettingsCard(
           'Inventory',
-          renderWebSettingsRows(getSettingsItems(['low-stock-alert', 'warehouse-settings', 'categories', 'product-variables', 'product-options', 'service-catalog', 'addons'])),
+          renderWebSettingsRows(getSettingsItems(['low-stock-alert', 'warehouse-settings', 'categories', 'product-variables', 'product-options', 'service-catalog'])),
           'Stock alerts, warehouse, categories, variants and services.'
         );
       case 'import-export':
@@ -5158,7 +5292,7 @@ export default function SettingsScreen() {
   if (activeMobileInlinePanel === 'payment-accounts') {
     return (
       <SettingsBackOverrideProvider onBack={() => setActiveMobileInlinePanel(null)}>
-        <PaymentAccountsScreen />
+        <PaymentAccountsScreen embeddedInSettings />
       </SettingsBackOverrideProvider>
     );
   }
@@ -5222,24 +5356,37 @@ export default function SettingsScreen() {
     return (
       <View className="flex-1" style={{ backgroundColor: colors.bg.primary }}>
         <SafeAreaView className="flex-1" edges={isWebDesktop ? [] : ['top']}>
-          <View style={{ borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
+          {activeSection === 'all-features' || activeSection === 'order-statuses' || activeSection === 'quality-control-checks' || activeSection === 'order-timelines' || activeSection === 'sale-sources' || activeSection === 'payment-methods' || activeSection === 'logistics-carriers' || activeSection === 'custom-services' || activeSection === 'case-statuses' || activeSection === 'resolution-types' || activeSection === 'recycle-bin' ? (
+            <LinearGradient
+              pointerEvents="none"
+              colors={resolvedThemeMode === 'dark'
+                ? ['rgba(111,125,18,0.55)', 'rgba(17,17,17,0)']
+                : ['rgba(213,224,87,0.42)', 'rgba(244,243,235,0)']}
+              locations={[0, 1]}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+              style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 360 }}
+            />
+          ) : null}
+          <View>
             <View style={settingsSectionHeaderWrapStyle}>
               <View
-                className={isWebDesktop ? 'pl-5 pr-7 pt-5 pb-4 flex-row items-center' : 'px-5 pt-6 pb-3 flex-row items-center'}
-                style={isWebDesktop ? { maxWidth: 1440, width: '100%', alignSelf: 'flex-start', minHeight: desktopHeaderMinHeight } : undefined}
+                className="flex-row items-center"
+                style={{ minHeight: 66, paddingHorizontal: 10, paddingTop: 12, paddingBottom: 4 }}
               >
                 <Pressable
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                     handleBackFromSection();
                   }}
-                  className="w-10 h-10 rounded-xl items-center justify-center mr-3 active:opacity-50"
-                  style={{ backgroundColor: 'transparent' }}
+                  className="items-center justify-center mr-3 active:opacity-50"
+                  style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: settingsPalette.softFill }}
                 >
-                  <ArrowLeft size={20} color={colors.text.primary} strokeWidth={2} />
+                  <ArrowLeft size={18} color={colors.text.primary} strokeWidth={2.2} />
                 </Pressable>
                 <View className="flex-1">
-                  <MoneyText style={{ color: colors.text.primary, fontSize: 17, lineHeight: 22, letterSpacing: -0.4 }}>{titles[activeSection]}</MoneyText>
+                  <Text style={{ color: settingsPalette.faint, fontSize: 9.5, lineHeight: 12, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Settings</Text>
+                  <Text style={{ color: colors.text.primary, fontSize: 17, lineHeight: 21, fontWeight: '600' }}>{titles[activeSection]}</Text>
                   {sectionSaveStatus === 'success' && (
                     <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1">Saved</Text>
                   )}
@@ -5264,7 +5411,7 @@ export default function SettingsScreen() {
                       className="px-4 rounded-full items-center justify-center active:opacity-80"
                       style={[primaryPillButtonStyle, { height: 42, minWidth: 104 }]}
                     >
-                      <Text style={primaryPillTextStyle} className="text-sm font-semibold">
+                      <Text style={[primaryPillTextStyle, { fontSize: 14 }]} className="font-semibold">
                         {sectionSaveStatus === 'saving' ? 'Saving…' : 'Save'}
                       </Text>
                     </Pressable>
@@ -5342,40 +5489,44 @@ export default function SettingsScreen() {
           animationType="fade"
           onRequestClose={() => setShowLowStockModal(false)}
         >
-          <View className="flex-1 items-center justify-center px-6" style={{ backgroundColor: 'rgba(0, 0, 0, 0.45)' }}>
+          <View className="flex-1 items-center justify-center px-6" style={{ backgroundColor: 'rgba(0, 0, 0, 0.72)' }}>
             <View
               className="w-full rounded-3xl p-5"
-              style={{ maxWidth: 420, backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+              style={{ maxWidth: 440, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}
             >
               <View className="flex-row items-start justify-between mb-4">
-                <View className="flex-1 pr-3">
-                  <Text style={{ color: colors.text.primary }} className="text-lg font-semibold">
-                    Low Stock Alert
-                  </Text>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1">
-                    Set a global stock threshold for inventory warnings.
-                  </Text>
+                <View className="flex-row items-center flex-1 pr-3" style={{ gap: 12 }}>
+                  <LinearGradient colors={[FYLL_LIME, '#879400']} style={{ width: 46, height: 46, borderRadius: 15, alignItems: 'center', justifyContent: 'center' }}><AlertTriangle size={21} color={FYLL_LIME_INK} strokeWidth={2.2} /></LinearGradient>
+                  <View style={{ flex: 1 }}>
+                    <MoneyText style={{ color: settingsPalette.text, fontSize: 20, fontWeight: '700' }}>Low stock alert</MoneyText>
+                    <Text style={{ color: settingsPalette.muted, fontSize: 12, marginTop: 2 }}>Set one warning threshold across inventory.</Text>
+                  </View>
                 </View>
                 <Pressable
                   onPress={() => setShowLowStockModal(false)}
                   className="w-9 h-9 rounded-full items-center justify-center active:opacity-70"
-                  style={{ backgroundColor: colors.bg.secondary }}
+                  style={{ backgroundColor: settingsPalette.softFill }}
                 >
                   <X size={18} color={colors.text.primary} strokeWidth={2} />
                 </Pressable>
               </View>
-              <View className="flex-row items-center justify-between mb-4">
-                <Text style={{ color: colors.text.primary }} className="text-sm font-medium">Use global threshold</Text>
-                <Switch
+              <View className="flex-row items-center justify-between rounded-2xl p-4 mb-4" style={{ backgroundColor: settingsPalette.inset, borderWidth: 1, borderColor: settingsPalette.border }}>
+                <View style={{ flex: 1, paddingRight: 14 }}>
+                  <Text style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '600' }}>Use global threshold</Text>
+                  <Text style={{ color: settingsPalette.faint, fontSize: 12, marginTop: 3 }}>{useGlobalLowStockThreshold ? 'Applied to every product' : 'Products use individual thresholds'}</Text>
+                </View>
+                <LimeToggle compact
                   value={useGlobalLowStockThreshold}
                   onValueChange={setUseGlobalLowStockThreshold}
-                  trackColor={{ false: colors.border.medium, true: colors.text.primary }}
-                  thumbColor={colors.bg.primary}
+                  accessibilityLabel="Use global low stock threshold"
+                  activeColor={FYLL_LIME}
+                  inactiveColor={resolvedThemeMode === 'dark' ? '#66685F' : '#D8D9D1'}
+                  inactiveBorderColor={resolvedThemeMode === 'dark' ? '#898B82' : '#B9BBB2'}
                 />
               </View>
-              <View
+              {useGlobalLowStockThreshold ? <View
                 className="rounded-2xl px-4 mb-4"
-                style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light, height: 54, justifyContent: 'center' }}
+                style={{ backgroundColor: settingsPalette.inset, borderWidth: 1, borderColor: settingsPalette.outline, height: 54, justifyContent: 'center' }}
               >
                 <TextInput
                   value={tempThreshold}
@@ -5383,23 +5534,16 @@ export default function SettingsScreen() {
                   keyboardType="numeric"
                   placeholder="5"
                   placeholderTextColor={colors.input.placeholder}
-                  selectionColor={colors.text.primary}
-                  style={{ color: colors.input.text, fontSize: 16, fontWeight: '600' }}
+                  selectionColor={FYLL_LIME}
+                  style={{ color: settingsPalette.text, fontSize: 16, fontWeight: '600' }}
                 />
-              </View>
+              </View> : null}
               <Pressable
-                onPress={() => {
-                  const parsed = parseInt(tempThreshold, 10);
-                  if (Number.isFinite(parsed) && parsed >= 0) {
-                    setGlobalLowStockThreshold(parsed);
-                    setShowLowStockModal(false);
-                    showToast('Low stock threshold updated.');
-                  }
-                }}
+                onPress={handleSaveLowStock}
                 className="rounded-full items-center justify-center active:opacity-80"
                 style={[primaryPillButtonStyle, { height: 50 }]}
               >
-                <Text style={primaryPillTextStyle} className="font-semibold text-sm">Save Threshold</Text>
+                <Text style={[primaryPillTextStyle, { fontSize: 14, fontWeight: '600' }]}>Save threshold</Text>
               </Pressable>
             </View>
           </View>
@@ -5491,6 +5635,7 @@ export default function SettingsScreen() {
         </View>
 
         <KeyboardAwareScrollView
+          ref={mainMenuScrollRef}
           className="flex-1 px-5 pt-4"
           showsVerticalScrollIndicator={false}
           enableOnAndroid
@@ -5722,31 +5867,6 @@ export default function SettingsScreen() {
             </>
           )}
 
-          <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Data</Text>
-          <View style={mobileSettingsCardStyle}>
-            <SettingsRow
-              title="Recycle Bin"
-              description="Restore deleted orders, products, and finance rows"
-              icon={<Trash2 size={18} color="#EF4444" strokeWidth={2} />}
-              rightText={`${recycleBin.length}`}
-              onPress={() => openSettingsSection('recycle-bin')}
-            />
-            {currentUser?.role === 'admin' ? (
-              <SettingsRow
-                title="Replay milestone celebration"
-                description="Watch your latest order milestone again"
-                icon={<Award size={18} color="#D5E057" strokeWidth={2} />}
-                onPress={() => setShowMilestoneReplay(true)}
-              />
-            ) : null}
-            <SettingsRow
-              title="AI Import Assistant"
-              description="Orders, customers, products, expenses"
-              icon={<Sparkles size={18} color="#8B5CF6" strokeWidth={2} />}
-              onPress={() => openSettingsPanel('import-ai', '/import-ai?from=settings')}
-            />
-          </View>
-
           <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Import customers</Text>
           <View style={mobileSettingsCardStyle}>
             <SettingsRow
@@ -5798,6 +5918,13 @@ export default function SettingsScreen() {
               onPress={() => openSettingsSection('sale-sources')}
             />
             <SettingsRow
+              title="Add-ons"
+              description="Lens coating, express delivery"
+              icon={<Wrench size={18} color="#8B5CF6" strokeWidth={2} />}
+              rightText={`${customServices.length}`}
+              onPress={() => openSettingsSection('custom-services')}
+            />
+            <SettingsRow
               title="Payment Methods"
               description="Bank transfer, POS, website"
               icon={<CreditCard size={18} color="#3B82F6" strokeWidth={2} />}
@@ -5834,13 +5961,6 @@ export default function SettingsScreen() {
               description="All services and pricing"
               icon={<Wrench size={18} color={colors.text.secondary} strokeWidth={2} />}
               onPress={() => router.push('/services' as never)}
-            />
-            <SettingsRow
-              title="Add-ons"
-              description="Lens coating, express delivery"
-              icon={<Wrench size={18} color="#8B5CF6" strokeWidth={2} />}
-              rightText={`${customServices.length}`}
-              onPress={() => openSettingsSection('custom-services')}
             />
           </View>
 
@@ -5922,164 +6042,118 @@ export default function SettingsScreen() {
 
           <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Appearance</Text>
           <View
-            className="rounded-2xl p-4 border"
-            style={{ backgroundColor: colors.bg.card, borderColor: colors.border.light }}
+            style={{
+              padding: 16,
+              borderRadius: 26,
+              backgroundColor: settingsPalette.card,
+              borderWidth: 1,
+              borderColor: settingsPalette.border,
+            }}
           >
-            <View className="flex-row items-center mb-3">
-              <View
-                className="w-9 h-9 rounded-lg items-center justify-center mr-3"
-                style={{ backgroundColor: colors.bg.secondary }}
-              >
+            <View style={{ marginBottom: 14 }}>
+              <Text style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '700' }}>
+                Workspace theme
+              </Text>
+              <Text style={{ color: settingsPalette.faint, fontSize: 12, marginTop: 3 }}>
                 {themeMode === 'system'
-                  ? <Laptop size={18} color="#6366F1" strokeWidth={2} />
-                  : resolvedThemeMode === 'dark'
-                  ? <Moon size={18} color="#8B5CF6" strokeWidth={2} />
-                  : <Sun size={18} color="#F59E0B" strokeWidth={2} />}
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: colors.text.primary }} className="font-semibold text-sm">
-                  Theme
-                </Text>
-                <Text style={{ color: colors.text.tertiary }} className="text-[11px] mt-0.5">
-                  {themeMode === 'system'
-                    ? `Following device: ${resolvedThemeMode === 'dark' ? 'Dark' : 'Light'}`
-                    : `Manually set: ${themeMode === 'dark' ? 'Dark' : 'Light'}`}
-                </Text>
-              </View>
+                  ? `Following device · ${resolvedThemeMode === 'dark' ? 'Dark' : 'Light'}`
+                  : `${themeMode === 'dark' ? 'Dark' : 'Light'} mode selected`}
+              </Text>
             </View>
 
-            <View
-              className="rounded-full p-1"
-              style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                {themeOptions.map((option) => {
-                  const isSelected = themeMode === option.mode;
-                  return (
-                    <Pressable
-                      key={option.mode}
-                      onPress={() => {
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        setThemeMode(option.mode);
-                      }}
-                      className="rounded-full active:opacity-80"
-                      style={{
-                        flex: 1,
-                        height: 36,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        backgroundColor: isSelected ? colors.bg.card : 'transparent',
-                        borderWidth: isSelected ? 1 : 0,
-                        borderColor: isSelected ? colors.border.light : 'transparent',
-                      }}
-                    >
-                      <Text
-                        style={{
-                          color: isSelected ? colors.text.primary : colors.text.tertiary,
-                          fontSize: 12,
-                          fontWeight: '600',
-                        }}
-                      >
-                        {option.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
+            <View style={{ flexDirection: 'row', gap: 5, padding: 4, borderRadius: 999, backgroundColor: settingsPalette.inset, borderWidth: 1, borderColor: settingsPalette.border }}>
+              {themeOptions.map((option) => {
+                const isSelected = themeMode === option.mode;
+                return (
+                  <Pressable
+                    key={option.mode}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setThemeMode(option.mode);
+                    }}
+                    className="active:opacity-80"
+                    style={{
+                      flex: 1,
+                      height: 38,
+                      borderRadius: 999,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: isSelected ? FYLL_LIME : 'transparent',
+                    }}
+                  >
+                    <Text style={{ color: isSelected ? FYLL_LIME_INK : settingsPalette.faint, fontSize: 13, fontWeight: '700' }}>
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
           </View>
 
-          {((Platform.OS === 'web' && notifPermission !== null) || canUseOrderAutomation) && (
+          {((Platform.OS === 'web' && notifPermission !== null) || currentUser?.role === 'admin' || canUseOrderAutomation) && (
           <>
           <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Notifications</Text>
           <View style={mobileSettingsCardStyle}>
             {Platform.OS === 'web' && notifPermission !== null && (
-              <View>
-                <View className="flex-row items-center gap-3 px-4 py-3" style={{ minHeight: 76 }}>
-                  <View
-                    className="w-[46px] h-[46px] rounded-full items-center justify-center"
-                    style={{ backgroundColor: notifPermission === 'granted' ? '#10B98120' : colors.bg.secondary }}
-                  >
+              <View style={{ minHeight: 72, paddingHorizontal: 18, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 14, borderBottomWidth: currentUser?.role === 'admin' || canUseOrderAutomation ? 1 : 0, borderBottomColor: settingsPalette.hairline }}>
+                  <View style={{ width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: settingsPalette.nudgeBg }}>
                     {notifPermission === 'granted'
-                      ? <Bell size={18} color="#10B981" strokeWidth={2} />
-                      : <BellOff size={18} color={colors.text.tertiary} strokeWidth={2} />}
+                      ? <Bell size={18} color={FYLL_LIME} strokeWidth={2} />
+                      : <BellOff size={18} color={FYLL_LIME} strokeWidth={2} />}
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: colors.text.primary }} className="font-semibold text-sm">
+                    <Text style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '600' }}>
                       Push Notifications
                     </Text>
-                    <Text style={{ color: notifPermission === 'granted' ? '#10B981' : notifPermission === 'denied' ? '#EF4444' : colors.text.tertiary, fontSize: 12, lineHeight: 16, marginTop: 2 }}>
-                      {notifPermission === 'granted' ? 'Enabled — you’ll receive alerts' : notifPermission === 'denied' ? 'Blocked — enable in browser settings' : 'Not yet enabled'}
+                    <Text style={{ color: testPushResult ? (testPushResult.ok ? '#10B981' : '#EF4444') : settingsPalette.faint, fontSize: 12, lineHeight: 16, marginTop: 2 }} numberOfLines={2}>
+                      {testPushResult?.message ?? (notifPermission === 'granted' ? 'Alerts are enabled on this device' : notifPermission === 'denied' ? 'Blocked in browser settings' : 'Get alerts for orders and activity')}
                     </Text>
                   </View>
-                  {notifPermission !== 'granted' && notifPermission !== 'denied' ? (
-                    <Pressable
-                      onPress={() => {
+                  <Pressable
+                    onPress={() => {
+                      if (notifPermission === 'granted') {
+                        void sendTestPushToThisDevice();
+                      } else if (notifPermission === 'denied') {
+                        if (typeof window !== 'undefined') window.open('https://support.apple.com/guide/safari/customize-settings-for-a-website-ibrw7f78f7fe/mac', '_blank');
+                      } else {
                         promptForPermission();
                         setTimeout(() => setNotifPermission(window.Notification?.permission ?? null), 1500);
-                      }}
-                      disabled={!notifReady}
-                      className="rounded-full px-3 items-center justify-center active:opacity-80"
-                      style={{ height: 34, backgroundColor: '#2563EB', opacity: notifReady ? 1 : 0.5 }}
-                    >
-                      <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>Enable</Text>
-                    </Pressable>
-                  ) : null}
-                  {notifPermission === 'denied' ? (
-                    <Pressable
-                      onPress={() => {
-                        if (typeof window !== 'undefined') window.open('https://support.apple.com/guide/safari/customize-settings-for-a-website-ibrw7f78f7fe/mac', '_blank');
-                      }}
-                      className="rounded-full px-3 items-center justify-center active:opacity-80"
-                      style={{ height: 34, backgroundColor: colors.bg.secondary }}
-                    >
-                      <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '600' }}>How to fix</Text>
-                    </Pressable>
-                  ) : null}
-                </View>
-
-                {notifPermission === 'granted' ? (
-                  <Pressable
-                    onPress={sendTestPushToThisDevice}
-                    disabled={isSendingTestPush || !notifReady}
-                    className="active:opacity-70"
+                      }
+                    }}
+                    disabled={!notifReady || isSendingTestPush}
+                    className="active:opacity-80"
                     style={{
-                      minHeight: 58,
-                      marginLeft: 16,
-                      paddingLeft: 58,
-                      paddingRight: 16,
-                      borderTopWidth: 1,
-                      borderTopColor: colors.border.light,
-                      flexDirection: 'row',
+                      height: 34,
+                      minWidth: 66,
+                      paddingHorizontal: 14,
+                      borderRadius: 999,
                       alignItems: 'center',
-                      opacity: isSendingTestPush || !notifReady ? 0.55 : 1,
+                      justifyContent: 'center',
+                      backgroundColor: notifPermission === 'denied' ? settingsPalette.softFill : FYLL_LIME,
+                      borderWidth: notifPermission === 'denied' ? 1 : 0,
+                      borderColor: notifPermission === 'denied' ? settingsPalette.outline : 'transparent',
+                      opacity: !notifReady || isSendingTestPush ? 0.55 : 1,
                     }}
                   >
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: colors.text.primary }} className="font-semibold text-sm">
-                        Test this device
-                      </Text>
-                      <Text style={{ color: testPushResult ? (testPushResult.ok ? '#10B981' : '#EF4444') : colors.text.tertiary, fontSize: 12, lineHeight: 16, marginTop: 2 }}>
-                        {testPushResult?.message ?? 'Confirm that push notifications are arriving'}
-                      </Text>
-                    </View>
-                    <Text style={{ color: colors.accent.primary, fontSize: 12, fontWeight: '700', marginLeft: 12 }}>
-                      {isSendingTestPush ? 'Sending…' : 'Send'}
+                    <Text style={{ color: notifPermission === 'denied' ? settingsPalette.textSoft : FYLL_LIME_INK, fontSize: 12, fontWeight: '700' }}>
+                      {isSendingTestPush ? 'Sending…' : notifPermission === 'granted' ? 'Test' : notifPermission === 'denied' ? 'Fix' : 'Enable'}
                     </Text>
                   </Pressable>
-                ) : null}
               </View>
             )}
 
-            <WhatsAppAlertsCard />
+            {currentUser?.role === 'admin' ? (
+              <SettingsRow
+                title="WhatsApp alerts"
+                description="Orders and payments sent to WhatsApp"
+                icon={<MessageCircle size={18} color="#25A95B" strokeWidth={2} />}
+                onPress={() => openSettingsPanel('whatsapp-settings', '/whatsapp-settings?from=settings')}
+                showDivider={canUseOrderAutomation}
+              />
+            ) : null}
 
             {canUseOrderAutomation ? (
-              <View
-                style={{
-                  borderTopWidth: 1,
-                  borderTopColor: colors.border.light,
-                }}
-              >
+              <View>
                 <SettingsRow
                   title="Emails"
                   description="Order status updates and delivery confirmations"
@@ -6093,26 +6167,48 @@ export default function SettingsScreen() {
           </>
           )}
 
-          <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Sync</Text>
+          <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>System</Text>
           <View style={mobileSettingsCardStyle}>
             <SettingsRow
-              title="Save Global Settings"
-              description="Sync across devices"
-              icon={<Upload size={18} color="#10B981" strokeWidth={2} />}
-              showChevron={false}
-              rightElement={
-                <Pressable
-                  onPress={handleSaveGlobalSettings}
-                  disabled={saveStatus === 'saving'}
-                  className="rounded-full px-3 items-center justify-center active:opacity-80"
-                  style={[primaryPillButtonStyle, { height: 36, minWidth: 80 }]}
-                >
-                  <Text style={primaryPillTextStyle} className="font-semibold text-xs">
-                    {saveStatus === 'saving' ? 'Saving…' : 'Save'}
-                  </Text>
-                </Pressable>
-              }
+              title="Recycle Bin"
+              description="Restore deleted orders, products, and finance rows"
+              icon={<Trash2 size={18} color="#EF4444" strokeWidth={2} />}
+              rightText={`${recycleBin.length}`}
+              onPress={() => openSettingsSection('recycle-bin')}
             />
+            {currentUser?.role === 'admin' ? (
+              <SettingsRow
+                title="Replay milestone celebration"
+                description="Watch your latest order milestone again"
+                icon={<Award size={18} color="#D5E057" strokeWidth={2} />}
+                onPress={() => setShowMilestoneReplay(true)}
+              />
+            ) : null}
+            {canUseAiImport ? (
+              <SettingsRow
+                title="AI Import Assistant"
+                description="Orders, customers, products, expenses"
+                icon={<Sparkles size={18} color="#8B5CF6" strokeWidth={2} />}
+                onPress={() => openSettingsPanel('import-ai', '/import-ai?from=settings')}
+              />
+            ) : null}
+            <SettingsRow
+              title="Refresh App"
+              description="Reload app data"
+              icon={<RotateCcw size={18} color={colors.text.tertiary} strokeWidth={2} />}
+              onPress={handleRefreshApp}
+              showDivider={Boolean(currentUser)}
+            />
+            {currentUser ? (
+              <SettingsRow
+                title="Log Out"
+                description="Sign out of your account"
+                icon={<LogOut size={18} color={colors.text.tertiary} strokeWidth={2} />}
+                showChevron={false}
+                showDivider={false}
+                onPress={handleLogout}
+              />
+            ) : null}
           </View>
           {saveMessage && (
             <Text
@@ -6123,28 +6219,15 @@ export default function SettingsScreen() {
             </Text>
           )}
 
-          <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>App</Text>
+          <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>About</Text>
           <View style={mobileSettingsCardStyle}>
             <SettingsRow
               title="Fyll ERP"
-              description="Version 1.0.0"
+              description={appVersionLabel}
               icon={<Info size={18} color="#3B82F6" strokeWidth={2} />}
               showChevron={false}
+              showDivider={false}
             />
-            <SettingsRow
-              title="Refresh App"
-              description="Reload app data"
-              icon={<RotateCcw size={18} color={colors.text.tertiary} strokeWidth={2} />}
-              onPress={handleRefreshApp}
-            />
-            {currentUser && (
-              <SettingsRow
-                title="Log Out"
-                icon={<LogOut size={18} color={colors.text.tertiary} strokeWidth={2} />}
-                showChevron={false}
-                onPress={handleLogout}
-              />
-            )}
           </View>
 
           <View className="h-8" />
@@ -6161,43 +6244,50 @@ export default function SettingsScreen() {
           animationType="fade"
           onRequestClose={() => setShowLowStockModal(false)}
         >
-          <View className="flex-1 items-center justify-center px-6" style={{ backgroundColor: 'rgba(0, 0, 0, 0.45)' }}>
-            <View className="w-full rounded-2xl p-5" style={{ backgroundColor: colors.bg.primary }}>
-              <View className="flex-row items-center justify-between mb-4">
-                <Text style={{ color: colors.text.primary }} className="text-lg font-semibold">Global Low Stock Alert</Text>
+          <View className="flex-1 items-center justify-center px-5" style={{ backgroundColor: 'rgba(0, 0, 0, 0.72)' }}>
+            <View className="w-full rounded-3xl p-5" style={{ maxWidth: 440, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+              <View className="flex-row items-start justify-between mb-4">
+                <View className="flex-row items-center flex-1 pr-3" style={{ gap: 12 }}>
+                  <LinearGradient colors={[FYLL_LIME, '#879400']} style={{ width: 46, height: 46, borderRadius: 15, alignItems: 'center', justifyContent: 'center' }}><AlertTriangle size={21} color={FYLL_LIME_INK} strokeWidth={2.2} /></LinearGradient>
+                  <View style={{ flex: 1 }}>
+                    <MoneyText style={{ color: settingsPalette.text, fontSize: 18, fontWeight: '700' }}>Low stock alert</MoneyText>
+                    <Text style={{ color: settingsPalette.muted, fontSize: 12, marginTop: 2 }}>Set one warning threshold across inventory.</Text>
+                  </View>
+                </View>
                 <Pressable
                   onPress={() => setShowLowStockModal(false)}
-                  className="w-9 h-9 rounded-xl items-center justify-center active:opacity-70"
-                  style={{ backgroundColor: colors.bg.secondary }}
+                  className="w-9 h-9 rounded-full items-center justify-center active:opacity-70"
+                  style={{ backgroundColor: settingsPalette.softFill }}
                 >
                   <X size={18} color={colors.text.tertiary} strokeWidth={2} />
                 </Pressable>
               </View>
 
-              <View className="flex-row items-center justify-between mb-4">
-                <Text style={{ color: colors.text.tertiary }} className="text-sm">Enable global threshold</Text>
-                <Switch
+              <View className="flex-row items-center justify-between rounded-2xl p-4 mb-4" style={{ backgroundColor: settingsPalette.inset, borderWidth: 1, borderColor: settingsPalette.border }}>
+                <View style={{ flex: 1, paddingRight: 14 }}>
+                  <Text style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '600' }}>Use global threshold</Text>
+                  <Text style={{ color: settingsPalette.faint, fontSize: 12, marginTop: 3 }}>{useGlobalLowStockThreshold ? 'Applied to every product' : 'Products use individual thresholds'}</Text>
+                </View>
+                <LimeToggle compact
                   value={useGlobalLowStockThreshold}
                   onValueChange={(value) => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                     setUseGlobalLowStockThreshold(value);
                   }}
-                  trackColor={{ false: '#767577', true: '#F59E0B' }}
-                  thumbColor="#FFFFFF"
+                  accessibilityLabel="Use global low stock threshold"
+                  activeColor={FYLL_LIME}
+                  inactiveColor={resolvedThemeMode === 'dark' ? '#66685F' : '#D8D9D1'}
+                  inactiveBorderColor={resolvedThemeMode === 'dark' ? '#898B82' : '#B9BBB2'}
                 />
               </View>
 
               {useGlobalLowStockThreshold && (
                 <View className="mb-4">
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs font-medium mb-2">Alert when stock falls below</Text>
-                  <View className="flex-row items-center">
+                  <Text style={{ color: settingsPalette.muted, fontSize: 12, fontWeight: '600', marginBottom: 8 }}>Alert when stock falls below</Text>
+                  <View className="flex-row items-center rounded-2xl px-4" style={{ backgroundColor: settingsPalette.inset, borderWidth: 1, borderColor: settingsPalette.outline, height: 52 }}>
                     <View
-                      className="flex-1 rounded-xl px-4 mr-3"
+                      className="flex-1"
                       style={{
-                        backgroundColor: colors.input.bg,
-                        borderWidth: 1,
-                        borderColor: colors.border.light,
-                        height: 50,
                         justifyContent: 'center',
                       }}
                     >
@@ -6207,10 +6297,10 @@ export default function SettingsScreen() {
                         keyboardType="number-pad"
                         style={{ color: colors.input.text, fontSize: 16, fontWeight: '600' }}
                         placeholderTextColor={colors.input.placeholder}
-                        selectionColor={colors.text.primary}
+                        selectionColor={FYLL_LIME}
                       />
                     </View>
-                    <Text style={{ color: colors.text.tertiary }} className="text-sm">units</Text>
+                    <Text style={{ color: settingsPalette.faint, fontSize: 12 }}>units</Text>
                   </View>
                   <Text style={{ color: colors.text.muted }} className="text-xs mt-2">
                     This overrides individual product thresholds
@@ -6223,7 +6313,7 @@ export default function SettingsScreen() {
                 className="rounded-full items-center justify-center active:opacity-80"
                 style={[primaryPillButtonStyle, { height: 48 }]}
               >
-                <Text style={primaryPillTextStyle} className="font-semibold">Save</Text>
+                <Text style={[primaryPillTextStyle, { fontSize: 14, fontWeight: '600' }]}>Save</Text>
               </Pressable>
             </View>
           </View>

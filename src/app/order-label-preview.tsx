@@ -88,7 +88,7 @@ export default function OrderLabelPreviewScreen() {
       orderId: order.id,
       orderNumber: order.orderNumber,
       customerName: order.customerName,
-      destination: order.deliveryState || order.deliveryAddress || '',
+      destination: order.fulfillmentMethod === 'pickup' ? 'Pick up' : order.deliveryState || order.deliveryAddress || '',
       carrierName: carrierNameOverride || order.logistics?.carrierName || 'Shipping',
       labelData,
     });

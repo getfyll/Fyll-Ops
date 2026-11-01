@@ -1,22 +1,87 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, Pressable, TextInput, Image, ActivityIndicator, Alert, Platform } from 'react-native';
+import {
+  ActivityIndicator,
+  Image,
+  Platform,
+  Pressable,
+  Text,
+  TextInput,
+  View,
+  type TextStyle,
+  type ViewStyle,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Building2, Camera, X, Check, MessageCircle, Globe, MapPin } from 'lucide-react-native';
-import { useThemeColors } from '@/lib/theme';
-import { ChangeRequestModal } from '@/components/ChangeRequestModal';
+import { ArrowLeft, Building2, Camera, Check, Globe, MapPin, MessageCircle, ShieldCheck, X } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useFonts, BricolageGrotesque_700Bold, BricolageGrotesque_800ExtraBold } from '@expo-google-fonts/bricolage-grotesque';
+import { DMSans_400Regular, DMSans_500Medium, DMSans_600SemiBold, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
+import { ChangeRequestModal } from '@/components/ChangeRequestModal';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
 import { compressImage } from '@/lib/image-compression';
 import { getSettingsWebPanelStyles, isFromSettingsRoute } from '@/lib/settings-web-panel';
 import { useSettingsBack } from '@/lib/useSettingsBack';
+import { useResolvedThemeMode } from '@/lib/theme';
+import { useBreakpoint } from '@/lib/useBreakpoint';
 import useAuthStore from '@/lib/state/auth-store';
 import { uploadBusinessPublicAsset } from '@/lib/storage-attachments';
 
 const MAX_LOGO_PICK_SIZE_BYTES = 400 * 1024;
 const MAX_LOGO_DATA_URL_BYTES = 400 * 1024;
+
+type BusinessPalette = {
+  ground: string;
+  surface: string;
+  ink: string;
+  muted: string;
+  faint: string;
+  lime: string;
+  limeInk: string;
+  limeDeep: string;
+  danger: string;
+  edge: string;
+  edgeStrong: string;
+  input: string;
+  inputDisabled: string;
+  topGlow: string;
+  topGlowEnd: string;
+  navButton: string;
+  limeWash: string;
+  limeWashStrong: string;
+  limeBorder: string;
+  dangerWash: string;
+  dangerBorder: string;
+};
+
+const DARK_PALETTE: BusinessPalette = {
+  ground: '#141414', surface: '#1E1E1E', ink: '#F4F4EF', muted: '#B9BAB0', faint: '#8C8D84',
+  lime: '#D5E057', limeInk: '#D5E057', limeDeep: '#7D8A00', danger: '#E5776D',
+  edge: 'rgba(255,255,255,0.09)', edgeStrong: 'rgba(255,255,255,0.14)',
+  input: 'rgba(255,255,255,0.055)', inputDisabled: 'rgba(255,255,255,0.025)',
+  topGlow: 'rgba(111,125,18,0.55)', topGlowEnd: 'rgba(20,20,20,0)', navButton: 'rgba(255,255,255,0.08)',
+  limeWash: 'rgba(213,224,87,0.12)', limeWashStrong: 'rgba(213,224,87,0.14)', limeBorder: 'rgba(213,224,87,0.25)',
+  dangerWash: 'rgba(229,119,109,0.14)', dangerBorder: 'rgba(229,119,109,0.28)',
+};
+
+const LIGHT_PALETTE: BusinessPalette = {
+  ground: '#F4F3EB', surface: '#FFFFFF', ink: '#202117', muted: '#5E6056', faint: '#85877C',
+  lime: '#D5E057', limeInk: '#667000', limeDeep: '#879400', danger: '#C9574D',
+  edge: 'rgba(35,38,25,0.09)', edgeStrong: 'rgba(35,38,25,0.15)',
+  input: '#F7F7F1', inputDisabled: '#F1F1EB',
+  topGlow: 'rgba(213,224,87,0.42)', topGlowEnd: 'rgba(244,243,235,0)', navButton: 'rgba(32,33,23,0.07)',
+  limeWash: 'rgba(135,148,0,0.10)', limeWashStrong: 'rgba(135,148,0,0.13)', limeBorder: 'rgba(102,112,0,0.22)',
+  dangerWash: 'rgba(201,87,77,0.10)', dangerBorder: 'rgba(201,87,77,0.22)',
+};
+
+const webOutlineStyle = Platform.OS === 'web'
+  ? ({ outlineStyle: 'none' } as unknown as TextStyle)
+  : null;
+const innerSettingsFont = (size: number) => Platform.OS === 'web'
+  ? size
+  : size === 15 ? 14 : size === 13.5 ? 12 : size === 13 ? 10 : size;
 
 const estimateDataUrlBytes = (value: string) => {
   const base64MarkerIndex = value.indexOf('base64,');
@@ -26,23 +91,99 @@ const estimateDataUrlBytes = (value: string) => {
   return Math.floor((base64.length * 3) / 4) - padding;
 };
 
+function SectionLabel({ children, palette }: { children: React.ReactNode; palette: BusinessPalette }) {
+  return (
+    <Text style={{ color: palette.faint, fontFamily: 'DMSans_700Bold', fontSize: 11, lineHeight: 14, letterSpacing: 1.4, textTransform: 'uppercase', marginLeft: 6, marginBottom: 10 }}>
+      {children}
+    </Text>
+  );
+}
+
+type BusinessFieldProps = {
+  label: string;
+  value: string;
+  onChangeText?: (value: string) => void;
+  placeholder: string;
+  icon: typeof Building2;
+  palette: BusinessPalette;
+  keyboardType?: 'default' | 'url' | 'phone-pad';
+  autoComplete?: 'tel';
+  editable?: boolean;
+  badge?: string;
+  badgeColor?: string;
+  help?: string;
+  multiline?: boolean;
+};
+
+function BusinessField({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  icon: Icon,
+  palette,
+  keyboardType = 'default',
+  autoComplete,
+  editable = true,
+  badge,
+  badgeColor,
+  help,
+  multiline = false,
+}: BusinessFieldProps) {
+  return (
+    <View style={{ gap: 7 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+        <Icon size={15} color={palette.faint} strokeWidth={2} />
+        <Text style={{ color: palette.muted, fontFamily: 'DMSans_500Medium', fontSize: innerSettingsFont(13) }}>{label}</Text>
+        {badge ? <Text style={{ color: badgeColor ?? palette.faint, fontFamily: 'DMSans_700Bold', fontSize: 10.5, textTransform: 'uppercase', letterSpacing: 0.55 }}>{badge}</Text> : null}
+      </View>
+      <View style={{ minHeight: multiline ? 112 : 52, paddingHorizontal: 15, paddingVertical: multiline ? 13 : 0, borderRadius: 16, borderWidth: 1, borderColor: palette.edgeStrong, backgroundColor: editable ? palette.input : palette.inputDisabled, justifyContent: multiline ? 'flex-start' : 'center' }}>
+        <TextInput
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor={palette.faint}
+          keyboardType={keyboardType}
+          autoComplete={autoComplete}
+          autoCapitalize={keyboardType === 'url' ? 'none' : 'sentences'}
+          autoCorrect={keyboardType !== 'url'}
+          editable={editable}
+          selectTextOnFocus={editable}
+          multiline={multiline}
+          numberOfLines={multiline ? 4 : 1}
+          selectionColor={palette.limeDeep}
+          style={[
+            {
+              color: editable ? palette.ink : palette.muted,
+              fontFamily: 'DMSans_400Regular',
+              fontSize: innerSettingsFont(15),
+              lineHeight: multiline ? 21 : 19,
+              paddingVertical: 0,
+              textAlignVertical: multiline ? 'top' : 'center',
+            },
+            webOutlineStyle,
+          ]}
+        />
+      </View>
+      {help ? <Text style={{ color: palette.faint, fontFamily: 'DMSans_400Regular', fontSize: 12, lineHeight: 17 }}>{help}</Text> : null}
+    </View>
+  );
+}
+
 export default function BusinessSettingsScreen() {
   const { from } = useLocalSearchParams<{ from?: string | string[] }>();
   const goBack = useSettingsBack();
-  const colors = useThemeColors();
+  const resolvedThemeMode = useResolvedThemeMode();
+  const isDark = resolvedThemeMode === 'dark';
+  const palette = isDark ? DARK_PALETTE : LIGHT_PALETTE;
+  const { isMobile } = useBreakpoint();
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
   const openedFromSettings = isFromSettingsRoute(from);
-  const panelStyles = getSettingsWebPanelStyles(
-    openedFromSettings,
-    colors.bg.primary,
-    colors.border.light
-  );
+  const panelStyles = getSettingsWebPanelStyles(openedFromSettings, palette.ground, palette.edge);
   const {
     companyName,
     businessName,
     businessSlug,
-    canEditBusinessName,
-    businessNameNextEditableAt,
     businessLogo,
     businessPhone,
     businessWebsite,
@@ -51,27 +192,26 @@ export default function BusinessSettingsScreen() {
     saveSettings,
   } = useBusinessSettings();
 
-  const [company, setCompany] = useState('');
-  const [displayName, setDisplayName] = useState('');
+  useFonts({ BricolageGrotesque_700Bold, BricolageGrotesque_800ExtraBold, DMSans_400Regular, DMSans_500Medium, DMSans_600SemiBold, DMSans_700Bold });
+
+  const [company, setCompany] = useState<string>('');
+  const [displayName, setDisplayName] = useState<string>('');
   const [logo, setLogo] = useState<string | null>(null);
-  const [phone, setPhone] = useState('');
-  const [website, setWebsite] = useState('');
-  const [address, setAddress] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
-  const [showBusinessNameRequest, setShowBusinessNameRequest] = useState(false);
+  const [phone, setPhone] = useState<string>('');
+  const [website, setWebsite] = useState<string>('');
+  const [address, setAddress] = useState<string>('');
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [showBusinessNameRequest, setShowBusinessNameRequest] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showToast = (type: 'success' | 'error', message: string) => {
     setToast({ type, message });
-    if (toastTimerRef.current) {
-      clearTimeout(toastTimerRef.current);
-    }
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     toastTimerRef.current = setTimeout(() => setToast(null), 2800);
   };
 
-  // Initialize form with current values
   useEffect(() => {
     if (!isLoading) {
       setCompany(companyName);
@@ -81,88 +221,65 @@ export default function BusinessSettingsScreen() {
       setWebsite(businessWebsite);
       setAddress(returnAddress);
     }
-  }, [
-    isLoading,
-    companyName,
-    businessName,
-    businessLogo,
-    businessPhone,
-    businessWebsite,
-    returnAddress,
-  ]);
+  }, [businessLogo, businessName, businessPhone, businessWebsite, companyName, isLoading, returnAddress]);
 
   useEffect(() => () => {
-    if (toastTimerRef.current) {
-      clearTimeout(toastTimerRef.current);
-    }
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
   }, []);
+
+  const clearError = () => setError(null);
 
   const handlePickImage = async () => {
     try {
       const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
       if (!permissionResult.granted) {
-        Alert.alert('Permission Required', 'Please allow access to your photo library to upload a logo.');
+        const message = 'Allow photo-library access to upload a business logo.';
+        setError(message);
+        showToast('error', message);
         return;
       }
 
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-      });
+      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.8 });
+      if (result.canceled || !result.assets[0]) return;
 
-      if (!result.canceled && result.assets[0]) {
-        const asset = result.assets[0];
-        if (asset.fileSize && asset.fileSize > MAX_LOGO_PICK_SIZE_BYTES) {
-          const message = 'Logo is too large. Use an image under 400 KB.';
-          setError(message);
-          showToast('error', message);
-          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-          return;
-        }
-
-        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        const compressedUri = await compressImage(asset.uri, { maxDimension: 900, quality: 0.62, format: 'png' });
-        if (compressedUri.startsWith('data:image/') && estimateDataUrlBytes(compressedUri) > MAX_LOGO_DATA_URL_BYTES) {
-          const message = 'Logo is still too large after compression. Try a smaller image.';
-          setError(message);
-          showToast('error', message);
-          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-          return;
-        }
-
-        setError(null);
-        setLogo(compressedUri);
+      const asset = result.assets[0];
+      if (asset.fileSize && asset.fileSize > MAX_LOGO_PICK_SIZE_BYTES) {
+        const message = 'Logo is too large. Use an image under 400 KB.';
+        setError(message);
+        showToast('error', message);
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        return;
       }
+
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      const compressedUri = await compressImage(asset.uri, { maxDimension: 900, quality: 0.62, format: 'png' });
+      if (compressedUri.startsWith('data:image/') && estimateDataUrlBytes(compressedUri) > MAX_LOGO_DATA_URL_BYTES) {
+        const message = 'Logo is still too large after compression. Try a smaller image.';
+        setError(message);
+        showToast('error', message);
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        return;
+      }
+      clearError();
+      setLogo(compressedUri);
     } catch (pickerError) {
-      const message = pickerError instanceof Error && pickerError.message
-        ? `Failed to pick logo. ${pickerError.message}`
-        : 'Failed to pick logo.';
+      const message = pickerError instanceof Error && pickerError.message ? `Failed to pick logo. ${pickerError.message}` : 'Failed to pick logo.';
       setError(message);
       showToast('error', message);
-      Alert.alert('Error', message);
     }
   };
 
   const handleRemoveLogo = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setLogo(null);
   };
 
   const handleSave = async () => {
     setError(null);
     setIsSaving(true);
-
     try {
       let nextLogo = logo;
-
-      if (
-        businessId
-        && nextLogo
-        && /^(data:image\/|blob:|file:)/i.test(nextLogo)
-      ) {
+      if (businessId && nextLogo && /^(data:image\/|blob:|file:)/i.test(nextLogo)) {
         const uploadedLogo = await uploadBusinessPublicAsset({
           businessId,
           folder: 'business-logo',
@@ -184,20 +301,18 @@ export default function BusinessSettingsScreen() {
         returnAddress: address.trim(),
       });
 
-      if (result.success) {
-        showToast('success', 'Business settings saved.');
-        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        goBack();
-      } else {
-        const message = result.error || 'Failed to save settings.';
+      if (!result.success) {
+        const message = result.error ?? 'Failed to save settings.';
         setError(message);
         showToast('error', message);
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        return;
       }
+      showToast('success', 'Business settings saved.');
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      goBack();
     } catch (saveError) {
-      const message = saveError instanceof Error && saveError.message
-        ? `Failed to save settings. ${saveError.message}`
-        : 'Failed to save settings.';
+      const message = saveError instanceof Error && saveError.message ? `Failed to save settings. ${saveError.message}` : 'Failed to save settings.';
       setError(message);
       showToast('error', message);
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -206,13 +321,6 @@ export default function BusinessSettingsScreen() {
     }
   };
 
-  const nextBusinessNameEditLabel = businessNameNextEditableAt
-    ? new Date(businessNameNextEditableAt).toLocaleDateString(undefined, {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      })
-    : null;
   const trackingSlugLabel = businessSlug || displayName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
   const hasChanges = company.trim() !== companyName.trim()
     || displayName.trim() !== businessName.trim()
@@ -220,19 +328,14 @@ export default function BusinessSettingsScreen() {
     || phone !== businessPhone
     || website !== businessWebsite
     || address !== returnAddress;
-  const primaryPillButtonStyle = {
-    backgroundColor: colors.text.primary,
-    borderRadius: 999,
-  } as const;
-  const primaryPillTextStyle = {
-    color: colors.bg.primary,
-  } as const;
+  const contentMaxWidth = openedFromSettings ? 720 : 520;
+  const cardStyle: ViewStyle = { overflow: 'hidden', borderRadius: 26, borderWidth: 1, borderColor: palette.edge, backgroundColor: palette.surface };
 
   if (isLoading) {
     return (
       <View style={panelStyles.outer}>
-        <View className="flex-1 items-center justify-center" style={panelStyles.inner}>
-          <ActivityIndicator size="large" color={colors.text.primary} />
+        <View style={[panelStyles.inner, { alignItems: 'center', justifyContent: 'center' }]}>
+          <ActivityIndicator size="large" color={palette.limeInk} />
         </View>
       </View>
     );
@@ -241,367 +344,115 @@ export default function BusinessSettingsScreen() {
   return (
     <View style={panelStyles.outer}>
       <View style={panelStyles.inner}>
-      <SafeAreaView className="flex-1" edges={['top']}>
-        {toast ? (
-          <View
-            pointerEvents="none"
-            style={{
-              position: 'absolute',
-              top: 18,
-              left: 16,
-              right: 16,
-              alignItems: 'center',
-              zIndex: 9999,
-              elevation: 9999,
-            }}
-          >
-            <View
-              style={{
-                maxWidth: 420,
-                borderRadius: 999,
-                backgroundColor: toast.type === 'success' ? '#111111' : '#EF4444',
-                paddingHorizontal: 16,
-                paddingVertical: 12,
-              }}
+        <SafeAreaView style={{ flex: 1, backgroundColor: palette.ground }} edges={['top']}>
+          <LinearGradient pointerEvents="none" colors={[palette.topGlow, palette.topGlowEnd]} locations={[0, 1]} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: openedFromSettings ? 390 : 300 }} />
+
+          {toast ? (
+            <View pointerEvents="none" style={{ position: 'absolute', top: 14, left: 16, right: 16, alignItems: 'center', zIndex: 9999, elevation: 9999 }}>
+              <View style={{ maxWidth: 420, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 11, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: toast.type === 'success' ? palette.lime : palette.danger }}>
+                {toast.type === 'success' ? <Check size={15} color="#202117" strokeWidth={2.4} /> : <X size={15} color="#FFFFFF" strokeWidth={2.4} />}
+                <Text style={{ color: toast.type === 'success' ? '#202117' : '#FFFFFF', fontFamily: 'DMSans_600SemiBold', fontSize: innerSettingsFont(13) }}>{toast.message}</Text>
+              </View>
+            </View>
+          ) : null}
+
+          <View style={{ minHeight: isMobile ? 66 : openedFromSettings ? 58 : 56, paddingHorizontal: openedFromSettings ? 20 : 10, paddingTop: isMobile ? 12 : 4, paddingBottom: 4, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <Pressable
+              onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); goBack(); }}
+              accessibilityRole="button"
+              accessibilityLabel="Back"
+              hitSlop={4}
+              style={({ pressed }) => ({ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.navButton, opacity: pressed ? 0.62 : 1 })}
             >
-              <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '600', textAlign: 'center' }}>
-                {toast.message}
-              </Text>
+              <ArrowLeft size={18} color={palette.ink} strokeWidth={2.2} />
+            </Pressable>
+            <View style={{ flex: 1, gap: 1 }}>
+              <Text style={{ color: palette.faint, fontFamily: 'DMSans_700Bold', fontSize: 9.5, lineHeight: 12, letterSpacing: 1.2, textTransform: 'uppercase' }}>Settings</Text>
+              <Text style={{ color: palette.ink, fontSize: 17, lineHeight: 21, fontWeight: '600' }}>Business Settings</Text>
+            </View>
+            <View style={{ height: 28, paddingHorizontal: 10, borderRadius: 14, flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: palette.limeWashStrong, borderWidth: 1, borderColor: palette.limeBorder }}>
+              <Building2 size={13} color={palette.limeInk} strokeWidth={2.2} />
+              <Text style={{ color: palette.limeInk, fontFamily: 'DMSans_700Bold', fontSize: 11 }}>Business</Text>
             </View>
           </View>
-        ) : null}
-        {/* Header */}
-        <View
-          className="px-5 pt-4 pb-3 flex-row items-center justify-between"
-          style={{
-            borderBottomWidth: 1,
-            borderBottomColor: colors.border.light,
-            ...(Platform.OS === 'web' ? { paddingTop: 10, paddingBottom: 10 } : {}),
-          }}
-        >
-          <View className="flex-row items-center">
-            <Pressable
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                goBack();
-              }}
-              className="w-10 h-10 rounded-xl items-center justify-center mr-3 active:opacity-50"
-              style={{ backgroundColor: 'transparent' }}
-            >
-              <ArrowLeft size={20} color={colors.text.primary} strokeWidth={2} />
-            </Pressable>
-            <Text
-              style={{
-                color: colors.text.primary,
-                fontSize: Platform.OS === 'web' ? 14 : 20,
-                lineHeight: Platform.OS === 'web' ? 18 : 24,
-                fontWeight: '600',
-              }}
-            >
-              Business Settings
-            </Text>
-          </View>
 
-          <Pressable
-            onPress={handleSave}
-            disabled={isSaving || !hasChanges}
-            className="px-4 h-10 rounded-full items-center justify-center active:opacity-80"
-            style={[
-              hasChanges ? primaryPillButtonStyle : { backgroundColor: colors.bg.secondary, borderRadius: 999, borderWidth: 1, borderColor: colors.border.light },
-              { opacity: isSaving ? 0.7 : 1, minWidth: 96 },
-            ]}
+          <KeyboardAwareScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{ width: '100%', maxWidth: contentMaxWidth, alignSelf: 'center', paddingHorizontal: 16, paddingTop: openedFromSettings ? 22 : 12, paddingBottom: 140 }}
+            showsVerticalScrollIndicator={false}
+            enableOnAndroid
+            extraScrollHeight={110}
+            keyboardShouldPersistTaps="handled"
           >
-            {isSaving ? (
-              <ActivityIndicator size="small" color={hasChanges ? colors.bg.primary : colors.text.tertiary} />
-            ) : (
-              <View className="flex-row items-center">
-                <Check size={16} color={hasChanges ? colors.bg.primary : colors.text.tertiary} strokeWidth={2} />
-                <Text style={{ color: hasChanges ? colors.bg.primary : colors.text.tertiary }} className="font-semibold text-sm ml-1">Save</Text>
-              </View>
-            )}
-          </Pressable>
-        </View>
-
-        <KeyboardAwareScrollView className="flex-1 px-5 pt-4" showsVerticalScrollIndicator={false} enableOnAndroid extraScrollHeight={100}>
-          {/* Business Logo */}
-          <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase mb-3 tracking-wider">Business Logo</Text>
-
-          <View className="rounded-xl p-4 mb-6" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
-            <View className="items-center">
-              {logo ? (
-                <View className="relative">
-                  <Image
-                    source={{ uri: logo }}
-                    className="w-24 h-24 rounded-2xl"
-                    resizeMode="cover"
-                  />
-                  <Pressable
-                    onPress={handleRemoveLogo}
-                    className="absolute -top-2 -right-2 w-7 h-7 rounded-full items-center justify-center active:opacity-70"
-                    style={{ backgroundColor: '#EF4444' }}
-                  >
-                    <X size={14} color="#FFFFFF" strokeWidth={2.5} />
-                  </Pressable>
+            <View style={{ position: 'relative', overflow: 'hidden', minHeight: 144, marginBottom: 30, padding: 20, borderRadius: 28, borderWidth: 1, borderColor: palette.edge, backgroundColor: palette.surface, shadowColor: '#000000', shadowOpacity: isDark ? 0.24 : 0.07, shadowRadius: 24, shadowOffset: { width: 0, height: 10 } }}>
+              <LinearGradient pointerEvents="none" colors={[palette.limeWashStrong, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.25, y: 1 }} style={{ position: 'absolute', top: -45, right: -36, width: 190, height: 190, borderRadius: 95 }} />
+              <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, borderBottomLeftRadius: 3, borderBottomRightRadius: 3, backgroundColor: palette.lime }} />
+              <View style={{ flex: 1, justifyContent: 'center' }}>
+                <View style={{ minWidth: 0 }}>
+                  <Text style={{ color: palette.faint, fontFamily: 'DMSans_700Bold', fontSize: 10, letterSpacing: 1.15, textTransform: 'uppercase', marginBottom: 4 }}>Business identity</Text>
+                  <Text numberOfLines={1} style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_800ExtraBold', fontSize: 24, lineHeight: 29, letterSpacing: -0.55 }}>{displayName.trim() || 'Your business'}</Text>
+                  <Text numberOfLines={1} style={{ color: palette.faint, fontFamily: 'DMSans_400Regular', fontSize: innerSettingsFont(13), lineHeight: 18, marginTop: 2 }}>{company.trim() || 'Company details'}</Text>
+                  <View style={{ alignSelf: 'flex-start', maxWidth: '100%', minHeight: 27, marginTop: 10, paddingHorizontal: 10, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: palette.limeWashStrong }}>
+                    <ShieldCheck size={12} color={palette.limeInk} strokeWidth={2.2} />
+                    <Text numberOfLines={1} style={{ flexShrink: 1, color: palette.limeInk, fontFamily: 'DMSans_700Bold', fontSize: 11 }}>{trackingSlugLabel ? `/${trackingSlugLabel}/order-tracking` : 'Customer links ready'}</Text>
+                  </View>
                 </View>
-              ) : (
-                <Pressable
-                  onPress={handlePickImage}
-                  className="w-24 h-24 rounded-2xl items-center justify-center active:opacity-80"
-                  style={{ backgroundColor: colors.bg.secondary, borderWidth: 2, borderColor: colors.border.light, borderStyle: 'dashed' }}
-                >
-                  <Camera size={28} color={colors.text.tertiary} strokeWidth={1.5} />
+              </View>
+            </View>
+
+            {error ? (
+              <View accessibilityRole="alert" style={{ borderRadius: 16, marginBottom: 18, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: palette.dangerWash, borderWidth: 1, borderColor: palette.dangerBorder }}>
+                <X size={17} color={palette.danger} />
+                <Text style={{ flex: 1, color: palette.danger, fontFamily: 'DMSans_500Medium', fontSize: innerSettingsFont(13), lineHeight: 18 }}>{error}</Text>
+              </View>
+            ) : null}
+
+            <SectionLabel palette={palette}>Brand</SectionLabel>
+            <View style={[cardStyle, { padding: 18, gap: 12, marginBottom: 26 }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 13 }}>
+                <View style={{ width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.limeWash }}><Camera size={19} color={palette.limeInk} strokeWidth={2} /></View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ color: palette.ink, fontFamily: 'DMSans_600SemiBold', fontSize: innerSettingsFont(15) }}>Business logo</Text>
+                  <Text style={{ color: palette.faint, fontFamily: 'DMSans_400Regular', fontSize: 12.5, lineHeight: 17 }}>Square PNG or JPG · maximum 400 KB</Text>
+                </View>
+                <Pressable onPress={handlePickImage} style={({ pressed }) => ({ height: 38, paddingHorizontal: 14, borderRadius: 999, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: palette.edgeStrong, backgroundColor: palette.input, opacity: pressed ? 0.72 : 1 })}>
+                  <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: innerSettingsFont(13) }}>{logo ? 'Change' : 'Upload'}</Text>
                 </Pressable>
-              )}
+              </View>
+            </View>
 
-              <Pressable
-                onPress={handlePickImage}
-                className="mt-3 px-4 py-2 rounded-lg active:opacity-70"
-                style={{ backgroundColor: colors.bg.secondary }}
-              >
-                <Text style={{ color: colors.text.secondary }} className="text-sm font-medium">
-                  {logo ? 'Change Logo' : 'Upload Logo'}
-                </Text>
+            <SectionLabel palette={palette}>Business information</SectionLabel>
+            <View style={[cardStyle, { padding: 18, gap: 17, marginBottom: 26 }]}>
+              <BusinessField palette={palette} label="Company name" value={company} placeholder="Registered company name" icon={Building2} editable={false} badge="Fixed" help="Your legal or registered company name cannot be changed here." />
+              <BusinessField palette={palette} label="Business name" value={displayName} placeholder="Customer-facing business name" icon={Building2} editable={false} badge="Locked" help="Used on customer links and as the tracking-page fallback when no logo is set." />
+              {trackingSlugLabel ? <Text style={{ color: palette.faint, fontFamily: 'DMSans_400Regular', fontSize: 12, marginTop: -9 }}>Tracking slug: /{trackingSlugLabel}/order-tracking</Text> : null}
+              <Pressable onPress={() => setShowBusinessNameRequest(true)} hitSlop={6} style={({ pressed }) => ({ alignSelf: 'flex-start', minHeight: 34, justifyContent: 'center', opacity: pressed ? 0.65 : 1 })}>
+                <Text style={{ color: palette.limeInk, fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: innerSettingsFont(13), textDecorationLine: 'underline' }}>Request a business-name change</Text>
               </Pressable>
-
-              <Text style={{ color: colors.text.muted }} className="text-xs mt-2 text-center">
-                Optional. Square images work best. Max 400 KB. Large logos are compressed automatically.
-              </Text>
-            </View>
-          </View>
-
-          {/* Business Information */}
-          <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase mb-3 tracking-wider">Business Information</Text>
-
-          <View className="rounded-xl p-4 mb-6" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
-            {/* Company Name */}
-            <View className="mb-4">
-              <View className="flex-row items-center mb-2">
-                <Building2 size={16} color={colors.text.tertiary} strokeWidth={2} />
-                <Text style={{ color: colors.text.secondary }} className="text-sm font-medium ml-2">Company Name</Text>
-                <Text style={{ color: colors.text.muted }} className="text-xs ml-2">Fixed</Text>
-              </View>
-
-              <View
-                className="rounded-xl px-4"
-                style={{
-                  backgroundColor: colors.bg.secondary,
-                  borderWidth: 1,
-                  borderColor: colors.border.light,
-                  height: 50,
-                  justifyContent: 'center'
-                }}
-              >
-                <TextInput
-                  value={company}
-                  placeholder="Registered company name"
-                  placeholderTextColor={colors.input.placeholder}
-                  style={{ color: colors.text.primary, fontSize: 14 }}
-                  selectionColor={colors.text.primary}
-                  editable={false}
-                  selectTextOnFocus={false}
-                />
-              </View>
-
-              <Text style={{ color: colors.text.muted }} className="text-xs mt-2">
-                This is your legal or registered company name and cannot be changed here.
-              </Text>
+              <BusinessField palette={palette} label="Website" value={website} onChangeText={(value) => { setWebsite(value); clearError(); }} placeholder="e.g. www.yourbusiness.com" icon={Globe} keyboardType="url" />
             </View>
 
-            {/* Business Name */}
-            <View className="mb-4">
-              <View className="flex-row items-center mb-2">
-                <Building2 size={16} color={colors.text.tertiary} strokeWidth={2} />
-                <Text style={{ color: colors.text.secondary }} className="text-sm font-medium ml-2">Business Name</Text>
-                <Text style={{ color: colors.text.muted }} className="text-xs ml-2">
-                  Locked
-                </Text>
-              </View>
+            <SectionLabel palette={palette}>Customer contact</SectionLabel>
+            <View style={[cardStyle, { padding: 18, marginBottom: 26 }]}>
+              <BusinessField palette={palette} label="WhatsApp number" value={phone} onChangeText={(value) => { setPhone(value); clearError(); }} placeholder="e.g. +234 800 123 4567" icon={MessageCircle} keyboardType="phone-pad" autoComplete="tel" badge="Required" badgeColor="#25A95B" help="Customers use this from payment and tracking pages. Include the country code." />
+            </View>
 
-              <View
-                className="rounded-xl px-4"
-                style={{
-                  backgroundColor: colors.bg.secondary,
-                  borderWidth: 1,
-                  borderColor: colors.border.light,
-                  height: 50,
-                  justifyContent: 'center'
-                }}
-              >
-                <TextInput
-                  value={displayName}
-                  onChangeText={setDisplayName}
-                  placeholder="Customer-facing business name"
-                  placeholderTextColor={colors.input.placeholder}
-                  style={{ color: colors.input.text, fontSize: 14 }}
-                  selectionColor={colors.text.primary}
-                  editable={false}
-                  autoCapitalize="words"
-                />
-              </View>
+            <SectionLabel palette={palette}>Return address</SectionLabel>
+            <View style={[cardStyle, { padding: 18 }]}>
+              <BusinessField palette={palette} label="Address for shipping labels" value={address} onChangeText={(value) => { setAddress(value); clearError(); }} placeholder={'Enter your business return address\ne.g. 123 Main Street\nLagos, Nigeria'} icon={MapPin} multiline help="This address appears on shipping labels." />
+            </View>
+          </KeyboardAwareScrollView>
 
-              <Text style={{ color: colors.text.muted }} className="text-xs mt-2">
-                This is used for your customer tracking URL and as the text fallback on the tracking page when no logo is set.
-              </Text>
-              {trackingSlugLabel ? (
-                <Text style={{ color: colors.text.muted }} className="text-xs mt-1">
-                  Tracking slug: /{trackingSlugLabel}/order-tracking
-                </Text>
-              ) : null}
-              <Text style={{ color: colors.text.muted }} className="text-xs mt-1">
-                Your business name is locked because it is part of your customer links. Need it changed?
-              </Text>
-              <Pressable onPress={() => setShowBusinessNameRequest(true)} className="mt-2 self-start active:opacity-70" hitSlop={6}>
-                <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' }}>Request a change</Text>
+          {hasChanges ? (
+            <LinearGradient colors={[palette.topGlowEnd, palette.ground, palette.ground]} locations={[0, 0.35, 1]} pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, paddingTop: 28, paddingHorizontal: 16, paddingBottom: 18 }}>
+              <Pressable onPress={handleSave} disabled={isSaving} style={({ pressed }) => ({ width: '100%', maxWidth: contentMaxWidth - 32, alignSelf: 'center', height: 56, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.lime, shadowColor: palette.lime, shadowOpacity: 0.28, shadowRadius: 24, shadowOffset: { width: 0, height: 8 }, opacity: isSaving ? 0.62 : pressed ? 0.78 : 1 })}>
+                {isSaving ? <ActivityIndicator color="#202117" /> : <Text style={{ color: '#202117', fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: 17 }}>Save changes</Text>}
               </Pressable>
-              <ChangeRequestModal
-                visible={showBusinessNameRequest}
-                kind="business_name"
-                currentValue={displayName || businessName}
-                onClose={() => setShowBusinessNameRequest(false)}
-              />
-            </View>
-
-            {/* Business Website */}
-            <View>
-              <View className="flex-row items-center mb-2">
-                <Globe size={16} color={colors.text.tertiary} strokeWidth={2} />
-                <Text style={{ color: colors.text.secondary }} className="text-sm font-medium ml-2">Website</Text>
-              </View>
-
-              <View
-                className="rounded-xl px-4"
-                style={{
-                  backgroundColor: colors.input.bg,
-                  borderWidth: 1,
-                  borderColor: colors.border.light,
-                  height: 50,
-                  justifyContent: 'center'
-                }}
-              >
-                <TextInput
-                  value={website}
-                  onChangeText={setWebsite}
-                  placeholder="e.g. www.yourbusiness.com"
-                  placeholderTextColor={colors.input.placeholder}
-                  keyboardType="url"
-                  autoCapitalize="none"
-                  style={{ color: colors.input.text, fontSize: 14 }}
-                  selectionColor={colors.text.primary}
-                />
-              </View>
-            </View>
-          </View>
-
-          {/* Customer contact */}
-          <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase mb-3 tracking-wider">Customer Contact</Text>
-
-          <View className="rounded-xl p-4 mb-6" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
-            <View className="flex-row items-center mb-2">
-              <MessageCircle size={16} color="#25D366" strokeWidth={2} />
-              <Text style={{ color: colors.text.secondary }} className="text-sm font-medium ml-2">WhatsApp number</Text>
-              <Text style={{ color: '#25D366' }} className="text-xs font-medium ml-2">Required</Text>
-            </View>
-
-            <Text style={{ color: colors.text.muted }} className="text-xs mb-3">
-              Customers use this to message you from their payment and order tracking page. Include the country code.
-            </Text>
-
-            <View
-              className="rounded-xl px-4"
-              style={{
-                backgroundColor: colors.input.bg,
-                borderWidth: 1,
-                borderColor: colors.border.light,
-                height: 50,
-                justifyContent: 'center'
-              }}
-            >
-              <TextInput
-                value={phone}
-                onChangeText={setPhone}
-                placeholder="e.g. +234 800 123 4567"
-                placeholderTextColor={colors.input.placeholder}
-                keyboardType="phone-pad"
-                autoComplete="tel"
-                style={{ color: colors.input.text, fontSize: 14 }}
-                selectionColor={colors.text.primary}
-              />
-            </View>
-
-            <Text style={{ color: colors.text.muted }} className="text-xs mt-2">
-              Use a number that accepts WhatsApp messages. It can also be used as the call fallback.
-            </Text>
-          </View>
-
-          {/* Return Address (for Shipping Labels) */}
-          <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase mb-3 tracking-wider">Return Address</Text>
-
-          <View className="rounded-xl p-4 mb-6" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
-            <View className="flex-row items-center mb-2">
-              <MapPin size={16} color={colors.text.tertiary} strokeWidth={2} />
-              <Text style={{ color: colors.text.secondary }} className="text-sm font-medium ml-2">Address for Shipping Labels</Text>
-            </View>
-
-            <View
-              className="rounded-xl px-4 py-3"
-              style={{
-                backgroundColor: colors.input.bg,
-                borderWidth: 1,
-                borderColor: colors.border.light,
-                minHeight: 100
-              }}
-            >
-              <TextInput
-                value={address}
-                onChangeText={setAddress}
-                placeholder="Enter your business return address&#10;e.g. 123 Main Street&#10;Lagos, Nigeria"
-                placeholderTextColor={colors.input.placeholder}
-                multiline
-                numberOfLines={4}
-                style={{ color: colors.input.text, fontSize: 14, textAlignVertical: 'top' }}
-                selectionColor={colors.text.primary}
-              />
-            </View>
-
-            <Text style={{ color: colors.text.muted }} className="text-xs mt-2">
-              This address will appear on shipping labels.
-            </Text>
-          </View>
-
-          {error ? (
-            <Text className="text-red-500 text-xs text-center mb-4">{error}</Text>
+            </LinearGradient>
           ) : null}
 
-          {!openedFromSettings ? (
-            <Pressable
-              onPress={handleSave}
-              disabled={isSaving || !hasChanges}
-              className="rounded-full items-center active:opacity-80"
-              style={{
-                backgroundColor: hasChanges ? colors.text.primary : colors.bg.secondary,
-                borderWidth: hasChanges ? 0 : 1,
-                borderColor: hasChanges ? 'transparent' : colors.border.light,
-                height: 54,
-                justifyContent: 'center',
-                opacity: isSaving ? 0.7 : 1,
-              }}
-            >
-              {isSaving ? (
-                <ActivityIndicator size="small" color={hasChanges ? colors.bg.primary : colors.text.tertiary} />
-              ) : (
-                <Text
-                  style={{ color: hasChanges ? colors.bg.primary : colors.text.tertiary }}
-                  className="font-semibold text-base"
-                >
-                  Save Changes
-                </Text>
-              )}
-            </Pressable>
-          ) : null}
-
-          <View className="h-24" />
-        </KeyboardAwareScrollView>
-      </SafeAreaView>
+          <ChangeRequestModal visible={showBusinessNameRequest} kind="business_name" currentValue={displayName || businessName} onClose={() => setShowBusinessNameRequest(false)} />
+        </SafeAreaView>
       </View>
     </View>
   );

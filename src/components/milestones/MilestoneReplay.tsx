@@ -43,6 +43,7 @@ export function MilestoneReplay({ visible, onClose }: { visible: boolean; onClos
     return (
       <MilestoneCelebration
         visible
+        forceMotion
         businessName={(businessName || companyName || 'your business').trim()}
         businessLogo={businessLogo}
         storefrontUrl={storefrontUrl}

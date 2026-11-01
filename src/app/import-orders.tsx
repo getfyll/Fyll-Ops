@@ -3,16 +3,20 @@ import { View, Text, Pressable, ScrollView, ActivityIndicator, Platform } from '
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
-import { ArrowLeft, Upload, AlertCircle } from 'lucide-react-native';
+import { ArrowLeft, Upload, AlertCircle, Check, X, FileText } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
-import { useThemeColors } from '@/lib/theme';
+import { useResolvedThemeMode, useThemeColors } from '@/lib/theme';
 import useAuthStore from '@/lib/state/auth-store';
 import useFyllStore, { Customer, Order, OrderItem, generateOrderNumber } from '@/lib/state/fyll-store';
 import { parseCsv } from '@/lib/csv';
 import { getSettingsWebPanelStyles, isFromSettingsRoute } from '@/lib/settings-web-panel';
 import { useSettingsBack } from '@/lib/useSettingsBack';
+import { useBreakpoint } from '@/lib/useBreakpoint';
+import { useTabBarHeight } from '@/lib/useTabBarHeight';
+import { FYLL_LIME, FYLL_LIME_INK, MoneyText, usePaymentsPalette } from '@/components/payments/payments-ui';
 
 type ImportSummary = {
   totalRows: number;
@@ -123,8 +127,12 @@ export default function ImportOrdersScreen() {
   const { from } = useLocalSearchParams<{ from?: string | string[] }>();
   const goBack = useSettingsBack();
   const colors = useThemeColors();
+  const resolvedThemeMode = useResolvedThemeMode();
+  const settingsPalette = usePaymentsPalette();
+  const { isDesktop, isMobile } = useBreakpoint();
+  const tabBarHeight = useTabBarHeight();
   const openedFromSettings = isFromSettingsRoute(from);
-  const panelStyles = getSettingsWebPanelStyles(openedFromSettings, colors.bg.primary, colors.border.light);
+  const panelStyles = getSettingsWebPanelStyles(openedFromSettings, settingsPalette.page, settingsPalette.border);
 
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
   const currentUserName = useAuthStore((s) => s.currentUser?.name ?? '');
@@ -623,48 +631,65 @@ export default function ImportOrdersScreen() {
   return (
     <View style={panelStyles.outer}>
       <View style={panelStyles.inner}>
-        <SafeAreaView className="flex-1" style={{ backgroundColor: colors.bg.primary }} edges={['top']}>
+        <SafeAreaView className="flex-1" style={{ backgroundColor: settingsPalette.page }} edges={['top']}>
+          <LinearGradient
+            pointerEvents="none"
+            colors={resolvedThemeMode === 'dark' ? ['rgba(111,125,18,0.55)', 'rgba(20,20,20,0)'] : ['rgba(213,224,87,0.42)', 'rgba(244,243,235,0)']}
+            style={{ position: 'absolute', left: 0, right: 0, top: 0, height: openedFromSettings ? 390 : 300 }}
+          />
           <View
-            className="flex-row items-center px-5 py-4 border-b"
-            style={{ borderBottomColor: colors.border.light }}
+            className="flex-row items-center"
+            style={{ minHeight: isMobile ? 66 : openedFromSettings ? 58 : 56, paddingHorizontal: openedFromSettings ? 20 : 10, paddingTop: isMobile ? 12 : 4, paddingBottom: 4 }}
           >
             <Pressable
               onPress={goBack}
-              className="w-10 h-10 rounded-xl items-center justify-center mr-3 active:opacity-50"
-              style={{ backgroundColor: 'transparent' }}
+              className="w-10 h-10 items-center justify-center mr-3 active:opacity-50"
+              style={{ borderRadius: 20, backgroundColor: settingsPalette.softFill }}
             >
-              <ArrowLeft size={24} color={colors.text.primary} strokeWidth={2} />
+              <ArrowLeft size={18} color={settingsPalette.text} strokeWidth={2.2} />
             </Pressable>
             <View className="flex-1">
-              <Text
-                style={{
-                  color: colors.text.primary,
-                  fontSize: Platform.OS === 'web' ? 14 : 20,
-                  lineHeight: Platform.OS === 'web' ? 18 : 24,
-                  fontWeight: '600',
-                }}
-              >
-                Import Orders
-              </Text>
-              <Text style={{ color: colors.text.tertiary }} className="text-sm mt-0.5">
-                Upload orders with product names
-              </Text>
+              <Text style={{ color: settingsPalette.faint, fontSize: 9.5, lineHeight: 12, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Settings</Text>
+              <Text style={{ color: settingsPalette.text, fontSize: 17, lineHeight: 21, fontWeight: '600' }}>Import Orders</Text>
             </View>
           </View>
 
-          <ScrollView className="flex-1 px-5 py-6" showsVerticalScrollIndicator={false}>
+          <ScrollView
+            className="flex-1"
+            contentContainerStyle={{ paddingHorizontal: 16, paddingTop: openedFromSettings ? 22 : 12, paddingBottom: isDesktop ? 64 : tabBarHeight + 48 }}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={{ width: '100%', maxWidth: openedFromSettings ? 720 : 520, alignSelf: 'center' }}>
+            <View style={{ position: 'relative', overflow: 'hidden', minHeight: 156, marginBottom: 28, padding: 20, borderRadius: 28, borderWidth: 1, borderColor: settingsPalette.border, backgroundColor: settingsPalette.card, shadowColor: '#000000', shadowOpacity: resolvedThemeMode === 'dark' ? 0.24 : 0.07, shadowRadius: 24, shadowOffset: { width: 0, height: 10 } }}>
+              <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -44, right: -36, width: 210, height: 210, borderRadius: 105 }} />
+              <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, borderBottomLeftRadius: 3, borderBottomRightRadius: 3, backgroundColor: FYLL_LIME }} />
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 15 }}>
+                <LinearGradient colors={[FYLL_LIME, '#879400']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 66, height: 66, borderRadius: 22, alignItems: 'center', justifyContent: 'center' }}>
+                  <Upload size={28} color={FYLL_LIME_INK} strokeWidth={2.1} />
+                </LinearGradient>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ color: settingsPalette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Order data</Text>
+                  <MoneyText style={{ color: settingsPalette.text, fontSize: 26, lineHeight: 31, letterSpacing: -0.7 }}>CSV import</MoneyText>
+                  <Text style={{ color: settingsPalette.faint, fontSize: 12.5, marginTop: 3 }}>
+                    {summary ? `${summary.totalRows} rows processed` : preparedOrders.length ? `${preparedOrders.length} orders ready` : 'Upload, preview, then import'}
+                  </Text>
+                </View>
+              </View>
+            </View>
             {!preparedOrders.length && !summary && (
-              <View className="rounded-2xl p-5 mb-6" style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}>
+              <View className="p-5 mb-6" style={{ borderRadius: 26, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
                 <View className="flex-row items-start mb-3">
-                  <AlertCircle size={20} color={colors.accent.primary} strokeWidth={2} />
+                  <View style={{ width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: settingsPalette.nudgeBg }}>
+                    <AlertCircle size={19} color={settingsPalette.limeOnSurface} strokeWidth={2} />
+                  </View>
                   <View className="flex-1 ml-3">
-                    <Text style={{ color: colors.text.primary }} className="font-semibold text-base mb-2">
-                      CSV Format Requirements
+                    <Text style={{ color: settingsPalette.text, fontSize: isMobile ? 14 : 15, fontWeight: '600' }} className="mb-2">
+                      CSV format requirements
                     </Text>
-                    <Text style={{ color: colors.text.secondary }} className="text-sm leading-5 mb-2">
+                    <Text style={{ color: settingsPalette.muted, fontSize: 12.5 }} className="leading-5 mb-2">
                       Required columns: <Text className="font-bold">customer_name</Text>, <Text className="font-bold">delivery_state</Text>, <Text className="font-bold">delivery_address</Text>, <Text className="font-bold">product_name</Text>, <Text className="font-bold">quantity</Text>.
                     </Text>
-                    <Text style={{ color: colors.text.secondary }} className="text-sm leading-5 mb-2">
+                    <Text style={{ color: settingsPalette.muted, fontSize: 12.5 }} className="leading-5 mb-2">
                       FYLL maps rows by <Text className="font-bold">product_name</Text>. <Text className="font-bold">item_sku</Text> and <Text className="font-bold">item_barcode</Text> are optional for variant matching. <Text className="font-bold">order_number</Text> is optional and FYLL can generate it.
                     </Text>
                     <Text style={{ color: colors.text.tertiary }} className="text-xs mt-2">
@@ -672,12 +697,10 @@ export default function ImportOrdersScreen() {
                     </Text>
                     <Pressable
                       onPress={handleDownloadTemplate}
-                      className="mt-3 px-4 py-2 rounded-lg self-start active:opacity-80"
-                      style={{ backgroundColor: colors.bg.primary, borderWidth: 1, borderColor: colors.border.light }}
+                      className="mt-3 px-4 rounded-full self-start items-center justify-center active:opacity-80"
+                      style={{ height: 40, backgroundColor: settingsPalette.inset, borderWidth: 1, borderColor: settingsPalette.outline }}
                     >
-                      <Text style={{ color: colors.text.primary }} className="text-xs font-semibold">
-                        Download CSV Template
-                      </Text>
+                      <MoneyText style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '700' }}>Download CSV template</MoneyText>
                     </Pressable>
                     {templateNotice ? (
                       <Text style={{ color: colors.text.tertiary }} className="text-xs mt-2">
@@ -693,28 +716,29 @@ export default function ImportOrdersScreen() {
               <Pressable
                 onPress={handlePickFile}
                 disabled={isParsing || isImporting}
-                className="rounded-2xl p-8 items-center justify-center mb-4 active:opacity-80"
+                className="p-8 items-center justify-center mb-6 active:opacity-80"
                 style={{
-                  backgroundColor: colors.bg.secondary,
+                  backgroundColor: settingsPalette.card,
+                  borderRadius: 26,
                   borderWidth: 2,
-                  borderColor: colors.border.light,
+                  borderColor: settingsPalette.nudgeBorder,
                   borderStyle: 'dashed',
                 }}
               >
                 {isParsing ? (
                   <>
-                    <ActivityIndicator size="large" color={colors.accent.primary} />
+                    <ActivityIndicator size="large" color={settingsPalette.limeOnSurface} />
                     <Text style={{ color: colors.text.tertiary }} className="text-sm mt-3">
                       Reading file...
                     </Text>
                   </>
                 ) : (
                   <>
-                    <Upload size={32} color={colors.text.tertiary} strokeWidth={1.5} />
-                    <Text style={{ color: colors.text.primary }} className="font-semibold text-base mt-3">
-                      Choose CSV File
-                    </Text>
-                    <Text style={{ color: colors.text.tertiary }} className="text-sm mt-1 text-center">
+                    <View className="w-16 h-16 rounded-full items-center justify-center mb-3" style={{ backgroundColor: settingsPalette.nudgeBg }}>
+                      <Upload size={28} color={settingsPalette.limeOnSurface} strokeWidth={2} />
+                    </View>
+                    <MoneyText style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '700' }}>Choose CSV file</MoneyText>
+                    <Text style={{ color: settingsPalette.faint, fontSize: 12 }} className="mt-1 text-center">
                       One row per order item. Use the same order_number or import_group for multi-item orders.
                     </Text>
                   </>
@@ -722,15 +746,15 @@ export default function ImportOrdersScreen() {
               </Pressable>
             )}
 
-            {fileName ? (
+            {fileName && preview.length === 0 ? (
               <Text style={{ color: colors.text.muted }} className="text-xs mb-3">
                 Selected: {fileName}
               </Text>
             ) : null}
 
             {parseNotice ? (
-              <View className="rounded-xl px-4 py-3 mb-4" style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}>
-                <Text style={{ color: colors.text.secondary }} className="text-sm">{parseNotice}</Text>
+              <View className="rounded-2xl px-4 py-3 mb-4" style={{ backgroundColor: settingsPalette.nudgeBg, borderWidth: 1, borderColor: settingsPalette.nudgeBorder }}>
+                <Text style={{ color: settingsPalette.textSoft, fontSize: 12, lineHeight: 18 }}>{parseNotice}</Text>
               </View>
             ) : null}
 
@@ -743,26 +767,39 @@ export default function ImportOrdersScreen() {
             ) : null}
 
             {error ? (
-              <View className="rounded-xl px-4 py-3 mb-4" style={{ backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FCA5A5' }}>
-                <Text className="text-sm" style={{ color: '#991B1B' }}>{error}</Text>
+              <View className="rounded-2xl px-4 py-3 mb-4 flex-row items-start" style={{ backgroundColor: settingsPalette.dangerBg, borderWidth: 1, borderColor: settingsPalette.dangerBorder }}>
+                <X size={18} color={settingsPalette.danger} strokeWidth={2.2} />
+                <Text style={{ color: settingsPalette.danger, fontSize: 12, lineHeight: 18, marginLeft: 9, flex: 1 }}>{error}</Text>
               </View>
             ) : null}
 
             {preview.length > 0 && !summary ? (
-              <View className="rounded-2xl p-4 mb-4" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
-                <Text style={{ color: colors.text.primary }} className="font-semibold mb-2">Preview</Text>
+              <View className="mb-5">
+                <View className="flex-row items-center justify-between mb-3">
+                  <View>
+                    <Text style={{ color: settingsPalette.text, fontSize: 15, fontWeight: '600' }}>Preview</Text>
+                    <Text style={{ color: settingsPalette.faint, fontSize: 12, marginTop: 2 }}>{fileName} · {preparedOrders.length} orders</Text>
+                  </View>
+                  <Pressable onPress={handlePickFile} className="px-4 rounded-full items-center justify-center active:opacity-70" style={{ minHeight: 40, backgroundColor: settingsPalette.inset, borderWidth: 1, borderColor: settingsPalette.outline }}>
+                    <MoneyText style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '700' }}>Change file</MoneyText>
+                  </Pressable>
+                </View>
+                <View className="overflow-hidden" style={{ borderRadius: 26, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
                 {preview.map((row, index) => (
-                  <View key={`${row.orderNumber}-${row.productName}-${index}`} className="mb-2">
-                    <Text style={{ color: colors.text.secondary }} className="text-sm">
-                      {row.orderNumber} • {row.customerName} • {row.productName} • {row.itemReference} • Qty {row.quantity}
-                    </Text>
+                  <View key={`${row.orderNumber}-${row.productName}-${index}`} className="p-4" style={index < preview.length - 1 ? { borderBottomWidth: 1, borderBottomColor: settingsPalette.hairline } : undefined}>
+                    <View className="flex-row items-start" style={{ gap: 11 }}>
+                      <View className="items-center justify-center" style={{ width: 38, height: 38, borderRadius: 13, backgroundColor: settingsPalette.nudgeBg }}><FileText size={17} color={settingsPalette.limeOnSurface} strokeWidth={2} /></View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '600' }}>{row.orderNumber} · {row.customerName}</Text>
+                        <Text style={{ color: settingsPalette.faint, fontSize: 12, marginTop: 3 }}>{row.productName} · {row.itemReference} · Qty {row.quantity}</Text>
+                      </View>
+                    </View>
                   </View>
                 ))}
                 {previewRows.length > preview.length ? (
-                  <Text style={{ color: colors.text.muted }} className="text-xs mt-2">
-                    +{previewRows.length - preview.length} more rows
-                  </Text>
+                  <View className="p-4 items-center" style={{ backgroundColor: settingsPalette.inset }}><Text style={{ color: settingsPalette.faint, fontSize: 12 }}>+{previewRows.length - preview.length} more rows</Text></View>
                 ) : null}
+                </View>
               </View>
             ) : null}
 
@@ -772,56 +809,63 @@ export default function ImportOrdersScreen() {
                 disabled={isImporting || !businessId}
                 className="rounded-full items-center justify-center active:opacity-80"
                 style={{
-                  backgroundColor: colors.text.primary,
+                  backgroundColor: FYLL_LIME,
                   opacity: isImporting || !businessId ? 0.6 : 1,
                   height: 52,
                 }}
               >
                 {isImporting ? (
-                  <ActivityIndicator size="small" color={colors.bg.primary} />
+                  <ActivityIndicator size="small" color={FYLL_LIME_INK} />
                 ) : (
-                  <Text style={{ color: colors.bg.primary }} className="font-semibold">
-                    Import {preparedOrders.length} Orders
-                  </Text>
+                  <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '700' }}>Import {preparedOrders.length} orders</MoneyText>
                 )}
               </Pressable>
             ) : null}
 
             {summary ? (
-              <View className="rounded-2xl p-5" style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}>
-                <Text style={{ color: colors.text.primary }} className="text-base font-semibold mb-2">
-                  Import complete
-                </Text>
-                <Text style={{ color: colors.text.secondary }} className="text-sm mb-1">
-                  {summary.importedOrders} orders imported • {summary.importedItems} items
-                </Text>
-                <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1">
-                  New customers created: {summary.newCustomers}
-                </Text>
-                <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1">
-                  Invalid rows skipped: {summary.skippedInvalidRows}
-                </Text>
-                <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1">
-                  Existing orders skipped: {summary.skippedExistingOrders}
-                </Text>
+              <View className="mb-6">
+                <View className="w-16 h-16 rounded-full items-center justify-center mb-4 self-center" style={{ backgroundColor: settingsPalette.nudgeBg }}><Check size={32} color={settingsPalette.limeOnSurface} strokeWidth={2.5} /></View>
+                <MoneyText style={{ color: settingsPalette.text, fontSize: 24, textAlign: 'center', fontWeight: '700', marginBottom: 5 }}>Import complete</MoneyText>
+                <Text style={{ color: settingsPalette.faint, fontSize: 13, textAlign: 'center', marginBottom: 22 }}>{summary.importedOrders} orders and {summary.importedItems} items imported</Text>
+                <View className="overflow-hidden mb-6" style={{ borderRadius: 26, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+                <View className="p-4 flex-row items-center justify-between" style={{ borderBottomWidth: 1, borderBottomColor: settingsPalette.hairline }}>
+                  <Text style={{ color: settingsPalette.textSoft, fontSize: 13 }}>Orders imported</Text>
+                  <Text style={{ color: settingsPalette.text, fontSize: 16, fontWeight: '700' }}>{summary.importedOrders}</Text>
+                </View>
+                <View className="p-4 flex-row items-center justify-between" style={{ borderBottomWidth: 1, borderBottomColor: settingsPalette.hairline }}>
+                  <Text style={{ color: settingsPalette.textSoft, fontSize: 13 }}>Items imported</Text>
+                  <Text style={{ color: settingsPalette.text, fontSize: 16, fontWeight: '700' }}>{summary.importedItems}</Text>
+                </View>
+                <View className="p-4 flex-row items-center justify-between" style={{ borderBottomWidth: 1, borderBottomColor: settingsPalette.hairline }}>
+                  <Text style={{ color: settingsPalette.textSoft, fontSize: 13 }}>New customers</Text>
+                  <Text style={{ color: settingsPalette.limeOnSurface, fontSize: 16, fontWeight: '700' }}>{summary.newCustomers}</Text>
+                </View>
+                <View className="p-4 flex-row items-center justify-between" style={{ borderBottomWidth: 1, borderBottomColor: settingsPalette.hairline }}>
+                  <Text style={{ color: settingsPalette.textSoft, fontSize: 13 }}>Rows skipped</Text>
+                  <Text style={{ color: settingsPalette.faint, fontSize: 16, fontWeight: '700' }}>{summary.skippedInvalidRows + summary.skippedExistingOrders}</Text>
+                </View>
                 {summary.failedOrders > 0 ? (
-                  <Text className="text-xs mb-1" style={{ color: '#B45309' }}>
-                    Failed orders: {summary.failedOrders}
-                  </Text>
+                  <View className="p-4 flex-row items-center justify-between" style={{ borderBottomWidth: 1, borderBottomColor: settingsPalette.hairline }}>
+                    <Text style={{ color: settingsPalette.textSoft, fontSize: 13 }}>Failed orders</Text>
+                    <Text style={{ color: settingsPalette.warn, fontSize: 16, fontWeight: '700' }}>{summary.failedOrders}</Text>
+                  </View>
                 ) : null}
-                <Text style={{ color: colors.text.tertiary }} className="text-xs mb-4">
-                  Total rows processed: {summary.totalRows}
-                </Text>
+                <View className="p-4 flex-row items-center justify-between">
+                  <Text style={{ color: settingsPalette.textSoft, fontSize: 13 }}>Total rows processed</Text>
+                  <Text style={{ color: settingsPalette.text, fontSize: 16, fontWeight: '700' }}>{summary.totalRows}</Text>
+                </View>
+                </View>
 
                 <Pressable
                   onPress={handleDone}
                   className="rounded-full items-center justify-center active:opacity-80"
-                  style={{ backgroundColor: colors.text.primary, height: 50 }}
+                  style={{ backgroundColor: FYLL_LIME, height: 52 }}
                 >
-                  <Text style={{ color: colors.bg.primary }} className="font-semibold">Done</Text>
+                  <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '700' }}>Done</MoneyText>
                 </Pressable>
               </View>
             ) : null}
+            </View>
           </ScrollView>
         </SafeAreaView>
       </View>

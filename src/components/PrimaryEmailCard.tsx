@@ -18,8 +18,32 @@ import {
 // Account settings: the founder's primary email. Work logins (like admin@mint.co) keep
 // working; the primary email is one sign-in for every Fyll product and can own several
 // businesses.
-export function PrimaryEmailCard({ fieldBorderColor }: { fieldBorderColor: string }) {
-  const colors = useThemeColors();
+export function PrimaryEmailCard({ fieldBorderColor, appearance = 'default' }: { fieldBorderColor: string; appearance?: 'default' | 'account-dark' | 'account-light' }) {
+  const themeColors = useThemeColors();
+  const colors = appearance === 'account-dark'
+    ? {
+        ...themeColors,
+        bg: { ...themeColors.bg, primary: '#141414', card: '#1E1E1E' },
+        text: { ...themeColors.text, primary: '#F4F4EF', secondary: '#B9BAB0', tertiary: '#8C8D84', muted: '#73746D' },
+        border: { ...themeColors.border, light: 'rgba(255,255,255,0.09)', medium: 'rgba(255,255,255,0.16)' },
+        input: { ...themeColors.input, bg: 'rgba(255,255,255,0.055)', text: '#F4F4EF', placeholder: '#8C8D84' },
+      }
+    : appearance === 'account-light'
+      ? {
+          ...themeColors,
+          bg: { ...themeColors.bg, primary: '#F4F3EB', card: '#FFFFFF' },
+          text: { ...themeColors.text, primary: '#202117', secondary: '#5E6056', tertiary: '#85877C', muted: '#85877C' },
+          border: { ...themeColors.border, light: 'rgba(35,38,25,0.09)', medium: 'rgba(35,38,25,0.16)' },
+          input: { ...themeColors.input, bg: '#F7F7F1', text: '#202117', placeholder: '#85877C' },
+        }
+      : themeColors;
+  const eyeColor = appearance === 'account-dark' ? '#8C8D84' : appearance === 'account-light' ? '#85877C' : undefined;
+  const usesAccountAppearance = appearance === 'account-dark' || appearance === 'account-light';
+  const actionBackgroundColor = usesAccountAppearance ? '#D5E057' : colors.text.primary;
+  const actionTextColor = usesAccountAppearance ? '#202117' : colors.bg.primary;
+  const actionFontStyle = usesAccountAppearance
+    ? { fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400' as const }
+    : { fontWeight: '600' as const };
   const queryClient = useQueryClient();
   const businessId = useAuthStore((s) => s.businessId);
   const role = useAuthStore((s) => s.currentUser?.role);
@@ -239,11 +263,11 @@ export function PrimaryEmailCard({ fieldBorderColor }: { fieldBorderColor: strin
                   }}
                   disabled={code.length !== 6 || verify.isPending}
                   className="active:opacity-80"
-                  style={{ height: 44, paddingHorizontal: 20, borderRadius: 999, backgroundColor: colors.text.primary, alignItems: 'center', justifyContent: 'center', opacity: code.length !== 6 || verify.isPending ? 0.5 : 1 }}
+                  style={{ height: 44, paddingHorizontal: 20, borderRadius: 999, backgroundColor: actionBackgroundColor, alignItems: 'center', justifyContent: 'center', opacity: code.length !== 6 || verify.isPending ? 0.5 : 1, ...(usesAccountAppearance ? { width: '100%' as const } : {}) }}
                 >
                   {verify.isPending
-                    ? <ActivityIndicator color={colors.bg.primary} />
-                    : <Text style={{ color: colors.bg.primary, fontSize: 14, fontWeight: '600' }}>Confirm email</Text>}
+                    ? <ActivityIndicator color={actionTextColor} />
+                    : <Text style={{ color: actionTextColor, fontSize: 14, ...actionFontStyle }}>Confirm email</Text>}
                 </Pressable>
                 <Pressable
                   onPress={() => {
@@ -254,7 +278,7 @@ export function PrimaryEmailCard({ fieldBorderColor }: { fieldBorderColor: strin
                   className="active:opacity-80"
                   style={{ height: 44, paddingHorizontal: 16, borderRadius: 999, borderWidth: 1, borderColor: colors.border.medium, alignItems: 'center', justifyContent: 'center', opacity: resend.isPending ? 0.6 : 1 }}
                 >
-                  <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600' }}>{resend.isPending ? 'Sending…' : 'Resend code'}</Text>
+                  <Text style={{ color: colors.text.primary, fontSize: 14, ...actionFontStyle }}>{resend.isPending ? 'Sending…' : 'Resend code'}</Text>
                 </Pressable>
                 <Pressable
                   onPress={() => {
@@ -309,7 +333,7 @@ export function PrimaryEmailCard({ fieldBorderColor }: { fieldBorderColor: strin
                 style={input}
                 selectionColor={colors.text.primary}
               />
-              <PasswordEyeToggle visible={showPassword} onToggle={() => setShowPassword((v) => !v)} />
+              <PasswordEyeToggle visible={showPassword} onToggle={() => setShowPassword((v) => !v)} color={eyeColor} />
             </View>
           </View>
           <View style={{ marginBottom: 14 }}>
@@ -330,7 +354,7 @@ export function PrimaryEmailCard({ fieldBorderColor }: { fieldBorderColor: strin
                 selectionColor={colors.text.primary}
                 onSubmitEditing={submit}
               />
-              <PasswordEyeToggle visible={showPassword} onToggle={() => setShowPassword((v) => !v)} />
+              <PasswordEyeToggle visible={showPassword} onToggle={() => setShowPassword((v) => !v)} color={eyeColor} />
             </View>
           </View>
           <Pressable
@@ -338,14 +362,18 @@ export function PrimaryEmailCard({ fieldBorderColor }: { fieldBorderColor: strin
             disabled={link.isPending || isOffline}
             className="rounded-full items-center justify-center active:opacity-80 flex-row"
             style={{
-              backgroundColor: colors.text.primary,
+              backgroundColor: actionBackgroundColor,
               height: 56,
               opacity: link.isPending || isOffline ? 0.6 : 1,
-              ...(Platform.OS === 'web' ? { width: '20%', minWidth: 220, alignSelf: 'flex-start' } : {}),
+              ...(usesAccountAppearance
+                ? { width: '100%' as const }
+                : Platform.OS === 'web'
+                  ? { width: '20%' as const, minWidth: 220, alignSelf: 'flex-start' as const }
+                  : {}),
             }}
           >
-            {link.isPending ? <ActivityIndicator color={colors.bg.primary} /> : (
-              <Text style={{ color: colors.bg.primary }} className="font-semibold text-base">Add primary email</Text>
+            {link.isPending ? <ActivityIndicator color={actionTextColor} /> : (
+              <Text style={{ color: actionTextColor, fontSize: 16, ...actionFontStyle }}>Add primary email</Text>
             )}
           </Pressable>
           <Text style={{ color: colors.text.muted, fontSize: 12, lineHeight: 18, marginTop: 10 }}>
@@ -376,7 +404,7 @@ export function PrimaryEmailCard({ fieldBorderColor }: { fieldBorderColor: strin
               >
                 {promote.isPending
                   ? <ActivityIndicator color={colors.text.primary} />
-                  : <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600' }}>Use my login email</Text>}
+                  : <Text style={{ color: colors.text.primary, fontSize: 14, ...actionFontStyle }}>Use my login email</Text>}
               </Pressable>
             </View>
           ) : null}

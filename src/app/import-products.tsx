@@ -2,18 +2,20 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, Pressable, ScrollView, ActivityIndicator, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Upload } from 'lucide-react-native';
+import { ArrowLeft, Upload, Package, Check, X } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
-import { useThemeColors } from '@/lib/theme';
-import { usePageHeadingStyle } from '@/lib/page-heading';
+import { useResolvedThemeMode, useThemeColors } from '@/lib/theme';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import useAuthStore from '@/lib/state/auth-store';
 import useFyllStore, { Product, ProductVariant, generateProductId, generateVariantBarcode } from '@/lib/state/fyll-store';
 import { parseCsv } from '@/lib/csv';
 import { getSettingsWebPanelStyles, isFromSettingsRoute } from '@/lib/settings-web-panel';
 import { useSettingsBack } from '@/lib/useSettingsBack';
+import { useTabBarHeight } from '@/lib/useTabBarHeight';
+import { FYLL_LIME, FYLL_LIME_INK, MoneyText, usePaymentsPalette } from '@/components/payments/payments-ui';
 
 type ImportRow = {
   name: string;
@@ -62,9 +64,12 @@ export default function ImportProductsScreen() {
   const { from } = useLocalSearchParams<{ from?: string | string[] }>();
   const goBack = useSettingsBack();
   const colors = useThemeColors();
-  const pageHeadingStyle = usePageHeadingStyle(useBreakpoint().isMobile);
+  const { isDesktop, isMobile } = useBreakpoint();
+  const resolvedThemeMode = useResolvedThemeMode();
+  const settingsPalette = usePaymentsPalette();
+  const tabBarHeight = useTabBarHeight();
   const openedFromSettings = isFromSettingsRoute(from);
-  const panelStyles = getSettingsWebPanelStyles(openedFromSettings, colors.bg.primary, colors.border.light);
+  const panelStyles = getSettingsWebPanelStyles(openedFromSettings, settingsPalette.page, settingsPalette.border);
   const businessId = useAuthStore((s) => s.businessId);
   const existingProducts = useFyllStore((s) => s.products);
   const productVariables = useFyllStore((s) => s.productVariables);
@@ -226,65 +231,53 @@ export default function ImportProductsScreen() {
   return (
     <View style={panelStyles.outer}>
       <View style={panelStyles.inner}>
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg.primary }}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
-        <View className="px-5 pt-5">
-          <View className="flex-row items-center mb-4">
+    <SafeAreaView style={{ flex: 1, backgroundColor: settingsPalette.page }}>
+      <LinearGradient pointerEvents="none" colors={resolvedThemeMode === 'dark' ? ['rgba(111,125,18,0.55)', 'rgba(20,20,20,0)'] : ['rgba(213,224,87,0.42)', 'rgba(244,243,235,0)']} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 360 }} />
+      <View className="flex-row items-center" style={{ minHeight: isMobile ? 66 : 58, paddingHorizontal: 10, paddingTop: isMobile ? 12 : 4, paddingBottom: 4 }}>
             <Pressable
               onPress={goBack}
-              className="w-10 h-10 rounded-xl items-center justify-center mr-3 active:opacity-50"
-              style={{ backgroundColor: 'transparent' }}
+              className="w-10 h-10 rounded-full items-center justify-center mr-3 active:opacity-50"
+              style={{ backgroundColor: settingsPalette.softFill }}
             >
-              <ArrowLeft size={20} color={colors.text.primary} strokeWidth={2} />
+              <ArrowLeft size={18} color={settingsPalette.text} strokeWidth={2.2} />
             </Pressable>
-            <Text style={{ color: colors.text.primary, ...pageHeadingStyle }}>
-              Import Products
-            </Text>
+            <View><Text style={{ color: settingsPalette.faint, fontSize: 9.5, lineHeight: 12, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Settings</Text><Text style={{ color: settingsPalette.text, fontSize: 17, lineHeight: 21, fontWeight: '600' }}>Import Products</Text></View>
+      </View>
+
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 18, paddingBottom: isDesktop ? 64 : tabBarHeight + 40 }} showsVerticalScrollIndicator={false}>
+        <View style={{ width: '100%', maxWidth: 720, alignSelf: 'center' }}>
+          <View style={{ position: 'relative', overflow: 'hidden', minHeight: 156, marginBottom: 22, padding: 20, justifyContent: 'center', borderRadius: 28, borderWidth: 1, borderColor: settingsPalette.border, backgroundColor: settingsPalette.card, shadowColor: '#000', shadowOpacity: resolvedThemeMode === 'dark' ? 0.24 : 0.07, shadowRadius: 24, shadowOffset: { width: 0, height: 10 } }}>
+            <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -44, right: -36, width: 210, height: 210, borderRadius: 105 }} />
+            <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
+            <View className="flex-row items-center" style={{ gap: 15 }}><LinearGradient colors={[FYLL_LIME, '#879400']} style={{ width: 66, height: 66, borderRadius: 22, alignItems: 'center', justifyContent: 'center' }}><Package size={28} color={FYLL_LIME_INK} strokeWidth={2.1} /></LinearGradient><View style={{ flex: 1 }}><Text style={{ color: settingsPalette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Product data</Text><MoneyText style={{ color: settingsPalette.text, fontSize: 26, lineHeight: 31 }}>CSV import</MoneyText><Text style={{ color: settingsPalette.faint, fontSize: 12.5, marginTop: 3 }}>{summary ? `${summary.totalRows} rows processed` : rows.length ? `${rows.length} rows ready` : 'Upload, preview, then import'}</Text></View></View>
           </View>
 
-          <Text style={{ color: colors.text.tertiary }} className="text-sm mb-4">
-            Upload a CSV with product_name, category, and color. We will group colors under the same product.
-          </Text>
+          {!rows.length && !summary ? <View className="rounded-3xl p-5 mb-6" style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}><Text style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '700', marginBottom: 7 }}>CSV format</Text><Text style={{ color: settingsPalette.muted, fontSize: 12.5, lineHeight: 19 }}>Include product_name and color columns. Category is optional. Rows with the same product name become colour variants of one product.</Text></View> : null}
 
-          <Pressable
+          {!summary ? <Pressable
             onPress={handlePickFile}
-            className="rounded-2xl items-center justify-center active:opacity-80"
-            style={{ backgroundColor: colors.bg.secondary, height: 56 }}
+            className="items-center justify-center active:opacity-80 mb-5"
+            style={{ minHeight: 154, padding: 24, borderRadius: 26, backgroundColor: settingsPalette.card, borderWidth: 2, borderStyle: 'dashed', borderColor: settingsPalette.nudgeBorder }}
           >
-            <View className="flex-row items-center">
-              <Upload size={18} color={colors.text.primary} strokeWidth={2} />
-              <Text style={{ color: colors.text.primary }} className="font-semibold ml-2">Choose CSV File</Text>
-            </View>
-          </Pressable>
-
-          {fileName ? (
-            <Text style={{ color: colors.text.muted }} className="text-xs mt-2">
-              Selected: {fileName}
-            </Text>
-          ) : null}
-
-          {isParsing ? (
-            <View className="mt-4">
-              <ActivityIndicator color={colors.text.primary} />
-            </View>
-          ) : null}
+            {isParsing ? <><ActivityIndicator color={settingsPalette.limeOnSurface} /><Text style={{ color: settingsPalette.faint, fontSize: 12, marginTop: 10 }}>Reading file…</Text></> : <><View className="w-14 h-14 rounded-full items-center justify-center mb-3" style={{ backgroundColor: settingsPalette.nudgeBg }}><Upload size={25} color={settingsPalette.limeOnSurface} strokeWidth={2} /></View><MoneyText style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '700' }}>{rows.length ? 'Change CSV file' : 'Choose CSV file'}</MoneyText><Text style={{ color: settingsPalette.faint, fontSize: 12, marginTop: 4 }}>{fileName || 'Select a file from your device'}</Text></>}
+          </Pressable> : null}
 
           {error ? (
-            <Text className="text-red-500 text-sm mt-3">{error}</Text>
+            <View className="rounded-2xl p-4 mb-4 flex-row items-start" style={{ backgroundColor: settingsPalette.dangerBg, borderWidth: 1, borderColor: settingsPalette.dangerBorder }}><X size={18} color={settingsPalette.danger} strokeWidth={2.2} /><Text style={{ color: settingsPalette.danger, fontSize: 12, lineHeight: 18, marginLeft: 9, flex: 1 }}>{error}</Text></View>
           ) : null}
 
           {rows.length > 0 && (
-            <View className="mt-6 rounded-2xl p-4" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
-              <Text style={{ color: colors.text.primary }} className="font-semibold mb-2">Preview</Text>
+            <View className="rounded-3xl overflow-hidden mb-5" style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+              <Text style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '700', padding: 16, borderBottomWidth: 1, borderBottomColor: settingsPalette.hairline }}>Preview</Text>
               {preview.map((row, index) => (
-                <View key={`${row.name}-${row.color}-${index}`} className="mb-2">
-                  <Text style={{ color: colors.text.secondary }} className="text-sm">
+                <View key={`${row.name}-${row.color}-${index}`} className="px-4 py-3" style={{ borderBottomWidth: 1, borderBottomColor: settingsPalette.hairline }}>
+                  <Text style={{ color: settingsPalette.textSoft, fontSize: 13 }}>
                     {row.name} • {row.color}{row.category ? ` • ${row.category}` : ''}
                   </Text>
                 </View>
               ))}
               {rows.length > preview.length && (
-                <Text style={{ color: colors.text.muted }} className="text-xs mt-2">
+                <Text style={{ color: settingsPalette.faint, fontSize: 12, padding: 14, textAlign: 'center' }}>
                   +{rows.length - preview.length} more rows
                 </Text>
               )}
@@ -295,25 +288,26 @@ export default function ImportProductsScreen() {
             <Pressable
               onPress={handleImport}
               disabled={isImporting}
-              className="mt-6 rounded-2xl items-center justify-center active:opacity-80"
-              style={{ backgroundColor: '#111111', height: 56, opacity: isImporting ? 0.6 : 1 }}
+              className="rounded-full items-center justify-center active:opacity-80"
+              style={{ backgroundColor: FYLL_LIME, height: 52, opacity: isImporting ? 0.6 : 1 }}
             >
               {isImporting ? (
-                <ActivityIndicator color="#FFFFFF" />
+                <ActivityIndicator color={FYLL_LIME_INK} />
               ) : (
-                <Text className="text-white font-semibold">Import Products</Text>
+                <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '700' }}>Import products</MoneyText>
               )}
             </Pressable>
           )}
 
           {summary && (
-            <View className="mt-6 rounded-2xl p-4" style={{ backgroundColor: colors.bg.secondary }}>
-              <Text style={{ color: colors.text.primary }} className="font-semibold mb-1">Import complete</Text>
-              <Text style={{ color: colors.text.secondary }} className="text-sm">
+            <View className="rounded-3xl p-5 items-center" style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+              <View className="w-14 h-14 rounded-full items-center justify-center mb-3" style={{ backgroundColor: settingsPalette.nudgeBg }}><Check size={27} color={settingsPalette.limeOnSurface} strokeWidth={2.5} /></View>
+              <MoneyText style={{ color: settingsPalette.text, fontSize: 22, fontWeight: '700', marginBottom: 5 }}>Import complete</MoneyText>
+              <Text style={{ color: settingsPalette.textSoft, fontSize: 13 }}>
                 {summary.totalProducts} products • {summary.totalVariants} variants
               </Text>
               {summary.skippedExisting > 0 && (
-                <Text style={{ color: colors.text.muted }} className="text-xs mt-1">
+                <Text style={{ color: settingsPalette.faint, fontSize: 12, marginTop: 5 }}>
                   {summary.skippedExisting} existing products skipped
                 </Text>
               )}

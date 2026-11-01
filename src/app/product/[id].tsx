@@ -194,6 +194,9 @@ export default function ProductDetailScreen() {
   const [isSavingStock, setIsSavingStock] = useState<boolean>(false);
   const [activityTab, setActivityTab] = useState<'all' | 'sale' | 'adj' | 'restock'>('all');
   const [openVariantMenuId, setOpenVariantMenuId] = useState<string | null>(null);
+  // The variants table needs about 780 px. A narrower card (an iPad, or a narrow window) gets compact rows instead.
+  const [variantsCardWidth, setVariantsCardWidth] = useState<number>(0);
+  const compactVariantTable = variantsCardWidth > 0 && variantsCardWidth < 780;
   const [isAddingCategory, setIsAddingCategory] = useState<boolean>(false);
   const [mobileVariantActions, setMobileVariantActions] = useState<ProductVariant | null>(null);
 
@@ -1278,7 +1281,7 @@ export default function ProductDetailScreen() {
             </View>
           </View>
 
-          <View style={{ ...cardStyle, paddingHorizontal: 20, paddingTop: 6, paddingBottom: 8, zIndex: 10 }}>
+          <View onLayout={(event) => setVariantsCardWidth(event.nativeEvent.layout.width)} style={{ ...cardStyle, paddingHorizontal: 20, paddingTop: 6, paddingBottom: 8, zIndex: 10 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 14, paddingBottom: 12 }}>
               <View style={{ gap: 2 }}>
                 <Text style={h2Style}>Variants</Text>
@@ -1292,17 +1295,38 @@ export default function ProductDetailScreen() {
               ) : null}
             </View>
             {skuWarning}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingTop: 10, paddingBottom: 8 }}>
-              <Text style={[thStyle, { flex: 1.4 }]}>Variant</Text>
-              <Text style={[thStyle, { width: 130 }]}>SKU</Text>
-              <Text style={[thStyle, { width: 90, textAlign: 'right' }]}>Sold</Text>
-              <Text style={[thStyle, { width: 128, textAlign: 'center' }]}>In stock</Text>
-              <Text style={[thStyle, { width: 130 }]}>Status</Text>
-              <View style={{ width: 32 }} />
-            </View>
+            {compactVariantTable ? null : (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingTop: 10, paddingBottom: 8 }}>
+                <Text style={[thStyle, { flex: 1.4 }]}>Variant</Text>
+                <Text style={[thStyle, { width: 130 }]}>SKU</Text>
+                <Text style={[thStyle, { width: 90, textAlign: 'right' }]}>Sold</Text>
+                <Text style={[thStyle, { width: 128, textAlign: 'center' }]}>In stock</Text>
+                <Text style={[thStyle, { width: 130 }]}>Status</Text>
+                <View style={{ width: 32 }} />
+              </View>
+            )}
             {draftVariants.map(({ variant, stock }, index) => {
               const dirty = pendingStock[variant.id] !== undefined && pendingStock[variant.id] !== variant.stock;
               const flagged = skuIssues.flagged.has(variant.id);
+              if (compactVariantTable) {
+                return (
+                  <View key={variant.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderTopWidth: 1, borderTopColor: palette.hairline, zIndex: openVariantMenuId === variant.id ? 30 : 1 }}>
+                    {renderVariantImage(variant, 44)}
+                    <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+                      <Text style={{ color: palette.text, fontSize: 14, fontWeight: '500' }} numberOfLines={1}>{variantDisplayName(variant)}</Text>
+                      <Text style={{ color: flagged ? palette.warn : palette.muted, fontSize: 12 }} numberOfLines={1}>{variant.sku?.toUpperCase() || '—'} · {soldByVariant.get(variant.id) ?? 0} sold</Text>
+                      <StockStatusLabel status={variantStatuses[index]} palette={palette} size={12} />
+                    </View>
+                    {renderStepper(stock, () => stepDraft(variant.id, variant.stock, -1), () => stepDraft(variant.id, variant.stock, 1), { dirty, ink: stock <= 0 ? palette.danger : palette.text })}
+                    <View style={{ width: 32, position: 'relative' }}>
+                      <Pressable accessibilityRole="button" accessibilityLabel="Variant actions" onPress={() => setOpenVariantMenuId((previous) => (previous === variant.id ? null : variant.id))} style={(state) => ({ width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: isHovered(state) ? palette.softFill : 'transparent' })}>
+                        <MoreHorizontal size={17} color={palette.faint} strokeWidth={2.4} />
+                      </Pressable>
+                      {openVariantMenuId === variant.id ? renderMenu(variantMenuItems(variant), () => setOpenVariantMenuId(null), 38) : null}
+                    </View>
+                  </View>
+                );
+              }
               return (
                 <View key={variant.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 14, height: 64, borderTopWidth: 1, borderTopColor: palette.hairline, zIndex: openVariantMenuId === variant.id ? 30 : 1 }}>
                   <View style={{ flex: 1.4, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 12 }}>

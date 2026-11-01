@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Platform, View, Text, Pressable, TextInput, Switch, useWindowDimensions } from 'react-native';
+import { Platform, View, Text, Pressable, TextInput, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Check } from 'lucide-react-native';
-import { useThemeColors } from '@/lib/theme';
+import { useResolvedThemeMode, useThemeColors } from '@/lib/theme';
+import { LinearGradient } from 'expo-linear-gradient';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import * as Haptics from 'expo-haptics';
 import { supabase } from '@/lib/supabase';
@@ -12,11 +13,15 @@ import { useSettingsBack } from '@/lib/useSettingsBack';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
 import useFyllStore from '@/lib/state/fyll-store';
 import useAuthStore from '@/lib/state/auth-store';
+import { FYLL_LIME, FYLL_LIME_INK, MoneyText, usePaymentsPalette } from '@/components/payments/payments-ui';
+import { LimeToggle } from '@/components/settings/LimeToggle';
 
 export default function EmailSettingsScreen() {
   const { from } = useLocalSearchParams<{ from?: string | string[] }>();
   const goBack = useSettingsBack();
   const colors = useThemeColors();
+  const palette = usePaymentsPalette();
+  const resolvedThemeMode = useResolvedThemeMode();
   const openedFromSettings = isFromSettingsRoute(from);
   const panelStyles = getSettingsWebPanelStyles(
     openedFromSettings,
@@ -117,16 +122,16 @@ export default function EmailSettingsScreen() {
   }, [emailSettingsSignature, businessId, saveGlobalSettings]);
 
   const primaryPillButtonStyle = {
-    backgroundColor: colors.text.primary,
+    backgroundColor: FYLL_LIME,
     borderRadius: 999,
   } as const;
   const primaryPillTextStyle = {
-    color: colors.bg.primary,
+    color: FYLL_LIME_INK,
   } as const;
   const fieldHeight = 56;
   const settingsContentWidthStyle = (
     isWebDesktop
-      ? ({ width: '100%', maxWidth: 1440, alignSelf: 'flex-start' } as const)
+      ? ({ width: '100%', maxWidth: 960, alignSelf: 'center' } as const)
       : ({ width: '100%' } as const)
   );
 
@@ -206,10 +211,10 @@ export default function EmailSettingsScreen() {
   return (
     <View style={panelStyles.outer}>
       <View style={panelStyles.inner}>
-        <SafeAreaView className="flex-1" edges={['top']}>
+        <SafeAreaView className="flex-1" edges={['top']} style={{ backgroundColor: palette.page }}>
+          <LinearGradient pointerEvents="none" colors={resolvedThemeMode === 'dark' ? ['rgba(111,125,18,0.55)', 'rgba(20,20,20,0)'] : ['rgba(213,224,87,0.42)', 'rgba(244,243,235,0)']} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: isWebDesktop ? 250 : 360 }} />
           <View
-            className={isWebDesktop ? 'pl-5 pr-7 pt-5 pb-4 flex-row items-center justify-between' : 'px-5 pt-4 pb-3 flex-row items-center justify-between'}
-            style={{ borderBottomWidth: 1, borderBottomColor: colors.border.light }}
+            style={{ minHeight: isWebDesktop ? 78 : 66, paddingHorizontal: isWebDesktop ? 20 : 10, paddingTop: isWebDesktop ? 20 : 12, paddingBottom: isWebDesktop ? 10 : 4, flexDirection: 'row', alignItems: 'center' }}
           >
             <View style={settingsContentWidthStyle} className="flex-row items-center justify-between">
               <View className="flex-row items-center flex-1">
@@ -218,37 +223,23 @@ export default function EmailSettingsScreen() {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                     goBack();
                   }}
-                  className="w-10 h-10 rounded-xl items-center justify-center mr-3 active:opacity-50"
-                  style={{ backgroundColor: 'transparent' }}
+                  className="w-10 h-10 rounded-full items-center justify-center mr-3 active:opacity-50"
+                  style={{ backgroundColor: palette.softFill }}
                 >
                   <ArrowLeft size={20} color={colors.text.primary} strokeWidth={2} />
                 </Pressable>
-                <View className="flex-1">
-                  <Text
-                    style={{
-                      color: colors.text.primary,
-                      fontSize: Platform.OS === 'web' ? 14 : 20,
-                      lineHeight: Platform.OS === 'web' ? 18 : 24,
-                      fontWeight: '600',
-                    }}
-                  >
-                    Emails
-                  </Text>
-                  {saveStatus === 'saved' && (
-                    <Text style={{ color: '#10B981' }} className="text-xs mt-0.5">Saved</Text>
-                  )}
-                  {saveStatus === 'error' && (
-                    <Text style={{ color: '#EF4444' }} className="text-xs mt-0.5">Save failed</Text>
-                  )}
-                </View>
+                <View className="flex-1"><Text style={{ color: palette.faint, fontSize: 9.5, lineHeight: 12, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Settings</Text><Text style={{ color: palette.text, fontSize: 17, lineHeight: 21, fontWeight: '600' }}>Emails</Text></View>
               </View>
 
               {saveStatus === 'saving' ? (
                 <Text style={{ color: colors.text.tertiary }} className="text-sm">Saving…</Text>
               ) : saveStatus === 'saved' ? (
-                <View className="flex-row items-center">
+                <View className="flex-row items-center" style={{ height: 28, paddingHorizontal: 10, borderRadius: 999, backgroundColor: palette.nudgeBg, gap: 5 }}>
                   <Check size={14} color="#10B981" strokeWidth={2.5} />
+                  <Text style={{ color: palette.limeOnSurface, fontSize: 11, fontWeight: '700' }}>Saved</Text>
                 </View>
+              ) : saveStatus === 'error' ? (
+                <Text style={{ color: palette.danger, fontSize: 11, fontWeight: '600' }}>Save failed</Text>
               ) : null}
             </View>
           </View>
@@ -260,12 +251,24 @@ export default function EmailSettingsScreen() {
             extraScrollHeight={100}
           >
             <View
-              style={settingsContentWidthStyle}
-              className={isWebDesktop ? 'pl-5 pr-7 pt-4' : 'px-5 pt-5'}
+              style={[settingsContentWidthStyle, { paddingHorizontal: isWebDesktop ? 24 : 16, paddingTop: 18 }]}
             >
+              <View style={{ position: 'relative', overflow: 'hidden', minHeight: isWebDesktop ? 116 : 156, marginBottom: 20, padding: isWebDesktop ? 18 : 20, justifyContent: 'center', borderRadius: 28, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, shadowColor: '#000', shadowOpacity: resolvedThemeMode === 'dark' ? 0.24 : 0.07, shadowRadius: 24, shadowOffset: { width: 0, height: 10 } }}>
+                <LinearGradient pointerEvents="none" colors={[palette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -44, right: -36, width: 210, height: 210, borderRadius: 105 }} />
+                <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
+                <View>
+                  <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Customer communication</Text>
+                  <MoneyText style={{ color: palette.text, fontSize: 26, lineHeight: 31 }}>Email automation</MoneyText>
+                  <Text style={{ color: palette.faint, fontSize: 12.5, marginTop: 3 }}>Keep customers updated automatically</Text>
+                </View>
+              </View>
+
+              <Text style={{ color: palette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Email settings</Text>
+              <View>
+              <View>
               <View
                 className="rounded-3xl p-5 mb-5"
-                style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+                style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}
               >
                 <View className="flex-row items-center justify-between">
                   <View className="flex-1 pr-4">
@@ -276,21 +279,23 @@ export default function EmailSettingsScreen() {
                       Email the customer whenever staff change an order's status from this app, the same way status updates from the storefront already do.
                     </Text>
                   </View>
-                  <Switch
+                  <LimeToggle
                     value={orderStatusEmailEnabled}
                     onValueChange={(value) => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                       setOrderStatusEmailEnabled(value);
                     }}
-                    trackColor={{ false: colors.bg.secondary, true: colors.text.primary }}
-                    thumbColor="#FFFFFF"
+                    inactiveColor={palette.softFill}
+                    inactiveBorderColor={palette.outline}
                   />
                 </View>
               </View>
+              </View>
 
+              <View>
               <View
                 className="rounded-3xl p-5 mb-5"
-                style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+                style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}
               >
                 <View className="flex-row items-center justify-between mb-1">
                   <View className="flex-1 pr-4">
@@ -301,24 +306,24 @@ export default function EmailSettingsScreen() {
                       Send a delivery confirmation email after dispatch, then resend it only if the customer has not replied or says the order is still pending delivery.
                     </Text>
                   </View>
-                  <Switch
+                  <LimeToggle
                     value={deliveryFollowUpEnabled}
                     onValueChange={(value) => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                       setDeliveryFollowUpEnabled(value);
                     }}
-                    trackColor={{ false: colors.bg.secondary, true: colors.text.primary }}
-                    thumbColor="#FFFFFF"
+                    inactiveColor={palette.softFill}
+                    inactiveBorderColor={palette.outline}
                   />
                 </View>
 
                 {deliveryFollowUpEnabled ? (
                   <>
-                    <View style={{ height: 1, backgroundColor: colors.border.light, marginTop: 14, marginBottom: 18 }} />
+                    <View style={{ height: 1, backgroundColor: palette.hairline, marginTop: 14, marginBottom: 18 }} />
 
                     <View
                       className="rounded-2xl p-4"
-                      style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}
+                      style={{ backgroundColor: palette.inset, borderWidth: 1, borderColor: palette.border }}
                     >
                       <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">
                         Timing
@@ -342,9 +347,9 @@ export default function EmailSettingsScreen() {
                             <View
                               className="rounded-2xl px-4 flex-1"
                               style={{
-                                backgroundColor: colors.input.bg,
+                                backgroundColor: palette.card,
                                 borderWidth: 1,
-                                borderColor: colors.border.light,
+                                borderColor: palette.outline,
                                 minHeight: fieldHeight,
                                 justifyContent: 'center',
                               }}
@@ -369,8 +374,8 @@ export default function EmailSettingsScreen() {
                                 keyboardType="number-pad"
                                 placeholder="7"
                                 placeholderTextColor={colors.input.placeholder}
-                                style={{ color: colors.input.text, fontSize: 16, fontWeight: '600' }}
-                                selectionColor={colors.text.primary}
+                                style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}
+                                selectionColor={FYLL_LIME}
                               />
                             </View>
                             <Text style={{ color: colors.text.secondary }} className="ml-3 text-sm font-medium">days</Text>
@@ -385,9 +390,9 @@ export default function EmailSettingsScreen() {
                             <View
                               className="rounded-2xl px-4 flex-1"
                               style={{
-                                backgroundColor: colors.input.bg,
+                                backgroundColor: palette.card,
                                 borderWidth: 1,
-                                borderColor: colors.border.light,
+                                borderColor: palette.outline,
                                 minHeight: fieldHeight,
                                 justifyContent: 'center',
                               }}
@@ -412,8 +417,8 @@ export default function EmailSettingsScreen() {
                                 keyboardType="number-pad"
                                 placeholder="7"
                                 placeholderTextColor={colors.input.placeholder}
-                                style={{ color: colors.input.text, fontSize: 16, fontWeight: '600' }}
-                                selectionColor={colors.text.primary}
+                                style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}
+                                selectionColor={FYLL_LIME}
                               />
                             </View>
                             <Text style={{ color: colors.text.secondary }} className="ml-3 text-sm font-medium">days</Text>
@@ -424,7 +429,7 @@ export default function EmailSettingsScreen() {
 
                     <View
                       className="rounded-2xl p-4 mt-4"
-                      style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}
+                      style={{ backgroundColor: palette.inset, borderWidth: 1, borderColor: palette.border }}
                     >
                       <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">
                         Email identity
@@ -436,16 +441,16 @@ export default function EmailSettingsScreen() {
 
                     <View
                       className="rounded-2xl px-4 py-3 mt-4"
-                      style={{ backgroundColor: '#EFF6FF', borderWidth: 1, borderColor: '#BFDBFE' }}
+                      style={{ backgroundColor: palette.nudgeBg, borderWidth: 1, borderColor: palette.nudgeBorder }}
                     >
-                      <Text style={{ color: '#1D4ED8' }} className="text-xs leading-5">
+                      <Text style={{ color: palette.nudgeSub }} className="text-xs leading-5">
                         FYLL keeps the original order status until the customer replies. If the customer confirms delivery, the order moves to Delivered. If the customer says it has not arrived yet, the order moves to Pending Delivery and follow-up reminders continue on your schedule.
                       </Text>
                     </View>
 
                     <View
                       className="rounded-2xl p-4 mt-4"
-                      style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}
+                      style={{ backgroundColor: palette.inset, borderWidth: 1, borderColor: palette.border }}
                     >
                       <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">
                         Temporary test emails
@@ -461,9 +466,9 @@ export default function EmailSettingsScreen() {
                         <View
                           className="rounded-2xl px-4 justify-center"
                           style={{
-                            backgroundColor: colors.input.bg,
+                            backgroundColor: palette.card,
                             borderWidth: 1,
-                            borderColor: colors.border.light,
+                            borderColor: palette.outline,
                             minHeight: fieldHeight,
                           }}
                         >
@@ -474,8 +479,8 @@ export default function EmailSettingsScreen() {
                             keyboardType="email-address"
                             placeholder="test@yourdomain.com"
                             placeholderTextColor={colors.input.placeholder}
-                            style={{ color: colors.input.text, fontSize: 16, fontWeight: '500' }}
-                            selectionColor={colors.text.primary}
+                            style={{ color: palette.text, fontSize: 14, fontWeight: '500' }}
+                            selectionColor={FYLL_LIME}
                           />
                         </View>
                       </View>
@@ -528,7 +533,7 @@ export default function EmailSettingsScreen() {
 
                     <View
                       className="rounded-2xl p-4 mt-4"
-                      style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}
+                      style={{ backgroundColor: palette.inset, borderWidth: 1, borderColor: palette.border }}
                     >
                       <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">
                         Test business notifications
@@ -583,6 +588,8 @@ export default function EmailSettingsScreen() {
                     </View>
                   </>
                 ) : null}
+              </View>
+              </View>
               </View>
 
               <View className="h-24" />

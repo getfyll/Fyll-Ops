@@ -4,8 +4,9 @@ import { Eye, EyeOff } from 'lucide-react-native';
 import { useThemeColors } from '@/lib/theme';
 
 // The show/hide eye that sits at the end of a password field.
-export function PasswordEyeToggle({ visible, onToggle }: { visible: boolean; onToggle: () => void }) {
+export function PasswordEyeToggle({ visible, onToggle, color }: { visible: boolean; onToggle: () => void; color?: string }) {
   const colors = useThemeColors();
+  const iconColor = color ?? colors.text.tertiary;
   return (
     <Pressable
       onPress={onToggle}
@@ -16,8 +17,8 @@ export function PasswordEyeToggle({ visible, onToggle }: { visible: boolean; onT
       style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }}
     >
       {visible
-        ? <EyeOff size={20} color={colors.text.tertiary} />
-        : <Eye size={20} color={colors.text.tertiary} />}
+        ? <EyeOff size={20} color={iconColor} />
+        : <Eye size={20} color={iconColor} />}
     </Pressable>
   );
 }

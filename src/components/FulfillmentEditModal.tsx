@@ -52,9 +52,10 @@ export function FulfillmentEditModal({
       orderTypeId,
       orderTypeName: order.orderTypeName,
       deliveryState: order.deliveryState,
+      fulfillmentMethod: order.fulfillmentMethod,
     },
     orderTimelineSettings
-  ), [order.deliveryState, order.orderTypeName, orderTimelineSettings, orderTypeId]);
+  ), [order.deliveryState, order.fulfillmentMethod, order.orderTypeName, orderTimelineSettings, orderTypeId]);
 
   const selectedOrderType = resolvedTimeline.orderType;
   const startedAt = useMemo(() => {

@@ -338,10 +338,11 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
         orderTypeId,
         orderTypeName: order?.orderTypeName,
         deliveryState,
+        fulfillmentMethod: order?.fulfillmentMethod,
       },
       orderTimelineSettings
     )
-  ), [deliveryState, order?.orderTypeName, orderTimelineSettings, orderTypeId]);
+  ), [deliveryState, order?.fulfillmentMethod, order?.orderTypeName, orderTimelineSettings, orderTypeId]);
 
   const orderTimelinePreviewDate = useMemo(() => {
     const baseDate = orderDateType === 'today' ? new Date() : selectedDate;
@@ -825,6 +826,7 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
           orderTypeId,
           orderTypeName: order.orderTypeName,
           deliveryState,
+          fulfillmentMethod: order.fulfillmentMethod,
         },
         orderTimelineSettings
       );
