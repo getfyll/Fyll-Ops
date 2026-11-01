@@ -90,7 +90,7 @@ export function PaymentsCollectedCard({
               >
                 <Text style={{ flex: 1, minWidth: 0, color: palette.text, fontSize: 13, fontWeight: '500' }} numberOfLines={1}>{formatPersonName(payment.name)}</Text>
                 <MoneyText style={{ color: palette.text, fontSize: 13 }} numberOfLines={1}>{formatCurrency(payment.amount)}</MoneyText>
-                <Text style={{ width: 72, textAlign: 'right', color: tone.ink, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>{payment.status}</Text>
+                <Text style={{ width: 96, textAlign: 'right', color: tone.ink, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>{payment.status}</Text>
               </View>
             );
           })}

@@ -16,6 +16,7 @@ import { SalesBarChart } from '@/components/stats/SalesBarChart';
 import { InteractiveLineChart, type LineChartDatum } from '@/components/stats/InteractiveLineChart';
 import { BreakdownTable } from '@/components/stats/BreakdownTable';
 import { getRefundDate, getRefundedAmount } from '@/lib/analytics-utils';
+import { PeriodTabs } from '@/components/finance/PeriodTabs';
 
 type FinanceMetricKey = 'revenue' | 'expenses' | 'procurement' | 'net-profit';
 type TimeRange = '7d' | 'month' | '30d' | 'year';
@@ -665,22 +666,8 @@ export default function FinanceMetricDetailScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
         >
-          <View className="flex-row mt-4">
-            {RANGE_OPTIONS.map((option) => (
-              <Pressable
-                key={option.key}
-                onPress={() => setTimeRange(option.key)}
-                className="mr-2 px-4 py-2 rounded-full"
-                style={{ backgroundColor: timeRange === option.key ? colors.bar : colors.bg.input }}
-              >
-                <Text
-                  style={{ color: timeRange === option.key ? colors.bg.screen : colors.text.tertiary }}
-                  className="text-sm font-semibold"
-                >
-                  {option.label}
-                </Text>
-              </Pressable>
-            ))}
+          <View style={{ marginTop: 16 }}>
+            <PeriodTabs value={timeRange} onChange={setTimeRange} />
           </View>
 
           <View className="rounded-2xl p-5 mt-4" style={colors.getCardStyle()}>

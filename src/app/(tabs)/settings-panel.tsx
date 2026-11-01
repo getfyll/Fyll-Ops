@@ -34,11 +34,11 @@ export default function SettingsPanelScreen() {
 
   switch (panelName) {
     case 'team':
-      return <TeamManagementScreen />;
+      return <TeamManagementScreen embeddedInSettings />;
     case 'invitations':
-      return <InvitationsScreen />;
+      return <InvitationsScreen embeddedInSettings />;
     case 'business-settings':
-      return <BusinessSettingsScreen />;
+      return <BusinessSettingsScreen embeddedInSettings />;
     case 'storefront-settings':
       return <StorefrontSettingsScreen embeddedInSettings />;
     case 'woocommerce-settings':
@@ -50,7 +50,7 @@ export default function SettingsPanelScreen() {
     case 'whatsapp-settings':
       return <WhatsAppSettingsScreen />;
     case 'account-settings':
-      return <AccountSettingsScreen />;
+      return <AccountSettingsScreen embeddedInSettings />;
     case 'payment-accounts':
       return <PaymentAccountsScreen embeddedInSettings />;
     case 'debug-business':

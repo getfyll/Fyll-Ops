@@ -125,6 +125,7 @@ export default function PaymentAccountsScreen({ embeddedInSettings = false }: Pa
   const tabBarHeight = useTabBarHeight();
   const openedFromSettings = isFromSettingsRoute(from) || embeddedInSettings;
   const panelStyles = getSettingsWebPanelStyles(openedFromSettings, palette.ground, palette.edge);
+  const isEmbeddedWeb = Platform.OS === 'web' && !isMobile && openedFromSettings;
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
   const currentUserRole = useAuthStore((s) => s.currentUser?.role ?? 'staff');
   const currentUserName = useAuthStore((s) => s.currentUser?.name ?? null);
@@ -234,7 +235,7 @@ export default function PaymentAccountsScreen({ embeddedInSettings = false }: Pa
     await persist(accounts.map((entry) => ({ ...entry, isDefault: entry.id === account.id })));
   };
 
-  const contentMaxWidth = isDesktop || openedFromSettings ? 720 : 520;
+  const contentMaxWidth = isEmbeddedWeb ? 1120 : isDesktop || openedFromSettings ? 720 : 520;
   const formComplete = Boolean(form.bankName.trim() && form.accountName.trim() && form.accountNumber.trim());
   const defaultAccount = accounts.find((account) => account.isDefault) ?? accounts[0] ?? null;
   const cardStyle: ViewStyle = { borderRadius: 26, borderWidth: 1, borderColor: palette.edge, backgroundColor: palette.surface };
@@ -258,7 +259,7 @@ export default function PaymentAccountsScreen({ embeddedInSettings = false }: Pa
   return (
     <View style={panelStyles.outer}>
       <SafeAreaView style={[panelStyles.inner, { flex: 1, backgroundColor: palette.ground }]} edges={['top']}>
-        <LinearGradient pointerEvents="none" colors={[palette.topGlow, palette.topGlowEnd]} locations={[0, 1]} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: openedFromSettings ? 390 : 300 }} />
+        {!isEmbeddedWeb ? <LinearGradient pointerEvents="none" colors={[palette.topGlow, palette.topGlowEnd]} locations={[0, 1]} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 300 }} /> : null}
 
         <View style={{ minHeight: isMobile ? 66 : openedFromSettings ? 58 : 56, paddingHorizontal: openedFromSettings ? 20 : 10, paddingTop: isMobile ? 12 : 4, paddingBottom: 4, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
           <Pressable onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); goBack(); }} accessibilityRole="button" accessibilityLabel="Back" hitSlop={4} style={({ pressed }) => ({ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.navButton, opacity: pressed ? 0.62 : 1 })}>
@@ -282,11 +283,11 @@ export default function PaymentAccountsScreen({ embeddedInSettings = false }: Pa
           extraScrollHeight={110}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={{ position: 'relative', overflow: 'hidden', minHeight: 160, marginBottom: 24, padding: 20, borderRadius: 28, borderWidth: 1, borderColor: palette.edge, backgroundColor: palette.surface, shadowColor: '#000000', shadowOpacity: isDark ? 0.24 : 0.07, shadowRadius: 24, shadowOffset: { width: 0, height: 10 } }}>
-            <LinearGradient pointerEvents="none" colors={[palette.limeWashStrong, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -40, right: -34, width: 190, height: 190, borderRadius: 95 }} />
+          <View style={{ position: 'relative', overflow: 'hidden', minHeight: 160, marginBottom: 24, padding: 20, borderRadius: 28, borderWidth: 1, borderColor: palette.edge, backgroundColor: palette.surface, ...(!isEmbeddedWeb ? { shadowColor: '#000000', shadowOpacity: isDark ? 0.24 : 0.07, shadowRadius: 24, shadowOffset: { width: 0, height: 10 } } : {}) }}>
+            {!isEmbeddedWeb ? <LinearGradient pointerEvents="none" colors={[palette.limeWashStrong, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -40, right: -34, width: 190, height: 190, borderRadius: 95 }} /> : null}
             <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, borderBottomLeftRadius: 3, borderBottomRightRadius: 3, backgroundColor: palette.lime }} />
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 15 }}>
-              <LinearGradient colors={[palette.lime, palette.limeDeep]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 66, height: 66, borderRadius: 22, alignItems: 'center', justifyContent: 'center' }}><Landmark size={28} color="#202117" strokeWidth={2.1} /></LinearGradient>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: isEmbeddedWeb ? 0 : 15 }}>
+              {!isEmbeddedWeb ? <LinearGradient colors={[palette.lime, palette.limeDeep]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 66, height: 66, borderRadius: 22, alignItems: 'center', justifyContent: 'center' }}><Landmark size={28} color="#202117" strokeWidth={2.1} /></LinearGradient> : null}
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Payment destinations</Text>
                 <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_800ExtraBold', fontSize: 29, lineHeight: 34, letterSpacing: -0.8, marginTop: 2 }}>{accounts.length} {accounts.length === 1 ? 'account' : 'accounts'}</Text>
@@ -296,7 +297,7 @@ export default function PaymentAccountsScreen({ embeddedInSettings = false }: Pa
             {!showForm ? (
               <Pressable onPress={openAddForm} style={({ pressed }) => ({ height: 44, marginTop: 18, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, backgroundColor: palette.lime, opacity: pressed ? 0.78 : 1 })}>
                 <Plus size={16} color="#202117" strokeWidth={2.5} />
-                <Text style={{ color: '#202117', fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: innerSettingsFont(15, compactTypography) }}>Add bank account</Text>
+                <Text style={{ color: '#202117', fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: 14 }}>Add bank account</Text>
               </Pressable>
             ) : null}
           </View>

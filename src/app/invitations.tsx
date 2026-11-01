@@ -6,7 +6,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useFonts, BricolageGrotesque_700Bold, BricolageGrotesque_800ExtraBold } from '@expo-google-fonts/bricolage-grotesque';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
-import { ArrowLeft, Crown, Copy, Send, Mail, Shield, Clock3, CheckCircle2, Ban, Sparkles, RefreshCcw } from 'lucide-react-native';
+import { ArrowLeft, Copy, Send, Mail, Shield, Clock3, CheckCircle2, Ban, Sparkles, RefreshCcw } from 'lucide-react-native';
 import { useResolvedThemeMode, useThemeColors } from '@/lib/theme';
 import useAuthStore, { type TeamRole, type InviteStatus } from '@/lib/state/auth-store';
 import { supabase } from '@/lib/supabase';
@@ -66,7 +66,9 @@ const mapInviteRow = (row: Record<string, unknown>): InviteHistoryItem => ({
   emailSentAt: typeof row.email_sent_at === 'string' ? row.email_sent_at : (typeof row.emailSentAt === 'string' ? row.emailSentAt : undefined),
 });
 
-export default function InvitationsScreen() {
+type InvitationsScreenProps = { embeddedInSettings?: boolean };
+
+export default function InvitationsScreen({ embeddedInSettings = false }: InvitationsScreenProps) {
   const { from } = useLocalSearchParams<{ from?: string | string[] }>();
   const goBack = useSettingsBack();
   const colors = useThemeColors();
@@ -101,12 +103,12 @@ export default function InvitationsScreen() {
 
   const isAdmin = currentUser?.role === 'admin';
   const openedFromSettings = Array.isArray(from) ? from[0] === 'settings' : from === 'settings';
-  const showWebSettingsPanel = Platform.OS === 'web' && openedFromSettings;
+  const showWebSettingsPanel = Platform.OS === 'web' && !isMobile && (openedFromSettings || embeddedInSettings);
   const isWebDesktop = Platform.OS === 'web' && isDesktop;
   const useDesktopInviteTable = Platform.OS === 'web' && isDesktop;
   const desktopContentWrapStyle = (
     isWebDesktop
-      ? ({ width: '100%', maxWidth: 720, alignSelf: 'center' } as const)
+      ? ({ width: '100%', maxWidth: showWebSettingsPanel ? 1120 : 720, alignSelf: 'center' } as const)
       : undefined
   );
   const screenOuterStyle = {
@@ -367,7 +369,7 @@ export default function InvitationsScreen() {
         <Stack.Screen options={{ headerShown: false }} />
         <View style={screenInnerStyle}>
         <SafeAreaView className="flex-1" edges={['top']} style={{ backgroundColor: palette.ground }}>
-          <LinearGradient pointerEvents="none" colors={[palette.topGlow, palette.topGlowEnd]} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 300 }} />
+          {!showWebSettingsPanel ? <LinearGradient pointerEvents="none" colors={[palette.topGlow, palette.topGlowEnd]} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 300 }} /> : null}
           <View style={desktopContentWrapStyle}>
             <View
               className="flex-row items-center"
@@ -410,7 +412,7 @@ export default function InvitationsScreen() {
       <Stack.Screen options={{ headerShown: false }} />
       <View style={screenInnerStyle}>
       <SafeAreaView className="flex-1" edges={['top']} style={{ backgroundColor: palette.ground }}>
-        <LinearGradient pointerEvents="none" colors={[palette.topGlow, palette.topGlowEnd]} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: showWebSettingsPanel ? 390 : 300 }} />
+        {!showWebSettingsPanel ? <LinearGradient pointerEvents="none" colors={[palette.topGlow, palette.topGlowEnd]} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 300 }} /> : null}
         <View>
           <View style={desktopContentWrapStyle}>
             <View
@@ -468,15 +470,11 @@ export default function InvitationsScreen() {
                   colors={[palette.surface, palette.surface]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
-                  style={{ position: 'relative', overflow: 'hidden', borderRadius: 28, padding: 20, marginBottom: 28, borderWidth: 1, borderColor: palette.edge, shadowColor: '#000000', shadowOpacity: isDark ? 0.24 : 0.07, shadowRadius: 24, shadowOffset: { width: 0, height: 10 } }}
+                  style={{ position: 'relative', overflow: 'hidden', borderRadius: 28, padding: 20, marginBottom: 28, borderWidth: 1, borderColor: palette.edge }}
                 >
-                  <LinearGradient pointerEvents="none" colors={[palette.limeWash, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -44, right: -36, width: 210, height: 210, borderRadius: 105 }} />
                   <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, borderBottomLeftRadius: 3, borderBottomRightRadius: 3, backgroundColor: palette.lime }} />
                   <View className="flex-row items-start justify-between">
                     <View className="flex-row items-center flex-1 mr-3">
-                      <LinearGradient colors={[palette.lime, palette.limeDeep]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 58, height: 58, borderRadius: 19, alignItems: 'center', justifyContent: 'center', marginRight: 13 }}>
-                        <Crown size={24} color="#202117" strokeWidth={2} />
-                      </LinearGradient>
                       <View className="flex-1">
                         <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Founder referrals</Text>
                         <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_800ExtraBold', fontSize: 26, lineHeight: 31, letterSpacing: -0.7 }}>VIP Access</Text>
@@ -592,10 +590,10 @@ export default function InvitationsScreen() {
                   {isGenerating ? (
                     <View className="flex-row items-center">
                       <ActivityIndicator size="small" color="#202117" />
-                      <Text style={{ color: '#202117', fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400' }} className="text-sm ml-2">Generating...</Text>
+                      <Text style={{ color: '#202117', fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: 16 }} className="ml-2">Generating...</Text>
                     </View>
                   ) : (
-                    <Text style={{ color: '#202117', fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400' }} className="text-sm">Generate invite code</Text>
+                    <Text style={{ color: '#202117', fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: 16 }}>Generate invite code</Text>
                   )}
                 </Pressable>
               </View>

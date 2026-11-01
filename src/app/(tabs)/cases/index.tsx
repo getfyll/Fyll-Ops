@@ -34,7 +34,8 @@ import { parseCaseDraft, type CaseDraftData } from '@/lib/ai-case-parser';
 import { SearchClearButton } from '@/components/SearchClearButton';
 import { EmptyState } from '@/components/EmptyState';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
-import { FYLL_LIME, FYLL_LIME_INK } from '@/components/payments/payments-ui';
+import { FYLL_LIME, FYLL_LIME_INK, MoneyText } from '@/components/payments/payments-ui';
+import { FilterButton } from '@/components/filter-ui';
 
 const getCaseDayKey = (caseItem: Case) => {
   const date = new Date(caseItem.createdAt);
@@ -544,28 +545,15 @@ export default function CasesScreen() {
                 />
                 <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
               </View>
-              <Pressable
+              <FilterButton
+                count={activeFilterCount}
                 onPress={() => {
                   if (Platform.OS !== 'web') {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   }
                   setShowFilterMenu(true);
                 }}
-                className="rounded-full items-center justify-center active:opacity-70 flex-row px-4"
-                style={{
-                  height: 48,
-                  backgroundColor: activeFilterCount > 0 ? FYLL_LIME : colors.bg.secondary,
-                  borderWidth: activeFilterCount > 0 ? 0 : 0.5,
-                  borderColor: separatorColor,
-                }}
-              >
-                <Filter size={18} color={activeFilterCount > 0 ? FYLL_LIME_INK : colors.text.tertiary} strokeWidth={2} />
-                {activeFilterCount > 0 && (
-                  <Text style={{ color: FYLL_LIME_INK }} className="font-semibold text-sm ml-1.5">
-                    {activeFilterCount}
-                  </Text>
-                )}
-              </Pressable>
+              />
             </View>
           </View>
 
@@ -674,7 +662,7 @@ export default function CasesScreen() {
               </View>
 
               <View className="flex-row items-center justify-between px-5 pb-4" style={{ borderBottomWidth: 0.5, borderBottomColor: separatorColor }}>
-                <Text style={{ color: colors.text.primary }} className="font-bold text-lg">Filter Cases</Text>
+                <MoneyText style={{ color: colors.text.primary, fontSize: 20, letterSpacing: -0.4 }}>Filter Cases</MoneyText>
                 <Pressable
                   onPress={() => setShowFilterMenu(false)}
                   className="w-8 h-8 rounded-full items-center justify-center active:opacity-50"
@@ -718,8 +706,8 @@ export default function CasesScreen() {
                           </Text>
                         </View>
                         {isSelected && (
-                          <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: colors.accent.primary }}>
-                            <Check size={12} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={3} />
+                          <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: FYLL_LIME }}>
+                            <Check size={12} color={FYLL_LIME_INK} strokeWidth={3} />
                           </View>
                         )}
                       </Pressable>
@@ -736,9 +724,9 @@ export default function CasesScreen() {
                       setShowFilterMenu(false);
                     }}
                     className="rounded-full items-center justify-center active:opacity-80"
-                    style={{ height: 50, backgroundColor: colors.accent.primary }}
+                    style={{ height: 50, backgroundColor: FYLL_LIME }}
                   >
-                    <Text style={{ color: isDark ? '#000000' : '#FFFFFF' }} className="font-semibold">
+                    <Text style={{ color: FYLL_LIME_INK, fontSize: 15, fontWeight: '700' }}>
                       Apply
                     </Text>
                   </Pressable>

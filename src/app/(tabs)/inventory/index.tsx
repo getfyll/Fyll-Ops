@@ -9,6 +9,7 @@ import { useThemeColors } from '@/lib/theme';
 import { usePageHeadingStyle } from '@/lib/page-heading';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { MOBILE_FILTER_SHEET } from '@/lib/mobile-filter-sheet';
+import { FilterButton } from '@/components/filter-ui';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
 import { getActiveSplitCardStyle } from '@/lib/selection-style';
 import { SplitViewLayout } from '@/components/SplitViewLayout';
@@ -660,29 +661,6 @@ export default function InventoryScreen() {
           palette={palette}
         />
       ))}
-      {!isWebDesktop ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Sort and category"
-          onPress={() => setShowFilterMenu(true)}
-          style={(state) => ({
-            flexShrink: 0,
-            height: 36,
-            paddingHorizontal: 14,
-            borderRadius: 999,
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 6,
-            borderWidth: 1,
-            borderColor: activeFilterCount > 0 ? FYLL_LIME : palette.outline,
-            backgroundColor: activeFilterCount > 0 ? FYLL_LIME : 'transparent',
-            opacity: state.pressed ? 0.7 : 1,
-          })}
-        >
-          <ArrowDownAZ size={14} color={activeFilterCount > 0 ? FYLL_LIME_INK : palette.textSoft} strokeWidth={2.2} />
-          <Text style={{ color: activeFilterCount > 0 ? FYLL_LIME_INK : palette.textSoft, fontSize: 13, fontWeight: '600' }}>Sort</Text>
-        </Pressable>
-      ) : null}
     </ScrollView>
   );
 
@@ -1075,7 +1053,10 @@ export default function InventoryScreen() {
             </View>
           ) : (
             <>
-              {searchField}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={{ flex: 1, minWidth: 0 }}>{searchField}</View>
+                <FilterButton count={activeFilterCount} onPress={() => setShowFilterMenu(true)} />
+              </View>
               {filterPillRow}
             </>
           )}
@@ -1311,7 +1292,7 @@ export default function InventoryScreen() {
 
               {/* Header */}
               <View className="flex-row items-center justify-between px-5 pb-4" style={{ borderBottomWidth: 0.5, borderBottomColor: separatorColor, paddingTop: isWebDesktop ? 20 : 0 }}>
-                <Text style={{ color: colors.text.primary }} className="font-bold text-lg">Filter & Sort</Text>
+                <MoneyText style={{ color: colors.text.primary, fontSize: 20, letterSpacing: -0.4 }}>Filter & Sort</MoneyText>
                 <Pressable
                   onPress={() => setShowFilterMenu(false)}
                   className="w-8 h-8 rounded-full items-center justify-center active:opacity-50"
@@ -1379,8 +1360,8 @@ export default function InventoryScreen() {
                           <Text style={{ color: colors.text.muted }} className="text-xs mt-0.5">{option.description}</Text>
                         </View>
                         {inventoryFilter === option.key && (
-                          <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: colors.accent.primary }}>
-                            <Check size={12} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={3} />
+                          <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: FYLL_LIME }}>
+                            <Check size={12} color={FYLL_LIME_INK} strokeWidth={3} />
                           </View>
                         )}
                       </Pressable>
@@ -1442,8 +1423,8 @@ export default function InventoryScreen() {
                       <Text style={{ color: colors.text.primary }} className="font-medium text-sm">Name (A-Z)</Text>
                     </View>
                     {sortBy === 'name-asc' && (
-                      <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: colors.accent.primary }}>
-                        <Check size={12} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={3} />
+                      <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: FYLL_LIME }}>
+                        <Check size={12} color={FYLL_LIME_INK} strokeWidth={3} />
                       </View>
                     )}
                   </Pressable>
@@ -1461,8 +1442,8 @@ export default function InventoryScreen() {
                       <Text style={{ color: colors.text.primary }} className="font-medium text-sm">Name (Z-A)</Text>
                     </View>
                     {sortBy === 'name-desc' && (
-                      <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: colors.accent.primary }}>
-                        <Check size={12} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={3} />
+                      <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: FYLL_LIME }}>
+                        <Check size={12} color={FYLL_LIME_INK} strokeWidth={3} />
                       </View>
                     )}
                   </Pressable>
@@ -1480,8 +1461,8 @@ export default function InventoryScreen() {
                       <Text style={{ color: colors.text.primary }} className="font-medium text-sm">Newest First</Text>
                     </View>
                     {sortBy === 'newest' && (
-                      <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: colors.accent.primary }}>
-                        <Check size={12} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={3} />
+                      <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: FYLL_LIME }}>
+                        <Check size={12} color={FYLL_LIME_INK} strokeWidth={3} />
                       </View>
                     )}
                   </Pressable>
@@ -1499,8 +1480,8 @@ export default function InventoryScreen() {
                       <Text style={{ color: colors.text.primary }} className="font-medium text-sm">Oldest First</Text>
                     </View>
                     {sortBy === 'oldest' && (
-                      <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: colors.accent.primary }}>
-                        <Check size={12} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={3} />
+                      <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: FYLL_LIME }}>
+                        <Check size={12} color={FYLL_LIME_INK} strokeWidth={3} />
                       </View>
                     )}
                   </Pressable>
@@ -1518,8 +1499,8 @@ export default function InventoryScreen() {
                       <Text style={{ color: colors.text.primary }} className="font-medium text-sm">Stock: Low to High</Text>
                     </View>
                     {sortBy === 'stock-low' && (
-                      <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: colors.accent.primary }}>
-                        <Check size={12} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={3} />
+                      <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: FYLL_LIME }}>
+                        <Check size={12} color={FYLL_LIME_INK} strokeWidth={3} />
                       </View>
                     )}
                   </Pressable>
@@ -1537,8 +1518,8 @@ export default function InventoryScreen() {
                       <Text style={{ color: colors.text.primary }} className="font-medium text-sm">Stock: High to Low</Text>
                     </View>
                     {sortBy === 'stock-high' && (
-                      <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: colors.accent.primary }}>
-                        <Check size={12} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={3} />
+                      <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: FYLL_LIME }}>
+                        <Check size={12} color={FYLL_LIME_INK} strokeWidth={3} />
                       </View>
                     )}
                   </Pressable>
@@ -1555,10 +1536,10 @@ export default function InventoryScreen() {
                     style={{
                       height: MOBILE_FILTER_SHEET.actionHeight,
                       borderRadius: MOBILE_FILTER_SHEET.actionRadius,
-                      backgroundColor: colors.accent.primary,
+                      backgroundColor: FYLL_LIME,
                     }}
                   >
-                    <Text style={{ color: isDark ? '#000000' : '#FFFFFF' }} className="font-semibold">Apply</Text>
+                    <Text style={{ color: FYLL_LIME_INK, fontSize: 15, fontWeight: '700' }}>Apply</Text>
                   </Pressable>
                 </View>
 

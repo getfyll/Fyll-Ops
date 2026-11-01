@@ -381,6 +381,22 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="orders"
+        options={{
+          title: 'Orders',
+          tabBarIcon: ({ color, focused }) => <TabBarIcon Icon={ShoppingCart} color={color} focused={focused} label="Orders" isMobile={isMobile} />,
+          tabBarBadge: newOrdersCount > 0 ? (newOrdersCount > 99 ? '99+' : newOrdersCount) : undefined,
+          tabBarBadgeStyle: {
+            // Fyll lime with dark text: new orders are good news, so they are not drawn in alert red or blue.
+            backgroundColor: '#D5E057',
+            color: '#1E1E1E',
+            fontSize: 10,
+            fontWeight: '700',
+          },
+          headerShown: false,
+        }}
+      />
+      <Tabs.Screen
         name="inventory"
         options={{
           title: 'Inventory',
@@ -396,21 +412,6 @@ export default function TabLayout() {
           headerShown: false,
           // Keep Services out of bottom nav on phone + tablet; desktop uses sidebar.
           href: isMobile || isTablet ? null : undefined,
-        }}
-      />
-      <Tabs.Screen
-        name="orders"
-        options={{
-          title: 'Orders',
-          tabBarIcon: ({ color, focused }) => <TabBarIcon Icon={ShoppingCart} color={color} focused={focused} label="Orders" isMobile={isMobile} />,
-          tabBarBadge: newOrdersCount > 0 ? (newOrdersCount > 99 ? '99+' : newOrdersCount) : undefined,
-          tabBarBadgeStyle: {
-            backgroundColor: '#3B82F6',
-            color: '#FFFFFF',
-            fontSize: 10,
-            fontWeight: '700',
-          },
-          headerShown: false,
         }}
       />
       <Tabs.Screen

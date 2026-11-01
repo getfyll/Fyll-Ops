@@ -41,7 +41,9 @@ const roleIcons: Record<TeamRole, React.ReactNode> = {
   staff: <UserIcon size={16} color="#3B82F6" strokeWidth={2} />,
 };
 
-export default function TeamManagementScreen() {
+type TeamManagementScreenProps = { embeddedInSettings?: boolean };
+
+export default function TeamManagementScreen({ embeddedInSettings = false }: TeamManagementScreenProps) {
   const { from } = useLocalSearchParams<{ from?: string | string[] }>();
   const goBack = useSettingsBack();
   const colors = useThemeColors();
@@ -107,11 +109,11 @@ export default function TeamManagementScreen() {
 
   const isAdmin = currentUser?.role === 'admin';
   const openedFromSettings = Array.isArray(from) ? from[0] === 'settings' : from === 'settings';
-  const showWebSettingsPanel = Platform.OS === 'web' && openedFromSettings;
+  const showWebSettingsPanel = Platform.OS === 'web' && !isMobile && (openedFromSettings || embeddedInSettings);
   const isWebDesktop = Platform.OS === 'web' && isDesktop;
   const desktopContentWrapStyle = (
     isWebDesktop
-      ? ({ width: '100%', maxWidth: 720, alignSelf: 'center' } as const)
+      ? ({ width: '100%', maxWidth: showWebSettingsPanel ? 1120 : 720, alignSelf: 'center' } as const)
       : undefined
   );
   const screenOuterStyle = {
@@ -397,7 +399,7 @@ export default function TeamManagementScreen() {
     <View className="flex-1" style={screenOuterStyle}>
       <View style={screenInnerStyle}>
       <SafeAreaView className="flex-1" edges={['top']} style={{ backgroundColor: palette.ground }}>
-        <LinearGradient pointerEvents="none" colors={[palette.topGlow, palette.topGlowEnd]} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: showWebSettingsPanel ? 390 : 300 }} />
+        {!showWebSettingsPanel ? <LinearGradient pointerEvents="none" colors={[palette.topGlow, palette.topGlowEnd]} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 300 }} /> : null}
         {/* Header */}
         <View>
           <View style={desktopContentWrapStyle}>
@@ -438,8 +440,7 @@ export default function TeamManagementScreen() {
               <View style={{ position: 'relative', overflow: 'hidden', minHeight: 184, marginBottom: 28, padding: 20, borderRadius: 28, borderWidth: 1, borderColor: palette.edge, backgroundColor: palette.surface, shadowColor: '#000000', shadowOpacity: isDark ? 0.24 : 0.07, shadowRadius: 24, shadowOffset: { width: 0, height: 10 } }}>
                 <LinearGradient pointerEvents="none" colors={[palette.limeWash, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -44, right: -36, width: 210, height: 210, borderRadius: 105 }} />
                 <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, borderBottomLeftRadius: 3, borderBottomRightRadius: 3, backgroundColor: palette.lime }} />
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 15 }}>
-                  <LinearGradient colors={[palette.lime, palette.limeDeep]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 66, height: 66, borderRadius: 22, alignItems: 'center', justifyContent: 'center' }}><UserCog size={28} color="#202117" strokeWidth={2.1} /></LinearGradient>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Workspace access</Text>
                     <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_800ExtraBold', fontSize: 29, lineHeight: 34, letterSpacing: -0.8, marginTop: 2 }}>{teamMembers.length} {teamMembers.length === 1 ? 'member' : 'members'}</Text>

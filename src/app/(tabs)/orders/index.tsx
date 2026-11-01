@@ -13,6 +13,7 @@ import { useThemeColors } from '@/lib/theme';
 import { usePageHeadingStyle } from '@/lib/page-heading';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { MOBILE_FILTER_SHEET } from '@/lib/mobile-filter-sheet';
+import { FilterButton } from '@/components/filter-ui';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
 import { getActiveSplitCardStyle } from '@/lib/selection-style';
 import { SplitViewLayout } from '@/components/SplitViewLayout';
@@ -27,7 +28,7 @@ import { useFonts, BricolageGrotesque_600SemiBold, BricolageGrotesque_700Bold } 
 import { SearchClearButton } from '@/components/SearchClearButton';
 import { EmptyState } from '@/components/EmptyState';
 import { supabaseData } from '@/lib/supabase/data';
-import { FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, usePaymentsPalette } from '@/components/payments/payments-ui';
+import { FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, MoneyText, usePaymentsPalette } from '@/components/payments/payments-ui';
 
 // Hairline separator colors
 const SEPARATOR_LIGHT = '#EEEEEE';
@@ -802,12 +803,12 @@ export default function OrdersScreen() {
               <TextInput placeholder="Search orders, customers, products" placeholderTextColor={colors.input.placeholder} value={searchQuery} onChangeText={setSearchQuery} style={{ flex: 1, marginLeft: 10, color: colors.input.text, fontSize: 14.5 }} selectionColor={colors.text.primary} />
               <SearchClearButton visible={Boolean(searchQuery.trim())} onPress={() => setSearchQuery('')} />
             </View>
-            {!isWebDesktop ? <Pressable onPress={() => setShowFilterMenu(true)} style={{ width: 48, height: 48, borderRadius: 999, borderWidth: 1, borderColor: activeFilterCount ? FYLL_LIME : colors.border.light, backgroundColor: activeFilterCount ? FYLL_LIME : colors.bg.card, alignItems: 'center', justifyContent: 'center' }}><Filter size={18} color={activeFilterCount ? FYLL_LIME_INK : colors.text.muted} strokeWidth={2} /></Pressable> : null}
+            {!isWebDesktop ? <FilterButton count={activeFilterCount} onPress={() => setShowFilterMenu(true)} /> : null}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={isWebDesktop ? { flex: 1 } : { position: 'absolute', width: 0, height: 0 }} contentContainerStyle={{ gap: 8 }}>
               <Pressable onPress={() => setSelectedStatus(null)} style={{ height: 36, paddingHorizontal: 14, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: selectedStatus === null ? FYLL_LIME : 'transparent', borderWidth: 1, borderColor: selectedStatus === null ? FYLL_LIME : colors.border.medium }}><Text style={{ color: selectedStatus === null ? FYLL_LIME_INK : colors.text.secondary, fontSize: 12, fontWeight: '600' }}>All <Text style={{ opacity: 0.55 }}>{orders.length}</Text></Text></Pressable>
               {sortedOrderStatuses.map((status) => <Pressable key={status.id} onPress={() => setSelectedStatus(status.name)} style={{ height: 36, paddingHorizontal: 14, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: selectedStatus === status.name ? FYLL_LIME : 'transparent', borderWidth: 1, borderColor: selectedStatus === status.name ? FYLL_LIME : colors.border.medium }}><Text style={{ color: selectedStatus === status.name ? FYLL_LIME_INK : colors.text.secondary, fontSize: 12, fontWeight: '600' }}>{status.name} <Text style={{ opacity: 0.55 }}>{statusCounts[status.name] ?? 0}</Text></Text></Pressable>)}
             </ScrollView>
-            {isWebDesktop ? <Pressable onPress={() => setShowFilterMenu(true)} style={{ width: 40, height: 40, borderRadius: 999, borderWidth: 1, borderColor: activeFilterCount ? FYLL_LIME : colors.border.medium, backgroundColor: activeFilterCount ? FYLL_LIME : 'transparent', alignItems: 'center', justifyContent: 'center' }}><Filter size={17} color={activeFilterCount ? FYLL_LIME_INK : colors.text.secondary} strokeWidth={2} /></Pressable> : null}
+            {isWebDesktop ? <FilterButton count={activeFilterCount} size={40} onPress={() => setShowFilterMenu(true)} /> : null}
           </View>
           {!isWebDesktop ? <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginRight: -horizontalPadding }} contentContainerStyle={{ gap: 8, paddingRight: horizontalPadding }}><Pressable onPress={() => setSelectedStatus(null)} style={{ height: 36, paddingHorizontal: 14, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: selectedStatus === null ? FYLL_LIME : 'transparent', borderWidth: 1, borderColor: selectedStatus === null ? FYLL_LIME : colors.border.medium }}><Text style={{ color: selectedStatus === null ? FYLL_LIME_INK : colors.text.secondary, fontSize: 12, fontWeight: '600' }}>All <Text style={{ opacity: 0.55 }}>{orders.length}</Text></Text></Pressable>{sortedOrderStatuses.map((status) => <Pressable key={status.id} onPress={() => setSelectedStatus(status.name)} style={{ height: 36, paddingHorizontal: 14, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: selectedStatus === status.name ? FYLL_LIME : 'transparent', borderWidth: 1, borderColor: selectedStatus === status.name ? FYLL_LIME : colors.border.medium }}><Text style={{ color: selectedStatus === status.name ? FYLL_LIME_INK : colors.text.secondary, fontSize: 12, fontWeight: '600' }}>{status.name} <Text style={{ opacity: 0.55 }}>{statusCounts[status.name] ?? 0}</Text></Text></Pressable>)}</ScrollView> : null}
         </View>
@@ -1045,7 +1046,7 @@ export default function OrdersScreen() {
 
               {/* Header */}
               <View className="flex-row items-center justify-between px-5 pb-4" style={{ borderBottomWidth: 0.5, borderBottomColor: separatorColor, paddingTop: isWebDesktop ? 20 : 0 }}>
-                <Text style={{ color: colors.text.primary }} className="font-bold text-lg">Filter & Sort</Text>
+                <MoneyText style={{ color: colors.text.primary, fontSize: 20, letterSpacing: -0.4 }}>Filter & Sort</MoneyText>
                 <Pressable
                   onPress={() => setShowFilterMenu(false)}
                   className="w-8 h-8 rounded-full items-center justify-center active:opacity-50"
@@ -1072,8 +1073,8 @@ export default function OrdersScreen() {
                       <Text style={{ color: colors.text.primary }} className="font-medium text-sm">All Orders</Text>
                     </View>
                     {selectedStatus === null && (
-                      <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: colors.accent.primary }}>
-                        <Check size={12} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={3} />
+                      <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: FYLL_LIME }}>
+                        <Check size={12} color={FYLL_LIME_INK} strokeWidth={3} />
                       </View>
                     )}
                   </Pressable>
@@ -1096,8 +1097,8 @@ export default function OrdersScreen() {
                         <Text style={{ color: colors.text.primary }} className="font-medium text-sm">{status.name}</Text>
                       </View>
                       {selectedStatus === status.name && (
-                        <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: colors.accent.primary }}>
-                          <Check size={12} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={3} />
+                        <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: FYLL_LIME }}>
+                          <Check size={12} color={FYLL_LIME_INK} strokeWidth={3} />
                         </View>
                       )}
                     </Pressable>
@@ -1121,8 +1122,8 @@ export default function OrdersScreen() {
                         <Text style={{ color: colors.text.primary }} className="font-medium text-sm">All Sources</Text>
                       </View>
                       {selectedSource === null && (
-                        <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: colors.accent.primary }}>
-                          <Check size={12} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={3} />
+                        <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: FYLL_LIME }}>
+                          <Check size={12} color={FYLL_LIME_INK} strokeWidth={3} />
                         </View>
                       )}
                     </Pressable>
@@ -1141,8 +1142,8 @@ export default function OrdersScreen() {
                           <Text style={{ color: colors.text.primary }} className="font-medium text-sm">{sourceOption}</Text>
                         </View>
                         {selectedSource === sourceOption && (
-                          <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: colors.accent.primary }}>
-                            <Check size={12} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={3} />
+                          <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: FYLL_LIME }}>
+                            <Check size={12} color={FYLL_LIME_INK} strokeWidth={3} />
                           </View>
                         )}
                       </Pressable>
@@ -1167,8 +1168,8 @@ export default function OrdersScreen() {
                       <Text style={{ color: colors.text.primary }} className="font-medium text-sm">Newest First</Text>
                     </View>
                     {sortBy === 'newest' && (
-                      <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: colors.accent.primary }}>
-                        <Check size={12} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={3} />
+                      <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: FYLL_LIME }}>
+                        <Check size={12} color={FYLL_LIME_INK} strokeWidth={3} />
                       </View>
                     )}
                   </Pressable>
@@ -1186,8 +1187,8 @@ export default function OrdersScreen() {
                       <Text style={{ color: colors.text.primary }} className="font-medium text-sm">Oldest First</Text>
                     </View>
                     {sortBy === 'oldest' && (
-                      <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: colors.accent.primary }}>
-                        <Check size={12} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={3} />
+                      <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: FYLL_LIME }}>
+                        <Check size={12} color={FYLL_LIME_INK} strokeWidth={3} />
                       </View>
                     )}
                   </Pressable>
@@ -1205,8 +1206,8 @@ export default function OrdersScreen() {
                       <Text style={{ color: colors.text.primary }} className="font-medium text-sm">Customer (A-Z)</Text>
                     </View>
                     {sortBy === 'name-asc' && (
-                      <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: colors.accent.primary }}>
-                        <Check size={12} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={3} />
+                      <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: FYLL_LIME }}>
+                        <Check size={12} color={FYLL_LIME_INK} strokeWidth={3} />
                       </View>
                     )}
                   </Pressable>
@@ -1224,8 +1225,8 @@ export default function OrdersScreen() {
                       <Text style={{ color: colors.text.primary }} className="font-medium text-sm">Customer (Z-A)</Text>
                     </View>
                     {sortBy === 'name-desc' && (
-                      <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: colors.accent.primary }}>
-                        <Check size={12} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={3} />
+                      <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: FYLL_LIME }}>
+                        <Check size={12} color={FYLL_LIME_INK} strokeWidth={3} />
                       </View>
                     )}
                   </Pressable>
@@ -1243,8 +1244,8 @@ export default function OrdersScreen() {
                       <Text style={{ color: colors.text.primary }} className="font-medium text-sm">Amount: High to Low</Text>
                     </View>
                     {sortBy === 'amount-high' && (
-                      <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: colors.accent.primary }}>
-                        <Check size={12} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={3} />
+                      <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: FYLL_LIME }}>
+                        <Check size={12} color={FYLL_LIME_INK} strokeWidth={3} />
                       </View>
                     )}
                   </Pressable>
@@ -1262,8 +1263,8 @@ export default function OrdersScreen() {
                       <Text style={{ color: colors.text.primary }} className="font-medium text-sm">Amount: Low to High</Text>
                     </View>
                     {sortBy === 'amount-low' && (
-                      <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: colors.accent.primary }}>
-                        <Check size={12} color={isDark ? '#000000' : '#FFFFFF'} strokeWidth={3} />
+                      <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: FYLL_LIME }}>
+                        <Check size={12} color={FYLL_LIME_INK} strokeWidth={3} />
                       </View>
                     )}
                   </Pressable>
@@ -1280,10 +1281,10 @@ export default function OrdersScreen() {
                     style={{
                       height: MOBILE_FILTER_SHEET.actionHeight,
                       borderRadius: MOBILE_FILTER_SHEET.actionRadius,
-                      backgroundColor: colors.accent.primary,
+                      backgroundColor: FYLL_LIME,
                     }}
                   >
-                    <Text style={{ color: isDark ? '#000000' : '#FFFFFF' }} className="font-semibold">Apply</Text>
+                    <Text style={{ color: FYLL_LIME_INK, fontSize: 15, fontWeight: '700' }}>Apply</Text>
                   </Pressable>
                 </View>
 

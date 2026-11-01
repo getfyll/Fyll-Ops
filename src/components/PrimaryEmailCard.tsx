@@ -150,8 +150,13 @@ export function PrimaryEmailCard({ fieldBorderColor, appearance = 'default' }: {
   // This login is already a primary account (it was made one, or signed up as one).
   if (accountQuery.data === true) {
     return (
-      <View style={{ marginBottom: 32 }}>
-        <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase mb-3 tracking-wider">
+      <View style={{ marginBottom: usesAccountAppearance ? 26 : 32 }}>
+        <Text
+          style={usesAccountAppearance
+            ? { color: colors.text.tertiary, fontFamily: 'DMSans_700Bold', fontSize: 11, lineHeight: 14, letterSpacing: 1.4, textTransform: 'uppercase', marginLeft: 6, marginBottom: 10 }
+            : { color: colors.text.tertiary }}
+          className={usesAccountAppearance ? undefined : 'text-xs font-semibold uppercase mb-3 tracking-wider'}
+        >
           Primary email
         </Text>
         {messageBox}
@@ -204,11 +209,16 @@ export function PrimaryEmailCard({ fieldBorderColor, appearance = 'default' }: {
   const input = { flex: 1, color: colors.input.text, fontSize: 16, marginLeft: 12 };
 
   return (
-    <View style={{ marginBottom: 32 }}>
-      <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase mb-3 tracking-wider">
+    <View style={{ marginBottom: usesAccountAppearance ? 26 : 32 }}>
+      <Text
+          style={usesAccountAppearance
+            ? { color: colors.text.tertiary, fontFamily: 'DMSans_700Bold', fontSize: 11, lineHeight: 14, letterSpacing: 1.4, textTransform: 'uppercase', marginLeft: 6, marginBottom: 10 }
+            : { color: colors.text.tertiary }}
+          className={usesAccountAppearance ? undefined : 'text-xs font-semibold uppercase mb-3 tracking-wider'}
+        >
         Primary email
       </Text>
-      <Text style={{ color: colors.text.secondary, fontSize: 13, lineHeight: 19, marginBottom: 14 }}>
+      <Text style={{ color: colors.text.secondary, fontSize: 13, lineHeight: 19, marginBottom: 14, marginLeft: usesAccountAppearance ? 6 : 0 }}>
         Your primary email is the owner's own sign-in for every Fyll product, and can own more than one business. Your work login keeps working as it does today.
       </Text>
 

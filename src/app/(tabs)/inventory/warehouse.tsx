@@ -1506,7 +1506,7 @@ export default function WarehouseScreen() {
         </View>
       </Modal>
       {!isWebDesktop ? (
-        <InventoryMobileFab currentSection="warehouse" lowerBy={44} />
+        <InventoryMobileFab currentSection="warehouse" />
       ) : null}
     </SafeAreaView>
   );

@@ -9,7 +9,6 @@ import {
   TrendingDown,
   ShoppingCart,
   BarChart3,
-  Scan,
   Plus,
   ArrowUpRight,
   ChevronRight,
@@ -76,6 +75,10 @@ import { PaymentsCollectedCard } from '@/components/home/PaymentsCollectedCard';
 import { StorefrontCard } from '@/components/home/StorefrontCard';
 import { MilestoneGate } from '@/components/milestones/MilestoneGate';
 import { OnboardingChecklistCard, type OnboardingStep } from '@/components/home/OnboardingChecklistCard';
+import { getEnabledFeatureSearchItems } from '@/lib/feature-search';
+import { GlobalSearch } from '@/components/search/GlobalSearch';
+import { QuickActionsSheet } from '@/components/home/QuickActionsSheet';
+import { getQuickActionDefs } from '@/lib/quick-actions';
 import { POLL_MS } from '@/lib/polling';
 import { EmptyLine, HomeCard, HomeCardHeader, HomeLink, HomeRow, KpiStrip, StatusText, HOME_BUTTON_TEXT_STYLE, HOME_GAP, type KpiItem } from '@/components/home/home-ui';
 import useWhatsNewStore from '@/lib/state/whats-new-store';
@@ -287,6 +290,30 @@ function PrintQueueBanner({
 }
 
 // Notification Bell Component
+// Opens the search over orders, customers, products and pages. Sits beside the bell on phones and tablets.
+function HeaderSearchButton({ onPress }: { onPress: () => void }) {
+  const colors = useThemeColors();
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel="Search"
+      style={{
+        width: 44,
+        height: 44,
+        borderRadius: 14,
+        backgroundColor: colors.bg.card,
+        borderWidth: 1,
+        borderColor: colors.border.light,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <Search size={20} color={colors.text.primary} strokeWidth={2} />
+    </Pressable>
+  );
+}
+
 function NotificationBell({ count, onPress }: { count: number; onPress: () => void }) {
   const colors = useThemeColors();
   return (
@@ -361,47 +388,8 @@ function WebFeatureSearchMenu() {
   const [query, setQuery] = useState('');
   const dropdownWidth = 390;
   const isDark = colors.bg.primary === '#111111';
-  const featureItems = [
-    { label: 'Dashboard', description: 'Home overview and quick actions', route: '/(tabs)', Icon: BarChart3, keywords: 'home overview dashboard' },
-    { label: 'New Order', description: 'Create a customer order', route: '/new-order', Icon: Plus, keywords: 'create order sales checkout' },
-    { label: 'Orders', description: 'Search, filter, and manage orders', route: '/(tabs)/orders', Icon: ShoppingCart, keywords: 'orders status customer sales' },
-    { label: 'Inventory', description: 'Products, services, stock, barcode labels', route: '/(tabs)/inventory', Icon: Package, keywords: 'products stock inventory barcode labels' },
-    { label: 'Warehouse', description: 'Warehouse items and stock counts', route: '/(tabs)/inventory/warehouse', Icon: Package, keywords: 'warehouse bins supplies stock' },
-    { label: 'Delivery', description: 'Dispatch tracking and shipping labels', route: '/(tabs)/deliveries', Icon: Truck, keywords: 'delivery dispatch shipping courier label' },
-    { label: 'Fyll Print', description: 'Shipping and inventory print queues', route: '/fyll-print', Icon: Printer, keywords: 'print label queue barcode shipping' },
-    { label: 'Returns', description: 'Return requests and workflows', route: '/returns', Icon: RotateCcw, keywords: 'returns refund exchange customer proof' },
-    { label: 'Cases', description: 'Support cases and customer issues', route: '/(tabs)/cases', Icon: FileText, keywords: 'cases support issues complaints' },
-    { label: 'Customers', description: 'Customer profiles and history', route: '/(tabs)/customers', Icon: Users, keywords: 'customers contacts profiles' },
-    { label: 'Announcements', description: 'Compose customer announcements', route: '/(tabs)/announcements', Icon: Megaphone, keywords: 'announcements email customers broadcast' },
-    { label: 'Announcement Setup', description: 'Email template, sender, and reply-to settings', route: '/(tabs)/announcements?announcementSection=setup', Icon: Settings, keywords: 'announcement setup email template sender reply to' },
-    { label: 'Threads', description: 'Team conversations', route: '/(tabs)/threads', Icon: MessageCircle, keywords: 'threads comments messages collaboration' },
-    { label: 'Tasks', description: 'Assigned work and reminders', route: '/(tabs)/tasks', Icon: ClipboardList, keywords: 'tasks reminders assignments' },
-    { label: 'Finance', description: 'Revenue, expenses, refunds, procurement', route: '/(tabs)/finance', Icon: DollarSign, keywords: 'finance revenue expenses refunds procurement salary' },
-    { label: 'Insights', description: 'Performance analytics', route: '/(tabs)/insights', Icon: BarChart3, keywords: 'insights analytics reports stats' },
-    { label: 'Business Settings', description: 'Business profile, links, and operations settings', route: '/business-settings', Icon: Settings, keywords: 'settings business links return tracking delivery confirmation' },
-    { label: 'WooCommerce Settings', description: 'Website store integration settings', route: '/woocommerce-settings', Icon: Settings, keywords: 'woocommerce website integration sync' },
-    { label: 'Import Products', description: 'Upload product CSV data', route: '/import-products', Icon: Package, keywords: 'import csv products upload' },
-  ];
   const normalizedQuery = query.trim().toLowerCase();
-  const featureForRoute = (route: string) => {
-    if (route.includes('/deliveries')) return 'delivery' as const;
-    if (route.includes('/fyll-print')) return 'fyllPrint' as const;
-    if (route.includes('/returns')) return 'returns' as const;
-    if (route.includes('/cases')) return 'cases' as const;
-    if (route.includes('/announcements')) return 'announcements' as const;
-    if (route.includes('/threads')) return 'threads' as const;
-    if (route.includes('/tasks')) return 'tasks' as const;
-    if (route.includes('/finance')) return 'finance' as const;
-    if (route.includes('/insights')) return 'insights' as const;
-    if (route.includes('/woocommerce-settings')) return 'woocommerce' as const;
-    return null;
-  };
-  const enabledFeatureItems = featureItems.filter((item) => {
-    const feature = featureForRoute(item.route);
-    if (!feature) return true;
-    if (feature === 'woocommerce' && !isBusinessFeatureEnabled(featureAccess, 'additionalIntegrations')) return false;
-    return isBusinessFeatureEnabled(featureAccess, feature);
-  });
+  const enabledFeatureItems = getEnabledFeatureSearchItems(featureAccess);
   const visibleItems = normalizedQuery
     ? enabledFeatureItems.filter((item) => {
         const searchable = `${item.label} ${item.description} ${item.keywords}`.toLowerCase();
@@ -1339,6 +1327,8 @@ export default function DashboardScreen() {
   const queryClient = useQueryClient();
   const eventReminderTriggerKeyRef = useRef<string | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showGlobalSearch, setShowGlobalSearch] = useState(false);
+  const [showQuickActions, setShowQuickActions] = useState(false);
   const [orderNotificationsSeenAt, setOrderNotificationsSeenAt] = useState(0);
   const [markAllToast, setMarkAllToast] = useState<string | null>(null);
   const markAllToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1796,9 +1786,8 @@ export default function DashboardScreen() {
     });
     return { today, week, awaiting };
   }, [homePaymentsQuery.data, pendingPaymentCount, socialCheckoutDraftsQuery.data]);
-  // Staff see the latest few payments on the card instead of having to open the page.
+  // The card lists the 3 most recent payments, pending ones included, so it never sits half empty.
   const recentPayments = useMemo(() => {
-    if (userRole !== 'staff') return undefined;
     const label = (status?: string) => String(status ?? '').trim().replace(/[_-]+/g, ' ').replace(/^\w/, (c) => c.toUpperCase()) || 'Pending';
     const rows = (homePaymentsQuery.data ?? []).map((payment) => ({
       id: payment.id,
@@ -1808,20 +1797,21 @@ export default function DashboardScreen() {
       // When the payment came in, not when it was last edited, so old payments don't jump to the top.
       at: new Date(payment.createdAt ?? payment.updatedAt ?? 0).getTime() || 0,
     }));
-    // Fyll Checkout payments live in their own list; only count ones that actually came in.
+    // Social Checkout links live in their own list. Paid, proof-submitted and still-waiting links all count; rejected,
+    // cancelled and expired ones do not.
     (socialCheckoutDraftsQuery.data ?? []).forEach((draft) => {
       const status = getSocialCheckoutEffectiveStatus(draft);
-      if (status !== 'verified' && status !== 'payment_submitted') return;
+      if (status !== 'verified' && status !== 'payment_submitted' && status !== 'awaiting_payment') return;
       rows.push({
         id: `checkout-${draft.id}`,
         name: draft.customerName?.trim() || 'Customer',
         amount: Number(draft.amount) || 0,
-        status: status === 'verified' ? 'Verified' : 'Proof submitted',
+        status: status === 'verified' ? 'Verified' : status === 'payment_submitted' ? 'Proof submitted' : 'Pending',
         at: new Date(draft.submittedAt ?? draft.createdAt ?? 0).getTime() || 0,
       });
     });
     return rows.sort((a, b) => b.at - a.at).slice(0, 3);
-  }, [homePaymentsQuery.data, socialCheckoutDraftsQuery.data, userRole]);
+  }, [homePaymentsQuery.data, socialCheckoutDraftsQuery.data]);
   // Pending = not yet verified or rejected, from the last 3 days (payments awaiting proof or approval).
   const pendingPaymentsRecentCount = useMemo(() => {
     const since = Date.now() - 3 * 24 * 60 * 60 * 1000;
@@ -1977,6 +1967,8 @@ export default function DashboardScreen() {
     dispatch: 0,
     delivered: 0,
   };
+
+  const quickActions = useMemo(() => getQuickActionDefs({ role: userRole, financeEnabled: canUseFinance }), [userRole, canUseFinance]);
 
   const handleQuickAction = (route: string) => {
     if (Platform.OS !== 'web') {
@@ -2543,10 +2535,13 @@ export default function DashboardScreen() {
                   {firstName ? `${greeting}, ${firstName}` : greeting}
                 </Text>
               </View>
-              <NotificationBell
-                count={unreadNotificationCount}
-                onPress={() => setShowNotifications(true)}
-              />
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <HeaderSearchButton onPress={() => setShowGlobalSearch(true)} />
+                <NotificationBell
+                  count={unreadNotificationCount}
+                  onPress={() => setShowNotifications(true)}
+                />
+              </View>
             </View>
           </View>
           <NotificationPanel
@@ -2647,25 +2642,6 @@ export default function DashboardScreen() {
               {renderMostSold(5, (id) => `/product/${id}`)}
 
               {renderSalesBySource()}
-
-              <View style={{ flexDirection: 'row', gap: HOME_GAP, paddingBottom: 8 }}>
-                <Pressable
-                  onPress={() => handleQuickAction('/new-order')}
-                  className="active:opacity-80"
-                  style={{ flex: 1, height: 48, borderRadius: 999, backgroundColor: FYLL_LIME, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}
-                >
-                  <Plus size={18} color={FYLL_LIME_INK} strokeWidth={2.4} />
-                  <Text style={[HOME_BUTTON_TEXT_STYLE, { color: FYLL_LIME_INK }]}>New order</Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => handleQuickAction('/scan')}
-                  className="active:opacity-80"
-                  style={{ flex: 1, height: 48, borderRadius: 999, borderWidth: 1, borderColor: palette.outline, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}
-                >
-                  <Scan size={18} color={palette.text} strokeWidth={2.2} />
-                  <Text style={[HOME_BUTTON_TEXT_STYLE, { color: palette.text }]}>Scan item</Text>
-                </Pressable>
-              </View>
             </View>
           </View>
         </ScrollView>
@@ -2673,8 +2649,11 @@ export default function DashboardScreen() {
         {isMobile ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Create new order"
-            onPress={() => handleQuickAction('/new-order')}
+            accessibilityLabel="Quick actions"
+            onPress={() => {
+              if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setShowQuickActions(true);
+            }}
             style={(state) => [
               {
                 position: 'absolute',
@@ -2699,6 +2678,14 @@ export default function DashboardScreen() {
         ) : null}
       </SafeAreaView>
       <MilestoneGate />
+      <GlobalSearch visible={showGlobalSearch} onClose={() => setShowGlobalSearch(false)} />
+      <QuickActionsSheet
+        visible={showQuickActions}
+        onClose={() => setShowQuickActions(false)}
+        actions={quickActions}
+        onSelect={handleQuickAction}
+        fabBottom={Math.max(96, tabBarHeight - 48)}
+      />
     </View>
   );
 }

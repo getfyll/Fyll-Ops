@@ -241,6 +241,7 @@ interface EditableItemProps {
   showTrackingStage?: boolean;
   showWooCommerceStatusSlug?: boolean;
   modern?: boolean;
+  plainActions?: boolean;
 }
 
 function EditableItem({
@@ -253,6 +254,7 @@ function EditableItem({
   showTrackingStage = false,
   showWooCommerceStatusSlug = false,
   modern = false,
+  plainActions = false,
 }: EditableItemProps) {
   const colors = useThemeColors();
   const palette = usePaymentsPalette();
@@ -476,9 +478,9 @@ function EditableItem({
                 setIsEditing(true);
               }}
               className="p-2 active:opacity-50"
-              style={modern ? { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.softFill, marginRight: 6 } : undefined}
+              style={modern ? { width: plainActions ? 30 : 38, height: plainActions ? 30 : 38, borderRadius: plainActions ? 0 : 19, alignItems: 'center', justifyContent: 'center', backgroundColor: plainActions ? 'transparent' : palette.softFill, marginRight: plainActions ? 2 : 6 } : undefined}
             >
-              <Edit2 size={16} color={colors.text.tertiary} strokeWidth={2} />
+              <Edit2 size={plainActions ? 14 : 16} color={colors.text.tertiary} strokeWidth={2} />
             </Pressable>
             <Pressable
               onPress={() => {
@@ -486,9 +488,9 @@ function EditableItem({
                 onDelete();
               }}
               className="p-2 active:opacity-50"
-              style={modern ? { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.dangerBg } : undefined}
+              style={modern ? { width: plainActions ? 30 : 38, height: plainActions ? 30 : 38, borderRadius: plainActions ? 0 : 19, alignItems: 'center', justifyContent: 'center', backgroundColor: plainActions ? 'transparent' : palette.dangerBg } : undefined}
             >
-              <Trash2 size={16} color="#EF4444" strokeWidth={2} />
+              <Trash2 size={plainActions ? 14 : 16} color="#EF4444" strokeWidth={2} />
             </Pressable>
           </View>
         )}
@@ -4177,12 +4179,14 @@ export default function SettingsScreen() {
               <LinearGradient colors={resolvedThemeMode === 'dark' ? ['#DDEB3F', '#9EAD00'] : ['#E3EC54', '#B9C722']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ height: 5 }} />
               <View style={{ padding: isWebDesktop ? 24 : 18 }}>
                 <View className="flex-row items-center" style={{ gap: 14 }}>
-                  <LinearGradient
-                    colors={resolvedThemeMode === 'dark' ? ['#E5EF50', '#A9B700'] : ['#E8F15A', '#C4D12B']}
-                    style={{ width: isWebDesktop ? 54 : 48, height: isWebDesktop ? 54 : 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }}
-                  >
-                    <CreditCard size={isWebDesktop ? 25 : 22} color={FYLL_LIME_INK} strokeWidth={2.2} />
-                  </LinearGradient>
+                  {!isWebDesktop ? (
+                    <LinearGradient
+                      colors={resolvedThemeMode === 'dark' ? ['#E5EF50', '#A9B700'] : ['#E8F15A', '#C4D12B']}
+                      style={{ width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      <CreditCard size={22} color={FYLL_LIME_INK} strokeWidth={2.2} />
+                    </LinearGradient>
+                  ) : null}
                   <View style={{ flex: 1 }}>
                     <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Checkout options</Text>
                     <MoneyText style={{ color: settingsPalette.text, fontSize: isWebDesktop ? 28 : 24, fontWeight: '700', marginTop: 2 }}>
@@ -4235,6 +4239,7 @@ export default function SettingsScreen() {
                 key={method.id}
                 item={method}
                 modern
+                plainActions
                 onUpdate={(name) => {
                   updatePaymentMethod(method.id, { name }, businessId);
                   triggerGlobalSave();
@@ -4952,15 +4957,15 @@ export default function SettingsScreen() {
       case 'account-settings':
         return <AccountSettingsScreen embeddedInSettings />;
       case 'business-settings':
-        return <BusinessSettingsScreen />;
+        return <BusinessSettingsScreen embeddedInSettings />;
       case 'storefront-settings':
         return <StorefrontSettingsScreen embeddedInSettings />;
       case 'payment-accounts':
         return <PaymentAccountsScreen embeddedInSettings />;
       case 'team':
-        return <TeamManagementScreen />;
+        return <TeamManagementScreen embeddedInSettings />;
       case 'invitations':
-        return <InvitationsScreen />;
+        return <InvitationsScreen embeddedInSettings />;
       case 'woocommerce-settings':
         return <WooCommerceSettingsScreen />;
       case 'order-automation':
@@ -5112,7 +5117,7 @@ export default function SettingsScreen() {
         return (
           <View style={{ backgroundColor: colors.bg.primary, borderWidth: 1, borderColor: colors.border.light, borderRadius: 26, overflow: 'hidden', minHeight: Math.max(680, Dimensions.get('window').height - 260) }}>
             <SettingsBackOverrideProvider onBack={() => selectSettingsNav('profile')}>
-              <BusinessSettingsScreen />
+              <BusinessSettingsScreen embeddedInSettings />
             </SettingsBackOverrideProvider>
           </View>
         );
@@ -5175,6 +5180,7 @@ export default function SettingsScreen() {
 
   const renderActiveWebSectionCard = () => {
     if (!activeSection) return null;
+    const usePaymentHeader = activeSection === 'payment-methods';
 
     const titles: Record<SettingsSection, string> = {
       'order-statuses': 'Order Statuses',
@@ -5218,10 +5224,10 @@ export default function SettingsScreen() {
       >
         <View
           style={{
-            minHeight: 60,
-            paddingHorizontal: 28,
-            paddingVertical: 14,
-            borderBottomWidth: 1,
+            minHeight: usePaymentHeader ? 58 : 60,
+            paddingHorizontal: usePaymentHeader ? 20 : 28,
+            paddingVertical: usePaymentHeader ? 4 : 14,
+            borderBottomWidth: usePaymentHeader ? 0 : 1,
             borderBottomColor: colors.border.light,
             flexDirection: 'row',
             alignItems: 'center',
@@ -5237,23 +5243,33 @@ export default function SettingsScreen() {
               }}
               className="active:opacity-60"
               style={{
-                width: 34,
-                height: 34,
+                width: usePaymentHeader ? 38 : 34,
+                height: usePaymentHeader ? 38 : 34,
+                borderRadius: usePaymentHeader ? 19 : 0,
                 alignItems: 'center',
                 justifyContent: 'center',
-                backgroundColor: 'transparent',
-                marginRight: 12,
+                backgroundColor: usePaymentHeader ? settingsPalette.softFill : 'transparent',
+                marginRight: usePaymentHeader ? 10 : 12,
               }}
             >
-              <ArrowLeft size={20} color={colors.text.primary} strokeWidth={2.2} />
+              <ArrowLeft size={usePaymentHeader ? 18 : 20} color={colors.text.primary} strokeWidth={2.2} />
             </Pressable>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <MoneyText style={{ color: colors.text.primary, fontSize: 20, lineHeight: 26, letterSpacing: -0.5 }} numberOfLines={1}>
-                {titles[activeSection]}
-              </MoneyText>
-              <Text style={{ color: colors.text.tertiary, fontSize: 13, marginTop: 4, lineHeight: 18 }} numberOfLines={2}>
-                {subtitles[activeSection]}
-              </Text>
+              {usePaymentHeader ? (
+                <>
+                  <Text style={{ color: colors.text.tertiary, fontSize: 9.5, lineHeight: 12, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase' }}>Settings</Text>
+                  <Text style={{ color: colors.text.primary, fontSize: 17, lineHeight: 21, fontWeight: '600' }} numberOfLines={1}>{titles[activeSection]}</Text>
+                </>
+              ) : (
+                <>
+                  <MoneyText style={{ color: colors.text.primary, fontSize: 20, lineHeight: 26, letterSpacing: -0.5 }} numberOfLines={1}>
+                    {titles[activeSection]}
+                  </MoneyText>
+                  <Text style={{ color: colors.text.tertiary, fontSize: 13, marginTop: 4, lineHeight: 18 }} numberOfLines={2}>
+                    {subtitles[activeSection]}
+                  </Text>
+                </>
+              )}
             </View>
           </View>
 
@@ -5274,7 +5290,7 @@ export default function SettingsScreen() {
                 className="px-4 rounded-full items-center justify-center active:opacity-80"
                 style={[primaryPillButtonStyle, { height: 40, minWidth: 96 }]}
               >
-                <Text style={primaryPillTextStyle} className="text-sm font-semibold">
+                <Text style={[primaryPillTextStyle, { fontSize: 14 }]} className="font-semibold">
                   {sectionSaveStatus === 'saving' ? 'Saving…' : 'Save'}
                 </Text>
               </Pressable>
@@ -5319,7 +5335,7 @@ export default function SettingsScreen() {
                 }}
               >
                 {renderWebSettingsTopBar()}
-              <View style={{ width: '100%', maxWidth: 960, paddingBottom: 16 }}>
+              <View style={{ width: '100%', maxWidth: activeSection === 'payment-methods' ? 1120 : 960, paddingBottom: 16 }}>
                 {renderActiveWebSectionCard()}
               </View>
             </View>
@@ -5654,6 +5670,8 @@ export default function SettingsScreen() {
         >
           {searchQuery.trim() ? (
             <View style={mobileSettingsCardStyle}>
+              {/* The last row's divider tucks under the card border so the bottom edge stays one line thick. */}
+              <View style={{ marginBottom: -1 }}>
               {filteredSearchItems.length > 0 ? (
                 filteredSearchItems.map((item, index) => (
                   <SettingsRow
@@ -5675,6 +5693,7 @@ export default function SettingsScreen() {
                 </View>
               )}
               <View className="h-8" />
+              </View>
             </View>
           ) : null}
 
@@ -5682,12 +5701,15 @@ export default function SettingsScreen() {
             <>
               <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Business</Text>
               <View style={mobileSettingsCardStyle}>
+                {/* The last row's divider tucks under the card border so the bottom edge stays one line thick. */}
+                <View style={{ marginBottom: -1 }}>
                 <SettingsRow
                   title="Switch Business"
                   description="Add and open existing businesses"
                   icon={<Building2 size={18} color="#10B981" strokeWidth={2} />}
                   onPress={() => router.push('/switch-business?from=settings')}
                 />
+                </View>
               </View>
             </>
           )}
@@ -5696,12 +5718,15 @@ export default function SettingsScreen() {
             <>
               <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Account</Text>
               <View style={mobileSettingsCardStyle}>
+                {/* The last row's divider tucks under the card border so the bottom edge stays one line thick. */}
+                <View style={{ marginBottom: -1 }}>
                 <SettingsRow
                   title="My Account"
                   description="Profile and password"
                   icon={<UserCircle size={18} color="#3B82F6" strokeWidth={2} />}
                   onPress={() => openSettingsPanel('account-settings', '/account-settings?from=settings')}
                 />
+                </View>
               </View>
             </>
           )}
@@ -5709,6 +5734,8 @@ export default function SettingsScreen() {
           {!searchQuery.trim() && (<>
           <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Business</Text>
           <View style={mobileSettingsCardStyle}>
+            {/* The last row's divider tucks under the card border so the bottom edge stays one line thick. */}
+            <View style={{ marginBottom: -1 }}>
           <SettingsRow
             title="Business Settings"
             description="Logo, phone, website"
@@ -5779,10 +5806,13 @@ export default function SettingsScreen() {
               onPress={() => router.push('/(tabs)/announcements' as never)}
             />
           ) : null}
+            </View>
           </View>
 
           <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Connections</Text>
           <View style={mobileSettingsCardStyle}>
+            {/* The last row's divider tucks under the card border so the bottom edge stays one line thick. */}
+            <View style={{ marginBottom: -1 }}>
           {canUseStorefront ? (
             <SettingsRow
               title="Storefront"
@@ -5799,10 +5829,13 @@ export default function SettingsScreen() {
               onPress={() => openSettingsPanel('woocommerce-settings', '/woocommerce-settings?from=settings&menu=integrations')}
             />
           ) : null}
+            </View>
           </View>
 
           <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Links</Text>
           <View style={mobileSettingsCardStyle}>
+            {/* The last row's divider tucks under the card border so the bottom edge stays one line thick. */}
+            <View style={{ marginBottom: -1 }}>
             {publicLinks.map((link) => (
               <SettingsRow
                 key={link.key}
@@ -5821,12 +5854,15 @@ export default function SettingsScreen() {
                 }
               />
             ))}
+            </View>
           </View>
 
           {currentUser?.role === 'admin' && businessId ? (
             <>
               <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Business Identity</Text>
               <View style={mobileSettingsCardStyle}>
+                {/* The last row's divider tucks under the card border so the bottom edge stays one line thick. */}
+                <View style={{ marginBottom: -1 }}>
                 <SettingsRow
                   title="Fyll Business ID"
                   description={businessId}
@@ -5842,6 +5878,7 @@ export default function SettingsScreen() {
                     </View>
                   }
                 />
+                </View>
               </View>
             </>
           ) : null}
@@ -5850,6 +5887,8 @@ export default function SettingsScreen() {
             <>
               <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Team</Text>
               <View style={mobileSettingsCardStyle}>
+                {/* The last row's divider tucks under the card border so the bottom edge stays one line thick. */}
+                <View style={{ marginBottom: -1 }}>
                 <SettingsRow
                   title="Team Members"
                   description="Roles and permissions"
@@ -5863,32 +5902,41 @@ export default function SettingsScreen() {
                   icon={<Shield size={18} color="#F59E0B" strokeWidth={2} />}
                   onPress={() => openSettingsPanel('invitations', '/invitations?from=settings')}
                 />
+                </View>
               </View>
             </>
           )}
 
           <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Import customers</Text>
           <View style={mobileSettingsCardStyle}>
+            {/* The last row's divider tucks under the card border so the bottom edge stays one line thick. */}
+            <View style={{ marginBottom: -1 }}>
             <SettingsRow
               title="Import Customers"
               description="Upload contacts via CSV"
               icon={<Upload size={18} color="#10B981" strokeWidth={2} />}
               onPress={() => openSettingsPanel('import-customers', '/import-customers?from=settings')}
             />
+            </View>
           </View>
 
           <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Features</Text>
           <View style={mobileSettingsCardStyle}>
+            {/* The last row's divider tucks under the card border so the bottom edge stays one line thick. */}
+            <View style={{ marginBottom: -1 }}>
             <SettingsRow
               title="All features"
               description="Turn tools on or off and see how each is set up"
               icon={<LayoutGrid size={18} color="#10B981" strokeWidth={2} />}
               onPress={() => openSettingsSection('all-features')}
             />
+            </View>
           </View>
 
           <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Orders & Sales</Text>
           <View style={mobileSettingsCardStyle}>
+            {/* The last row's divider tucks under the card border so the bottom edge stays one line thick. */}
+            <View style={{ marginBottom: -1 }}>
             <SettingsRow
               title="Order Statuses"
               description="Workflow stages"
@@ -5952,22 +6000,28 @@ export default function SettingsScreen() {
               icon={<Upload size={18} color="#10B981" strokeWidth={2} />}
               onPress={() => openSettingsPanel('import-orders', '/import-orders?from=settings')}
             />
+            </View>
           </View>
 
           <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Services</Text>
           <View style={mobileSettingsCardStyle}>
+            {/* The last row's divider tucks under the card border so the bottom edge stays one line thick. */}
+            <View style={{ marginBottom: -1 }}>
             <SettingsRow
               title="Service Catalog"
               description="All services and pricing"
               icon={<Wrench size={18} color={colors.text.secondary} strokeWidth={2} />}
               onPress={() => router.push('/services' as never)}
             />
+            </View>
           </View>
 
           {canUseCases ? (
             <>
               <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Cases</Text>
               <View style={mobileSettingsCardStyle}>
+                {/* The last row's divider tucks under the card border so the bottom edge stays one line thick. */}
+                <View style={{ marginBottom: -1 }}>
                 <SettingsRow
                   title="All Cases"
                   description="View and manage cases"
@@ -5988,12 +6042,15 @@ export default function SettingsScreen() {
                   rightText={`${resolutionTypes.length}`}
                   onPress={() => openSettingsSection('resolution-types')}
                 />
+                </View>
               </View>
             </>
           ) : null}
 
           <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Inventory</Text>
           <View style={mobileSettingsCardStyle}>
+            {/* The last row's divider tucks under the card border so the bottom edge stays one line thick. */}
+            <View style={{ marginBottom: -1 }}>
             <SettingsRow
               title="Low Stock Alert"
               description={useGlobalLowStockThreshold
@@ -6038,6 +6095,7 @@ export default function SettingsScreen() {
               icon={<Upload size={18} color="#10B981" strokeWidth={2} />}
               onPress={() => openSettingsPanel('import-products', '/import-products?from=settings')}
             />
+            </View>
           </View>
 
           <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Appearance</Text>
@@ -6094,6 +6152,8 @@ export default function SettingsScreen() {
           <>
           <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Notifications</Text>
           <View style={mobileSettingsCardStyle}>
+            {/* The last row's divider tucks under the card border so the bottom edge stays one line thick. */}
+            <View style={{ marginBottom: -1 }}>
             {Platform.OS === 'web' && notifPermission !== null && (
               <View style={{ minHeight: 72, paddingHorizontal: 18, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 14, borderBottomWidth: currentUser?.role === 'admin' || canUseOrderAutomation ? 1 : 0, borderBottomColor: settingsPalette.hairline }}>
                   <View style={{ width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: settingsPalette.nudgeBg }}>
@@ -6163,12 +6223,15 @@ export default function SettingsScreen() {
                 />
               </View>
             ) : null}
+            </View>
           </View>
           </>
           )}
 
           <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>System</Text>
           <View style={mobileSettingsCardStyle}>
+            {/* The last row's divider tucks under the card border so the bottom edge stays one line thick. */}
+            <View style={{ marginBottom: -1 }}>
             <SettingsRow
               title="Recycle Bin"
               description="Restore deleted orders, products, and finance rows"
@@ -6209,6 +6272,7 @@ export default function SettingsScreen() {
                 onPress={handleLogout}
               />
             ) : null}
+            </View>
           </View>
           {saveMessage && (
             <Text
@@ -6221,6 +6285,8 @@ export default function SettingsScreen() {
 
           <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>About</Text>
           <View style={mobileSettingsCardStyle}>
+            {/* The last row's divider tucks under the card border so the bottom edge stays one line thick. */}
+            <View style={{ marginBottom: -1 }}>
             <SettingsRow
               title="Fyll ERP"
               description={appVersionLabel}
@@ -6228,6 +6294,7 @@ export default function SettingsScreen() {
               showChevron={false}
               showDivider={false}
             />
+            </View>
           </View>
 
           <View className="h-8" />

@@ -12,6 +12,9 @@ import { ProcurementCreateInventoryProductModal } from '@/components/Procurement
 import { ResolvedAttachmentImage } from '@/components/ResolvedAttachmentImage';
 import type { StatsColors } from '@/lib/theme';
 import { SearchClearButton } from '@/components/SearchClearButton';
+import { PeriodTabs } from '@/components/finance/PeriodTabs';
+import { getDayGroup, getNameInitials } from '@/lib/day-group';
+import { usePaymentsPalette } from '@/components/payments/payments-ui';
 
 export type ProcurementWorkspaceSection =
   | 'orders'
@@ -137,6 +140,10 @@ interface ProcurementOrdersWorkspaceProps {
   productVariables: ProductVariable[];
   activeSection?: ProcurementWorkspaceSection;
   isMobile?: boolean;
+  // When the page header already shows the date tabs (phones), the section's own tabs are hidden and the period is shared.
+  dateFilter?: ProcurementDateFilter;
+  onDateFilterChange?: (value: ProcurementDateFilter) => void;
+  hideDateFilter?: boolean;
   loading?: boolean;
 }
 
@@ -452,10 +459,16 @@ export function ProcurementOrdersWorkspace({
   activeSection,
   isMobile = false,
   loading = false,
+  dateFilter: dateFilterProp,
+  onDateFilterChange,
+  hideDateFilter = false,
 }: ProcurementOrdersWorkspaceProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<ProcurementStatusFilter>('all');
-  const [dateFilter, setDateFilter] = useState<ProcurementDateFilter>('30d');
+  const limePalette = usePaymentsPalette();
+  const [internalDateFilter, setInternalDateFilter] = useState<ProcurementDateFilter>('30d');
+  const dateFilter = dateFilterProp ?? internalDateFilter;
+  const setDateFilter = onDateFilterChange ?? setInternalDateFilter;
   const [showAllComposition, setShowAllComposition] = useState(false);
   const [showAllLanded, setShowAllLanded] = useState(false);
   const [showAllPoStack, setShowAllPoStack] = useState(false);
@@ -1798,20 +1811,9 @@ export function ProcurementOrdersWorkspace({
       <View style={{ minHeight: 640 }}>
           {resolvedSection === 'orders' ? (
             <>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={{ flexGrow: 0 }}
-                contentContainerStyle={{ flexDirection: 'row', gap: 8, paddingRight: isMobile ? 8 : 0 }}
-              >
-                {procurementDateFilterOptions.map((option) => statusChip(
-                  option.label,
-                  dateFilter === option.key,
-                  () => setDateFilter(option.key)
-                ))}
-              </ScrollView>
+              {hideDateFilter ? null : <PeriodTabs value={dateFilter} onChange={setDateFilter} />}
 
-              <View style={{ flexDirection: 'row', flexWrap: isMobile ? 'wrap' : 'nowrap', gap: isMobile ? 10 : 12, marginTop: 14 }}>
+              <View style={{ flexDirection: 'row', flexWrap: isMobile ? 'wrap' : 'nowrap', gap: isMobile ? 10 : 12, marginTop: hideDateFilter ? 4 : 14 }}>
                 {[
                   { label: 'Total orders', value: `${stats.totalOrders}`, helper: procurementDateFilterOptions.find((option) => option.key === dateFilter)?.label ?? 'Selected period' },
                   { label: 'Pending receipt', value: `${stats.pendingReceipt}`, helper: 'Awaiting confirmation' },
@@ -2133,7 +2135,7 @@ export function ProcurementOrdersWorkspace({
 
               {isMobile ? (
                 <>
-                  <View style={{ marginTop: 12, borderWidth: 1, borderColor: colors.divider, borderRadius: 16, overflow: 'hidden', backgroundColor: surfaceColor }}>
+                  <View style={{ marginTop: 12 }}>
                     {loading ? (
                       renderOrderRowsSkeleton()
                     ) : filteredRows.length === 0 ? (
@@ -2142,53 +2144,84 @@ export function ProcurementOrdersWorkspace({
                       </View>
                     ) : filteredRows.map((row, index) => {
                       const config = getStatusConfig(row.status);
+                      // A small day label, then the day's lines as joined cards, like Orders and Expenses.
+                      const dayGroup = getDayGroup(row.createdAtMs);
+                      const previousRow = index > 0 ? filteredRows[index - 1] : null;
+                      const nextRow = index < filteredRows.length - 1 ? filteredRows[index + 1] : null;
+                      const startsGroup = !previousRow || getDayGroup(previousRow.createdAtMs).key !== dayGroup.key;
+                      const endsGroup = !nextRow || getDayGroup(nextRow.createdAtMs).key !== dayGroup.key;
                       return (
-                        <Pressable
-                          key={row.id}
-                          onPress={() => setSelectedMobileOrderLineId(row.id)}
-                          style={{ paddingHorizontal: 12, paddingVertical: 12, borderBottomWidth: index === filteredRows.length - 1 ? 0 : 1, borderBottomColor: colors.divider }}
-                        >
-                          <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
-                            <View style={{ flex: 1, minWidth: 0 }}>
-                              <Text style={{ color: textPrimaryColor, fontSize: 14, fontWeight: '400' }} numberOfLines={1}>
-                                {row.productName}
-                              </Text>
-                              <Text style={{ color: textMutedColor, fontSize: 12, marginTop: 3 }} numberOfLines={1}>
-                                {row.poNumber} · {row.dateLabel}
-                              </Text>
-                              <View style={{ flexDirection: 'row', alignSelf: 'flex-start', gap: 4, marginTop: 7 }}>
-                                {row.sourceTag === 'product' ? (
-                                  <View style={{ borderRadius: 999, paddingHorizontal: 6, height: 18, backgroundColor: inputColor, alignItems: 'center', justifyContent: 'center' }}>
-                                    <Text style={{ color: accentColor, fontSize: 10, fontWeight: mobileOrderTextWeight }}>product</Text>
-                                  </View>
-                                ) : null}
-                                {row.sourceTag === 'warehouse' ? (
-                                  <View style={{ borderRadius: 999, paddingHorizontal: 6, height: 18, backgroundColor: '#64748B22', alignItems: 'center', justifyContent: 'center' }}>
-                                    <Text style={{ color: '#64748B', fontSize: 10, fontWeight: mobileOrderTextWeight }}>warehouse</Text>
-                                  </View>
-                                ) : null}
-                                {row.isNewProduct ? (
-                                  <View style={{ borderRadius: 999, paddingHorizontal: 6, height: 18, backgroundColor: '#6EB5FF22', alignItems: 'center', justifyContent: 'center' }}>
-                                    <Text style={{ color: '#6EB5FF', fontSize: 10, fontWeight: mobileOrderTextWeight }}>new product</Text>
-                                  </View>
-                                ) : null}
-                                {row.isSample ? (
-                                  <View style={{ borderRadius: 999, paddingHorizontal: 6, height: 18, backgroundColor: '#F59E0B22', alignItems: 'center', justifyContent: 'center' }}>
-                                    <Text style={{ color: '#F59E0B', fontSize: 10, fontWeight: mobileOrderTextWeight }}>sample</Text>
+                        <View key={row.id} style={{ marginTop: startsGroup && index > 0 ? 18 : 0 }}>
+                          {startsGroup ? (
+                            <Text style={{ color: textMutedColor, fontSize: 10, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', paddingHorizontal: 4, marginBottom: 8 }}>
+                              {dayGroup.label}
+                            </Text>
+                          ) : null}
+                          <Pressable
+                            onPress={() => setSelectedMobileOrderLineId(row.id)}
+                            style={{
+                              paddingHorizontal: 14,
+                              paddingVertical: 12,
+                              backgroundColor: surfaceColor,
+                              borderTopWidth: startsGroup ? 1 : 0,
+                              borderBottomWidth: 1,
+                              borderLeftWidth: 1,
+                              borderRightWidth: 1,
+                              borderColor: colors.divider,
+                              borderTopLeftRadius: startsGroup ? 18 : 0,
+                              borderTopRightRadius: startsGroup ? 18 : 0,
+                              borderBottomLeftRadius: endsGroup ? 18 : 0,
+                              borderBottomRightRadius: endsGroup ? 18 : 0,
+                            }}
+                          >
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                              <View style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: limePalette.nudgeBg, borderWidth: 1, borderColor: limePalette.nudgeBorder }}>
+                                <Text style={{ color: limePalette.limeOnSurface, fontSize: 12, fontWeight: '700' }}>{getNameInitials(row.supplier)}</Text>
+                              </View>
+                              <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+                                <Text style={{ color: textPrimaryColor, fontSize: 12, fontWeight: '500' }} numberOfLines={1}>
+                                  {row.productName}
+                                </Text>
+                                <Text style={{ color: textMutedColor, fontSize: 10 }} numberOfLines={1}>
+                                  {row.poNumber} · {row.supplier}
+                                </Text>
+                                {row.sourceTag === 'product' || row.sourceTag === 'warehouse' || row.isNewProduct || row.isSample ? (
+                                  <View style={{ flexDirection: 'row', alignSelf: 'flex-start', gap: 4, marginTop: 2 }}>
+                                    {row.sourceTag === 'product' ? (
+                                      <View style={{ borderRadius: 999, paddingHorizontal: 6, height: 16, backgroundColor: inputColor, alignItems: 'center', justifyContent: 'center' }}>
+                                        <Text style={{ color: accentColor, fontSize: 9, fontWeight: '600' }}>product</Text>
+                                      </View>
+                                    ) : null}
+                                    {row.sourceTag === 'warehouse' ? (
+                                      <View style={{ borderRadius: 999, paddingHorizontal: 6, height: 16, backgroundColor: '#64748B22', alignItems: 'center', justifyContent: 'center' }}>
+                                        <Text style={{ color: '#64748B', fontSize: 9, fontWeight: '600' }}>warehouse</Text>
+                                      </View>
+                                    ) : null}
+                                    {row.isNewProduct ? (
+                                      <View style={{ borderRadius: 999, paddingHorizontal: 6, height: 16, backgroundColor: '#6EB5FF22', alignItems: 'center', justifyContent: 'center' }}>
+                                        <Text style={{ color: '#6EB5FF', fontSize: 9, fontWeight: '600' }}>new product</Text>
+                                      </View>
+                                    ) : null}
+                                    {row.isSample ? (
+                                      <View style={{ borderRadius: 999, paddingHorizontal: 6, height: 16, backgroundColor: '#F59E0B22', alignItems: 'center', justifyContent: 'center' }}>
+                                        <Text style={{ color: '#F59E0B', fontSize: 9, fontWeight: '600' }}>sample</Text>
+                                      </View>
+                                    ) : null}
                                   </View>
                                 ) : null}
                               </View>
-                            </View>
-                            <View style={{ alignItems: 'flex-end', minWidth: 108 }}>
-                              <Text style={{ color: textPrimaryColor, fontSize: 14, fontWeight: '400' }} numberOfLines={1}>
-                                {row.qtyOrdered} ordered
-                              </Text>
-                              <View style={{ borderRadius: 999, paddingHorizontal: 9, height: 24, marginTop: 7, backgroundColor: config.bg, alignItems: 'center', justifyContent: 'center' }}>
-                                <Text style={{ color: config.text, fontSize: 10, fontWeight: '500' }} numberOfLines={1}>{config.label}</Text>
+                              <View style={{ alignItems: 'flex-end', gap: 3, flexShrink: 0 }}>
+                                <Text style={{ color: textPrimaryColor, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>
+                                  {row.qtyOrdered} ordered
+                                </Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: config.text }} />
+                                  <Text style={{ color: config.text, fontSize: 10, fontWeight: '600' }} numberOfLines={1}>{config.label}</Text>
+                                </View>
                               </View>
                             </View>
-                          </View>
-                        </Pressable>
+                          </Pressable>
+                        </View>
                       );
                     })}
                   </View>
@@ -2438,9 +2471,18 @@ export function ProcurementOrdersWorkspace({
                       <View style={{ height: 180, alignItems: 'center', justifyContent: 'center' }}>
                         <Text style={{ color: textMutedColor, fontSize: 14 }}>No procurement rows found</Text>
                       </View>
-                    ) : filteredRows.map((row) => (
+                    ) : filteredRows.map((row, rowIndex) => {
+                      const dayGroup = getDayGroup(row.createdAtMs);
+                      const previousRow = rowIndex > 0 ? filteredRows[rowIndex - 1] : null;
+                      const startsGroup = !previousRow || getDayGroup(previousRow.createdAtMs).key !== dayGroup.key;
+                      return (
+                      <React.Fragment key={row.id}>
+                      {startsGroup ? (
+                        <View style={{ paddingHorizontal: 14, paddingTop: 10, paddingBottom: 8, backgroundColor: limePalette.inset, borderBottomWidth: 1, borderBottomColor: colors.divider }}>
+                          <Text style={{ color: limePalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1.3, textTransform: 'uppercase' }}>{dayGroup.label}</Text>
+                        </View>
+                      ) : null}
                       <View
-                        key={row.id}
                         style={{
                           height: 48,
                           borderBottomWidth: 1,
@@ -2780,7 +2822,9 @@ export function ProcurementOrdersWorkspace({
                           ) : null}
                         </View>
                       </View>
-                    ))}
+                      </React.Fragment>
+                      );
+                    })}
 
                     <Pressable
                       onPress={() => {
@@ -2799,20 +2843,9 @@ export function ProcurementOrdersWorkspace({
             </>
           ) : resolvedSection === 'cost-breakdown' ? (
             <>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={{ flexGrow: 0 }}
-                contentContainerStyle={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}
-              >
-                {procurementDateFilterOptions.map((option) => statusChip(
-                  option.label,
-                  dateFilter === option.key,
-                  () => setDateFilter(option.key)
-                ))}
-              </ScrollView>
+              {hideDateFilter ? null : <PeriodTabs value={dateFilter} onChange={setDateFilter} />}
 
-              <View style={{ flexDirection: 'row', flexWrap: isMobile ? 'wrap' : 'nowrap', gap: isMobile ? 10 : 12, marginTop: 16 }}>
+              <View style={{ flexDirection: 'row', flexWrap: isMobile ? 'wrap' : 'nowrap', gap: isMobile ? 10 : 12, marginTop: hideDateFilter ? 4 : 16 }}>
                 {[
                   { label: 'Total procured', value: formatMoney(costAnalysis.totalProcured), helper: `${costAnalysis.totalQuantity} units`, color: textPrimaryColor },
                   { label: 'Product cost', value: formatMoney(costAnalysis.productCost), helper: `${costAnalysis.productCostPercent}% of total`, color: COST_CATEGORY_COLORS.product },
@@ -3095,20 +3128,9 @@ export function ProcurementOrdersWorkspace({
             </>
           ) : resolvedSection === 'margin-tracker' ? (
             <>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={{ flexGrow: 0 }}
-                contentContainerStyle={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}
-              >
-                {procurementDateFilterOptions.map((option) => statusChip(
-                  option.label,
-                  dateFilter === option.key,
-                  () => setDateFilter(option.key)
-                ))}
-              </ScrollView>
+              {hideDateFilter ? null : <PeriodTabs value={dateFilter} onChange={setDateFilter} />}
 
-              <View style={{ flexDirection: 'row', flexWrap: isMobile ? 'wrap' : 'nowrap', gap: isMobile ? 10 : 12, marginTop: 16 }}>
+              <View style={{ flexDirection: 'row', flexWrap: isMobile ? 'wrap' : 'nowrap', gap: isMobile ? 10 : 12, marginTop: hideDateFilter ? 4 : 16 }}>
                 {[
                   { label: 'Portfolio avg margin', value: `${marginAnalysis.averageMargin.toFixed(1)}%`, helper: `Target ${marginAnalysis.averageTarget.toFixed(0)}% · Gap ${marginAnalysis.averageGap >= 0 ? '+' : ''}${marginAnalysis.averageGap.toFixed(1)}pp`, color: marginAnalysis.averageGap >= 0 ? '#C8F061' : '#F59E0B' },
                   { label: 'Products hitting target', value: `${marginAnalysis.hittingCount} / ${marginAnalysis.rows.length}`, helper: `${marginAnalysis.rows.length > 0 ? Math.round((marginAnalysis.hittingCount / marginAnalysis.rows.length) * 100) : 0}% hit rate`, color: '#C8F061' },
@@ -3309,15 +3331,13 @@ export function ProcurementOrdersWorkspace({
             </>
           ) : resolvedSection === 'receive-goods' ? (
             <>
-              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
-                {procurementDateFilterOptions.map((option) => statusChip(
-                  option.label,
-                  dateFilter === option.key,
-                  () => setDateFilter(option.key)
-                ))}
-              </View>
+              {hideDateFilter ? null : (
+                <View style={{ marginBottom: 14 }}>
+                  <PeriodTabs value={dateFilter} onChange={setDateFilter} />
+                </View>
+              )}
 
-              <View style={{ flexDirection: 'row', flexWrap: isMobile ? 'wrap' : 'nowrap', gap: isMobile ? 10 : 12 }}>
+              <View style={{ flexDirection: 'row', flexWrap: isMobile ? 'wrap' : 'nowrap', gap: isMobile ? 10 : 12, marginTop: hideDateFilter ? 4 : 0 }}>
                 {[
                   { label: 'Pending confirmation', value: `${receiptStats.pendingReceipt}`, helper: 'Product lines unconfirmed', color: '#F59E0B' },
                   { label: 'Outstanding qty', value: `${receiptStats.outstandingQty}`, helper: 'Units still outstanding', color: '#3B82F6' },
@@ -3498,6 +3518,11 @@ export function ProcurementOrdersWorkspace({
                     <Text style={{ color: textMutedColor, fontSize: 12, marginTop: 4 }}>Matching procurement orders will appear here.</Text>
                   </View>
                 ) : filteredReceiptShipments.map((shipment, shipmentIndex) => {
+                  // Grouped by the day the PO was ordered, like the other lists, while sorted by date.
+                  const groupByDate = receiptSort === 'date';
+                  const dayGroup = getDayGroup(shipment.createdAtMs);
+                  const previousShipment = shipmentIndex > 0 ? filteredReceiptShipments[shipmentIndex - 1] : null;
+                  const startsGroup = groupByDate && (!previousShipment || getDayGroup(previousShipment.createdAtMs).key !== dayGroup.key);
                   const isExpanded = expandedShipmentIds.includes(shipment.id) || (expandedShipmentIds.length === 0 && shipmentIndex === 0);
                   const config = getStatusConfig(shipment.status);
                   const isComplete = isReceivedStatus(shipment.status);
@@ -3508,14 +3533,17 @@ export function ProcurementOrdersWorkspace({
                   const showDiscrepancyWarning = shipment.hasDiscrepancy || hasDraftDiscrepancy;
 
                   return (
+                    <React.Fragment key={shipment.id}>
+                    {startsGroup ? (
+                      <Text style={{ color: textMutedColor, fontSize: isMobile ? 10 : 11, fontWeight: '600', letterSpacing: isMobile ? 0.6 : 1.3, textTransform: 'uppercase', paddingHorizontal: 4, marginTop: shipmentIndex === 0 ? 0 : 6, marginBottom: -2 }}>
+                        {dayGroup.label}
+                      </Text>
+                    ) : null}
                     <View
-                      key={shipment.id}
                       style={{
-                        borderRadius: 10,
+                        borderRadius: 22,
                         borderWidth: 1,
                         borderColor: colors.divider,
-                        borderLeftWidth: 3,
-                        borderLeftColor: isComplete ? '#10B981' : shipment.hasDiscrepancy ? '#F59E0B' : colors.divider,
                         backgroundColor: surfaceColor,
                         overflow: 'hidden',
                         opacity: isComplete ? 0.82 : 1,
@@ -3525,20 +3553,23 @@ export function ProcurementOrdersWorkspace({
                         onPress={() => toggleShipmentExpanded(shipment.id)}
                         style={{ paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 12 }}
                       >
+                        <View style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: limePalette.nudgeBg, borderWidth: 1, borderColor: limePalette.nudgeBorder }}>
+                          <Text style={{ color: limePalette.limeOnSurface, fontSize: 12, fontWeight: '700' }}>{getNameInitials(shipment.supplier)}</Text>
+                        </View>
                         <View style={{ flex: 1, minWidth: 0 }}>
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                             <Text style={{ color: textMutedColor, fontSize: 10.5, fontWeight: '600' }}>{shipment.poNumber}</Text>
                             {statusBadge(shipment.status)}
                           </View>
-                          <Text style={{ color: textPrimaryColor, fontSize: 14, fontWeight: '600', marginTop: 4 }} numberOfLines={1}>{shipment.title}</Text>
+                          <Text style={{ color: textPrimaryColor, fontSize: isMobile ? 12 : 14, fontWeight: isMobile ? '500' : '600', marginTop: 4 }} numberOfLines={1}>{shipment.title}</Text>
                           <Text style={{ color: textMutedColor, fontSize: 11, marginTop: 3 }} numberOfLines={1}>
                             Supplier: {shipment.supplier} · Ordered {shipment.dateLabel} · {shipment.linkedOrderCount} linked order{shipment.linkedOrderCount === 1 ? '' : 's'} · {shipment.rows.length} item{shipment.rows.length === 1 ? '' : 's'}
                           </Text>
                         </View>
 
-                        <View style={{ width: 140, alignItems: 'flex-end', gap: 5 }}>
-                          <Text style={{ color: textSecondaryColor, fontSize: 11, fontWeight: '600' }}>{shipment.qtyReceived}/{shipment.qtyOrdered} units</Text>
-                          <View style={{ width: 120, height: 6, borderRadius: 999, backgroundColor: colors.bg.input, overflow: 'hidden' }}>
+                        <View style={{ width: isMobile ? 86 : 140, alignItems: 'flex-end', gap: 5 }}>
+                          <Text style={{ color: textSecondaryColor, fontSize: isMobile ? 10 : 11, fontWeight: '600' }}>{shipment.qtyReceived}/{shipment.qtyOrdered} units</Text>
+                          <View style={{ width: isMobile ? 72 : 120, height: 6, borderRadius: 999, backgroundColor: colors.bg.input, overflow: 'hidden' }}>
                             <View style={{ width: `${shipment.progress}%`, height: 6, borderRadius: 999, backgroundColor: config.text }} />
                           </View>
                         </View>
@@ -3724,6 +3755,7 @@ export function ProcurementOrdersWorkspace({
                         </View>
                       ) : null}
                     </View>
+                    </React.Fragment>
                   );
                 })}
               </View>

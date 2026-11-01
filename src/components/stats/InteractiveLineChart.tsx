@@ -31,6 +31,7 @@ export function InteractiveLineChart({
   data,
   height = 220,
   lineColor = '#111111',
+  areaColor,
   gridColor = '#E6E6E6',
   textColor = '#666666',
   selectedIndex,
@@ -47,6 +48,8 @@ export function InteractiveLineChart({
   data: LineChartDatum[];
   height?: number;
   lineColor?: string;
+  // Colour of the soft fill under the line. Defaults to the line colour.
+  areaColor?: string;
   gridColor?: string;
   textColor?: string;
   selectedIndex?: number | null;
@@ -121,8 +124,8 @@ export function InteractiveLineChart({
         <Svg width={width} height={height}>
           <Defs>
             <LinearGradient id="lineArea" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0" stopColor={lineColor} stopOpacity="0.22" />
-              <Stop offset="1" stopColor={lineColor} stopOpacity="0" />
+              <Stop offset="0" stopColor={areaColor ?? lineColor} stopOpacity="0.22" />
+              <Stop offset="1" stopColor={areaColor ?? lineColor} stopOpacity="0" />
             </LinearGradient>
           </Defs>
 

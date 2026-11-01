@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Image,
   Platform,
   Pressable,
   Text,
@@ -82,6 +81,8 @@ const webOutlineStyle = Platform.OS === 'web'
 const innerSettingsFont = (size: number) => Platform.OS === 'web'
   ? size
   : size === 15 ? 14 : size === 13.5 ? 12 : size === 13 ? 10 : size;
+
+type BusinessSettingsScreenProps = { embeddedInSettings?: boolean };
 
 const estimateDataUrlBytes = (value: string) => {
   const base64MarkerIndex = value.indexOf('base64,');
@@ -170,7 +171,7 @@ function BusinessField({
   );
 }
 
-export default function BusinessSettingsScreen() {
+export default function BusinessSettingsScreen({ embeddedInSettings = false }: BusinessSettingsScreenProps) {
   const { from } = useLocalSearchParams<{ from?: string | string[] }>();
   const goBack = useSettingsBack();
   const resolvedThemeMode = useResolvedThemeMode();
@@ -179,7 +180,8 @@ export default function BusinessSettingsScreen() {
   const { isMobile } = useBreakpoint();
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
   const openedFromSettings = isFromSettingsRoute(from);
-  const panelStyles = getSettingsWebPanelStyles(openedFromSettings, palette.ground, palette.edge);
+  const isEmbeddedWeb = Platform.OS === 'web' && (openedFromSettings || embeddedInSettings) && !isMobile;
+  const panelStyles = getSettingsWebPanelStyles(openedFromSettings || embeddedInSettings, palette.ground, palette.edge);
   const {
     companyName,
     businessName,
@@ -328,7 +330,7 @@ export default function BusinessSettingsScreen() {
     || phone !== businessPhone
     || website !== businessWebsite
     || address !== returnAddress;
-  const contentMaxWidth = openedFromSettings ? 720 : 520;
+  const contentMaxWidth = isEmbeddedWeb ? 1120 : 520;
   const cardStyle: ViewStyle = { overflow: 'hidden', borderRadius: 26, borderWidth: 1, borderColor: palette.edge, backgroundColor: palette.surface };
 
   if (isLoading) {
@@ -345,7 +347,7 @@ export default function BusinessSettingsScreen() {
     <View style={panelStyles.outer}>
       <View style={panelStyles.inner}>
         <SafeAreaView style={{ flex: 1, backgroundColor: palette.ground }} edges={['top']}>
-          <LinearGradient pointerEvents="none" colors={[palette.topGlow, palette.topGlowEnd]} locations={[0, 1]} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: openedFromSettings ? 390 : 300 }} />
+          {!isEmbeddedWeb ? <LinearGradient pointerEvents="none" colors={[palette.topGlow, palette.topGlowEnd]} locations={[0, 1]} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 300 }} /> : null}
 
           {toast ? (
             <View pointerEvents="none" style={{ position: 'absolute', top: 14, left: 16, right: 16, alignItems: 'center', zIndex: 9999, elevation: 9999 }}>
@@ -356,7 +358,7 @@ export default function BusinessSettingsScreen() {
             </View>
           ) : null}
 
-          <View style={{ minHeight: isMobile ? 66 : openedFromSettings ? 58 : 56, paddingHorizontal: openedFromSettings ? 20 : 10, paddingTop: isMobile ? 12 : 4, paddingBottom: 4, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <View style={{ minHeight: isMobile ? 66 : isEmbeddedWeb ? 78 : 56, paddingHorizontal: isEmbeddedWeb ? 20 : 10, paddingTop: isMobile ? 12 : isEmbeddedWeb ? 20 : 4, paddingBottom: isEmbeddedWeb ? 10 : 4, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <Pressable
               onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); goBack(); }}
               accessibilityRole="button"
@@ -378,13 +380,13 @@ export default function BusinessSettingsScreen() {
 
           <KeyboardAwareScrollView
             style={{ flex: 1 }}
-            contentContainerStyle={{ width: '100%', maxWidth: contentMaxWidth, alignSelf: 'center', paddingHorizontal: 16, paddingTop: openedFromSettings ? 22 : 12, paddingBottom: 140 }}
+            contentContainerStyle={{ width: '100%', maxWidth: contentMaxWidth, alignSelf: 'center', paddingHorizontal: isEmbeddedWeb ? 24 : 16, paddingTop: isEmbeddedWeb ? 18 : 12, paddingBottom: 140 }}
             showsVerticalScrollIndicator={false}
             enableOnAndroid
             extraScrollHeight={110}
             keyboardShouldPersistTaps="handled"
           >
-            <View style={{ position: 'relative', overflow: 'hidden', minHeight: 144, marginBottom: 30, padding: 20, borderRadius: 28, borderWidth: 1, borderColor: palette.edge, backgroundColor: palette.surface, shadowColor: '#000000', shadowOpacity: isDark ? 0.24 : 0.07, shadowRadius: 24, shadowOffset: { width: 0, height: 10 } }}>
+            <View style={{ position: 'relative', overflow: 'hidden', minHeight: isEmbeddedWeb ? 116 : 144, marginBottom: isEmbeddedWeb ? 22 : 30, padding: isEmbeddedWeb ? 18 : 20, borderRadius: 28, borderWidth: 1, borderColor: palette.edge, backgroundColor: palette.surface, shadowColor: '#000000', shadowOpacity: isDark ? 0.24 : 0.07, shadowRadius: 24, shadowOffset: { width: 0, height: 10 } }}>
               <LinearGradient pointerEvents="none" colors={[palette.limeWashStrong, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.25, y: 1 }} style={{ position: 'absolute', top: -45, right: -36, width: 190, height: 190, borderRadius: 95 }} />
               <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, borderBottomLeftRadius: 3, borderBottomRightRadius: 3, backgroundColor: palette.lime }} />
               <View style={{ flex: 1, justifyContent: 'center' }}>
@@ -407,6 +409,8 @@ export default function BusinessSettingsScreen() {
               </View>
             ) : null}
 
+            <View>
+            <View>
             <SectionLabel palette={palette}>Brand</SectionLabel>
             <View style={[cardStyle, { padding: 18, gap: 12, marginBottom: 26 }]}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 13 }}>
@@ -418,9 +422,16 @@ export default function BusinessSettingsScreen() {
                 <Pressable onPress={handlePickImage} style={({ pressed }) => ({ height: 38, paddingHorizontal: 14, borderRadius: 999, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: palette.edgeStrong, backgroundColor: palette.input, opacity: pressed ? 0.72 : 1 })}>
                   <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: innerSettingsFont(13) }}>{logo ? 'Change' : 'Upload'}</Text>
                 </Pressable>
+                {logo ? (
+                  <Pressable onPress={handleRemoveLogo} style={({ pressed }) => ({ height: 38, paddingHorizontal: 12, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.dangerWash, opacity: pressed ? 0.72 : 1 })}>
+                    <Text style={{ color: palette.danger, fontFamily: 'DMSans_600SemiBold', fontSize: innerSettingsFont(12) }}>Remove</Text>
+                  </Pressable>
+                ) : null}
               </View>
             </View>
+            </View>
 
+            <View>
             <SectionLabel palette={palette}>Business information</SectionLabel>
             <View style={[cardStyle, { padding: 18, gap: 17, marginBottom: 26 }]}>
               <BusinessField palette={palette} label="Company name" value={company} placeholder="Registered company name" icon={Building2} editable={false} badge="Fixed" help="Your legal or registered company name cannot be changed here." />
@@ -431,15 +442,23 @@ export default function BusinessSettingsScreen() {
               </Pressable>
               <BusinessField palette={palette} label="Website" value={website} onChangeText={(value) => { setWebsite(value); clearError(); }} placeholder="e.g. www.yourbusiness.com" icon={Globe} keyboardType="url" />
             </View>
+            </View>
+            </View>
 
+            <View>
+            <View>
             <SectionLabel palette={palette}>Customer contact</SectionLabel>
             <View style={[cardStyle, { padding: 18, marginBottom: 26 }]}>
               <BusinessField palette={palette} label="WhatsApp number" value={phone} onChangeText={(value) => { setPhone(value); clearError(); }} placeholder="e.g. +234 800 123 4567" icon={MessageCircle} keyboardType="phone-pad" autoComplete="tel" badge="Required" badgeColor="#25A95B" help="Customers use this from payment and tracking pages. Include the country code." />
             </View>
+            </View>
 
+            <View>
             <SectionLabel palette={palette}>Return address</SectionLabel>
             <View style={[cardStyle, { padding: 18 }]}>
               <BusinessField palette={palette} label="Address for shipping labels" value={address} onChangeText={(value) => { setAddress(value); clearError(); }} placeholder={'Enter your business return address\ne.g. 123 Main Street\nLagos, Nigeria'} icon={MapPin} multiline help="This address appears on shipping labels." />
+            </View>
+            </View>
             </View>
           </KeyboardAwareScrollView>
 

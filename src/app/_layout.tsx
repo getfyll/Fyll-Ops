@@ -120,18 +120,18 @@ function RootMobileBottomNav({ visible }: { visible: boolean }) {
       active: pathname === '/' || pathname === '/(tabs)',
     },
     {
-      key: 'inventory',
-      label: 'Inventory',
-      route: '/(tabs)/inventory' as const,
-      Icon: Package,
-      active: pathname.startsWith('/inventory') || pathname.startsWith('/product') || pathname.startsWith('/new-product'),
-    },
-    {
       key: 'orders',
       label: 'Orders',
       route: '/(tabs)/orders' as const,
       Icon: ShoppingCart,
       active: pathname.startsWith('/orders') || pathname.startsWith('/order/') || pathname.startsWith('/new-order'),
+    },
+    {
+      key: 'inventory',
+      label: 'Inventory',
+      route: '/(tabs)/inventory' as const,
+      Icon: Package,
+      active: pathname.startsWith('/inventory') || pathname.startsWith('/product') || pathname.startsWith('/new-product'),
     },
     {
       key: 'threads',
@@ -319,6 +319,7 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
     && !pathname.startsWith('/(tabs)/threads');
   const whatsNew = useWhatsNew(isAuthenticated && !inPublicRoute && isNavigationReady);
   const isBottomActionRoute = firstSegment === 'new-order'
+    || firstSegment === 'scan'
     || firstSegment === 'order'
     || firstSegment === 'order-edit'
     || firstSegment === 'new-product'

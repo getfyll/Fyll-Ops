@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { View, Text, ScrollView, Pressable, Platform, Modal, TextInput, Image, ActivityIndicator } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -74,6 +74,14 @@ import {
 import { openRefundRequestAttachment, type RefundRequestAttachmentDraft, uploadRefundRequestAttachments } from '@/lib/refund-request-attachments';
 import { openAttachmentPath, uploadBusinessAttachment } from '@/lib/storage-attachments';
 import { SearchClearButton } from '@/components/SearchClearButton';
+import { FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, MoneyText, isHovered, usePaymentsPalette } from '@/components/payments/payments-ui';
+import { NetProfitHeroCard } from '@/components/finance/NetProfitHeroCard';
+import { ExpenseHeroCard } from '@/components/finance/ExpenseHeroCard';
+import { PendingExpenseBanner } from '@/components/finance/PendingExpenseBanner';
+import { BricolageGrotesque_600SemiBold, useFonts } from '@expo-google-fonts/bricolage-grotesque';
+import { PeriodTabs } from '@/components/finance/PeriodTabs';
+import { FinanceSectionTabs, FinanceSubTabs, type SectionTab } from '@/components/finance/FinanceSectionTabs';
+import { FinanceHeroCard, buildHeroSegments } from '@/components/finance/FinanceHeroCard';
 
 type TabType = FinanceSection;
 type ExpenseWorkspaceView = 'list' | 'approvals';
@@ -523,6 +531,43 @@ const escapeCsv = (value: string | number) => {
     return `"${raw.replace(/"/g, '""')}"`;
   }
   return raw;
+};
+
+// Up to two letters from a supplier or expense name, for the round avatar on the phone list.
+const getNameInitials = (name?: string | null): string => {
+  const words = (name ?? '').trim().split(/[\s\-_/&]+/).filter((word) => /[a-z0-9]/i.test(word));
+  if (words.length === 0) return '•';
+  const letters = words.length === 1 ? words[0].replace(/[^a-z0-9]/gi, '').slice(0, 2) : `${words[0].replace(/[^a-z0-9]/gi, '')[0] ?? ''}${words[1].replace(/[^a-z0-9]/gi, '')[0] ?? ''}`;
+  return letters.toUpperCase() || '•';
+};
+
+// Groups the Expenses list by day, the way Orders and Payments do: "Today", "Yesterday · 3 Nov", "Mon, 3 Nov".
+const getExpenseDayGroup = (timestamp: number | null | undefined): { key: string; label: string } => {
+  if (!timestamp || !Number.isFinite(timestamp)) return { key: 'unknown', label: 'Earlier' };
+  const date = new Date(timestamp);
+  const now = new Date();
+  const startOfDay = (value: Date) => new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
+  const difference = Math.round((startOfDay(now) - startOfDay(date)) / 86_400_000);
+  const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+  if (difference === 0) return { key, label: 'Today' };
+  const shortDate = date.toLocaleDateString('en-GB', date.getFullYear() === now.getFullYear()
+    ? { day: 'numeric', month: 'short' }
+    : { day: 'numeric', month: 'short', year: 'numeric' });
+  if (difference === 1) return { key, label: `Yesterday · ${shortDate}` };
+  return {
+    key,
+    label: date.toLocaleDateString('en-GB', date.getFullYear() === now.getFullYear()
+      ? { weekday: 'short', day: 'numeric', month: 'short' }
+      : { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }),
+  };
+};
+
+// Text on lime action buttons: Fyll's button face (Bricolage SemiBold), same as the buttons on Home.
+const FINANCE_BUTTON_TEXT = { fontFamily: 'BricolageGrotesque_600SemiBold', fontSize: 14, fontWeight: '600' } as const;
+
+const getHeroPeriodLabels = (range: OverviewRange) => {
+  const label = overviewRangeOptions.find((option) => option.key === range)?.label ?? 'This period';
+  return { label, previous: label.startsWith('Last ') ? `previous ${label.slice(5)}` : 'previous period' };
 };
 
 const calcPercentChange = (current: number, previous: number): number | null => {
@@ -1299,6 +1344,7 @@ function FinanceMetricCard({
   colors: ReturnType<typeof useStatsColors>;
 }) {
   const { isMobile } = useBreakpoint();
+  const palette = usePaymentsPalette();
   const helperColor = helperTone === 'positive'
     ? colors.success
     : helperTone === 'negative'
@@ -1328,18 +1374,18 @@ function FinanceMetricCard({
     marginTop: 1,
   };
   const helperTextClassName = compactTrend ? 'text-xs font-medium' : 'text-sm font-medium';
-  const labelFontSize = isMobile ? 10 : 8;
-  const labelClassName = isMobile ? 'font-semibold mb-2' : 'font-semibold uppercase tracking-wider mb-2';
-  const resolvedValueFontSize = Math.min(valueFontSize, 16);
+  const labelFontSize = 10;
+  const labelClassName = 'font-semibold uppercase mb-2';
+  const resolvedValueFontSize = Math.min(Math.max(valueFontSize, 18), 20);
 
   return (
     <Pressable
-      className="flex-1 rounded-2xl p-5"
-      style={colors.getCardStyle()}
+      className="flex-1"
+      style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, borderRadius: 26, padding: 18 }}
       onPress={onPress}
       disabled={!onPress}
     >
-      <Text style={{ color: colors.text.tertiary, fontSize: labelFontSize }} className={labelClassName}>
+      <Text style={{ color: palette.faint, fontSize: labelFontSize, letterSpacing: 1.3 }} className={labelClassName}>
         {label}
       </Text>
       {loading ? (
@@ -1353,9 +1399,9 @@ function FinanceMetricCard({
           }}
         />
       ) : (
-        <Text style={{ color: colors.text.primary, fontSize: resolvedValueFontSize, lineHeight: resolvedValueFontSize + 2 }} className="font-bold" numberOfLines={1}>
+        <MoneyText style={{ color: palette.text, fontSize: resolvedValueFontSize, lineHeight: resolvedValueFontSize + 4, letterSpacing: -0.4 }} numberOfLines={1}>
           {value}
-        </Text>
+        </MoneyText>
       )}
       {loading ? (
         <View
@@ -1440,6 +1486,7 @@ function FinanceFilterPill({
   onPress: () => void;
   colors: ReturnType<typeof useStatsColors>;
 }) {
+  const palette = usePaymentsPalette();
   return (
     <Pressable
       onPress={onPress}
@@ -1448,14 +1495,14 @@ function FinanceFilterPill({
         height: 36,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: active ? colors.bar : colors.bg.card,
+        backgroundColor: active ? FYLL_LIME : 'transparent',
         borderWidth: active ? 0 : 1,
-        borderColor: colors.divider,
+        borderColor: palette.outline,
       }}
     >
       <Text
         className="text-sm font-semibold"
-        style={{ color: active ? colors.bg.screen : colors.text.secondary }}
+        style={{ color: active ? FYLL_LIME_INK : palette.muted }}
       >
         {label}
       </Text>
@@ -1533,6 +1580,8 @@ export default function FinanceScreen() {
   const routeEditProcurementId = resolveParamValue(editProcurementId);
   const consumedRouteEditProcurementIdRef = useRef<string | null>(null);
   const colors = useStatsColors();
+  const palette = usePaymentsPalette();
+  useFonts({ BricolageGrotesque_600SemiBold });
   const resolvedThemeMode = useResolvedThemeMode();
   const isDarkMode = resolvedThemeMode === 'dark';
   const pendingBadgeBg = isDarkMode ? 'rgba(59, 130, 246, 0.2)' : '#EFF6FF';
@@ -1635,7 +1684,7 @@ export default function FinanceScreen() {
   const [refundRequestFilter, setRefundRequestFilter] = useState<RefundRequestFilter>('all');
   const [refundSort, setRefundSort] = useState<RefundSort>('newest');
   const [procurementFilter, setProcurementFilter] = useState<ProcurementFilter>('all');
-  const [procurementSort, setProcurementSort] = useState<ProcurementSort>('workflow');
+  const [procurementSort, setProcurementSort] = useState<ProcurementSort>('newest');
   const [showRevenueFilterSheet, setShowRevenueFilterSheet] = useState(false);
   const [showExpenseFilterSheet, setShowExpenseFilterSheet] = useState(false);
   const [showExpenseRequestFilterSheet, setShowExpenseRequestFilterSheet] = useState(false);
@@ -1861,7 +1910,7 @@ export default function FinanceScreen() {
     return Math.min(380, Math.max(320, Math.round(viewportWidth * 0.3)));
   }, [isMobile, isTablet, viewportWidth]);
   const isDetailPanelCompact = splitDetailPanelWidth <= 350;
-  const financeSectionTopMargin = isWebDesktop ? 0 : (isMobile ? 16 : 24);
+  const financeSectionTopMargin = isWebDesktop ? 0 : (isMobile ? 0 : 24);
   const financeSectionControlsMargin = isMobile ? 24 : 20;
   const financeSectionBodyMargin = isMobile ? 20 : 16;
 
@@ -1887,7 +1936,10 @@ export default function FinanceScreen() {
             : activeTab === 'salary'
               ? 'Salary'
               : 'Settings';
-  const financeHeaderTitle = isProcurementOrdersPage
+  // With the section tabs under it, the title on phones and tablets is always just "Finance".
+  const financeHeaderTitle = !isWebDesktop
+    ? 'Finance'
+    : isProcurementOrdersPage
     ? 'Procurement Orders'
     : isProcurementReceiveGoodsPage
       ? 'Goods Received'
@@ -2066,7 +2118,49 @@ export default function FinanceScreen() {
     { type: 'route' as const, key: 'calculator', label: 'Calculator', icon: Calculator, href: '/calculator' },
   ];
   const showFinanceTopHeader = true;
-  const showTopHeaderDivider = isWebDesktop;
+  // No line under the header: it sits flat on the page like Customers.
+  const showTopHeaderDivider = false;
+
+  // Phones and tablets: the main Finance sections as tabs under the title (replacing the old menu button).
+  const sectionTabs: SectionTab[] = [
+    ...mobileFinanceMenuOptions.flatMap<SectionTab>((item) => {
+      if (item.type === 'tab') return [{ key: `tab:${item.key}`, label: item.label }];
+      if (item.type === 'procurement-page' && !isProcurementAdminView) return [{ key: `page:${item.key}`, label: item.label }];
+      if (item.type === 'route') return [{ key: `route:${item.href}`, label: item.label }];
+      return [];
+    }),
+  ];
+  const activeSectionKey = activeTab === 'procurement' && !isProcurementAdminView
+    ? 'page:receive-goods'
+    : `tab:${activeTab === 'costing' ? 'procurement' : activeTab}`;
+  const procurementSubTabs: SectionTab[] = [
+    { key: 'overview', label: 'Overview' },
+    { key: 'orders', label: 'Orders' },
+    { key: 'receive-goods', label: 'Goods Received' },
+    { key: 'cost-breakdown', label: 'Cost Breakdown' },
+    { key: 'margin-tracker', label: 'Margin Tracker' },
+  ];
+  // The new section is heavy to build, so the tab you tapped lights up straight away and the page content follows as a
+  // low-priority update instead of freezing the tap.
+  const [isSectionPending, startSectionTransition] = useTransition();
+  const [pendingSectionKey, setPendingSectionKey] = useState<string | null>(null);
+  useEffect(() => {
+    if (!isSectionPending && pendingSectionKey !== null) setPendingSectionKey(null);
+  }, [isSectionPending, pendingSectionKey]);
+  const handleSectionTabSelect = (key: string) => {
+    if (key.startsWith('route:')) {
+      router.push(key.slice(6) as never);
+      return;
+    }
+    setPendingSectionKey(key);
+    startSectionTransition(() => {
+      if (key.startsWith('tab:')) {
+        selectTab(key.slice(4) as TabType);
+      } else if (key.startsWith('page:')) {
+        selectProcurementPage(key.slice(5) as ProcurementWorkspaceSection);
+      }
+    });
+  };
 
   useEffect(() => {
     const nextTab = resolveTab(section);
@@ -2134,9 +2228,10 @@ export default function FinanceScreen() {
     if (tab === 'procurement') setProcurementChildPage(normalizeProcurementPageForRole('overview'));
     setSelectedExpenseId(null);
     setSelectedProcurementId(null);
-    router.replace(tab === 'procurement' && !isProcurementAdminView
-      ? '/(tabs)/finance?section=procurement&procurementPage=receive-goods' as any
-      : `/(tabs)/finance?section=${tab}` as any);
+    // Only the address changes (setParams); replace() would rebuild the whole Finance screen on every tab tap.
+    router.setParams((tab === 'procurement' && !isProcurementAdminView
+      ? { section: 'procurement', procurementPage: 'receive-goods' }
+      : { section: tab, procurementPage: undefined }) as never);
   };
 
   const selectProcurementPage = (page: ProcurementWorkspaceSection) => {
@@ -2148,7 +2243,7 @@ export default function FinanceScreen() {
     setProcurementChildPage(nextPage);
     setSelectedExpenseId(null);
     setSelectedProcurementId(null);
-    router.replace(`/(tabs)/finance?section=procurement&procurementPage=${nextPage}` as any);
+    router.setParams({ section: 'procurement', procurementPage: nextPage } as never);
   };
 
   const selectFinanceSettingsView = (view: FinanceSettingsView) => {
@@ -2159,7 +2254,7 @@ export default function FinanceScreen() {
     setSelectedExpenseId(null);
     setSelectedProcurementId(null);
     setShowMobileFinanceMenu(false);
-    router.replace('/(tabs)/finance?section=settings' as any);
+    router.setParams({ section: 'settings', procurementPage: undefined } as never);
   };
 
   const openOrderInWorkspace = (orderId: string) => {
@@ -5716,6 +5811,43 @@ const buildExpenseDescription = (
     return { total, count };
   }, [nonFixedExpenses, expensePeriodWindow]);
 
+  // Feeds the headline card on the Expenses tab: spend by category and the change from the period before.
+  const expenseHeroStats = useMemo(() => {
+    const durationMs = expensePeriodWindow.endMs - expensePeriodWindow.startMs;
+    const previousStartMs = expensePeriodWindow.startMs - durationMs;
+    const byCategory: Record<string, number> = {};
+    let previousTotal = 0;
+    nonFixedExpenses.forEach((expense) => {
+      const timestamp = parseTimestamp(expense.date) ?? parseTimestamp(expense.createdAt);
+      if (timestamp === null) return;
+      if (timestamp >= previousStartMs && timestamp < expensePeriodWindow.startMs) {
+        previousTotal += expense.amount;
+        return;
+      }
+      if (timestamp < expensePeriodWindow.startMs || timestamp >= expensePeriodWindow.endMs) return;
+      const lineItems = parseExpenseLineItemsFromDescription(
+        expense.description,
+        expense.category?.trim() || 'General',
+        expense.amount
+      );
+      if (lineItems.length > 0) {
+        lineItems.forEach((line) => {
+          const name = normalizeBreakdownCategory(line.category);
+          byCategory[name] = (byCategory[name] ?? 0) + line.amount;
+        });
+      } else {
+        const name = expense.category?.trim() || 'General';
+        byCategory[name] = (byCategory[name] ?? 0) + expense.amount;
+      }
+    });
+    const change = calcPercentChange(expensePeriodStats.total, previousTotal);
+    return {
+      categories: Object.entries(byCategory).map(([name, amount]) => ({ name, amount })),
+      changeLabel: formatPercentChangeLabel(change),
+      changeTone: resolveChangeTone(change, { inverse: true }),
+    };
+  }, [nonFixedExpenses, expensePeriodWindow, expensePeriodStats.total]);
+
   const otherIncomePeriodStats = useMemo(() => {
     let total = 0;
     let count = 0;
@@ -6328,11 +6460,12 @@ const buildExpenseDescription = (
       ].join(' ').toLowerCase();
       return blob.includes(normalizedSearch);
     });
+    const requestedAt = (row: RefundRequestRow) => row.dateAt || row.sortAt;
     return filtered.sort((left, right) => {
-      if (refundSort === 'oldest') return left.sortAt - right.sortAt || right.amount - left.amount;
-      if (refundSort === 'amount-high') return right.amount - left.amount || right.sortAt - left.sortAt;
-      if (refundSort === 'amount-low') return left.amount - right.amount || right.sortAt - left.sortAt;
-      return right.sortAt - left.sortAt || right.amount - left.amount;
+      if (refundSort === 'oldest') return requestedAt(left) - requestedAt(right) || right.amount - left.amount;
+      if (refundSort === 'amount-high') return right.amount - left.amount || requestedAt(right) - requestedAt(left);
+      if (refundSort === 'amount-low') return left.amount - right.amount || requestedAt(right) - requestedAt(left);
+      return requestedAt(right) - requestedAt(left) || right.amount - left.amount;
     });
   }, [refundSearchQuery, refundSort, visibleRefundRequestRows]);
 
@@ -6366,6 +6499,79 @@ const buildExpenseDescription = (
     }
     return { total, count };
   }, [refundPeriodWindow, submittedRefundRequestRows]);
+
+  // Numbers behind the headline cards on the Revenue, Other Income and Refunds tabs: what the total is made of, and the
+  // change from the period before.
+  const revenueHeroStats = useMemo(() => {
+    const durationMs = revenuePeriodWindow.endMs - revenuePeriodWindow.startMs;
+    const previousStartMs = revenuePeriodWindow.startMs - durationMs;
+    let previousGross = 0;
+    orders.forEach((order) => {
+      const timestamp = parseTimestamp(order.orderDate ?? order.createdAt);
+      if (timestamp === null || timestamp < previousStartMs || timestamp >= revenuePeriodWindow.startMs) return;
+      if (revenueOrderCategoryFilter !== 'all' && getOrderClassification(order) !== revenueOrderCategoryFilter) return;
+      previousGross += order.totalAmount;
+    });
+    const bySource: Record<string, number> = {};
+    filteredRevenueRows.forEach((row) => {
+      bySource[row.source] = (bySource[row.source] ?? 0) + row.grossAmount;
+    });
+    const change = calcPercentChange(revenuePeriodStats.grossRevenue, previousGross);
+    return {
+      groups: Object.entries(bySource).map(([name, amount]) => ({ name, amount })),
+      changeLabel: formatPercentChangeLabel(change),
+      changeTone: resolveChangeTone(change),
+    };
+  }, [filteredRevenueRows, orders, revenueOrderCategoryFilter, revenuePeriodStats.grossRevenue, revenuePeriodWindow]);
+
+  const otherIncomeHeroStats = useMemo(() => {
+    const durationMs = otherIncomePeriodWindow.endMs - otherIncomePeriodWindow.startMs;
+    const previousStartMs = otherIncomePeriodWindow.startMs - durationMs;
+    let previousTotal = 0;
+    const byType: Record<string, number> = {};
+    otherIncomes.forEach((income) => {
+      const timestamp = parseTimestamp(income.date) ?? parseTimestamp(income.createdAt);
+      if (timestamp === null) return;
+      const amount = Math.max(0, Number(income.amount) || 0);
+      if (timestamp >= previousStartMs && timestamp < otherIncomePeriodWindow.startMs) {
+        previousTotal += amount;
+        return;
+      }
+      if (timestamp < otherIncomePeriodWindow.startMs || timestamp >= otherIncomePeriodWindow.endMs) return;
+      const name = formatOtherIncomeTypeLabel(income.type);
+      byType[name] = (byType[name] ?? 0) + amount;
+    });
+    const change = calcPercentChange(otherIncomePeriodStats.total, previousTotal);
+    return {
+      groups: Object.entries(byType).map(([name, amount]) => ({ name, amount })),
+      changeLabel: formatPercentChangeLabel(change),
+      changeTone: resolveChangeTone(change),
+    };
+  }, [otherIncomePeriodStats.total, otherIncomePeriodWindow, otherIncomes]);
+
+  const refundHeroStats = useMemo(() => {
+    const durationMs = refundPeriodWindow.endMs - refundPeriodWindow.startMs;
+    const previousStartMs = refundPeriodWindow.startMs - durationMs;
+    let previousTotal = 0;
+    const byStatus: Record<string, number> = {};
+    for (const row of submittedRefundRequestRows) {
+      const timestamp = row.dateAt || row.sortAt;
+      if (timestamp >= previousStartMs && timestamp < refundPeriodWindow.startMs) {
+        previousTotal += row.amount;
+        continue;
+      }
+      if (timestamp < refundPeriodWindow.startMs || timestamp >= refundPeriodWindow.endMs) continue;
+      const name = row.status === 'submitted' ? 'Pending' : capitalizeDisplayValue(row.status);
+      byStatus[name] = (byStatus[name] ?? 0) + row.amount;
+    }
+    const change = calcPercentChange(refundPeriodStats.total, previousTotal);
+    return {
+      groups: Object.entries(byStatus).map(([name, amount]) => ({ name, amount })),
+      changeLabel: formatPercentChangeLabel(change),
+      changeTone: resolveChangeTone(change, { inverse: true }),
+    };
+  }, [refundPeriodStats.total, refundPeriodWindow, submittedRefundRequestRows]);
+
 
   const pendingRefundApprovalRows = useMemo(
     () => refundRequestRows.filter((row) => row.status === 'submitted'),
@@ -6890,6 +7096,37 @@ const buildExpenseDescription = (
     return { total, count };
   }, [managerSubmittedProcurementRows, procurementPeriodWindow]);
 
+  // Headline card on the Procurement and Costing tabs: spend by supplier and the change from the period before.
+  const procurementHeroStats = useMemo(() => {
+    const durationMs = procurementPeriodWindow.endMs - procurementPeriodWindow.startMs;
+    const previousStartMs = procurementPeriodWindow.startMs - durationMs;
+    const selectedMode: ProcurementMode = activeTab === 'costing' ? 'costing' : 'procurement';
+    const entries: { timestamp: number; supplier: string; amount: number }[] = isFinanceApprover
+      ? procurements
+        .filter((procurement) => resolveProcurementMode(procurement) === selectedMode)
+        .map((procurement) => ({ timestamp: resolveProcurementPaidTimestamp(procurement), supplier: procurement.supplierName, amount: procurement.totalCost }))
+      : managerSubmittedProcurementRows.map((row) => ({ timestamp: row.sortAt, supplier: row.supplier, amount: row.total }));
+    let previousTotal = 0;
+    let total = 0;
+    const bySupplier: Record<string, number> = {};
+    entries.forEach((entry) => {
+      if (entry.timestamp >= previousStartMs && entry.timestamp < procurementPeriodWindow.startMs) {
+        previousTotal += entry.amount;
+        return;
+      }
+      if (entry.timestamp < procurementPeriodWindow.startMs || entry.timestamp >= procurementPeriodWindow.endMs) return;
+      const name = entry.supplier?.trim() || 'No supplier';
+      bySupplier[name] = (bySupplier[name] ?? 0) + entry.amount;
+      total += entry.amount;
+    });
+    const change = calcPercentChange(total, previousTotal);
+    return {
+      groups: Object.entries(bySupplier).map(([name, amount]) => ({ name, amount })),
+      changeLabel: formatPercentChangeLabel(change),
+      changeTone: resolveChangeTone(change, { inverse: true }),
+    };
+  }, [activeTab, isFinanceApprover, managerSubmittedProcurementRows, procurementPeriodWindow, procurements]);
+
   const pendingProcurementApprovalRows = useMemo(
     () => procurementRows.filter((row) => row.mode === 'procurement' && row.approvalStatus === 'submitted'),
     [procurementRows]
@@ -6974,7 +7211,7 @@ const buildExpenseDescription = (
   );
 
   const procurementFilterSortCount = useMemo(
-    () => (procurementFilter !== 'all' ? 1 : 0) + (procurementSort !== 'workflow' ? 1 : 0),
+    () => (procurementFilter !== 'all' ? 1 : 0) + (procurementSort !== 'newest' ? 1 : 0),
     [procurementFilter, procurementSort]
   );
 
@@ -8912,17 +9149,7 @@ const buildExpenseDescription = (
 
   const renderOverviewRangeFilters = () => (
     <View style={{ marginTop: isWebDesktop ? 0 : 16 }}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
-        {overviewRangeOptions.map((option) => (
-          <FinanceFilterPill
-            key={option.key}
-            label={option.label}
-            active={overviewRange === option.key}
-            onPress={() => setOverviewRange(option.key)}
-            colors={colors}
-          />
-        ))}
-      </ScrollView>
+      <PeriodTabs value={overviewRange} onChange={setOverviewRange} />
     </View>
   );
 
@@ -8941,6 +9168,35 @@ const buildExpenseDescription = (
       </Text>
     </View>
   );
+
+  const renderOverviewHeroCard = () => {
+    const rangeLabel = overviewRangeOptions.find((option) => option.key === overviewRange)?.label ?? 'This period';
+    return (
+      <View style={{ marginTop: 16 }}>
+        <NetProfitHeroCard
+          periodLabel={rangeLabel}
+          previousLabel={rangeLabel.startsWith('Last ') ? `previous ${rangeLabel.slice(5)}` : 'previous period'}
+          formatMoney={formatCurrency}
+          netProfit={overviewFinancials.netProfit}
+          grossRevenue={overviewFinancials.totalRevenue}
+          totalCashIn={overviewFinancials.totalCashIn}
+          expenses={overviewFinancials.totalExpenses}
+          procurement={overviewFinancials.totalProcurement}
+          refunds={overviewFinancials.totalRefunds}
+          fees={overviewFinancials.totalGatewayFees + overviewFinancials.totalStampDuty}
+          otherIncome={overviewFinancials.totalOtherIncome}
+          changeLabel={overviewComparison.net.label}
+          changeTone={overviewComparison.net.tone}
+          isMobile={isMobile}
+          loading={shouldShowFinanceSkeleton}
+          onPress={() => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.push('/finance/net-profit' as never);
+          }}
+        />
+      </View>
+    );
+  };
 
   const renderOverviewTopCards = () => {
     const grossRevenueDeductions = [
@@ -9083,142 +9339,50 @@ const buildExpenseDescription = (
   const renderOverviewExpenseRequestsBadgeCard = () => {
     if (!isFinanceApprover || pendingExpenseApprovalRows.length === 0) return null;
     return (
-      <Pressable
-        onPress={() => {
-          selectTab('expenses');
-          if (pendingExpenseApprovalRows.length > 0) {
+      <View style={{ marginTop: 16 }}>
+        <PendingExpenseBanner
+          count={pendingExpenseApprovalRows.length}
+          onPress={() => {
+            selectTab('expenses');
             openExpenseApprovalWorkspace();
-          }
-        }}
-        className="mt-4 rounded-2xl p-4"
-        style={colors.getCardStyle()}
-      >
-        <View className="flex-row items-center justify-between" style={{ gap: 12 }}>
-          <View style={{ flex: 1 }}>
-            <Text style={{ color: colors.text.primary }} className="text-base font-semibold">Expense Requests</Text>
-            <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1">
-              Pending requests from team members.
-            </Text>
-          </View>
-          <View
-            className="rounded-full items-center justify-center"
-            style={{
-              minWidth: 30,
-              height: 30,
-              paddingHorizontal: 8,
-              borderWidth: 1,
-              borderColor: pendingBadgeBorder,
-              backgroundColor: pendingBadgeBg,
-            }}
-          >
-            <Text style={{ color: pendingBadgeText, fontSize: 12, fontWeight: '700' }}>
-              {pendingExpenseApprovalRows.length > 99 ? '99+' : pendingExpenseApprovalRows.length}
-            </Text>
-          </View>
-        </View>
-      </Pressable>
+          }}
+        />
+      </View>
     );
   };
 
   const renderExpenseTopCards = () => {
     const periodPills = (
       <View style={{ marginTop: isWebDesktop ? 0 : 16 }}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
-          {overviewRangeOptions.map((option) => (
-            <FinanceFilterPill
-              key={option.key}
-              label={option.label}
-              active={expensePeriod === option.key}
-              onPress={() => setExpensePeriod(option.key)}
-              colors={colors}
-            />
-          ))}
-        </ScrollView>
+        <PeriodTabs value={expensePeriod} onChange={setExpensePeriod} />
       </View>
     );
 
-    if (isWebDesktop) {
-      return (
-        <>
-          {periodPills}
-          <View className="mt-4" style={{ flexDirection: 'row', gap: 12 }}>
-            <FinanceMetricCard loading={shouldShowFinanceSkeleton}
-              label="Expense Total"
-              value={formatCurrency(expensePeriodStats.total)}
-              helper={expensePeriodWindow.label}
-              helperTone="neutral"
-              trendPlacement="right"
-              compactTrend={isCompactLayout}
-              valueFontSize={24}
-              colors={colors}
-            />
-            <FinanceMetricCard loading={shouldShowFinanceSkeleton}
-              label="Entries"
-              value={expensePeriodStats.count.toLocaleString()}
-              helper={expensePeriodWindow.label}
-              helperTone="neutral"
-              trendPlacement="right"
-              compactTrend={isCompactLayout}
-              valueFontSize={24}
-              colors={colors}
-            />
-          </View>
-        </>
-      );
-    }
+    const rangeLabel = overviewRangeOptions.find((option) => option.key === expensePeriod)?.label ?? 'This period';
+    const heroCard = (
+      <View style={{ marginTop: isMobile && !(isFinanceApprover && pendingExpenseApprovalRows.length > 0) ? 4 : 16 }}>
+        <ExpenseHeroCard
+          periodLabel={rangeLabel}
+          previousLabel={rangeLabel.startsWith('Last ') ? `previous ${rangeLabel.slice(5)}` : 'previous period'}
+          formatMoney={formatCurrency}
+          total={expensePeriodStats.total}
+          count={expensePeriodStats.count}
+          categories={expenseHeroStats.categories}
+          changeLabel={expenseHeroStats.changeLabel}
+          changeTone={expenseHeroStats.changeTone}
+          isMobile={isMobile}
+          loading={shouldShowFinanceSkeleton}
+        />
+      </View>
+    );
 
-    if (isMobile) {
-      return (
-        <View className="mt-4" style={{ flexDirection: 'row', gap: 12 }}>
-          <FinanceMetricCard loading={shouldShowFinanceSkeleton}
-            label="Expense Total"
-            value={formatCurrency(expensePeriodStats.total)}
-            helper={expensePeriodWindow.label}
-            helperTone="neutral"
-            trendPlacement="right"
-            compactTrend={isCompactLayout}
-            valueFontSize={20}
-            colors={colors}
-          />
-          <FinanceMetricCard loading={shouldShowFinanceSkeleton}
-            label="Entries"
-            value={expensePeriodStats.count.toLocaleString()}
-            helper={expensePeriodWindow.label}
-            helperTone="neutral"
-            trendPlacement="right"
-            compactTrend={isCompactLayout}
-            valueFontSize={20}
-            colors={colors}
-          />
-        </View>
-      );
-    }
+    // On a phone the period pills live in the page header, so only the card is shown here.
+    if (isMobile) return heroCard;
 
     return (
       <>
         {periodPills}
-        <View className="mt-4" style={{ flexDirection: 'row', gap: 12 }}>
-          <FinanceMetricCard loading={shouldShowFinanceSkeleton}
-            label="Expense Total"
-            value={formatCurrency(expensePeriodStats.total)}
-            helper={expensePeriodWindow.label}
-            helperTone="neutral"
-            trendPlacement="right"
-            compactTrend={isCompactLayout}
-            valueFontSize={20}
-            colors={colors}
-          />
-          <FinanceMetricCard loading={shouldShowFinanceSkeleton}
-            label="Entries"
-            value={expensePeriodStats.count.toLocaleString()}
-            helper={expensePeriodWindow.label}
-            helperTone="neutral"
-            trendPlacement="right"
-            compactTrend={isCompactLayout}
-            valueFontSize={20}
-            colors={colors}
-          />
-        </View>
+        {heroCard}
       </>
     );
   };
@@ -9226,17 +9390,7 @@ const buildExpenseDescription = (
   const renderMyExpenseRequestTopCards = () => {
     const periodPills = (
       <View style={{ marginTop: isWebDesktop ? 0 : 16 }}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
-          {overviewRangeOptions.map((option) => (
-            <FinanceFilterPill
-              key={option.key}
-              label={option.label}
-              active={expensePeriod === option.key}
-              onPress={() => setExpensePeriod(option.key)}
-              colors={colors}
-            />
-          ))}
-        </ScrollView>
+        <PeriodTabs value={expensePeriod} onChange={setExpensePeriod} />
       </View>
     );
 
@@ -9327,106 +9481,57 @@ const buildExpenseDescription = (
   };
 
   const renderOwnerExpenseApprovalQueue = () => {
-    const rows = pendingExpenseApprovalRows;
+    if (pendingExpenseApprovalRows.length === 0) return null;
     return (
-      <Pressable
-        onPress={() => openExpenseApprovalWorkspace()}
-        className="mt-4 rounded-2xl p-4"
-        style={colors.getCardStyle()}
-      >
-        <View className="flex-row items-center justify-between" style={{ gap: 12 }}>
-          <View style={{ flex: 1 }}>
-            <Text style={{ color: colors.text.primary }} className="text-base font-semibold">Pending Approvals</Text>
-            <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1">
-              {rows.length === 0 ? 'No pending expense requests right now.' : 'Tap to open all pending expense approvals.'}
-            </Text>
-          </View>
-          <View
-            className="rounded-full items-center justify-center"
-            style={{
-              width: 30,
-              height: 30,
-              borderWidth: 1,
-              borderColor: pendingBadgeBorder,
-              backgroundColor: pendingBadgeBg,
-            }}
-          >
-            <Text style={{ color: pendingBadgeText, fontSize: 12, fontWeight: '700' }}>{rows.length > 9 ? '9+' : rows.length}</Text>
-          </View>
-        </View>
-      </Pressable>
+      <View style={{ marginTop: isMobile ? 4 : 16 }}>
+        <PendingExpenseBanner count={pendingExpenseApprovalRows.length} onPress={() => openExpenseApprovalWorkspace()} />
+      </View>
     );
   };
 
   const renderRevenueTopCards = () => {
     const periodPills = (
       <View style={{ marginTop: isWebDesktop ? 0 : 16 }}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
-          {overviewRangeOptions.map((option) => (
-            <FinanceFilterPill
-              key={option.key}
-              label={option.label}
-              active={revenuePeriod === option.key}
-              onPress={() => setRevenuePeriod(option.key)}
-              colors={colors}
-            />
-          ))}
-        </ScrollView>
+        <PeriodTabs value={revenuePeriod} onChange={setRevenuePeriod} />
       </View>
     );
-
-    const cards = (
-      <View className="mt-4" style={{ flexDirection: 'row', gap: 12 }}>
-        <FinanceMetricCard loading={shouldShowFinanceSkeleton}
-          label="Gross Revenue"
-          value={formatCurrency(revenuePeriodStats.grossRevenue)}
-          helper={revenuePeriodWindow.label}
-          helperTone="neutral"
-          trendPlacement="right"
-          compactTrend={isCompactLayout}
-          valueFontSize={isWebDesktop ? 24 : 20}
-          colors={colors}
-        />
-        <FinanceMetricCard loading={shouldShowFinanceSkeleton}
-          label="Net Revenue"
-          value={formatCurrency(revenuePeriodStats.netRevenue)}
-          helper="After fees, stamp duty, refunds"
-          helperTone={revenuePeriodStats.netRevenue >= 0 ? 'positive' : 'negative'}
-          trendPlacement="right"
-          compactTrend={isCompactLayout}
-          valueFontSize={isWebDesktop ? 24 : 20}
-          colors={colors}
+    const labels = getHeroPeriodLabels(revenuePeriod);
+    const segments = buildHeroSegments(revenueHeroStats.groups);
+    const biggest = segments[0];
+    const share = biggest && revenuePeriodStats.grossRevenue > 0 ? Math.round((biggest.amount / revenuePeriodStats.grossRevenue) * 100) : null;
+    const hero = (
+      <View style={{ marginTop: isMobile ? 4 : 16 }}>
+        <FinanceHeroCard
+          eyebrow={`Revenue · ${labels.label}`}
+          amount={formatCurrency(revenuePeriodStats.grossRevenue)}
+          sentence={revenuePeriodStats.grossRevenue > 0
+            ? [
+              { text: 'Net revenue is ' },
+              { text: formatCurrency(revenuePeriodStats.netRevenue), bold: true },
+              { text: ' after fees, stamp duty and refunds' },
+              ...(biggest && share !== null && segments.length > 1 ? [{ text: `, and ${biggest.label} brought in ${share}%` }] : []),
+              { text: '.' },
+            ]
+            : [{ text: 'No sales recorded in this period.' }]}
+          changeLabel={revenueHeroStats.changeLabel}
+          changeTone={revenueHeroStats.changeTone}
+          previousLabel={labels.previous}
+          sideLabel="Orders"
+          sideValue={revenuePeriodStats.count.toLocaleString()}
+          segments={segments}
+          legendNote={revenuePeriodStats.count > 0 ? `Average order ${formatCurrency(revenuePeriodStats.averageOrderValue)}` : undefined}
+          formatMoney={formatCurrency}
+          isMobile={isMobile}
+          loading={shouldShowFinanceSkeleton}
         />
       </View>
     );
 
-    if (isMobile) return cards;
+    if (isMobile) return hero;
     return (
       <>
         {periodPills}
-        {cards}
-        <View className="mt-4" style={{ flexDirection: 'row', gap: 12 }}>
-          <FinanceMetricCard loading={shouldShowFinanceSkeleton}
-            label="Orders"
-            value={revenuePeriodStats.count.toLocaleString()}
-            helper={revenuePeriodWindow.label}
-            helperTone="neutral"
-            trendPlacement="right"
-            compactTrend={isCompactLayout}
-            valueFontSize={isWebDesktop ? 24 : 20}
-            colors={colors}
-          />
-          <FinanceMetricCard loading={shouldShowFinanceSkeleton}
-            label="Average Order"
-            value={formatCurrency(revenuePeriodStats.averageOrderValue)}
-            helper="Gross revenue / orders"
-            helperTone="neutral"
-            trendPlacement="right"
-            compactTrend={isCompactLayout}
-            valueFontSize={isWebDesktop ? 24 : 20}
-            colors={colors}
-          />
-        </View>
+        {hero}
       </>
     );
   };
@@ -9436,13 +9541,6 @@ const buildExpenseDescription = (
   const renderRevenue = () => (
     <View style={isWebDesktop ? { maxWidth: 1440, width: '100%', alignSelf: 'flex-start' } : undefined}>
       <View style={{ marginTop: financeSectionTopMargin }}>
-        {!isWebDesktop ? (
-          <View>
-            <Text style={{ color: colors.text.primary }} className="text-2xl font-bold">Revenue</Text>
-            <Text style={{ color: colors.text.tertiary }} className="text-sm mt-1">Track sales intake, deductions, and net revenue</Text>
-          </View>
-        ) : null}
-
         {renderRevenueTopCards()}
 
         <View className="mt-4" style={isWebDesktop ? { flexDirection: 'row', gap: 12, alignItems: 'stretch' } : { gap: 12 }}>
@@ -9458,6 +9556,7 @@ const buildExpenseDescription = (
               data={revenuePeriodTrendData}
               height={isWebDesktop ? 220 : 220}
               lineColor={colors.bar}
+              areaColor={FYLL_LIME}
               gridColor={colors.divider}
               textColor={colors.text.tertiary}
               formatYLabel={formatAxisCurrency}
@@ -9669,17 +9768,7 @@ const buildExpenseDescription = (
   const renderSalaryTopCards = () => {
     const periodPills = (
       <View style={{ marginTop: isWebDesktop ? 0 : 16 }}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
-          {overviewRangeOptions.map((option) => (
-            <FinanceFilterPill
-              key={option.key}
-              label={option.label}
-              active={salaryPeriod === option.key}
-              onPress={() => setSalaryPeriod(option.key)}
-              colors={colors}
-            />
-          ))}
-        </ScrollView>
+        <PeriodTabs value={salaryPeriod} onChange={setSalaryPeriod} />
       </View>
     );
 
@@ -10295,70 +10384,61 @@ const buildExpenseDescription = (
 
   };
 
+  // Phones and tablets: purchase orders waiting for the owner's approval, in the same amber as the expense banner. It is
+  // not shown at all when nothing is waiting.
   const renderOwnerProcurementApprovalQueue = () => {
     const rows = pendingProcurementApprovalRows;
+    if (rows.length === 0) return null;
+    const amber = palette.isDark ? '#E8B04A' : '#C98A1B';
     return (
-      <View className="mt-4 rounded-2xl p-4" style={colors.getCardStyle()}>
-        <View className="flex-row items-center justify-between">
-          <Text style={{ color: colors.text.primary }} className="text-base font-semibold">Pending PO Approvals</Text>
-          <View
-            className="rounded-full items-center justify-center"
-            style={{
-              width: 30,
-              height: 30,
-              borderWidth: 1,
-              borderColor: pendingBadgeBorder,
-              backgroundColor: pendingBadgeBg,
-            }}
-          >
-            <Text style={{ color: pendingBadgeText, fontSize: 12, fontWeight: '700' }}>
-              {rows.length > 9 ? '9+' : rows.length}
-            </Text>
+      <View
+        style={{ marginTop: 16, borderRadius: 26, borderWidth: 1, borderColor: palette.warnBorder, backgroundColor: palette.warnBg, padding: 12, gap: 12 }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingRight: 6 }}>
+          <View style={{ minWidth: 32, height: 32, paddingHorizontal: 8, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: amber }}>
+            <Text style={{ color: '#1E1E1E', fontSize: 14, fontWeight: '700' }}>{rows.length > 99 ? '99+' : rows.length}</Text>
           </View>
+          <Text style={{ flex: 1, minWidth: 0, color: palette.muted, fontSize: 14, lineHeight: 19 }}>
+            <Text style={{ color: palette.text, fontWeight: '700' }}>{rows.length} purchase order{rows.length === 1 ? '' : 's'}</Text>
+            {rows.length === 1 ? ' from your team is waiting for approval' : ' from your team are waiting for approval'}
+          </Text>
         </View>
-        {rows.length === 0 ? (
-          <Text style={{ color: colors.text.tertiary }} className="text-sm mt-3">No submitted POs right now.</Text>
-        ) : (
-          <View className="mt-3" style={{ gap: 10 }}>
-            {rows.slice(0, 6).map((row) => (
-              <View
-                key={row.id}
-                className="rounded-xl p-3"
-                style={{ borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card }}
-              >
-                <View className="flex-row items-start justify-between" style={{ gap: 10 }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ color: colors.text.primary }} className="text-sm font-semibold" numberOfLines={1}>
-                      {row.title || row.poNumber}
-                    </Text>
-                    <Text style={{ color: colors.text.secondary }} className="text-xs mt-1" numberOfLines={1}>
-                      {row.supplier} • {row.submittedByName}
-                    </Text>
-                  </View>
-                  <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">
-                    {formatCurrency(row.total)}
+        <View style={{ gap: 10 }}>
+          {rows.slice(0, 6).map((row) => (
+            <View
+              key={row.id}
+              style={{ borderRadius: 20, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, padding: 14 }}
+            >
+              <View className="flex-row items-start justify-between" style={{ gap: 10 }}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ color: palette.text, fontSize: 13, fontWeight: '600' }} numberOfLines={1}>
+                    {row.title || row.poNumber}
+                  </Text>
+                  <Text style={{ color: palette.faint, fontSize: 11, marginTop: 3 }} numberOfLines={1}>
+                    {row.supplier} • {row.submittedByName}
                   </Text>
                 </View>
-                <View className="flex-row mt-3" style={{ gap: 8 }}>
-                  <Pressable
-                    onPress={() => handleApproveProcurementRequest(row.id)}
-                    className="flex-1 rounded-lg"
-                    style={{ height: 38, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.success }}
-                  >
-                    <Text style={{ color: '#FFFFFF' }} className="text-sm font-semibold">Approve</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => handleRejectProcurementRequest(row.id)}
-                    className="flex-1 rounded-lg"
-                    style={{ height: 38, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.danger }}
-                  >
-                    <Text style={{ color: colors.danger }} className="text-sm font-semibold">Reject</Text>
-                  </Pressable>
-                </View>
+                <MoneyText style={{ color: palette.text, fontSize: 14 }} numberOfLines={1}>
+                  {formatCurrency(row.total)}
+                </MoneyText>
               </View>
-            ))}
-          </View>
-        )}
+              <View className="flex-row mt-3" style={{ gap: 8 }}>
+                <Pressable
+                  onPress={() => handleApproveProcurementRequest(row.id)}
+                  style={(state) => ({ flex: 1, height: 40, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: isHovered(state) || state.pressed ? FYLL_LIME_HOVER : FYLL_LIME })}
+                >
+                  <Text style={[FINANCE_BUTTON_TEXT, { color: FYLL_LIME_INK }]}>Approve</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => handleRejectProcurementRequest(row.id)}
+                  style={(state) => ({ flex: 1, height: 40, borderRadius: 999, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: palette.dangerBorder, backgroundColor: isHovered(state) || state.pressed ? palette.dangerBg : 'transparent' })}
+                >
+                  <Text style={[FINANCE_BUTTON_TEXT, { color: palette.danger }]}>Reject</Text>
+                </Pressable>
+              </View>
+            </View>
+          ))}
+        </View>
       </View>
     );
   };
@@ -11171,9 +11251,9 @@ const buildExpenseDescription = (
               <Pressable
                 onPress={() => handleApproveRefundRequest(request.id)}
                 className="rounded-full px-5"
-                style={{ height: 44, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bar }}
+                style={{ height: 44, alignItems: 'center', justifyContent: 'center', backgroundColor: FYLL_LIME }}
               >
-                <Text style={{ color: colors.bg.screen }} className="font-semibold">Approve</Text>
+                <Text style={{ fontFamily: 'BricolageGrotesque_600SemiBold', color: FYLL_LIME_INK }} className="font-semibold">Approve</Text>
               </Pressable>
             </>
           </View>
@@ -11257,102 +11337,39 @@ const buildExpenseDescription = (
     const renderRefundRequestTopCards = () => {
       const periodPills = (
         <View style={{ marginTop: isWebDesktop ? 0 : 16 }}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
-            {overviewRangeOptions.map((option) => (
-              <FinanceFilterPill
-                key={option.key}
-                label={option.label}
-                active={refundPeriod === option.key}
-                onPress={() => setRefundPeriod(option.key)}
-                colors={colors}
-              />
-            ))}
-          </ScrollView>
+          <PeriodTabs value={refundPeriod} onChange={setRefundPeriod} />
+        </View>
+      );
+      const labels = getHeroPeriodLabels(refundPeriod);
+      const segments = buildHeroSegments(refundHeroStats.groups);
+      const biggest = segments[0];
+      const share = biggest && refundPeriodStats.total > 0 ? Math.round((biggest.amount / refundPeriodStats.total) * 100) : null;
+      const hero = (
+        <View style={{ marginTop: isMobile && !(!(isFinanceApprover && isWebDesktop) && visiblePendingCount > 0) ? 4 : 16 }}>
+          <FinanceHeroCard
+            eyebrow={`Refunds · ${labels.label}`}
+            amount={formatCurrency(refundPeriodStats.total)}
+            sentence={biggest && share !== null
+              ? [{ text: biggest.label, bold: true }, { text: ` refunds make up ${share}% of the money requested back.` }]
+              : [{ text: 'No refund requests in this period.' }]}
+            changeLabel={refundHeroStats.changeLabel}
+            changeTone={refundHeroStats.changeTone}
+            previousLabel={labels.previous}
+            sideLabel="Entries"
+            sideValue={refundPeriodStats.count.toLocaleString()}
+            segments={segments}
+            formatMoney={formatCurrency}
+            isMobile={isMobile}
+            loading={shouldShowFinanceSkeleton}
+          />
         </View>
       );
 
-      if (isWebDesktop) {
-        return (
-          <>
-            {periodPills}
-            <View className="mt-4" style={{ flexDirection: 'row', gap: 12 }}>
-              <FinanceMetricCard loading={shouldShowFinanceSkeleton}
-                label="Refund Total"
-                value={formatCurrency(refundPeriodStats.total)}
-                helper={refundPeriodWindow.label}
-                helperTone="neutral"
-                trendPlacement="right"
-                compactTrend={isCompactLayout}
-                valueFontSize={24}
-                colors={colors}
-              />
-              <FinanceMetricCard loading={shouldShowFinanceSkeleton}
-                label="Entries"
-                value={refundPeriodStats.count.toLocaleString()}
-                helper={refundPeriodWindow.label}
-                helperTone="neutral"
-                trendPlacement="right"
-                compactTrend={isCompactLayout}
-                valueFontSize={24}
-                colors={colors}
-              />
-            </View>
-          </>
-        );
-      }
-
-      if (isMobile) {
-        return (
-          <View className="mt-4" style={{ flexDirection: 'row', gap: 12 }}>
-            <FinanceMetricCard loading={shouldShowFinanceSkeleton}
-              label="Refund Total"
-              value={formatCurrency(refundPeriodStats.total)}
-              helper={refundPeriodWindow.label}
-              helperTone="neutral"
-              trendPlacement="right"
-              compactTrend={isCompactLayout}
-              valueFontSize={20}
-              colors={colors}
-            />
-            <FinanceMetricCard loading={shouldShowFinanceSkeleton}
-              label="Entries"
-              value={refundPeriodStats.count.toLocaleString()}
-              helper={refundPeriodWindow.label}
-              helperTone="neutral"
-              trendPlacement="right"
-              compactTrend={isCompactLayout}
-              valueFontSize={20}
-              colors={colors}
-            />
-          </View>
-        );
-      }
-
+      if (isMobile) return hero;
       return (
         <>
           {periodPills}
-          <View className="mt-4" style={{ flexDirection: 'row', gap: 12 }}>
-            <FinanceMetricCard loading={shouldShowFinanceSkeleton}
-              label="Refund Total"
-              value={formatCurrency(refundPeriodStats.total)}
-              helper={refundPeriodWindow.label}
-              helperTone="neutral"
-              trendPlacement="right"
-              compactTrend={isCompactLayout}
-              valueFontSize={20}
-              colors={colors}
-            />
-            <FinanceMetricCard loading={shouldShowFinanceSkeleton}
-              label="Entries"
-              value={refundPeriodStats.count.toLocaleString()}
-              helper={refundPeriodWindow.label}
-              helperTone="neutral"
-              trendPlacement="right"
-              compactTrend={isCompactLayout}
-              valueFontSize={20}
-              colors={colors}
-            />
-          </View>
+          {hero}
         </>
       );
     };
@@ -11366,83 +11383,37 @@ const buildExpenseDescription = (
 
     return (
       <View style={{ marginTop: activeTab === 'refunds' ? financeSectionTopMargin : 24 }}>
-        {!isWebDesktop ? (
-          <View className="flex-row items-start justify-between" style={{ gap: 12 }}>
-            <View style={{ flex: 1, paddingRight: 12 }}>
-              <Text style={{ color: colors.text.primary }} className="text-2xl font-bold">Refunds</Text>
-              <Text style={{ color: colors.text.tertiary }} className="text-sm mt-1">
-                Request, review, and complete customer refunds tied to orders.
-              </Text>
-            </View>
-            {canCreateRefundRequest ? (
-              <Pressable
-                onPress={async () => {
-                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  openRefundRequestComposer();
-                }}
-                className="rounded-full active:opacity-80 px-3.5 flex-row items-center"
-                style={{ height: 40, backgroundColor: colors.bar }}
-              >
-                <Plus size={18} color={colors.bg.screen} strokeWidth={2.5} />
-                <Text style={{ color: colors.bg.screen }} className="font-semibold ml-1.5 text-sm">New Refund</Text>
-              </Pressable>
-            ) : null}
+        {!isWebFinanceApproverRefunds && visiblePendingCount > 0 ? (
+          <View style={{ marginTop: isMobile ? 4 : 16 }}>
+            <PendingExpenseBanner
+              count={visiblePendingCount}
+              boldText={`${visiblePendingCount} refund request${visiblePendingCount === 1 ? '' : 's'}`}
+              restText={isFinanceApprover
+                ? (visiblePendingCount === 1 ? ' from your team is waiting for approval' : ' from your team are waiting for approval')
+                : (visiblePendingCount === 1 ? ' of yours is waiting for review or payout' : ' of yours are waiting for review or payout')}
+              actionLabel={isFinanceApprover ? 'Review' : 'View'}
+              onPress={() => {
+                if (!isFinanceApprover) {
+                  const hasSubmittedRefunds = myPendingRefundRequestRows.some((row) => row.status === 'submitted');
+                  const hasApprovedRefunds = myPendingRefundRequestRows.some((row) => row.status === 'approved');
+                  setRefundRequestFilter(hasSubmittedRefunds ? 'submitted' : hasApprovedRefunds ? 'approved' : 'all');
+                  return;
+                }
+
+                const hasSubmittedRefunds = pendingRefundApprovalRows.some((row) => row.status === 'submitted');
+                if (hasSubmittedRefunds) {
+                  setRefundRequestFilter('submitted');
+                  return;
+                }
+
+                const hasApprovedRefunds = pendingRefundApprovalRows.some((row) => row.status === 'approved');
+                setRefundRequestFilter(hasApprovedRefunds ? 'approved' : 'all');
+              }}
+            />
           </View>
         ) : null}
 
         {renderRefundRequestTopCards()}
-
-        {!isWebFinanceApproverRefunds ? (
-          <Pressable
-            onPress={() => {
-              if (!isFinanceApprover) {
-                const hasSubmittedRefunds = myPendingRefundRequestRows.some((row) => row.status === 'submitted');
-                const hasApprovedRefunds = myPendingRefundRequestRows.some((row) => row.status === 'approved');
-                setRefundRequestFilter(hasSubmittedRefunds ? 'submitted' : hasApprovedRefunds ? 'approved' : 'all');
-                return;
-              }
-
-              const hasSubmittedRefunds = pendingRefundApprovalRows.some((row) => row.status === 'submitted');
-              if (hasSubmittedRefunds) {
-                setRefundRequestFilter('submitted');
-                return;
-              }
-
-              const hasApprovedRefunds = pendingRefundApprovalRows.some((row) => row.status === 'approved');
-              setRefundRequestFilter(hasApprovedRefunds ? 'approved' : 'all');
-            }}
-            disabled={visiblePendingCount === 0}
-            className="mt-4 rounded-2xl p-4"
-            style={{ ...colors.getCardStyle(), opacity: visiblePendingCount === 0 ? 0.6 : 1 }}
-          >
-            <View className="flex-row items-center justify-between" style={{ gap: 12 }}>
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: colors.text.primary }} className="text-base font-semibold">
-                  {isFinanceApprover ? 'Pending Refund Approvals' : 'My Pending Refunds'}
-                </Text>
-                <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1">
-                  {isFinanceApprover
-                    ? 'Refund requests waiting for admin approval.'
-                    : 'Refund requests waiting for admin review or payout completion.'}
-                </Text>
-              </View>
-              <View
-                className="rounded-full items-center justify-center"
-                style={{
-                  width: 30,
-                  height: 30,
-                  borderWidth: 1,
-                  borderColor: pendingBadgeBorder,
-                  backgroundColor: pendingBadgeBg,
-                }}
-              >
-                <Text style={{ color: pendingBadgeText, fontSize: 13, fontWeight: '700' }}>
-                  {visiblePendingCount > 9 ? '9+' : visiblePendingCount}
-                </Text>
-              </View>
-            </View>
-          </Pressable>
-        ) : null}
 
         {isWebFinanceApproverRefunds ? (
           <View className="flex-row items-center" style={{ gap: 8, marginTop: financeSectionControlsMargin }}>
@@ -11709,11 +11680,11 @@ const buildExpenseDescription = (
         <View
           style={{
             marginTop: financeSectionBodyMargin,
-            borderWidth: 1,
+            borderWidth: isWebDesktop ? 1 : 0,
             borderColor: colors.divider,
             borderRadius: 16,
-            overflow: 'hidden',
-            backgroundColor: colors.bg.card,
+            overflow: isWebDesktop ? 'hidden' : 'visible',
+            backgroundColor: isWebDesktop ? colors.bg.card : 'transparent',
           }}
         >
           {isWebDesktop ? (
@@ -11739,30 +11710,109 @@ const buildExpenseDescription = (
               <Text style={{ color: colors.text.tertiary }} className="text-base">No refund requests found</Text>
             </View>
           ) : refundRowsForTable.map((row, index) => {
+            // Grouped by day like the Expenses list, unless it is sorted by amount.
+            const groupByDate = refundSort === 'newest' || refundSort === 'oldest';
+            const dayGroup = getExpenseDayGroup(row.dateAt || row.sortAt);
+            const previousRow = index > 0 ? refundRowsForTable[index - 1] : null;
+            const nextRow = index < refundRowsForTable.length - 1 ? refundRowsForTable[index + 1] : null;
+            const isFirstInGroup = groupByDate
+              ? !previousRow || getExpenseDayGroup(previousRow.dateAt || previousRow.sortAt).key !== dayGroup.key
+              : index === 0;
+            const isLastInGroup = groupByDate
+              ? !nextRow || getExpenseDayGroup(nextRow.dateAt || nextRow.sortAt).key !== dayGroup.key
+              : index === refundRowsForTable.length - 1;
+            const statusLabel = capitalizeDisplayValue(formatRefundRequestStatusLabel(row));
+            const openRow = () => openRefundRequestDetail(row.id, { modal: !isWebDesktop });
+
+            // Phones: a plain list like Orders and Expenses. A small day label, then the day's refunds as joined cards.
+            if (!isWebDesktop) {
+              const statusTone = getStatusTone(statusLabel, colors);
+              return (
+                <View key={row.id} style={{ marginTop: isFirstInGroup && index > 0 ? 18 : 0 }}>
+                  {isFirstInGroup ? (
+                    <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', paddingHorizontal: 4, marginBottom: 8 }}>
+                      {groupByDate ? dayGroup.label : 'All refunds'}
+                    </Text>
+                  ) : null}
+                  <Pressable className="active:opacity-80" onPress={openRow}>
+                    <View
+                      className="px-3.5 py-3"
+                      style={{
+                        backgroundColor: colors.bg.card,
+                        borderTopWidth: isFirstInGroup ? 1 : 0,
+                        borderBottomWidth: 1,
+                        borderLeftWidth: 1,
+                        borderRightWidth: 1,
+                        borderColor: colors.divider,
+                        borderTopLeftRadius: isFirstInGroup ? 18 : 0,
+                        borderTopRightRadius: isFirstInGroup ? 18 : 0,
+                        borderBottomLeftRadius: isLastInGroup ? 18 : 0,
+                        borderBottomRightRadius: isLastInGroup ? 18 : 0,
+                      }}
+                    >
+                      <View className="flex-row items-center" style={{ gap: 12 }}>
+                        <View style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.nudgeBg, borderWidth: 1, borderColor: palette.nudgeBorder }}>
+                          <Text style={{ color: palette.limeOnSurface, fontSize: 12, fontWeight: '700' }}>{getNameInitials(row.customerName)}</Text>
+                        </View>
+                        <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+                          <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '500' }} numberOfLines={1}>{capitalizeDisplayValue(row.customerName)}</Text>
+                          <Text style={{ color: colors.text.muted, fontSize: 10 }} numberOfLines={1}>{row.orderNumber} · {row.refundType === 'full' ? 'Full refund' : 'Partial refund'}</Text>
+                        </View>
+                        <View style={{ alignItems: 'flex-end', gap: 3, flexShrink: 0 }}>
+                          <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>{formatCurrency(row.amount)}</Text>
+                          <View className="flex-row items-center" style={{ gap: 5 }}>
+                            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: statusTone.text }} />
+                            <Text style={{ color: statusTone.text, fontSize: 10, fontWeight: '600' }} numberOfLines={1}>{statusLabel}</Text>
+                          </View>
+                        </View>
+                      </View>
+                    </View>
+                  </Pressable>
+                </View>
+              );
+            }
+
             return (
-              <Pressable
-                key={row.id}
-                onPress={async () => {
-                  openRefundRequestDetail(row.id, { modal: !isWebDesktop });
-                }}
-                style={{
-                  borderBottomWidth: index === filteredRefundRequestRows.length - 1 ? 0 : 1,
-                  borderBottomColor: colors.divider,
-                  backgroundColor: selectedRefundRequestId === row.id ? colors.bg.input : 'transparent',
-                  borderLeftWidth: selectedRefundRequestId === row.id ? 3 : 0,
-                  borderLeftColor: colors.bar,
-                }}
-                className={isWebDesktop ? '' : 'px-4 py-3.5'}
-              >
-                {isWebDesktop ? (
+              <React.Fragment key={row.id}>
+                {isFirstInGroup && groupByDate ? (
+                  <View
+                    style={{
+                      paddingHorizontal: 16,
+                      paddingTop: 12,
+                      paddingBottom: 8,
+                      backgroundColor: palette.inset,
+                      borderTopWidth: index === 0 ? 0 : 1,
+                      borderTopColor: colors.divider,
+                      borderBottomWidth: 1,
+                      borderBottomColor: colors.divider,
+                    }}
+                  >
+                    <Text style={{ color: palette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1.3, textTransform: 'uppercase' }}>{dayGroup.label}</Text>
+                  </View>
+                ) : null}
+                <Pressable
+                  onPress={openRow}
+                  style={{
+                    borderBottomWidth: index === refundRowsForTable.length - 1 ? 0 : 1,
+                    borderBottomColor: colors.divider,
+                    backgroundColor: selectedRefundRequestId === row.id ? colors.bg.input : 'transparent',
+                    borderLeftWidth: selectedRefundRequestId === row.id ? 3 : 0,
+                    borderLeftColor: colors.bar,
+                  }}
+                >
                   <View className="grid grid-cols-12 items-center px-3 py-3.5" style={{ columnGap: 12 } as any}>
-                    <View className="col-span-3" style={{ minWidth: 0 }}>
-                      <Text style={{ color: colors.text.primary }} className="text-sm font-normal" numberOfLines={1}>
-                        {row.orderNumber}
-                      </Text>
-                      <Text style={{ color: colors.text.secondary }} className="text-xs mt-0.5" numberOfLines={1}>
-                        {row.customerName}
-                      </Text>
+                    <View className="col-span-3 flex-row items-center" style={{ minWidth: 0, gap: 10 }}>
+                      <View style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.nudgeBg, borderWidth: 1, borderColor: palette.nudgeBorder }}>
+                        <Text style={{ color: palette.limeOnSurface, fontSize: 11, fontWeight: '700' }}>{getNameInitials(row.customerName)}</Text>
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={{ color: colors.text.primary }} className="text-sm font-normal" numberOfLines={1}>
+                          {row.orderNumber}
+                        </Text>
+                        <Text style={{ color: colors.text.secondary }} className="text-xs mt-0.5" numberOfLines={1}>
+                          {row.customerName}
+                        </Text>
+                      </View>
                     </View>
                     <Text style={{ color: colors.text.secondary }} className="col-span-2 text-sm" numberOfLines={1}>
                       {row.requestedDate}
@@ -11780,30 +11830,8 @@ const buildExpenseDescription = (
                       {formatCurrency(row.amount)}
                     </Text>
                   </View>
-                ) : (
-                  <View className="flex-row items-start justify-between" style={{ gap: 10 }}>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={{ color: colors.text.primary }} className="text-base font-normal" numberOfLines={1}>
-                        {row.orderNumber}
-                      </Text>
-                      <Text style={{ color: colors.text.secondary }} className="text-sm mt-1" numberOfLines={1}>
-                        {`${capitalizeDisplayValue(row.customerName)} · ${row.refundType === 'full' ? 'Full refund' : 'Partial refund'}`}
-                      </Text>
-                    </View>
-                    <View style={{ alignItems: 'flex-end', minWidth: 120 }}>
-                      <Text style={{ color: colors.text.primary }} className="text-base font-normal" numberOfLines={1}>
-                        {formatCurrency(row.amount)}
-                      </Text>
-                      <View className="flex-row items-center mt-1" style={{ gap: 6 }}>
-                        <StatusBadge label={capitalizeDisplayValue(formatRefundRequestStatusLabel(row))} colors={colors} compact maxWidth={92} />
-                        <Text style={{ color: colors.text.secondary }} className="text-xs" numberOfLines={1}>
-                          {row.requestedDate}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                )}
-              </Pressable>
+                </Pressable>
+              </React.Fragment>
             );
           })}
         </View>
@@ -11820,30 +11848,6 @@ const buildExpenseDescription = (
   const renderMyExpenseRequestWorkspace = () => (
     <View style={isWebDesktop ? { maxWidth: 1440, width: '100%', alignSelf: 'flex-start' } : undefined}>
       <View style={{ marginTop: financeSectionTopMargin }}>
-        {!isWebDesktop ? (
-          <View className="flex-row items-start justify-between" style={{ gap: 12 }}>
-            <View style={{ flex: 1, paddingRight: 12 }}>
-              <Text style={{ color: colors.text.primary }} className="text-2xl font-bold">Expenses</Text>
-              <Text style={{ color: colors.text.tertiary }} className="text-sm mt-1">
-                Track one-time and recurring costs
-              </Text>
-            </View>
-            <View className="flex-row items-center" style={{ gap: 8 }}>
-              <Pressable
-                onPress={() => {
-                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  openExpenseComposer();
-                }}
-                className="rounded-full active:opacity-80 px-3.5 flex-row items-center"
-                style={{ height: 40, backgroundColor: colors.bar }}
-              >
-                <Plus size={18} color={colors.bg.screen} strokeWidth={2.5} />
-                <Text style={{ color: colors.bg.screen }} className="font-semibold ml-1.5 text-sm">Add Expense</Text>
-              </Pressable>
-            </View>
-          </View>
-        ) : null}
-
         {renderMyExpenseRequestTopCards()}
 
         <Pressable
@@ -12244,106 +12248,49 @@ const buildExpenseDescription = (
 
   const renderProcurementTopCards = () => {
     const isCostingSection = activeTab === 'costing';
-    const totalLabel = isCostingSection ? 'Costing Total' : 'Procurement Total';
     const cardStats = isFinanceApprover ? procurementPeriodStats : managerSubmittedProcurementPeriodStats;
     const periodPills = (
       <View style={{ marginTop: isWebDesktop ? 0 : 16 }}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
-          {overviewRangeOptions.map((option) => (
-            <FinanceFilterPill
-              key={option.key}
-              label={option.label}
-              active={procurementPeriod === option.key}
-              onPress={() => setProcurementPeriod(option.key)}
-              colors={colors}
-            />
-          ))}
-        </ScrollView>
+        <PeriodTabs value={procurementPeriod} onChange={setProcurementPeriod} />
+      </View>
+    );
+    const labels = getHeroPeriodLabels(procurementPeriod);
+    const segments = buildHeroSegments(procurementHeroStats.groups);
+    const biggest = segments[0];
+    const share = biggest && cardStats.total > 0 ? Math.round((biggest.amount / cardStats.total) * 100) : null;
+    const average = cardStats.count > 0 ? cardStats.total / cardStats.count : 0;
+    const noun = isCostingSection ? 'costing' : 'procurement';
+    const hero = (
+      <View style={{ marginTop: isMobile ? 4 : 16 }}>
+        <FinanceHeroCard
+          eyebrow={`${isCostingSection ? 'Costing' : 'Procurement'} · ${labels.label}`}
+          amount={formatCurrency(cardStats.total)}
+          sentence={biggest && share !== null
+            ? [
+              { text: biggest.label, bold: true },
+              { text: ` took ${share}% of it` },
+              ...(cardStats.count > 0 ? [{ text: `, about ${formatCurrency(Math.round(average))} per entry.` }] : [{ text: '.' }]),
+            ]
+            : [{ text: `No ${noun} recorded in this period.` }]}
+          changeLabel={procurementHeroStats.changeLabel}
+          changeTone={procurementHeroStats.changeTone}
+          previousLabel={labels.previous}
+          sideLabel="Entries"
+          sideValue={cardStats.count.toLocaleString()}
+          segments={segments}
+          formatMoney={formatCurrency}
+          isMobile={isMobile}
+          loading={shouldShowFinanceSkeleton}
+        />
       </View>
     );
 
-    if (isWebDesktop) {
-      return (
-        <>
-          {periodPills}
-          <View className="mt-4" style={{ flexDirection: 'row', gap: 12 }}>
-            <FinanceMetricCard loading={shouldShowFinanceSkeleton}
-              label={totalLabel}
-              value={formatCurrency(cardStats.total)}
-              helper={procurementPeriodWindow.label}
-              helperTone="neutral"
-              trendPlacement="right"
-              compactTrend={isCompactLayout}
-              valueFontSize={24}
-              colors={colors}
-            />
-            <FinanceMetricCard loading={shouldShowFinanceSkeleton}
-              label="Entries"
-              value={cardStats.count.toLocaleString()}
-              helper={procurementPeriodWindow.label}
-              helperTone="neutral"
-              trendPlacement="right"
-              compactTrend={isCompactLayout}
-              valueFontSize={24}
-              colors={colors}
-            />
-          </View>
-        </>
-      );
-    }
-
-    if (isMobile) {
-      return (
-        <View className="mt-4" style={{ flexDirection: 'row', gap: 12 }}>
-          <FinanceMetricCard loading={shouldShowFinanceSkeleton}
-            label={totalLabel}
-            value={formatCurrency(cardStats.total)}
-            helper={procurementPeriodWindow.label}
-            helperTone="neutral"
-            trendPlacement="right"
-            compactTrend={isCompactLayout}
-            valueFontSize={20}
-            colors={colors}
-          />
-          <FinanceMetricCard loading={shouldShowFinanceSkeleton}
-            label="Entries"
-            value={cardStats.count.toLocaleString()}
-            helper={procurementPeriodWindow.label}
-            helperTone="neutral"
-            trendPlacement="right"
-            compactTrend={isCompactLayout}
-            valueFontSize={20}
-            colors={colors}
-          />
-        </View>
-      );
-    }
-
+    // On a phone the period tabs live in the page header, so only the card is shown here.
+    if (isMobile) return hero;
     return (
       <>
         {periodPills}
-        <View className="mt-4" style={{ flexDirection: 'row', gap: 12 }}>
-          <FinanceMetricCard loading={shouldShowFinanceSkeleton}
-            label={totalLabel}
-            value={formatCurrency(cardStats.total)}
-            helper={procurementPeriodWindow.label}
-            helperTone="neutral"
-            trendPlacement="right"
-            compactTrend={isCompactLayout}
-            valueFontSize={20}
-            colors={colors}
-          />
-          <FinanceMetricCard loading={shouldShowFinanceSkeleton}
-            label="Entries"
-            value={cardStats.count.toLocaleString()}
-            helper={procurementPeriodWindow.label}
-            helperTone="neutral"
-            trendPlacement="right"
-            compactTrend={isCompactLayout}
-            valueFontSize={20}
-            colors={colors}
-          />
-        </View>
+        {hero}
       </>
     );
   };
@@ -12368,6 +12315,7 @@ const buildExpenseDescription = (
               data={revenueTrendData}
               height={230}
               lineColor={colors.bar}
+              areaColor={FYLL_LIME}
               gridColor={colors.divider}
               textColor={colors.text.tertiary}
               formatYLabel={formatAxisCurrency}
@@ -12425,6 +12373,7 @@ const buildExpenseDescription = (
             data={revenueTrendData}
             height={230}
             lineColor={colors.bar}
+              areaColor={FYLL_LIME}
             gridColor={colors.divider}
             textColor={colors.text.tertiary}
             formatYLabel={formatAxisCurrency}
@@ -12468,77 +12417,37 @@ const buildExpenseDescription = (
   const renderOtherIncome = () => (
     <View style={isWebDesktop ? { maxWidth: 1440, width: '100%', alignSelf: 'flex-start' } : undefined}>
       <View style={{ marginTop: financeSectionTopMargin }}>
-        {!isWebDesktop ? (
-          <View className="flex-row items-start justify-between" style={{ gap: 12 }}>
-            <View style={{ flex: 1, paddingRight: 12 }}>
-              <Text style={{ color: colors.text.primary }} className="text-2xl font-bold">Other Income</Text>
-              <Text style={{ color: colors.text.tertiary }} className="text-sm mt-1">Track grants, owner funding, loans, and non-sales cash inflow</Text>
-            </View>
-            <Pressable
-              onPress={() => {
-                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                openOtherIncomeComposer();
-              }}
-              className="rounded-full active:opacity-80 px-3.5 flex-row items-center"
-              style={{ height: 40, backgroundColor: colors.bar }}
-            >
-              <Plus size={18} color={colors.bg.screen} strokeWidth={2.5} />
-              <Text style={{ color: colors.bg.screen }} className="font-semibold ml-1.5 text-sm">Add Income</Text>
-            </Pressable>
+        {isMobile ? null : (
+          <View style={{ marginTop: isWebDesktop ? 0 : 16 }}>
+            <PeriodTabs value={otherIncomePeriod} onChange={setOtherIncomePeriod} />
           </View>
-        ) : null}
+        )}
 
-        <View style={{ marginTop: isWebDesktop ? 0 : 16 }}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
-            {overviewRangeOptions.map((option) => (
-              <FinanceFilterPill
-                key={option.key}
-                label={option.label}
-                active={otherIncomePeriod === option.key}
-                onPress={() => setOtherIncomePeriod(option.key)}
-                colors={colors}
+        <View style={{ marginTop: isMobile ? 4 : 16 }}>
+          {(() => {
+            const labels = getHeroPeriodLabels(otherIncomePeriod);
+            const segments = buildHeroSegments(otherIncomeHeroStats.groups);
+            const biggest = segments[0];
+            const share = biggest && otherIncomePeriodStats.total > 0 ? Math.round((biggest.amount / otherIncomePeriodStats.total) * 100) : null;
+            return (
+              <FinanceHeroCard
+                eyebrow={`Other income · ${labels.label}`}
+                amount={formatCurrency(otherIncomePeriodStats.total)}
+                sentence={biggest && share !== null
+                  ? [{ text: biggest.label, bold: true }, { text: ` made up ${share}% of money that did not come from sales.` }]
+                  : [{ text: 'No other income recorded in this period.' }]}
+                changeLabel={otherIncomeHeroStats.changeLabel}
+                changeTone={otherIncomeHeroStats.changeTone}
+                previousLabel={labels.previous}
+                sideLabel="Entries"
+                sideValue={otherIncomePeriodStats.count.toLocaleString()}
+                segments={segments}
+                formatMoney={formatCurrency}
+                isMobile={isMobile}
+                loading={shouldShowFinanceSkeleton}
               />
-            ))}
-          </ScrollView>
-        </View>
-
-        <View className="mt-4" style={{ gap: 12 }}>
-          <View style={{ flexDirection: isWebDesktop ? 'row' : 'column', gap: 12 }}>
-            <FinanceMetricCard loading={shouldShowFinanceSkeleton}
-              label="Other Income"
-              value={formatCurrency(otherIncomePeriodStats.total)}
-              helper={otherIncomePeriodWindow.label}
-              helperTone="neutral"
-              valueFontSize={isWebDesktop ? 24 : 20}
-              colors={colors}
-            />
-            <FinanceMetricCard loading={shouldShowFinanceSkeleton}
-              label="Entries"
-              value={String(otherIncomePeriodStats.count)}
-              helper={otherIncomePeriodWindow.label}
-              helperTone="neutral"
-              valueFontSize={isWebDesktop ? 24 : 20}
-              colors={colors}
-            />
-          </View>
-          <View style={{ flexDirection: isWebDesktop ? 'row' : 'column', gap: 12 }}>
-            <FinanceMetricCard loading={shouldShowFinanceSkeleton}
-              label="Grant Inflow"
-              value={formatCurrency(otherIncomePeriodStats.grants)}
-              helper={otherIncomePeriodWindow.label}
-              helperTone="neutral"
-              valueFontSize={isWebDesktop ? 22 : 18}
-              colors={colors}
-            />
-            <FinanceMetricCard loading={shouldShowFinanceSkeleton}
-              label="Owner Funding"
-              value={formatCurrency(otherIncomePeriodStats.ownerContributions)}
-              helper={otherIncomePeriodWindow.label}
-              helperTone="neutral"
-              valueFontSize={isWebDesktop ? 22 : 18}
-              colors={colors}
-            />
-          </View>
+            );
+          })()}
         </View>
 
         <View style={{ gap: 10, marginTop: financeSectionControlsMargin }}>
@@ -12655,28 +12564,7 @@ const buildExpenseDescription = (
   const renderExpenses = () => (
     <View style={isWebDesktop ? { maxWidth: 1440, width: '100%', alignSelf: 'flex-start' } : undefined}>
       <View style={{ marginTop: financeSectionTopMargin }}>
-        {!isWebDesktop ? (
-          <View className="flex-row items-start justify-between" style={{ gap: 12 }}>
-            <View style={{ flex: 1, paddingRight: 12 }}>
-              <Text style={{ color: colors.text.primary }} className="text-2xl font-bold">Expenses</Text>
-              <Text style={{ color: colors.text.tertiary }} className="text-sm mt-1">Track one-time and recurring costs</Text>
-            </View>
-            <View className="flex-row items-center" style={{ gap: 8 }}>
-              <Pressable
-                onPress={() => {
-                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  openExpenseComposer();
-                }}
-                className="rounded-full active:opacity-80 px-3.5 flex-row items-center"
-                style={{ height: 40, backgroundColor: colors.bar }}
-              >
-                <Plus size={18} color={colors.bg.screen} strokeWidth={2.5} />
-                <Text style={{ color: colors.bg.screen }} className="font-semibold ml-1.5 text-sm">Add Expense</Text>
-              </Pressable>
-            </View>
-          </View>
-        ) : null}
-
+        {isFinanceApprover && !isWebDesktop ? renderOwnerExpenseApprovalQueue() : null}
         {renderExpenseTopCards()}
         {isFinanceApprover && isWebDesktop ? (
           <View className="flex-row items-center" style={{ gap: 8, marginTop: financeSectionControlsMargin }}>
@@ -12733,7 +12621,6 @@ const buildExpenseDescription = (
             </Pressable>
           </View>
         ) : null}
-        {isFinanceApprover && !isWebDesktop ? renderOwnerExpenseApprovalQueue() : null}
             {isWebDesktop ? (
               <View className="flex-row items-center" style={{ gap: 12, marginTop: financeSectionControlsMargin }}>
                 <View
@@ -12934,11 +12821,11 @@ const buildExpenseDescription = (
           <View
             style={{
               marginTop: financeSectionBodyMargin,
-              borderWidth: 1,
+              borderWidth: isWebDesktop ? 1 : 0,
               borderColor: colors.divider,
               borderRadius: 16,
               overflow: 'visible',
-              backgroundColor: colors.bg.card,
+              backgroundColor: isWebDesktop ? colors.bg.card : 'transparent',
               width: '100%',
             }}
           >
@@ -12974,9 +12861,102 @@ const buildExpenseDescription = (
               <View className="items-center justify-center py-12">
                 <Text style={{ color: colors.text.tertiary }} className="text-base">{expenseEmptyMessage}</Text>
               </View>
-            ) : expenseRowsForTable.map((expense, index) => (
+            ) : expenseRowsForTable.map((expense, index) => {
+              const groupByDate = isExpenseApprovalListMode || expenseSort === 'newest' || expenseSort === 'oldest';
+              const dayGroup = getExpenseDayGroup((expense as { sortAt?: number }).sortAt);
+              const previousRow = index > 0 ? expenseRowsForTable[index - 1] : null;
+              const isFirstInGroup = groupByDate && (!previousRow || getExpenseDayGroup((previousRow as { sortAt?: number }).sortAt).key !== dayGroup.key);
+
+              // Phones: a plain list like Orders. A small day label, then the day's expenses as joined cards.
+              if (!isWebDesktop) {
+                const nextRow = index < expenseRowsForTable.length - 1 ? expenseRowsForTable[index + 1] : null;
+                const startsGroup = groupByDate ? isFirstInGroup : index === 0;
+                const endsGroup = groupByDate
+                  ? !nextRow || getExpenseDayGroup((nextRow as { sortAt?: number }).sortAt).key !== dayGroup.key
+                  : index === expenseRowsForTable.length - 1;
+                const typeTone = getStatusTone(formatExpenseTypeLabel(expense.type), colors);
+                const subline = isExpenseApprovalListMode
+                  ? [expense.category, (expense as ExpenseRequestRow).submittedByName || 'Team Member'].filter(Boolean).join(' · ')
+                  : [expense.category, expense.merchant].filter(Boolean).join(' · ');
+                return (
+                  <View key={expense.id} style={{ marginTop: startsGroup && index > 0 ? 18 : 0 }}>
+                    {startsGroup ? (
+                      <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', paddingHorizontal: 4, marginBottom: 8 }}>
+                        {groupByDate ? dayGroup.label : 'All expenses'}
+                      </Text>
+                    ) : null}
+                    <Pressable
+                      className="active:opacity-80"
+                      onPress={() => {
+                        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        if (isExpenseApprovalListMode) {
+                          setApprovalDetailRequestId(expense.id);
+                          return;
+                        }
+                        if (isMobile) {
+                          router.push({ pathname: '/expense/[id]', params: { id: expense.id } } as any);
+                        } else {
+                          setSelectedExpenseId(expense.id);
+                        }
+                      }}
+                    >
+                      <View
+                        className="px-3.5 py-3"
+                        style={{
+                          backgroundColor: colors.bg.card,
+                          borderTopWidth: startsGroup ? 1 : 0,
+                          borderBottomWidth: 1,
+                          borderLeftWidth: 1,
+                          borderRightWidth: 1,
+                          borderColor: colors.divider,
+                          borderTopLeftRadius: startsGroup ? 18 : 0,
+                          borderTopRightRadius: startsGroup ? 18 : 0,
+                          borderBottomLeftRadius: endsGroup ? 18 : 0,
+                          borderBottomRightRadius: endsGroup ? 18 : 0,
+                        }}
+                      >
+                        <View className="flex-row items-center" style={{ gap: 12 }}>
+                          <View style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.nudgeBg, borderWidth: 1, borderColor: palette.nudgeBorder }}>
+                            <Text style={{ color: palette.limeOnSurface, fontSize: 12, fontWeight: '700' }}>{getNameInitials(expense.merchant || expense.name)}</Text>
+                          </View>
+                          <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+                            <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '500' }} numberOfLines={1}>{capitalizeDisplayValue(expense.name)}</Text>
+                            <Text style={{ color: colors.text.muted, fontSize: 10 }} numberOfLines={1}>{capitalizeDisplayValue(subline)}</Text>
+                          </View>
+                          <View style={{ alignItems: 'flex-end', gap: 3, flexShrink: 0 }}>
+                            <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>{formatCurrency(expense.amount)}</Text>
+                            <View className="flex-row items-center" style={{ gap: 5 }}>
+                              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: typeTone.text }} />
+                              <Text style={{ color: typeTone.text, fontSize: 10, fontWeight: '600' }} numberOfLines={1}>{formatExpenseTypeLabel(expense.type)}</Text>
+                            </View>
+                          </View>
+                        </View>
+                      </View>
+                    </Pressable>
+                  </View>
+                );
+              }
+
+              return (
+              <React.Fragment key={expense.id}>
+              {isFirstInGroup ? (
+                <View
+                  style={{
+                    paddingHorizontal: 16,
+                    paddingTop: 12,
+                    paddingBottom: 8,
+                    backgroundColor: palette.inset,
+                    borderTopWidth: index === 0 ? 0 : 1,
+                    borderTopColor: colors.divider,
+                    borderBottomWidth: 1,
+                    borderBottomColor: colors.divider,
+                    ...(index === 0 ? { borderTopLeftRadius: 15, borderTopRightRadius: 15 } : null),
+                  }}
+                >
+                  <Text style={{ color: palette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1.3, textTransform: 'uppercase' }}>{dayGroup.label}</Text>
+                </View>
+              ) : null}
               <Pressable
-                key={expense.id}
                 onPress={() => {
                   if (isExpenseApprovalListMode) {
                     setApprovalDetailRequestId(expense.id);
@@ -13052,9 +13032,9 @@ const buildExpenseDescription = (
                                 handleApproveExpenseRequest(expense.id);
                               }}
                               className="rounded-full px-2.5 items-center justify-center"
-                              style={{ height: 30, backgroundColor: colors.bar }}
+                              style={{ height: 30, backgroundColor: FYLL_LIME }}
                             >
-                              <Text style={{ color: colors.bg.screen, fontSize: 12, fontWeight: '700' }}>Approve</Text>
+                              <Text style={{ fontFamily: 'BricolageGrotesque_600SemiBold', color: FYLL_LIME_INK, fontSize: 12, fontWeight: '700' }}>Approve</Text>
                             </Pressable>
                           </View>
                         </View>
@@ -13120,11 +13100,8 @@ const buildExpenseDescription = (
                         <Text style={{ color: colors.text.primary }} className="text-base font-normal" numberOfLines={1}>
                           {formatCurrency(expense.amount)}
                         </Text>
-                        <View className="flex-row items-center mt-1" style={{ gap: 6 }}>
-                          <StatusBadge label={formatExpenseTypeLabel(expense.type)} colors={colors} compact maxWidth={92} />
-                          <Text style={{ color: colors.text.secondary }} className="text-xs" numberOfLines={1}>
-                            {expense.date}
-                          </Text>
+                        <View className="mt-1.5" style={{ alignSelf: 'flex-end' }}>
+                          <StatusBadge label={formatExpenseTypeLabel(expense.type)} colors={colors} compact maxWidth={110} />
                         </View>
                       </View>
                     </View>
@@ -13169,7 +13146,9 @@ const buildExpenseDescription = (
                   </View>
                 ) : null}
               </Pressable>
-            ))}
+              </React.Fragment>
+              );
+            })}
           </View>
 
       {!isMobile && expenseActionMenuId ? (
@@ -13197,6 +13176,9 @@ const buildExpenseDescription = (
             warehouseItems={warehouseItems}
             statusOptions={effectiveProcurementStatusOptions}
             activeSection={procurementChildPage}
+            dateFilter={procurementPeriod}
+            onDateFilterChange={setProcurementPeriod}
+            hideDateFilter={isMobile && (isFinanceApprover || isManagerRole)}
             onNewOrder={() => openProcurementComposer('procurement')}
             onEdit={openProcurementEditor}
             onDuplicate={openProcurementDuplicate}
@@ -13276,38 +13258,6 @@ const buildExpenseDescription = (
     return (
     <View style={isWebDesktop ? { maxWidth: 1440, width: '100%', alignSelf: 'flex-start' } : undefined}>
       <View style={{ marginTop: financeSectionTopMargin }}>
-        {!isWebDesktop ? (
-          <View className="flex-row items-start justify-between" style={{ gap: 12 }}>
-            <View style={{ flex: 1, paddingRight: 12 }}>
-              <Text style={{ color: colors.text.primary }} className="text-2xl font-bold">{sectionTitle}</Text>
-              <Text
-                style={{
-                  color: colors.text.tertiary,
-                  maxWidth: isMobile ? 190 : undefined,
-                  lineHeight: 18,
-                }}
-                className="text-sm mt-1"
-              >
-                {sectionSubtitle}
-              </Text>
-            </View>
-
-            {canCreateProcurementRequest ? (
-              <Pressable
-                onPress={() => {
-                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  openProcurementComposer(isCostingSection ? 'costing' : 'procurement');
-                }}
-                className="rounded-full active:opacity-80 px-3.5 flex-row items-center"
-                style={{ height: 40, backgroundColor: colors.bar }}
-              >
-                <Plus size={18} color={colors.bg.screen} strokeWidth={2.5} />
-                <Text style={{ color: colors.bg.screen }} className="font-semibold ml-1.5 text-sm">{createLabel}</Text>
-              </Pressable>
-            ) : null}
-          </View>
-        ) : null}
-
         {renderProcurementTopCards()}
         {isFinanceApprover && !isCostingSection && !isWebDesktop ? renderOwnerProcurementApprovalQueue() : null}
 
@@ -13561,11 +13511,11 @@ const buildExpenseDescription = (
       <View
         style={{
           marginTop: financeSectionBodyMargin,
-          borderWidth: 1,
+          borderWidth: isWebDesktop ? 1 : 0,
           borderColor: colors.divider,
           borderRadius: 16,
           overflow: 'visible',
-          backgroundColor: colors.bg.card,
+          backgroundColor: isWebDesktop ? colors.bg.card : 'transparent',
           width: '100%',
           position: 'relative',
         }}
@@ -13612,9 +13562,101 @@ const buildExpenseDescription = (
           <View className="items-center justify-center py-12">
             <Text style={{ color: colors.text.tertiary }} className="text-base">{procurementEmptyMessage}</Text>
           </View>
-        ) : procurementRowsForTable.map((procurement, index) => (
+        ) : procurementRowsForTable.map((procurement, index) => {
+          // Grouped by day like Expenses and Refunds, unless the list is sorted by amount or workflow.
+          const groupByDate = procurementSort === 'newest' || procurementSort === 'oldest';
+          const dayGroup = getExpenseDayGroup(procurement.sortAt);
+          const previousRow = index > 0 ? procurementRowsForTable[index - 1] : null;
+          const nextRow = index < procurementRowsForTable.length - 1 ? procurementRowsForTable[index + 1] : null;
+          const isFirstInGroup = groupByDate
+            ? !previousRow || getExpenseDayGroup(previousRow.sortAt).key !== dayGroup.key
+            : index === 0;
+          const isLastInGroup = groupByDate
+            ? !nextRow || getExpenseDayGroup(nextRow.sortAt).key !== dayGroup.key
+            : index === procurementRowsForTable.length - 1;
+
+          // Phones: a plain list like Orders, Expenses and Refunds. A small day label, then the day's POs as joined cards.
+          if (!isWebDesktop) {
+            const statusLabel = capitalizeDisplayValue(procurement.status);
+            const statusTone = getStatusTone(statusLabel, colors);
+            const subline = procurement.title
+              ? `${procurement.poNumber} · ${capitalizeDisplayValue(procurement.supplier)}`
+              : capitalizeDisplayValue(procurement.supplier);
+            return (
+              <View key={procurement.id} style={{ marginTop: isFirstInGroup && index > 0 ? 18 : 0 }}>
+                {isFirstInGroup ? (
+                  <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', paddingHorizontal: 4, marginBottom: 8 }}>
+                    {groupByDate ? dayGroup.label : 'All orders'}
+                  </Text>
+                ) : null}
+                <Pressable
+                  className="active:opacity-80"
+                  onPress={() => {
+                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    if (isMobile) {
+                      router.push({ pathname: '/procurement/[id]', params: { id: procurement.id, section: activeTab } } as any);
+                      return;
+                    }
+                    setSelectedProcurementId((prev) => prev === procurement.id ? null : procurement.id);
+                    setProcurementActionMenuId(null);
+                  }}
+                >
+                  <View
+                    className="px-3.5 py-3"
+                    style={{
+                      backgroundColor: colors.bg.card,
+                      borderTopWidth: isFirstInGroup ? 1 : 0,
+                      borderBottomWidth: 1,
+                      borderLeftWidth: 1,
+                      borderRightWidth: 1,
+                      borderColor: colors.divider,
+                      borderTopLeftRadius: isFirstInGroup ? 18 : 0,
+                      borderTopRightRadius: isFirstInGroup ? 18 : 0,
+                      borderBottomLeftRadius: isLastInGroup ? 18 : 0,
+                      borderBottomRightRadius: isLastInGroup ? 18 : 0,
+                    }}
+                  >
+                    <View className="flex-row items-center" style={{ gap: 12 }}>
+                      <View style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.nudgeBg, borderWidth: 1, borderColor: palette.nudgeBorder }}>
+                        <Text style={{ color: palette.limeOnSurface, fontSize: 12, fontWeight: '700' }}>{getNameInitials(procurement.supplier)}</Text>
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+                        <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '500' }} numberOfLines={1}>{capitalizeDisplayValue(procurement.title || procurement.poNumber)}</Text>
+                        <Text style={{ color: colors.text.muted, fontSize: 10 }} numberOfLines={1}>{subline}</Text>
+                      </View>
+                      <View style={{ alignItems: 'flex-end', gap: 3, flexShrink: 0 }}>
+                        <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>{formatCurrency(procurement.total)}</Text>
+                        <View className="flex-row items-center" style={{ gap: 5 }}>
+                          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: statusTone.text }} />
+                          <Text style={{ color: statusTone.text, fontSize: 10, fontWeight: '600' }} numberOfLines={1}>{statusLabel}</Text>
+                        </View>
+                      </View>
+                    </View>
+                  </View>
+                </Pressable>
+              </View>
+            );
+          }
+
+          return (
+          <React.Fragment key={procurement.id}>
+          {isFirstInGroup && groupByDate ? (
+            <View
+              style={{
+                paddingHorizontal: 16,
+                paddingTop: 12,
+                paddingBottom: 8,
+                backgroundColor: palette.inset,
+                borderTopWidth: index === 0 ? 0 : 1,
+                borderTopColor: colors.divider,
+                borderBottomWidth: 1,
+                borderBottomColor: colors.divider,
+              }}
+            >
+              <Text style={{ color: palette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1.3, textTransform: 'uppercase' }}>{dayGroup.label}</Text>
+            </View>
+          ) : null}
           <Pressable
-            key={procurement.id}
             onPress={() => {
               if (isShowingWebProcurementApprovals) return;
               if (isMobile) {
@@ -13683,9 +13725,9 @@ const buildExpenseDescription = (
                             handleApproveProcurementRequest(procurement.id);
                           }}
                           className="rounded-full px-2.5 items-center justify-center"
-                          style={{ height: 30, backgroundColor: colors.bar }}
+                          style={{ height: 30, backgroundColor: FYLL_LIME }}
                         >
-                          <Text style={{ color: colors.bg.screen, fontSize: 12, fontWeight: '700' }}>Approve</Text>
+                          <Text style={{ fontFamily: 'BricolageGrotesque_600SemiBold', color: FYLL_LIME_INK, fontSize: 12, fontWeight: '700' }}>Approve</Text>
                         </Pressable>
                       </View>
                     </View>
@@ -13833,7 +13875,9 @@ const buildExpenseDescription = (
               </View>
             ) : null}
           </Pressable>
-        ))}
+          </React.Fragment>
+          );
+        })}
       </View>
 
     </View>
@@ -13843,30 +13887,6 @@ const buildExpenseDescription = (
   const renderSalary = () => (
     <View style={isWebDesktop ? { maxWidth: 1440, width: '100%', alignSelf: 'flex-start' } : undefined}>
       <View style={{ marginTop: financeSectionTopMargin }}>
-        {!isWebDesktop ? (
-          <View className="flex-row items-start justify-between" style={{ gap: 12 }}>
-            <View style={{ flex: 1, paddingRight: 12 }}>
-              <Text style={{ color: colors.text.primary }} className="text-2xl font-bold">Salary</Text>
-              <Text style={{ color: colors.text.tertiary }} className="text-sm mt-1">Run monthly payroll and review saved salary runs</Text>
-            </View>
-            {salaryTemplates.length > 0 ? (
-              <View className="flex-row items-center" style={{ gap: 8 }}>
-                <Pressable
-                  onPress={() => {
-                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    openSalaryRunLauncher();
-                  }}
-                  className="rounded-full active:opacity-80 px-3.5 flex-row items-center"
-                  style={{ height: 40, backgroundColor: colors.bar }}
-                >
-                  <Plus size={18} color={colors.bg.screen} strokeWidth={2.5} />
-                  <Text style={{ color: colors.bg.screen }} className="font-semibold ml-1.5 text-sm">Run Salary</Text>
-                </Pressable>
-              </View>
-            ) : null}
-          </View>
-        ) : null}
-
         {renderSalaryTopCards()}
         {!isWebDesktop ? renderSalaryTemplateActionCard() : null}
         <View className={isWebDesktop ? 'mt-4' : 'mt-5'} style={{ gap: 12 }}>
@@ -14026,12 +14046,14 @@ const buildExpenseDescription = (
 
   const renderFinanceSettings = () => (
     <View style={isWebDesktop ? { maxWidth: 1440, width: '100%', alignSelf: 'flex-start' } : undefined}>
-      <View className="mt-6">
-        <Text style={{ color: colors.text.primary }} className="text-2xl font-bold">Finance Settings</Text>
-        <Text style={{ color: colors.text.tertiary }} className="text-sm mt-1">
-          Manage suppliers, expense categories, procurement statuses, and exports.
-        </Text>
-      </View>
+      {isWebDesktop ? (
+        <View className="mt-6">
+          <Text style={{ color: colors.text.primary }} className="text-2xl font-bold">Finance Settings</Text>
+          <Text style={{ color: colors.text.tertiary }} className="text-sm mt-1">
+            Manage suppliers, expense categories, procurement statuses, and exports.
+          </Text>
+        </View>
+      ) : null}
 
       <View className="mt-4">
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
@@ -14618,10 +14640,10 @@ const buildExpenseDescription = (
                   setShowBankChargeTierModal(true);
                 }}
                 className="flex-row items-center rounded-full px-3"
-                style={{ height: 36, backgroundColor: colors.bar }}
+                style={{ height: 36, backgroundColor: FYLL_LIME }}
               >
-                <Plus size={14} color={colors.bg.screen} strokeWidth={2.5} />
-                <Text style={{ color: colors.bg.screen, fontSize: 13, fontWeight: '600', marginLeft: 4 }}>Add Tier</Text>
+                <Plus size={14} color={FYLL_LIME_INK} strokeWidth={2.5} />
+                <Text style={{ fontFamily: 'BricolageGrotesque_600SemiBold', color: FYLL_LIME_INK, fontSize: 13, fontWeight: '600', marginLeft: 4 }}>Add Tier</Text>
               </Pressable>
             </View>
 
@@ -14831,10 +14853,10 @@ const buildExpenseDescription = (
               <Pressable
                 onPress={() => { setEditingRevenueRuleId(null); setRevenueRuleNameDraft(''); setRevenueRuleChannelDraft('All Payment Methods'); setRevenueRulePercentDraft(''); setRevenueRuleFlatDraft(''); setShowRevenueRuleModal(true); }}
                 className="flex-row items-center rounded-full px-3"
-                style={{ height: 36, backgroundColor: colors.bar }}
+                style={{ height: 36, backgroundColor: FYLL_LIME }}
               >
-                <Plus size={14} color={colors.bg.screen} strokeWidth={2.5} />
-                <Text style={{ color: colors.bg.screen, fontSize: 13, fontWeight: '600', marginLeft: 4 }}>Add Fee</Text>
+                <Plus size={14} color={FYLL_LIME_INK} strokeWidth={2.5} />
+                <Text style={{ fontFamily: 'BricolageGrotesque_600SemiBold', color: FYLL_LIME_INK, fontSize: 13, fontWeight: '600', marginLeft: 4 }}>Add Fee</Text>
               </Pressable>
             </View>
             <View className="rounded-2xl" style={{ borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, overflow: 'hidden' }}>
@@ -14950,8 +14972,9 @@ const buildExpenseDescription = (
       return (
         <>
           {renderOverviewRangeFilters()}
-          {renderOverviewTopCards()}
           {renderOverviewExpenseRequestsBadgeCard()}
+          {renderOverviewHeroCard()}
+          {renderOverviewTopCards()}
           {renderTotalsInfoNote(
             'In this period: Total Cash In = Gross Revenue + Other Income. Net Revenue = Gross Revenue - gateway fees - stamp duty - refunds. Net Profit = Net Revenue - Expenses - Procurement.',
             isWebDesktop ? 12 : 16
@@ -15009,6 +15032,24 @@ const buildExpenseDescription = (
     );
   }
 
+  // Phones and tablets: the "add" action for the current Finance tab is one round + button instead of header buttons.
+  const financeFab: { label: string; onPress: () => void } | null = (() => {
+    if (isWebDesktop || !canAccessFinance || mobileDetail) return null;
+    if (activeTab === 'expenses') return canCreateExpenseRequest ? { label: 'Add expense', onPress: openExpenseComposer } : null;
+    if (activeTab === 'other-income') return canManageOtherIncome ? { label: 'Add income', onPress: openOtherIncomeComposer } : null;
+    if (activeTab === 'refunds') return canCreateRefundRequest ? { label: 'New refund', onPress: () => openRefundRequestComposer() } : null;
+    if (activeTab === 'costing') return canCreateProcurementRequest ? { label: 'New costing', onPress: () => openProcurementComposer('costing') } : null;
+    if (activeTab === 'procurement') {
+      if (!canCreateProcurementRequest) return null;
+      if (isProcurementOrdersPage) {
+        return { label: 'New PO item', onPress: () => { setNewPoItemSearch(''); setShowNewPoItemPicker(true); } };
+      }
+      return procurementChildPage === 'overview' ? { label: 'New PO', onPress: () => openProcurementComposer('procurement') } : null;
+    }
+    if (activeTab === 'salary') return salaryTemplates.length > 0 ? { label: 'Run salary', onPress: openSalaryRunLauncher } : null;
+    return null;
+  })();
+
   return (
     <View className="flex-1" style={{ backgroundColor: colors.bg.screen }}>
       <SafeAreaView className="flex-1" edges={['top']}>
@@ -15021,23 +15062,23 @@ const buildExpenseDescription = (
             } : undefined}
           >
             <View
-              className={isWebDesktop ? 'px-5 pt-5 pb-4' : 'px-5 pt-6 pb-2'}
+              className={isWebDesktop ? 'px-5 pt-5 pb-4' : undefined}
               style={isWebDesktop ? {
                 maxWidth: 1440,
                 width: '100%',
                 alignSelf: 'flex-start',
                 minHeight: desktopFinanceHeaderMinHeight,
                 justifyContent: 'center',
-              } : (isMobile && isProcurementOrdersPage ? { paddingBottom: 24 } : undefined)}
+              } : { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 0 }}
             >
               {showFinanceTopHeader ? (
                 <>
-                  <View className="flex-row items-start justify-between" style={{ gap: 12, flexWrap: 'nowrap', alignItems: isMobile && isProcurementOrdersPage ? 'center' : 'flex-start' }}>
+                  <View className="flex-row items-start justify-between" style={{ gap: 12, flexWrap: 'nowrap', alignItems: isMobile ? 'center' : 'flex-start' }}>
                     <View style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
                       <Text style={{ color: colors.text.primary, ...pageHeadingStyle }}>{financeHeaderTitle}</Text>
-                      {isMobile && isProcurementOrdersPage ? null : (
+                      {isWebDesktop ? (
                         <Text style={{ color: colors.text.tertiary }} className="text-sm mt-1">{financeHeaderSubtitle}</Text>
-                      )}
+                      ) : null}
                     </View>
                     <View className="flex-row items-center" style={{ gap: 8, marginTop: 2 }}>
                       {isProcurementOrdersPage ? (
@@ -15052,18 +15093,17 @@ const buildExpenseDescription = (
                               <Text style={{ color: colors.text.secondary }} className="font-semibold ml-1.5 text-sm">Export Table CSV</Text>
                             </Pressable>
                           ) : null}
-                          {canCreateProcurementRequest ? (
+                          {canCreateProcurementRequest && isWebDesktop ? (
                             <Pressable
                               onPress={() => {
                                 void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                                 setNewPoItemSearch('');
                                 setShowNewPoItemPicker(true);
                               }}
-                              className="rounded-full active:opacity-80 px-3.5 flex-row items-center"
-                              style={{ height: 40, backgroundColor: colors.bar }}
+                              style={(state) => ({ height: 40, paddingHorizontal: 16, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: isHovered(state) ? FYLL_LIME_HOVER : FYLL_LIME, opacity: state.pressed ? 0.85 : 1 })}
                             >
-                              <Plus size={18} color={colors.bg.screen} strokeWidth={2.5} />
-                              <Text style={{ color: colors.bg.screen }} className="font-semibold ml-1.5 text-sm">New PO Item</Text>
+                              <Plus size={16} color={FYLL_LIME_INK} strokeWidth={2.6} />
+                              <Text style={[FINANCE_BUTTON_TEXT, { color: FYLL_LIME_INK }]}>New PO Item</Text>
                             </Pressable>
                           ) : null}
                         </>
@@ -15078,9 +15118,10 @@ const buildExpenseDescription = (
                           }}
                           height={40}
                           borderRadius={20}
-                          iconSize={14}
+                          iconSize={16}
                           textSize={13}
                           horizontalPadding={12}
+                          iconOnly
                         />
                       ) : null}
 
@@ -15090,11 +15131,10 @@ const buildExpenseDescription = (
                             void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                             openExpenseComposer();
                           }}
-                          className="rounded-full active:opacity-80 px-3.5 flex-row items-center"
-                          style={{ height: 40, backgroundColor: colors.bar }}
+                          style={(state) => ({ height: 40, paddingHorizontal: 16, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: isHovered(state) ? FYLL_LIME_HOVER : FYLL_LIME, opacity: state.pressed ? 0.85 : 1 })}
                         >
-                          <Plus size={18} color={colors.bg.screen} strokeWidth={2.5} />
-                          <Text style={{ color: colors.bg.screen }} className="font-semibold ml-1.5 text-sm">Add Expense</Text>
+                          <Plus size={16} color={FYLL_LIME_INK} strokeWidth={2.6} />
+                          <Text style={[FINANCE_BUTTON_TEXT, { color: FYLL_LIME_INK }]}>Add Expense</Text>
                         </Pressable>
                       ) : null}
 
@@ -15104,11 +15144,10 @@ const buildExpenseDescription = (
                             void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                             openOtherIncomeComposer();
                           }}
-                          className="rounded-full active:opacity-80 px-3.5 flex-row items-center"
-                          style={{ height: 40, backgroundColor: colors.bar }}
+                          style={(state) => ({ height: 40, paddingHorizontal: 16, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: isHovered(state) ? FYLL_LIME_HOVER : FYLL_LIME, opacity: state.pressed ? 0.85 : 1 })}
                         >
-                          <Plus size={18} color={colors.bg.screen} strokeWidth={2.5} />
-                          <Text style={{ color: colors.bg.screen }} className="font-semibold ml-1.5 text-sm">Add Income</Text>
+                          <Plus size={16} color={FYLL_LIME_INK} strokeWidth={2.6} />
+                          <Text style={[FINANCE_BUTTON_TEXT, { color: FYLL_LIME_INK }]}>Add Income</Text>
                         </Pressable>
                       ) : null}
 
@@ -15118,11 +15157,10 @@ const buildExpenseDescription = (
                             void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                             openRefundRequestComposer();
                           }}
-                          className="rounded-full active:opacity-80 px-3.5 flex-row items-center"
-                          style={{ height: 40, backgroundColor: colors.bar }}
+                          style={(state) => ({ height: 40, paddingHorizontal: 16, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: isHovered(state) ? FYLL_LIME_HOVER : FYLL_LIME, opacity: state.pressed ? 0.85 : 1 })}
                         >
-                          <Plus size={18} color={colors.bg.screen} strokeWidth={2.5} />
-                          <Text style={{ color: colors.bg.screen }} className="font-semibold ml-1.5 text-sm">New Refund</Text>
+                          <Plus size={16} color={FYLL_LIME_INK} strokeWidth={2.6} />
+                          <Text style={[FINANCE_BUTTON_TEXT, { color: FYLL_LIME_INK }]}>New Refund</Text>
                         </Pressable>
                       ) : null}
 
@@ -15132,11 +15170,10 @@ const buildExpenseDescription = (
                             void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                             openProcurementComposer(activeTab === 'costing' ? 'costing' : 'procurement');
                           }}
-                          className="rounded-full active:opacity-80 px-3.5 flex-row items-center"
-                          style={{ height: 40, backgroundColor: colors.bar }}
+                          style={(state) => ({ height: 40, paddingHorizontal: 16, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: isHovered(state) ? FYLL_LIME_HOVER : FYLL_LIME, opacity: state.pressed ? 0.85 : 1 })}
                         >
-                          <Plus size={18} color={colors.bg.screen} strokeWidth={2.5} />
-                          <Text style={{ color: colors.bg.screen }} className="font-semibold ml-1.5 text-sm">
+                          <Plus size={16} color={FYLL_LIME_INK} strokeWidth={2.6} />
+                          <Text style={[FINANCE_BUTTON_TEXT, { color: FYLL_LIME_INK }]}>
                             {activeTab === 'costing' ? 'New Costing' : 'New PO'}
                           </Text>
                         </Pressable>
@@ -15148,16 +15185,31 @@ const buildExpenseDescription = (
                             void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                             openSalaryRunLauncher();
                           }}
-                          className="rounded-full active:opacity-80 px-3.5 flex-row items-center"
-                          style={{ height: 40, backgroundColor: colors.bar }}
+                          style={(state) => ({ height: 40, paddingHorizontal: 16, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: isHovered(state) ? FYLL_LIME_HOVER : FYLL_LIME, opacity: state.pressed ? 0.85 : 1 })}
                         >
-                          <Plus size={18} color={colors.bg.screen} strokeWidth={2.5} />
-                          <Text style={{ color: colors.bg.screen }} className="font-semibold ml-1.5 text-sm">Run Salary</Text>
+                          <Plus size={16} color={FYLL_LIME_INK} strokeWidth={2.6} />
+                          <Text style={[FINANCE_BUTTON_TEXT, { color: FYLL_LIME_INK }]}>Run Salary</Text>
                         </Pressable>
                       ) : null}
                     </View>
                   </View>
                 </>
+              ) : null}
+
+              {!isWebDesktop && canAccessFinance && !mobileDetail ? (
+                <View style={{ marginTop: 14, gap: 12 }}>
+                  <FinanceSectionTabs tabs={sectionTabs} activeKey={pendingSectionKey ?? activeSectionKey} onSelect={handleSectionTabSelect} />
+                  {activeTab === 'procurement' && isProcurementAdminView ? (
+                    <FinanceSubTabs
+                      tabs={procurementSubTabs}
+                      activeKey={procurementChildPage}
+                      onSelect={(key) => {
+                        if (key === 'overview') selectTab('procurement');
+                        else selectProcurementPage(key as ProcurementWorkspaceSection);
+                      }}
+                    />
+                  ) : null}
+                </View>
               ) : null}
 
               {false && !isWebDesktop ? (
@@ -15199,46 +15251,38 @@ const buildExpenseDescription = (
                 </View>
               ) : null}
 
-              {isMobile && !isProcurementChildHeaderPage && (isFinanceApprover || isManagerRole) && (activeTab === 'revenue' || activeTab === 'other-income' || activeTab === 'expenses' || activeTab === 'refunds' || activeTab === 'procurement' || activeTab === 'costing' || activeTab === 'salary') ? (
-                <View className="mt-4" style={{ paddingBottom: 10 }}>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingVertical: 2 }}>
-                    {overviewRangeOptions.map((option) => {
-                      const isActive = activeTab === 'revenue'
-                        ? revenuePeriod === option.key
+              {isMobile && (isFinanceApprover || isManagerRole) && (activeTab === 'revenue' || activeTab === 'other-income' || activeTab === 'expenses' || activeTab === 'refunds' || activeTab === 'procurement' || activeTab === 'costing' || activeTab === 'salary') ? (
+                <View style={{ marginTop: 14, paddingBottom: 12 }}>
+                  <PeriodTabs
+                    value={
+                      activeTab === 'revenue'
+                        ? revenuePeriod
                         : activeTab === 'other-income'
-                          ? otherIncomePeriod === option.key
-                        : activeTab === 'expenses'
-                          ? expensePeriod === option.key
-                          : activeTab === 'refunds'
-                            ? refundPeriod === option.key
-                            : activeTab === 'procurement' || activeTab === 'costing'
-                              ? procurementPeriod === option.key
-                              : salaryPeriod === option.key;
-                      return (
-                        <FinanceFilterPill
-                          key={option.key}
-                          label={option.label}
-                          active={isActive}
-                          onPress={() => {
-                            if (activeTab === 'revenue') {
-                              setRevenuePeriod(option.key);
-                            } else if (activeTab === 'other-income') {
-                              setOtherIncomePeriod(option.key);
-                            } else if (activeTab === 'expenses') {
-                              setExpensePeriod(option.key);
-                            } else if (activeTab === 'refunds') {
-                              setRefundPeriod(option.key);
-                            } else if (activeTab === 'procurement' || activeTab === 'costing') {
-                              setProcurementPeriod(option.key);
-                            } else {
-                              setSalaryPeriod(option.key);
-                            }
-                          }}
-                          colors={colors}
-                        />
-                      );
-                    })}
-                  </ScrollView>
+                          ? otherIncomePeriod
+                          : activeTab === 'expenses'
+                            ? expensePeriod
+                            : activeTab === 'refunds'
+                              ? refundPeriod
+                              : activeTab === 'procurement' || activeTab === 'costing'
+                                ? procurementPeriod
+                                : salaryPeriod
+                    }
+                    onChange={(key) => {
+                      if (activeTab === 'revenue') {
+                        setRevenuePeriod(key);
+                      } else if (activeTab === 'other-income') {
+                        setOtherIncomePeriod(key);
+                      } else if (activeTab === 'expenses') {
+                        setExpensePeriod(key);
+                      } else if (activeTab === 'refunds') {
+                        setRefundPeriod(key);
+                      } else if (activeTab === 'procurement' || activeTab === 'costing') {
+                        setProcurementPeriod(key);
+                      } else {
+                        setSalaryPeriod(key);
+                      }
+                    }}
+                  />
                 </View>
               ) : null}
             </View>
@@ -15249,7 +15293,7 @@ const buildExpenseDescription = (
           <View style={{ flex: 1, flexDirection: 'row' }}>
               <View style={{ flex: 1, flexDirection: 'column' }}>
                 {isWebDesktop && !isShowingWebExpenseApprovals ? (
-                  <View style={{ paddingHorizontal: webDesktopGutterPad, borderBottomWidth: 1, borderBottomColor: colors.divider }}>
+                  <View style={{ paddingHorizontal: webDesktopGutterPad }}>
                     <View
                       className="px-5 pt-5 pb-4"
                       style={{ maxWidth: 1440, width: '100%', minHeight: desktopFinanceHeaderMinHeight, justifyContent: 'center' }}
@@ -15275,17 +15319,16 @@ const buildExpenseDescription = (
                             />
                           ) : null}
                           {canCreateExpenseRequest ? (
-                            <Pressable
-                              onPress={() => {
-                                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                                openExpenseComposer();
-                              }}
-                              className="rounded-full active:opacity-80 px-3.5 flex-row items-center"
-                              style={{ height: 40, backgroundColor: colors.bar }}
-                            >
-                              <Plus size={18} color={colors.bg.screen} strokeWidth={2.5} />
-                              <Text style={{ color: colors.bg.screen }} className="font-semibold ml-1.5 text-sm">Add Expense</Text>
-                            </Pressable>
+                          <Pressable
+                            onPress={() => {
+                              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                              openExpenseComposer();
+                            }}
+                            style={(state) => ({ height: 40, paddingHorizontal: 16, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: isHovered(state) ? FYLL_LIME_HOVER : FYLL_LIME, opacity: state.pressed ? 0.85 : 1 })}
+                          >
+                            <Plus size={16} color={FYLL_LIME_INK} strokeWidth={2.6} />
+                            <Text style={[FINANCE_BUTTON_TEXT, { color: FYLL_LIME_INK }]}>Add Expense</Text>
+                          </Pressable>
                           ) : null}
                         </View>
                       </View>
@@ -15338,11 +15381,10 @@ const buildExpenseDescription = (
                               void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                               openRefundRequestComposer();
                             }}
-                            className="rounded-full active:opacity-80 px-3.5 flex-row items-center"
-                            style={{ height: 40, backgroundColor: colors.bar }}
+                            style={(state) => ({ height: 40, paddingHorizontal: 16, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: isHovered(state) ? FYLL_LIME_HOVER : FYLL_LIME, opacity: state.pressed ? 0.85 : 1 })}
                           >
-                            <Plus size={18} color={colors.bg.screen} strokeWidth={2.5} />
-                            <Text style={{ color: colors.bg.screen }} className="font-semibold ml-1.5 text-sm">New Refund</Text>
+                            <Plus size={16} color={FYLL_LIME_INK} strokeWidth={2.6} />
+                            <Text style={[FINANCE_BUTTON_TEXT, { color: FYLL_LIME_INK }]}>New Refund</Text>
                           </Pressable>
                         ) : null}
                       </View>
@@ -15401,11 +15443,10 @@ const buildExpenseDescription = (
                                   setNewPoItemSearch('');
                                   setShowNewPoItemPicker(true);
                                 }}
-                                className="rounded-full active:opacity-80 px-3.5 flex-row items-center"
-                                style={{ height: 40, backgroundColor: colors.bar }}
+                                style={(state) => ({ height: 40, paddingHorizontal: 16, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: isHovered(state) ? FYLL_LIME_HOVER : FYLL_LIME, opacity: state.pressed ? 0.85 : 1 })}
                               >
-                                <Plus size={18} color={colors.bg.screen} strokeWidth={2.5} />
-                                <Text style={{ color: colors.bg.screen }} className="font-semibold ml-1.5 text-sm">New PO Item</Text>
+                                <Plus size={16} color={FYLL_LIME_INK} strokeWidth={2.6} />
+                                <Text style={[FINANCE_BUTTON_TEXT, { color: FYLL_LIME_INK }]}>New PO Item</Text>
                               </Pressable>
                             ) : null}
                           </>
@@ -15428,11 +15469,10 @@ const buildExpenseDescription = (
                               void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                               openProcurementComposer(activeTab === 'costing' ? 'costing' : 'procurement');
                             }}
-                            className="rounded-full active:opacity-80 px-3.5 flex-row items-center"
-                            style={{ height: 40, backgroundColor: colors.bar }}
+                            style={(state) => ({ height: 40, paddingHorizontal: 16, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: isHovered(state) ? FYLL_LIME_HOVER : FYLL_LIME, opacity: state.pressed ? 0.85 : 1 })}
                           >
-                            <Plus size={18} color={colors.bg.screen} strokeWidth={2.5} />
-                            <Text style={{ color: colors.bg.screen }} className="font-semibold ml-1.5 text-sm">
+                            <Plus size={16} color={FYLL_LIME_INK} strokeWidth={2.6} />
+                            <Text style={[FINANCE_BUTTON_TEXT, { color: FYLL_LIME_INK }]}>
                               {activeTab === 'costing' ? 'New Costing' : 'New PO'}
                             </Text>
                           </Pressable>
@@ -15505,11 +15545,10 @@ const buildExpenseDescription = (
                               void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                               openSalaryRunLauncher();
                             }}
-                            className="rounded-full active:opacity-80 px-3.5 flex-row items-center"
-                            style={{ height: 40, backgroundColor: colors.bar }}
+                            style={(state) => ({ height: 40, paddingHorizontal: 16, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: isHovered(state) ? FYLL_LIME_HOVER : FYLL_LIME, opacity: state.pressed ? 0.85 : 1 })}
                           >
-                            <Plus size={18} color={colors.bg.screen} strokeWidth={2.5} />
-                            <Text style={{ color: colors.bg.screen }} className="font-semibold ml-1.5 text-sm">Run Salary</Text>
+                            <Plus size={16} color={FYLL_LIME_INK} strokeWidth={2.6} />
+                            <Text style={[FINANCE_BUTTON_TEXT, { color: FYLL_LIME_INK }]}>Run Salary</Text>
                           </Pressable>
                         ) : null}
                       </View>
@@ -15757,10 +15796,10 @@ const buildExpenseDescription = (
                     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                     setShowRevenueFilterSheet(false);
                   }}
-                  className="rounded-xl items-center justify-center active:opacity-80"
-                  style={{ height: 50, backgroundColor: colors.bar }}
+                  className="rounded-full items-center justify-center active:opacity-80"
+                  style={{ height: 50, backgroundColor: FYLL_LIME }}
                 >
-                  <Text style={{ color: colors.bg.screen }} className="font-semibold">Apply</Text>
+                  <Text style={{ fontFamily: 'BricolageGrotesque_600SemiBold', color: FYLL_LIME_INK }} className="font-semibold">Apply</Text>
                 </Pressable>
               </View>
             </ScrollView>
@@ -15897,10 +15936,10 @@ const buildExpenseDescription = (
                     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                     setShowExpenseFilterSheet(false);
                   }}
-                  className="rounded-xl items-center justify-center active:opacity-80"
-                  style={{ height: 50, backgroundColor: colors.bar }}
+                  className="rounded-full items-center justify-center active:opacity-80"
+                  style={{ height: 50, backgroundColor: FYLL_LIME }}
                 >
-                  <Text style={{ color: colors.bg.screen }} className="font-semibold">Apply</Text>
+                  <Text style={{ fontFamily: 'BricolageGrotesque_600SemiBold', color: FYLL_LIME_INK }} className="font-semibold">Apply</Text>
                 </Pressable>
               </View>
             </ScrollView>
@@ -16039,10 +16078,10 @@ const buildExpenseDescription = (
                     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                     setShowExpenseRequestFilterSheet(false);
                   }}
-                  className="rounded-xl items-center justify-center active:opacity-80"
-                  style={{ height: 50, backgroundColor: colors.bar }}
+                  className="rounded-full items-center justify-center active:opacity-80"
+                  style={{ height: 50, backgroundColor: FYLL_LIME }}
                 >
-                  <Text style={{ color: colors.bg.screen }} className="font-semibold">Apply</Text>
+                  <Text style={{ fontFamily: 'BricolageGrotesque_600SemiBold', color: FYLL_LIME_INK }} className="font-semibold">Apply</Text>
                 </Pressable>
               </View>
             </ScrollView>
@@ -16182,10 +16221,10 @@ const buildExpenseDescription = (
                     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                     setShowRefundRequestFilterSheet(false);
                   }}
-                  className="rounded-xl items-center justify-center active:opacity-80"
-                  style={{ height: 50, backgroundColor: colors.bar }}
+                  className="rounded-full items-center justify-center active:opacity-80"
+                  style={{ height: 50, backgroundColor: FYLL_LIME }}
                 >
-                  <Text style={{ color: colors.bg.screen }} className="font-semibold">Apply</Text>
+                  <Text style={{ fontFamily: 'BricolageGrotesque_600SemiBold', color: FYLL_LIME_INK }} className="font-semibold">Apply</Text>
                 </Pressable>
               </View>
             </ScrollView>
@@ -16309,7 +16348,7 @@ const buildExpenseDescription = (
                   onPress={() => {
                     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                     setProcurementFilter('all');
-                    setProcurementSort('workflow');
+                    setProcurementSort('newest');
                   }}
                   className="rounded-xl items-center justify-center"
                   style={{ height: 42, backgroundColor: colors.bg.input, borderWidth: 1, borderColor: colors.divider }}
@@ -16321,10 +16360,10 @@ const buildExpenseDescription = (
                     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                     setShowProcurementFilterSheet(false);
                   }}
-                  className="rounded-xl items-center justify-center active:opacity-80"
-                  style={{ height: 50, backgroundColor: colors.bar }}
+                  className="rounded-full items-center justify-center active:opacity-80"
+                  style={{ height: 50, backgroundColor: FYLL_LIME }}
                 >
-                  <Text style={{ color: colors.bg.screen }} className="font-semibold">Apply</Text>
+                  <Text style={{ fontFamily: 'BricolageGrotesque_600SemiBold', color: FYLL_LIME_INK }} className="font-semibold">Apply</Text>
                 </Pressable>
               </View>
             </ScrollView>
@@ -17869,9 +17908,9 @@ const buildExpenseDescription = (
                         void handleSaveRefundRequestModal('submit');
                       }}
                       className="rounded-full px-5"
-                      style={{ height: 44, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bar }}
+                      style={{ height: 44, alignItems: 'center', justifyContent: 'center', backgroundColor: FYLL_LIME }}
                     >
-                      <Text style={{ color: colors.bg.screen }} className="font-semibold">Submit</Text>
+                      <Text style={{ fontFamily: 'BricolageGrotesque_600SemiBold', color: FYLL_LIME_INK }} className="font-semibold">Submit</Text>
                     </Pressable>
                   </>
                 ) : (
@@ -17881,9 +17920,9 @@ const buildExpenseDescription = (
                       void handleSaveRefundRequestModal('save');
                     }}
                     className="rounded-full px-5"
-                    style={{ height: 44, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bar }}
+                    style={{ height: 44, alignItems: 'center', justifyContent: 'center', backgroundColor: FYLL_LIME }}
                   >
-                    <Text style={{ color: colors.bg.screen }} className="font-semibold">Save Changes</Text>
+                    <Text style={{ fontFamily: 'BricolageGrotesque_600SemiBold', color: FYLL_LIME_INK }} className="font-semibold">Save Changes</Text>
                   </Pressable>
                 )}
               </View>
@@ -22176,137 +22215,33 @@ const buildExpenseDescription = (
         </Pressable>
       </Modal>
 
-      {!isWebDesktop && canAccessFinance && !mobileDetail ? (
-        <>
-          <Modal
-            visible={showMobileFinanceMenu}
-            transparent
-            animationType="fade"
-            onRequestClose={() => setShowMobileFinanceMenu(false)}
-          >
-            <Pressable
-              style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.28)' }}
-              onPress={() => setShowMobileFinanceMenu(false)}
-            >
-              <View
-                style={{
-                  position: 'absolute',
-                  right: 16,
-                  bottom: Math.max(12, tabBarHeight - 30) + 70,
-                  width: 268,
-                  maxHeight: '78%',
-                  borderRadius: 22,
-                  borderWidth: 1,
-                  borderColor: colors.divider,
-                  backgroundColor: colors.bg.card,
-                  overflow: 'hidden',
-                  shadowColor: '#000000',
-                  shadowOpacity: 0.18,
-                  shadowRadius: 18,
-                  shadowOffset: { width: 0, height: 10 },
-                  elevation: 8,
-                }}
-              >
-                <Pressable onPress={(event) => event.stopPropagation()}>
-                  <View className="px-4 py-3" style={{ borderBottomWidth: 1, borderBottomColor: colors.divider }}>
-                    <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '500' }}>Finance Menu</Text>
-                    <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 2 }}>{activeTabLabel}</Text>
-                  </View>
-                  <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 6 }}>
-                    {mobileFinanceMenuOptions.map((item) => {
-                      const Icon = item.icon;
-                      const isActive = item.type === 'tab'
-                        ? activeTab === item.key && (item.key !== 'procurement' || procurementChildPage === 'overview')
-                        : item.type === 'procurement-page'
-                          ? activeTab === 'procurement' && procurementChildPage === item.key
-                          : false;
-                      return (
-                        <Pressable
-                          key={`${item.type}-${item.key}`}
-                          onPress={() => {
-                            if (item.type === 'tab') {
-                              selectTab(item.key);
-                            } else if (item.type === 'procurement-page') {
-                              selectProcurementPage(item.key);
-                            } else {
-                              setShowMobileFinanceMenu(false);
-                              router.push(item.href as never);
-                            }
-                          }}
-                          className="flex-row items-center px-4"
-                          style={{
-                            minHeight: 44,
-                            backgroundColor: isActive ? colors.bg.input : 'transparent',
-                            borderLeftWidth: isActive ? 3 : 0,
-                            borderLeftColor: colors.bar,
-                          }}
-                        >
-                          <Icon size={17} color={isActive ? colors.text.primary : colors.text.tertiary} strokeWidth={2.2} />
-                          <Text
-                            style={{ color: isActive ? colors.text.primary : colors.text.secondary, fontSize: 14, fontWeight: '500', marginLeft: 10, flex: 1 }}
-                            numberOfLines={1}
-                          >
-                            {item.label}
-                          </Text>
-                          {isActive ? <Check size={15} color={colors.text.primary} strokeWidth={2.5} /> : null}
-                        </Pressable>
-                      );
-                    })}
 
-                  </ScrollView>
-                </Pressable>
-              </View>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Close finance menu"
-                onPress={() => setShowMobileFinanceMenu(false)}
-                className="active:opacity-80"
-                style={{
-                  position: 'absolute',
-                  right: 18,
-                  bottom: Math.max(12, tabBarHeight - 30),
-                  width: 58,
-                  height: 58,
-                  borderRadius: 29,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: colors.bar,
-                  zIndex: 60,
-                }}
-              >
-                <X size={23} color={colors.bg.screen} strokeWidth={2.6} />
-              </Pressable>
-            </Pressable>
-          </Modal>
-
-          <Pressable
-            onPress={() => {
-              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              setShowMobileFinanceMenu((previous) => !previous);
-            }}
-            accessibilityRole="button"
-            accessibilityLabel={showMobileFinanceMenu ? 'Close finance menu' : 'Open finance menu'}
-            style={{
-              position: 'absolute',
-              right: 18,
-              bottom: Math.max(12, tabBarHeight - 30),
-              width: 58,
-              height: 58,
-              borderRadius: 29,
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: colors.bar,
-              shadowColor: '#000000',
-              shadowOpacity: 0.22,
-              shadowRadius: 14,
-              shadowOffset: { width: 0, height: 8 },
-              elevation: 8,
-              zIndex: 50,
-            }}
-          >
-            {showMobileFinanceMenu ? <X size={23} color={colors.bg.screen} strokeWidth={2.6} /> : <Menu size={24} color={colors.bg.screen} strokeWidth={2.6} />}
-          </Pressable>
-        </>
+      {financeFab ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={financeFab.label}
+          onPress={() => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            financeFab.onPress();
+          }}
+          style={(state) => ({
+            position: 'absolute',
+            right: 20,
+            bottom: Math.max(96, tabBarHeight - 48),
+            width: 56,
+            height: 56,
+            borderRadius: 28,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: isHovered(state) || state.pressed ? FYLL_LIME_HOVER : FYLL_LIME,
+            zIndex: 50,
+            ...(Platform.OS === 'web'
+              ? ({ boxShadow: '0 10px 28px rgba(0,0,0,0.35)' } as object)
+              : { shadowColor: '#000000', shadowOpacity: 0.3, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 8 }),
+          })}
+        >
+          <Plus size={24} color={FYLL_LIME_INK} strokeWidth={2.6} />
+        </Pressable>
       ) : null}
 
       {canAccessFinance ? (

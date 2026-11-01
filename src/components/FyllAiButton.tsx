@@ -14,6 +14,8 @@ interface FyllAiButtonProps {
   textSize?: number;
   horizontalPadding?: number;
   disabled?: boolean;
+  // Shows just the sparkle in a round button; the label is kept for screen readers.
+  iconOnly?: boolean;
 }
 
 export function FyllAiButton({
@@ -26,6 +28,7 @@ export function FyllAiButton({
   textSize = 14,
   horizontalPadding = 14,
   disabled = false,
+  iconOnly = false,
 }: FyllAiButtonProps) {
   const sweep = useSharedValue(-140);
   const pulse = useSharedValue(0);
@@ -49,14 +52,16 @@ export function FyllAiButton({
     <Pressable
       onPress={onPress}
       disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
       className="active:opacity-80 overflow-hidden"
-      style={[{ borderRadius, height, opacity: disabled ? 0.6 : 1 }, style]}
+      style={[{ borderRadius, height, opacity: disabled ? 0.6 : 1 }, iconOnly ? { width: height } : null, style]}
     >
       <LinearGradient
         colors={['#8B5CF6', '#A855F7', '#C084FC']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={{ height: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingHorizontal: horizontalPadding, overflow: 'hidden' }}
+        style={{ height: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingHorizontal: iconOnly ? 0 : horizontalPadding, overflow: 'hidden' }}
       >
         <Animated.View
           style={[
@@ -80,13 +85,15 @@ export function FyllAiButton({
         <Animated.View style={iconPulseStyle}>
           <Sparkles size={iconSize} color="#FFFFFF" strokeWidth={2.2} />
         </Animated.View>
-        <Text
-          style={{ color: '#FFFFFF', fontSize: textSize }}
-          className="font-semibold ml-1.5"
-          numberOfLines={1}
-        >
-          {label}
-        </Text>
+        {iconOnly ? null : (
+          <Text
+            style={{ color: '#FFFFFF', fontSize: textSize }}
+            className="font-semibold ml-1.5"
+            numberOfLines={1}
+          >
+            {label}
+          </Text>
+        )}
       </LinearGradient>
     </Pressable>
   );

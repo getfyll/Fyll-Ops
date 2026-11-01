@@ -137,7 +137,7 @@ export default function AccountSettingsScreen({ embeddedInSettings = false }: Ac
   const isDark = resolvedThemeMode === 'dark';
   const palette = isDark ? DARK_PALETTE : LIGHT_PALETTE;
   const { isMobile } = useBreakpoint();
-  const isEmbeddedWeb = Platform.OS === 'web' && (isFromSettingsRoute(from) || embeddedInSettings);
+  const isEmbeddedWeb = Platform.OS === 'web' && !isMobile && (isFromSettingsRoute(from) || embeddedInSettings);
   const panelStyles = getSettingsWebPanelStyles(isEmbeddedWeb, palette.ground, palette.edge);
   const currentUser = useAuthStore((s) => s.currentUser);
   const updateProfile = useAuthStore((s) => s.updateProfile);
@@ -314,7 +314,7 @@ export default function AccountSettingsScreen({ embeddedInSettings = false }: Ac
                     </View>
                   </LinearGradient>
 
-                  <View style={{ flex: 1, minWidth: 0 }}>
+                  <View style={isEmbeddedWeb ? { flex: 1, minWidth: 0 } : undefined}>
                     <Text style={{ color: palette.faint, fontFamily: 'DMSans_700Bold', fontSize: 10, letterSpacing: 1.15, textTransform: 'uppercase', marginBottom: 4 }}>Account owner</Text>
                     <Text numberOfLines={1} style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_800ExtraBold', fontSize: 25, lineHeight: 29, letterSpacing: -0.55 }}>{name.trim() || 'Your name'}</Text>
                     <Text numberOfLines={1} style={{ color: palette.faint, fontFamily: 'DMSans_400Regular', fontSize: innerSettingsFont(13.5), lineHeight: 19, marginTop: 2 }}>{email.trim() || 'Add your email'}</Text>
@@ -333,21 +333,21 @@ export default function AccountSettingsScreen({ embeddedInSettings = false }: Ac
                 </View>
               ) : null}
 
-              <View style={isEmbeddedWeb ? { flexDirection: 'row', alignItems: 'flex-start', gap: 20 } : undefined}>
-                <View style={{ flex: 1, minWidth: 0 }}>
+              <View>
+                <View>
                   <SectionLabel palette={palette}>Profile</SectionLabel>
                   <View style={[cardStyle, { padding: 18, gap: 14, marginBottom: 26 }]}>
                     <AccountField palette={palette} label="Name" value={name} onChangeText={(value) => { setName(value); clearFeedback(); }} placeholder="Your name" icon={UserIcon} />
                     <AccountField palette={palette} label="Email" value={email} onChangeText={(value) => { setEmail(value); clearFeedback(); }} placeholder="you@company.com" icon={Mail} keyboardType="email-address" help="We’ll send a link to confirm a new email address." />
                   </View>
                 </View>
-                <View style={{ flex: isEmbeddedWeb ? 1.15 : 1, minWidth: 0 }}>
+                <View>
                   <PrimaryEmailCard fieldBorderColor={palette.edgeStrong} appearance={isDark ? 'account-dark' : 'account-light'} />
                 </View>
               </View>
 
-              <View style={isEmbeddedWeb ? { flexDirection: 'row', alignItems: 'flex-start', gap: 20 } : undefined}>
-              <View style={{ flex: 1, minWidth: 0 }}>
+              <View>
+              <View>
               <SectionLabel palette={palette}>Security</SectionLabel>
               <View style={[cardStyle, { marginBottom: 26 }]}>
                 <Pressable
@@ -379,7 +379,7 @@ export default function AccountSettingsScreen({ embeddedInSettings = false }: Ac
               </View>
               </View>
 
-              <View style={isEmbeddedWeb ? { width: 320 } : undefined}>
+              <View>
               <SectionLabel palette={palette}>Session</SectionLabel>
               <View style={cardStyle}>
                 <Pressable onPress={() => setShowSignOut(true)} accessibilityRole="button" style={({ pressed }) => ({ minHeight: 72, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', gap: 14, opacity: pressed ? 0.68 : 1 })}>
