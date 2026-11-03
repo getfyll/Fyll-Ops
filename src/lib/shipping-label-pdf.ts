@@ -314,36 +314,88 @@ export interface InventoryLabelPdfData {
   variantName: string;
 }
 
+// Rough text widths for the built-in PDF fonts (no font metrics are available here), as a share of the font size.
+const CHAR_WIDTH = { F1: 0.54, F2: 0.6, F3: 0.62 } as const;
+const PT_TO_MM = 1 / MM_TO_PT;
+
+// Breaks a word-less string (a barcode or SKU) into pieces that fit.
+const chunkText = (value: string, maxChars: number): string[] => {
+  const chunks: string[] = [];
+  for (let index = 0; index < value.length; index += Math.max(1, maxChars)) chunks.push(value.slice(index, index + Math.max(1, maxChars)));
+  return chunks.length > 0 ? chunks : [''];
+};
+
+type TextBlock = { text: string; size: number; font: 'F1' | 'F2' | 'F3'; gapBefore: number };
+
+// The product label in the same arrangement as the printed one: a rounded border, the QR code on the left (no frame),
+// and on the right the product name, the variant and the code, all kept inside the border.
 const renderInventoryLabelPage = (writer: PdfWriter, item: InventoryLabelPdfData, widthMm: number, heightMm: number) => {
-  const width = mm(widthMm);
-  const height = mm(heightMm);
   const codeText = item.barcode || item.sku;
   const isLandscape = widthMm >= heightMm;
+  const borderInset = 1.3;
+  const padding = 2;
 
-  writer.drawRoundedRect(mm(1.5), mm(1.5), width - mm(3), height - mm(3), mm(1.5));
+  writer.drawRoundedRect(mm(borderInset), mm(borderInset), mm(widthMm - borderInset * 2), mm(heightMm - borderInset * 2), mm(1.5));
 
-  const qrSize = mm(Math.max(14, Math.min((isLandscape ? heightMm : widthMm) - 8, 22)));
-  const qrX = isLandscape ? mm(3.5) : (width - qrSize) / 2;
-  const qrY = isLandscape ? (height - qrSize) / 2 : height - mm(3.5) - qrSize;
-  writer.drawRect(qrX, qrY, qrSize, qrSize);
-  writer.drawQr(codeText || item.productName, qrX + mm(0.5), qrY + mm(0.5), qrSize - mm(1));
-  if (codeText) {
-    writer.drawText(qrX, qrY - mm(3.5), 5.5, limitText(codeText, 22));
+  const innerLeft = borderInset + padding;
+  const innerRight = widthMm - borderInset - padding;
+  const innerTop = heightMm - borderInset - padding;
+  const innerBottom = borderInset + padding;
+  const qrMm = isLandscape ? Math.max(14, Math.min(heightMm - 8, 22)) : Math.max(14, Math.min(widthMm - 8, 24));
+  const quietMm = 0.8;
+
+  const qrLeft = isLandscape ? innerLeft : (widthMm - qrMm) / 2;
+  const qrBottom = isLandscape ? (heightMm - qrMm) / 2 : innerTop - qrMm;
+  writer.drawQr(codeText || item.productName, mm(qrLeft + quietMm), mm(qrBottom + quietMm), mm(qrMm - quietMm * 2));
+
+  // Text area: beside the QR (landscape) or under it (portrait).
+  const textLeft = isLandscape ? qrLeft + qrMm + 2.2 : innerLeft;
+  const textWidth = Math.max(8, innerRight - textLeft);
+  const titleSize = widthMm >= 50 ? 10 : 8.5;
+  // The SKU and the barcode number each get their own line, so a number is never split in the middle.
+  const codeLines = [item.sku && item.sku !== codeText ? item.sku : '', codeText].filter(Boolean);
+
+  const fits = (font: 'F1' | 'F2' | 'F3', size: number) => Math.max(3, Math.floor(textWidth / (CHAR_WIDTH[font] * size * PT_TO_MM)));
+  const blocks: TextBlock[] = [];
+  // Picks the largest size at which the text fits in `maxLines` lines; if even the smallest does not, it is shortened
+  // with "..." so nothing runs outside the label.
+  const fitText = (text: string, font: 'F1' | 'F2' | 'F3', sizes: number[], maxLines: number) => {
+    for (const size of sizes) {
+      const perLine = fits(font, size);
+      const lines = wrapText(text, perLine);
+      if (lines.length <= maxLines && lines.every((line) => line.length <= perLine)) return { size, lines };
+    }
+    const size = sizes[sizes.length - 1];
+    const perLine = fits(font, size);
+    const lines = wrapText(text, perLine).slice(0, maxLines).map((line) => limitText(line, perLine));
+    const last = lines.length - 1;
+    if (last >= 0) lines[last] = `${limitText(lines[last], Math.max(1, perLine - 3)).trimEnd()}...`;
+    return { size, lines };
+  };
+  const title = fitText(item.productName || item.sku || codeText, 'F2', [titleSize, 8.5, 7.5, 6.5], 2);
+  title.lines.forEach((line) => blocks.push({ text: line, size: title.size, font: 'F2', gapBefore: 0 }));
+  if (item.variantName) {
+    const variant = fitText(item.variantName, 'F2', [7.5, 6.5, 6], 2);
+    variant.lines.forEach((line, index) => blocks.push({ text: line, size: variant.size, font: 'F2', gapBefore: index === 0 ? 0.8 : 0 }));
   }
-
-  const textX = isLandscape ? qrX + qrSize + mm(3) : mm(3.5);
-  const textTop = isLandscape ? height / 2 + mm(6) : qrY - mm(7);
-  const safeName = [item.productName, item.variantName].filter(Boolean).join(' — ');
-  const skuLines = wrapText(item.sku || codeText, 16).slice(0, 2);
-  let cursorY = textTop;
-  skuLines.forEach((line) => {
-    writer.drawText(textX, cursorY, 10, line);
-    cursorY -= mm(3.5);
+  codeLines.slice(0, 2).forEach((codeLine, index) => {
+    blocks.push({ text: limitText(codeLine, fits('F3', 5.5)), size: 5.5, font: 'F3', gapBefore: index === 0 ? 1 : 0 });
   });
-  cursorY -= mm(1);
-  wrapText(safeName, 24).slice(0, 3).forEach((line) => {
-    writer.drawText(textX, cursorY, 8, line);
-    cursorY -= mm(3.2);
+
+  const lineHeight = (size: number) => size * PT_TO_MM * 1.2;
+  const totalHeight = blocks.reduce((sum, block) => sum + block.gapBefore + lineHeight(block.size), 0);
+  // Landscape: centred beside the QR. Portrait: starts right under it, but never below the border.
+  let cursorTop = isLandscape ? heightMm / 2 + totalHeight / 2 : Math.min(qrBottom - 1.5, innerTop);
+  if (!isLandscape && cursorTop - totalHeight < innerBottom) cursorTop = innerBottom + totalHeight;
+
+  blocks.forEach((block) => {
+    cursorTop -= block.gapBefore;
+    const lineH = lineHeight(block.size);
+    const baseline = cursorTop - block.size * PT_TO_MM * 0.9;
+    const estimated = block.text.length * CHAR_WIDTH[block.font] * block.size * PT_TO_MM;
+    const x = isLandscape ? textLeft : textLeft + Math.max(0, (textWidth - estimated) / 2);
+    writer.drawText(mm(x), mm(baseline), block.size, block.text, 'black', block.font);
+    cursorTop -= lineH;
   });
 };
 
@@ -361,6 +413,8 @@ const buildInventoryPdfBytes = (
   };
 
   const fontObjectId = 3;
+  const boldFontId = addObject('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>');
+  const monoFontId = addObject('<< /Type /Font /Subtype /Type1 /BaseFont /Courier-Bold >>');
   const pageObjectIds: number[] = [];
 
   items.forEach((item) => {
@@ -368,7 +422,7 @@ const buildInventoryPdfBytes = (
     renderInventoryLabelPage(writer, item, widthMm, heightMm);
     const stream = writer.lines.join('');
     const contentId = addObject(`<< /Length ${stream.length} >>\nstream\n${stream}endstream`);
-    const pageId = addObject(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /Font << /F1 ${fontObjectId} 0 R >> >> /Contents ${contentId} 0 R >>`);
+    const pageId = addObject(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /Font << /F1 ${fontObjectId} 0 R /F2 ${boldFontId} 0 R /F3 ${monoFontId} 0 R >> >> /Contents ${contentId} 0 R >>`);
     pageObjectIds.push(pageId);
   });
 
