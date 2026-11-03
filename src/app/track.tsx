@@ -1272,6 +1272,8 @@ export type TrackLandingCopy = {
   submit: string;
   submitting: string;
   hint: string;
+  // Optional (lighter) font for the big headline and the form title; the tracking page keeps its own.
+  headlineFont?: string;
 };
 
 const TRACK_LANDING_COPY: TrackLandingCopy = {
@@ -1380,7 +1382,7 @@ export function TrackLanding({
     >
       {!compact ? (
         <View style={{ gap: 4, paddingBottom: 2 }}>
-          <Text style={{ fontFamily: displayFont, fontWeight: displayWeight, fontSize: 28, letterSpacing: -0.8, color: '#FFFFFF' }}>{copy.formTitle}</Text>
+          <Text style={{ fontFamily: copy.headlineFont ?? displayFont, fontWeight: copy.headlineFont ? '400' : displayWeight, fontSize: 28, letterSpacing: -0.8, color: '#FFFFFF' }}>{copy.formTitle}</Text>
           <Text style={{ fontFamily: trackingBodyFont, fontSize: compact ? 12 : 14, color: 'rgba(244,244,239,0.75)' }}>
             {copy.formSub(Boolean(business))}
           </Text>
@@ -1499,7 +1501,7 @@ export function TrackLanding({
         <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? 12 : 14, color: '#EEF2C4' }}>{copy.domain}</Text>
       </View>
     ) : null}
-    <Text style={{ fontFamily: displayFont, fontWeight: displayWeight, fontSize: wide ? 84 : 52, lineHeight: wide ? 80 : 50, letterSpacing: wide ? -3.4 : -2, color: '#FFFFFF' }}>
+    <Text style={{ fontFamily: copy.headlineFont ?? displayFont, fontWeight: copy.headlineFont ? '400' : displayWeight, fontSize: wide ? 84 : 52, lineHeight: wide ? 80 : 50, letterSpacing: wide ? -3 : -1.8, color: '#FFFFFF' }}>
       {wide ? copy.headlineWide : copy.headline}
     </Text>
     <Text style={{ fontFamily: trackingBodyFont, fontSize: wide ? 18 : 15.5, lineHeight: wide ? 28 : 23, color: 'rgba(244,244,239,0.88)', maxWidth: 460 }}>
@@ -1578,8 +1580,8 @@ export function TrackLanding({
                   alignItems: wide ? 'flex-start' : 'stretch',
                   justifyContent: 'space-between',
                   gap: wide ? 80 : 28,
-                  paddingTop: wide ? 96 : sheetMode ? 36 : 44,
-                  ...(sheetMode ? { flexGrow: 1, justifyContent: 'space-between' as const, gap: 24 } : null),
+                  paddingTop: wide ? 96 : sheetMode ? (compact ? 36 : 120) : 44,
+                  ...(sheetMode ? { flexGrow: 1, justifyContent: 'space-between' as const, gap: compact ? 24 : 56 } : null),
                 }}
               >
                 {headingBlock}

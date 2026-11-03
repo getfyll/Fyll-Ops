@@ -20,7 +20,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { ArrowRight, Check, ChevronRight, Clock3, MapPin, Package } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useFonts, BricolageGrotesque_700Bold, BricolageGrotesque_800ExtraBold } from '@expo-google-fonts/bricolage-grotesque';
+import { useFonts, BricolageGrotesque_300Light, BricolageGrotesque_700Bold, BricolageGrotesque_800ExtraBold } from '@expo-google-fonts/bricolage-grotesque';
 import { DMSans_400Regular, DMSans_600SemiBold, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
 import {
   confirmPublicOrderDelivery,
@@ -53,6 +53,8 @@ const CARD_BORDER = 'rgba(30,30,30,0.08)';
 const AMBER = '#A8741C';
 const AMBER_SOFT = 'rgba(227,177,90,0.18)';
 const DANGER = '#C2410C';
+// The big headlines on the confirm page use a light Bricolage weight (300), lighter than the rest of the app.
+const HEADLINE_FONT = 'BricolageGrotesque_300Light';
 const DISPLAY_FONT = Platform.OS === 'web' ? "BricolageGrotesque_800ExtraBold, 'Arial Black', sans-serif" : 'BricolageGrotesque_800ExtraBold';
 const DISPLAY_FONT_COMPACT = Platform.OS === 'web' ? "BricolageGrotesque_700Bold, 'Arial Black', sans-serif" : 'BricolageGrotesque_700Bold';
 const BODY_FONT = Platform.OS === 'web' ? "DMSans_400Regular, system-ui, -apple-system, 'Segoe UI', sans-serif" : 'DMSans_400Regular';
@@ -310,6 +312,7 @@ const CONFIRM_LANDING_COPY: TrackLandingCopy = {
   submit: 'Confirm delivery',
   submitting: 'Finding your order…',
   hint: 'Your order number is in your confirmation email and in the DM from the business.',
+  headlineFont: HEADLINE_FONT,
 };
 
 const CARD = { borderRadius: 22, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: CARD_BORDER } as const;
@@ -392,11 +395,11 @@ function Hero({
       <Text style={{ fontFamily: BODY_FONT_BOLD, fontSize: wide ? 17 : 15, color: 'rgba(244,244,239,0.9)' }}>{eyebrow}</Text>
       <Text
         style={{
-          fontFamily: wide ? DISPLAY_FONT : DISPLAY_FONT_COMPACT,
-          fontWeight: wide ? '800' : '700',
+          fontFamily: HEADLINE_FONT,
+          fontWeight: '400',
           fontSize: wide ? 56 : 36,
           lineHeight: wide ? 56 : 37,
-          letterSpacing: wide ? -2 : -1.3,
+          letterSpacing: wide ? -1.8 : -1.1,
           color: '#FFFFFF',
         }}
       >
@@ -424,9 +427,9 @@ function Hero({
 
   if (bare && !wide) {
     return (
-      <View style={{ flexGrow: 1, paddingHorizontal: 20, paddingTop: 22, paddingBottom: 24 }}>
+      <View style={{ flexGrow: 1, minHeight: compact ? 360 : 560, paddingHorizontal: compact ? 20 : 40, paddingTop: compact ? 30 : 48, paddingBottom: compact ? 36 : 56 }}>
         {header}
-        <View style={{ flex: 1, justifyContent: 'center', paddingVertical: 28 }}>{heading}</View>
+        <View style={{ flex: 1, justifyContent: 'center', paddingVertical: 36 }}>{heading}</View>
       </View>
     );
   }
@@ -752,7 +755,7 @@ export default function ConfirmDeliveryScreen() {
   };
   const wide = width >= 1000;
 
-  const [fontsLoaded] = useFonts({ BricolageGrotesque_700Bold, BricolageGrotesque_800ExtraBold, DMSans_400Regular, DMSans_600SemiBold, DMSans_700Bold });
+  const [fontsLoaded] = useFonts({ BricolageGrotesque_300Light, BricolageGrotesque_700Bold, BricolageGrotesque_800ExtraBold, DMSans_400Regular, DMSans_600SemiBold, DMSans_700Bold });
   void fontsLoaded;
 
   const firstName = (order?.customerName ?? '').trim().split(/\s+/)[0] ?? '';
