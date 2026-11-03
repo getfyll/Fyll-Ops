@@ -1,6 +1,6 @@
 // The actions behind Home's plus button, and who gets which. Kept free of React so the rules can be tested.
 
-export type QuickActionKey = 'order' | 'payment' | 'scan' | 'product' | 'expense';
+export type QuickActionKey = 'order' | 'payment' | 'scan' | 'product' | 'expense' | 'refund' | 'procurement' | 'ai';
 
 export type QuickActionDef = {
   key: QuickActionKey;

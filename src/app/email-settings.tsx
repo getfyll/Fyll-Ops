@@ -2,9 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, View, Text, Pressable, TextInput, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Check } from 'lucide-react-native';
-import { useResolvedThemeMode, useThemeColors } from '@/lib/theme';
-import { LinearGradient } from 'expo-linear-gradient';
+import { Check } from 'lucide-react-native';
+import { useThemeColors } from '@/lib/theme';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import * as Haptics from 'expo-haptics';
 import { supabase } from '@/lib/supabase';
@@ -13,15 +12,17 @@ import { useSettingsBack } from '@/lib/useSettingsBack';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
 import useFyllStore from '@/lib/state/fyll-store';
 import useAuthStore from '@/lib/state/auth-store';
-import { FYLL_LIME, FYLL_LIME_INK, MoneyText, usePaymentsPalette } from '@/components/payments/payments-ui';
+import { FYLL_LIME, FYLL_LIME_INK, usePaymentsPalette } from '@/components/payments/payments-ui';
 import { LimeToggle } from '@/components/settings/LimeToggle';
+import { InternalSettingsHeader } from '@/components/settings/InternalSettingsHeader';
 
-export default function EmailSettingsScreen() {
+type EmailSettingsScreenProps = { embeddedInSettings?: boolean };
+
+export default function EmailSettingsScreen({ embeddedInSettings = false }: EmailSettingsScreenProps) {
   const { from } = useLocalSearchParams<{ from?: string | string[] }>();
   const goBack = useSettingsBack();
   const colors = useThemeColors();
   const palette = usePaymentsPalette();
-  const resolvedThemeMode = useResolvedThemeMode();
   const openedFromSettings = isFromSettingsRoute(from);
   const panelStyles = getSettingsWebPanelStyles(
     openedFromSettings,
@@ -211,38 +212,25 @@ export default function EmailSettingsScreen() {
   return (
     <View style={panelStyles.outer}>
       <View style={panelStyles.inner}>
-        <SafeAreaView className="flex-1" edges={['top']} style={{ backgroundColor: palette.page }}>
-          <LinearGradient pointerEvents="none" colors={resolvedThemeMode === 'dark' ? ['rgba(111,125,18,0.55)', 'rgba(20,20,20,0)'] : ['rgba(213,224,87,0.42)', 'rgba(244,243,235,0)']} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: isWebDesktop ? 250 : 360 }} />
-          <View
-            style={{ minHeight: isWebDesktop ? 78 : 66, paddingHorizontal: isWebDesktop ? 20 : 10, paddingTop: isWebDesktop ? 20 : 12, paddingBottom: isWebDesktop ? 10 : 4, flexDirection: 'row', alignItems: 'center' }}
-          >
-            <View style={settingsContentWidthStyle} className="flex-row items-center justify-between">
-              <View className="flex-row items-center flex-1">
-                <Pressable
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    goBack();
-                  }}
-                  className="w-10 h-10 rounded-full items-center justify-center mr-3 active:opacity-50"
-                  style={{ backgroundColor: palette.softFill }}
-                >
-                  <ArrowLeft size={20} color={colors.text.primary} strokeWidth={2} />
-                </Pressable>
-                <View className="flex-1"><Text style={{ color: palette.faint, fontSize: 9.5, lineHeight: 12, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Settings</Text><Text style={{ color: palette.text, fontSize: 17, lineHeight: 21, fontWeight: '600' }}>Emails</Text></View>
-              </View>
-
-              {saveStatus === 'saving' ? (
-                <Text style={{ color: colors.text.tertiary }} className="text-sm">Saving…</Text>
+        <SafeAreaView className="flex-1" edges={embeddedInSettings && isWebDesktop ? [] : ['top']} style={{ backgroundColor: palette.page }}>
+          <InternalSettingsHeader
+            title="Customer Emails"
+            description="Automate order updates, delivery confirmations, and follow-up reminders."
+            isDesktop={isWebDesktop}
+            onBack={goBack}
+            rightElement={isWebDesktop && saveStatus !== 'idle' ? (
+              saveStatus === 'saving' ? (
+                <Text style={{ color: colors.text.tertiary, fontSize: 12, lineHeight: 16 }}>Saving…</Text>
               ) : saveStatus === 'saved' ? (
-                <View className="flex-row items-center" style={{ height: 28, paddingHorizontal: 10, borderRadius: 999, backgroundColor: palette.nudgeBg, gap: 5 }}>
+                <View style={{ height: 28, paddingHorizontal: 10, borderRadius: 999, backgroundColor: palette.nudgeBg, gap: 5, flexDirection: 'row', alignItems: 'center' }}>
                   <Check size={14} color="#10B981" strokeWidth={2.5} />
                   <Text style={{ color: palette.limeOnSurface, fontSize: 11, fontWeight: '700' }}>Saved</Text>
                 </View>
-              ) : saveStatus === 'error' ? (
-                <Text style={{ color: palette.danger, fontSize: 11, fontWeight: '600' }}>Save failed</Text>
-              ) : null}
-            </View>
-          </View>
+              ) : (
+                <Text style={{ color: palette.danger, fontSize: 11, lineHeight: 16, fontWeight: '600' }}>Save failed</Text>
+              )
+            ) : undefined}
+          />
 
           <KeyboardAwareScrollView
             className="flex-1"
@@ -253,29 +241,15 @@ export default function EmailSettingsScreen() {
             <View
               style={[settingsContentWidthStyle, { paddingHorizontal: isWebDesktop ? 24 : 16, paddingTop: 18 }]}
             >
-              <View style={{ position: 'relative', overflow: 'hidden', minHeight: isWebDesktop ? 116 : 156, marginBottom: 20, padding: isWebDesktop ? 18 : 20, justifyContent: 'center', borderRadius: 28, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, shadowColor: '#000', shadowOpacity: resolvedThemeMode === 'dark' ? 0.24 : 0.07, shadowRadius: 24, shadowOffset: { width: 0, height: 10 } }}>
-                <LinearGradient pointerEvents="none" colors={[palette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -44, right: -36, width: 210, height: 210, borderRadius: 105 }} />
-                <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
-                <View>
-                  <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Customer communication</Text>
-                  <MoneyText style={{ color: palette.text, fontSize: 26, lineHeight: 31 }}>Email automation</MoneyText>
-                  <Text style={{ color: palette.faint, fontSize: 12.5, marginTop: 3 }}>Keep customers updated automatically</Text>
-                </View>
-              </View>
-
-              <Text style={{ color: palette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Email settings</Text>
-              <View>
-              <View>
-              <View
-                className="rounded-3xl p-5 mb-5"
-                style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}
-              >
+              <Text style={{ color: palette.muted, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: 0.75, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Email settings</Text>
+              <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}>
+              <View style={{ minHeight: 86, paddingHorizontal: 18, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: palette.hairline }}>
                 <View className="flex-row items-center justify-between">
                   <View className="flex-1 pr-4">
-                    <Text style={{ color: colors.text.primary }} className="text-base font-semibold">
-                      Order Status Update Emails
+                    <Text style={{ color: colors.text.primary, fontSize: 14, lineHeight: 18, fontWeight: '600' }}>
+                      Order status update emails
                     </Text>
-                    <Text style={{ color: colors.text.muted }} className="text-xs mt-1 leading-5">
+                    <Text style={{ color: colors.text.muted, fontSize: 12, lineHeight: 17, marginTop: 3 }}>
                       Email the customer whenever staff change an order's status from this app, the same way status updates from the storefront already do.
                     </Text>
                   </View>
@@ -290,19 +264,13 @@ export default function EmailSettingsScreen() {
                   />
                 </View>
               </View>
-              </View>
-
-              <View>
-              <View
-                className="rounded-3xl p-5 mb-5"
-                style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}
-              >
+              <View style={{ paddingHorizontal: 18, paddingVertical: 16 }}>
                 <View className="flex-row items-center justify-between mb-1">
                   <View className="flex-1 pr-4">
-                    <Text style={{ color: colors.text.primary }} className="text-base font-semibold">
-                      Delivery Confirmation Emails
+                    <Text style={{ color: colors.text.primary, fontSize: 14, lineHeight: 18, fontWeight: '600' }}>
+                      Delivery confirmation emails
                     </Text>
-                    <Text style={{ color: colors.text.muted }} className="text-xs mt-1 leading-5">
+                    <Text style={{ color: colors.text.muted, fontSize: 12, lineHeight: 17, marginTop: 3 }}>
                       Send a delivery confirmation email after dispatch, then resend it only if the customer has not replied or says the order is still pending delivery.
                     </Text>
                   </View>
@@ -588,7 +556,6 @@ export default function EmailSettingsScreen() {
                     </View>
                   </>
                 ) : null}
-              </View>
               </View>
               </View>
 

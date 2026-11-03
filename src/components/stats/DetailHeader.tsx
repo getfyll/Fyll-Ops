@@ -2,8 +2,10 @@ import React from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { getInlineCloseHandler } from '@/lib/inline-navigation';
-import { ArrowLeft, Download } from 'lucide-react-native';
-import { useStatsColors } from '@/lib/theme';
+import { Download } from 'lucide-react-native';
+import { useBreakpoint } from '@/lib/useBreakpoint';
+import { usePageHeadingStyle } from '@/lib/page-heading';
+import { BackButton, isHovered, usePaymentsPalette } from '@/components/payments/payments-ui';
 
 interface DetailHeaderProps {
   title: string;
@@ -12,6 +14,8 @@ interface DetailHeaderProps {
   onExport?: () => void;
 }
 
+// The header of the pages inside Insights (and Finance): the same title font and spacing as the Insights page itself, a
+// round outlined back button, and no line underneath. Phones show the title only; the subtitle is for wide screens.
 export function DetailHeader({
   title,
   subtitle,
@@ -19,7 +23,9 @@ export function DetailHeader({
   onExport,
 }: DetailHeaderProps) {
   const router = useRouter();
-  const colors = useStatsColors();
+  const palette = usePaymentsPalette();
+  const { isMobile } = useBreakpoint();
+  const headingStyle = usePageHeadingStyle(isMobile);
 
   const handleExport = () => {
     if (onExport) {
@@ -30,72 +36,62 @@ export function DetailHeader({
     }
   };
 
+  const handleBack = () => {
+    const inline = getInlineCloseHandler();
+    if (Platform.OS === 'web' && inline) {
+      inline();
+    } else {
+      router.back();
+    }
+  };
+
   return (
     <View
-      className="flex-row items-center justify-between px-5 py-4"
       style={{
-        backgroundColor: colors.bg.screen,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.divider,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 12,
+        paddingHorizontal: 20,
+        paddingTop: isMobile ? 14 : 20,
+        paddingBottom: isMobile ? 6 : 16,
+        backgroundColor: palette.page,
       }}
     >
-      <View className="flex-row items-center flex-1">
-        <Pressable
-          onPress={() => {
-            const inline = getInlineCloseHandler();
-            if (Platform.OS === 'web' && inline) {
-              inline();
-            } else {
-              router.back();
-            }
-          }}
-          className="active:opacity-70 mr-3"
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 10,
-            backgroundColor: colors.bg.card,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <ArrowLeft size={18} color={colors.text.primary} strokeWidth={2} />
-        </Pressable>
-        <View className="flex-1">
-          <Text
-            style={{ color: colors.text.primary }}
-            className="text-xl font-bold"
-            numberOfLines={1}
-          >
+      <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <BackButton palette={palette} onPress={handleBack} />
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={{ color: palette.text, ...headingStyle }} numberOfLines={1}>
             {title}
           </Text>
-          {subtitle && (
-            <Text
-              style={{ color: colors.text.tertiary }}
-              className="text-sm mt-0.5"
-              numberOfLines={1}
-            >
+          {subtitle && !isMobile ? (
+            <Text style={{ color: palette.faint, fontSize: 14, marginTop: 4 }} numberOfLines={1}>
               {subtitle}
             </Text>
-          )}
+          ) : null}
         </View>
       </View>
 
-      {showExport && (
+      {showExport ? (
         <Pressable
           onPress={handleExport}
-          className="flex-row items-center px-4 py-2 rounded-full"
-          style={{ backgroundColor: colors.bg.card }}
+          accessibilityRole="button"
+          style={(state) => ({
+            height: 40,
+            paddingHorizontal: 16,
+            borderRadius: 999,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 8,
+            borderWidth: 1,
+            borderColor: palette.border,
+            backgroundColor: isHovered(state) || state.pressed ? palette.softFill : palette.inset,
+          })}
         >
-          <Download size={16} color={colors.text.secondary} strokeWidth={2} />
-          <Text
-            style={{ color: colors.text.secondary }}
-            className="text-sm font-medium ml-2"
-          >
-            Export
-          </Text>
+          <Download size={16} color={palette.muted} strokeWidth={2} />
+          <Text style={{ color: palette.text, fontSize: 13, fontWeight: '600' }}>Export</Text>
         </Pressable>
-      )}
+      ) : null}
     </View>
   );
 }

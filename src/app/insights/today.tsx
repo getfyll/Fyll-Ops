@@ -15,10 +15,14 @@ import { BreakdownTable } from '@/components/stats/BreakdownTable';
 import { SparklineChart } from '@/components/stats/SparklineChart';
 import { useAnalytics } from '@/hooks/useAnalytics';
 import useFyllStore, { formatCurrency } from '@/lib/state/fyll-store';
-import { useStatsColors } from '@/lib/theme';
+import { FigureText, InsightSentence } from '@/components/stats/FigureText';
+import { todaySentence } from '@/lib/insights-sentences';
+import { useInsightsBottomPad, useInsightsColors, useInsightsTopCardHeight } from '@/lib/insights-theme';
 
 export default function TodayInsightScreen({ inline }: { inline?: boolean }) {
-  const colors = useStatsColors();
+  const bottomPad = useInsightsBottomPad();
+  const topCardMinHeight = useInsightsTopCardHeight();
+  const colors = useInsightsColors();
   const analytics = useAnalytics('7d', 'sales');
   const orders = useFyllStore((s) => s.orders);
 
@@ -57,12 +61,12 @@ export default function TodayInsightScreen({ inline }: { inline?: boolean }) {
         <ScrollView
           className="flex-1"
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
+          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: bottomPad }}
         >
           {/* Main Stats Card */}
           <View
-            className="rounded-2xl p-5 mt-4"
-            style={colors.getCardStyle()}
+            className="rounded-[26px] p-5 mt-4"
+            style={[colors.getCardStyle(), { minHeight: topCardMinHeight }]}
           >
             <View className="flex-row items-center justify-between">
               <View className="flex-1">
@@ -72,12 +76,12 @@ export default function TodayInsightScreen({ inline }: { inline?: boolean }) {
                 >
                   Today's Revenue
                 </Text>
-                <Text
+                <FigureText desktop={36} mobile={20}
                   style={{ color: colors.text.primary }}
-                  className="text-4xl font-bold"
+                  
                 >
                   {formatCurrency(analytics.todaySales)}
-                </Text>
+                </FigureText>
               </View>
               <SparklineChart
                 data={analytics.hourlyTrend}
@@ -87,12 +91,13 @@ export default function TodayInsightScreen({ inline }: { inline?: boolean }) {
                 strokeWidth={2}
               />
             </View>
+            <InsightSentence parts={todaySentence(analytics.todayOrders, analytics.todayCustomers, analytics.todayUnits, analytics.todayRefunds)} />
           </View>
 
           {/* KPI Grid */}
           <View className="flex-row mt-4" style={{ gap: 12 }}>
             <View
-              className="flex-1 rounded-2xl p-4"
+              className="flex-1 rounded-[26px] p-4"
               style={colors.getCardStyle()}
             >
               <View className="flex-row items-center mb-2">
@@ -104,16 +109,16 @@ export default function TodayInsightScreen({ inline }: { inline?: boolean }) {
                   Orders
                 </Text>
               </View>
-              <Text
+              <FigureText desktop={24} mobile={24}
                 style={{ color: colors.text.primary }}
-                className="text-2xl font-bold"
+                
               >
                 {analytics.todayOrders}
-              </Text>
+              </FigureText>
             </View>
 
             <View
-              className="flex-1 rounded-2xl p-4"
+              className="flex-1 rounded-[26px] p-4"
               style={colors.getCardStyle()}
             >
               <View className="flex-row items-center mb-2">
@@ -125,18 +130,18 @@ export default function TodayInsightScreen({ inline }: { inline?: boolean }) {
                   Customers
                 </Text>
               </View>
-              <Text
+              <FigureText desktop={24} mobile={24}
                 style={{ color: colors.text.primary }}
-                className="text-2xl font-bold"
+                
               >
                 {analytics.todayCustomers}
-              </Text>
+              </FigureText>
             </View>
           </View>
 
           <View className="flex-row mt-3" style={{ gap: 12 }}>
             <View
-              className="flex-1 rounded-2xl p-4"
+              className="flex-1 rounded-[26px] p-4"
               style={colors.getCardStyle()}
             >
               <View className="flex-row items-center mb-2">
@@ -148,16 +153,16 @@ export default function TodayInsightScreen({ inline }: { inline?: boolean }) {
                   Units Sold
                 </Text>
               </View>
-              <Text
+              <FigureText desktop={24} mobile={24}
                 style={{ color: colors.text.primary }}
-                className="text-2xl font-bold"
+                
               >
                 {analytics.todayUnits}
-              </Text>
+              </FigureText>
             </View>
 
             <View
-              className="flex-1 rounded-2xl p-4"
+              className="flex-1 rounded-[26px] p-4"
               style={colors.getCardStyle()}
             >
               <View className="flex-row items-center mb-2">
@@ -169,18 +174,18 @@ export default function TodayInsightScreen({ inline }: { inline?: boolean }) {
                   Refunds
                 </Text>
               </View>
-              <Text
+              <FigureText desktop={24} mobile={24}
                 style={{ color: analytics.todayRefunds > 0 ? colors.danger : colors.text.primary }}
-                className="text-2xl font-bold"
+                
               >
                 {analytics.todayRefunds}
-              </Text>
+              </FigureText>
             </View>
           </View>
 
           {/* Average Order Value */}
           <View
-            className="rounded-2xl p-5 mt-4"
+            className="rounded-[26px] p-5 mt-4"
             style={colors.getCardStyle()}
           >
             <View className="flex-row items-center mb-2">
@@ -192,19 +197,19 @@ export default function TodayInsightScreen({ inline }: { inline?: boolean }) {
                 Average Order Value
               </Text>
             </View>
-            <Text
+            <FigureText desktop={30} mobile={20}
               style={{ color: colors.text.primary }}
-              className="text-3xl font-bold"
+              
             >
               {analytics.todayOrders > 0
                 ? formatCurrency(analytics.todaySales / analytics.todayOrders)
                 : formatCurrency(0)}
-            </Text>
+            </FigureText>
           </View>
 
           {/* Hourly Activity */}
           <View
-            className="rounded-2xl p-5 mt-4"
+            className="rounded-[26px] p-5 mt-4"
             style={colors.getCardStyle()}
           >
             <View className="flex-row items-center mb-4">

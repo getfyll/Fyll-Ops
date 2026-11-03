@@ -6,7 +6,7 @@ import { FYLL_LIME, MoneyText, usePaymentsPalette } from '@/components/payments/
 
 type Tone = 'positive' | 'negative' | 'neutral';
 
-export type HeroSegment = { key: string; label: string; amount: number };
+export type HeroSegment = { key: string; label: string; amount: number; color?: string };
 export type SentencePart = { text: string; bold?: boolean };
 
 // Bar colours, biggest first. The biggest part is Fyll lime; the rest are muted so it stands out.
@@ -14,9 +14,9 @@ const SEGMENT_COLORS = [FYLL_LIME, '#E8B04A', '#D9776D', '#8A8F98'];
 const OTHER_COLOR = '#6F7168';
 
 // Turns raw groups into at most five bar segments: the four biggest, then everything else as "Other".
-export function buildHeroSegments(groups: { name: string; amount: number }[]): HeroSegment[] {
+export function buildHeroSegments(groups: { name: string; amount: number; color?: string }[]): HeroSegment[] {
   const sorted = groups.filter((group) => group.amount > 0).sort((a, b) => b.amount - a.amount);
-  const top = sorted.slice(0, 4).map((group) => ({ key: group.name, label: group.name, amount: group.amount }));
+  const top = sorted.slice(0, 4).map((group) => ({ key: group.name, label: group.name, amount: group.amount, color: group.color }));
   const otherAmount = sorted.slice(4).reduce((sum, group) => sum + group.amount, 0);
   return otherAmount > 0 ? [...top, { key: '__other', label: 'Other', amount: otherAmount }] : top;
 }
@@ -55,7 +55,7 @@ export function FinanceHeroCard({
   loading?: boolean;
 }) {
   const palette = usePaymentsPalette();
-  const colored = segments.map((segment, index) => ({ ...segment, color: segment.key === '__other' ? OTHER_COLOR : SEGMENT_COLORS[index] ?? OTHER_COLOR }));
+  const colored = segments.map((segment, index) => ({ ...segment, color: segment.color ?? (segment.key === '__other' ? OTHER_COLOR : SEGMENT_COLORS[index] ?? OTHER_COLOR) }));
   const barTotal = colored.reduce((sum, segment) => sum + segment.amount, 0);
 
   const changeNumber = changeLabel?.match(/^([+-]?)(\d+(?:\.\d+)?)%/);

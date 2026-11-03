@@ -1,10 +1,12 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Tabs, usePathname } from 'expo-router';
+import { Tabs, usePathname, useRouter } from 'expo-router';
 import { View, Text, Platform } from 'react-native';
 import { PlatformPressable } from '@react-navigation/elements';
 import { BlurView } from 'expo-blur';
-import { LinearGradient } from 'expo-linear-gradient';
+import { FocusBottomNav } from '@/components/FocusBottomNav';
+import { useBusinessNavItems } from '@/lib/useBusinessNavItems';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LayoutDashboard, Package, ShoppingCart, MoreHorizontal, BarChart3, Users, Briefcase, MessageSquare, TrendingUp, ListTodo, Wallet } from 'lucide-react-native';
 import { useThemeColors } from '@/lib/theme';
 import { useBreakpoint } from '@/lib/useBreakpoint';
@@ -26,47 +28,6 @@ const ORDERS_TAB_BADGE_SEEN_KEY_PREFIX = 'orders-tab-badge-seen';
 const getOrdersTabBadgeSeenKey = (businessId: string) =>
   `${ORDERS_TAB_BADGE_SEEN_KEY_PREFIX}:${businessId}`;
 
-const MOBILE_NAV_GLASS = {
-  dark: {
-    rim: [
-      'rgba(255,255,255,0.24)',
-      'rgba(255,255,255,0.075)',
-      'rgba(255,255,255,0.025)',
-      'rgba(255,255,255,0.13)',
-    ] as const,
-    surface: 'rgba(8,8,10,0.68)',
-    sheen: [
-      'rgba(255,255,255,0.045)',
-      'rgba(255,255,255,0.008)',
-      'rgba(0,0,0,0.11)',
-    ] as const,
-    selection: [
-      'rgba(255,255,255,0.24)',
-      'rgba(255,255,255,0.18)',
-      'rgba(255,255,255,0.12)',
-    ] as const,
-  },
-  light: {
-    rim: [
-      'rgba(255,255,255,0.96)',
-      'rgba(255,255,255,0.52)',
-      'rgba(255,255,255,0.18)',
-      'rgba(255,255,255,0.70)',
-    ] as const,
-    surface: 'rgba(250,250,250,0.68)',
-    sheen: [
-      'rgba(255,255,255,0.70)',
-      'rgba(255,255,255,0.18)',
-      'rgba(210,210,210,0.10)',
-    ] as const,
-    selection: [
-      'rgba(255,255,255,0.88)',
-      'rgba(235,235,235,0.74)',
-      'rgba(220,220,220,0.58)',
-    ] as const,
-  },
-} as const;
-
 function TabBarIcon({
   Icon,
   color,
@@ -86,16 +47,11 @@ function TabBarIcon({
 
   if (isMobile) {
     const isDark = colors.text.primary === '#FFFFFF';
-    const glass = isDark ? MOBILE_NAV_GLASS.dark : MOBILE_NAV_GLASS.light;
     return (
       <View style={{ width: 50, height: 50, alignItems: 'center', justifyContent: 'center' }}>
         {focused ? (
-          <LinearGradient
+          <View
             pointerEvents="none"
-            colors={glass.selection}
-            locations={[0, 0.56, 1]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
             style={{
               position: 'absolute',
               top: -3,
@@ -103,6 +59,7 @@ function TabBarIcon({
               bottom: -3,
               left: -12,
               borderRadius: 999,
+              backgroundColor: isDark ? 'rgba(255, 255, 255, 0.14)' : 'rgba(0, 0, 0, 0.08)',
             }}
           />
         ) : null}
@@ -142,41 +99,20 @@ function TabBarIcon({
 }
 
 function FloatingTabBarBackground({ isDark }: { isDark: boolean }) {
-  const glass = isDark ? MOBILE_NAV_GLASS.dark : MOBILE_NAV_GLASS.light;
+  // Same glass as the Fyll Print nav: a solid, lightly blurred pill.
   return (
-    <LinearGradient
-      colors={glass.rim}
-      locations={[0, 0.34, 0.68, 1]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={{ flex: 1, borderRadius: 999, padding: 0.65, overflow: 'hidden' }}
-    >
-      <BlurView
-        intensity={Platform.OS === 'ios' ? 54 : 38}
-        tint={isDark ? 'dark' : 'light'}
-        style={{ flex: 1, borderRadius: 998, overflow: 'hidden', backgroundColor: glass.surface }}
-      >
-        <LinearGradient
-          pointerEvents="none"
-          colors={glass.sheen}
-          locations={[0, 0.44, 1]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 0, y: 1 }}
-          style={{
-            position: 'absolute',
-            top: 0,
-            right: 0,
-            bottom: 0,
-            left: 0,
-          }}
-        />
-      </BlurView>
-    </LinearGradient>
+    <BlurView
+      intensity={Platform.OS === 'ios' ? 38 : 26}
+      tint={isDark ? 'dark' : 'light'}
+      style={{ flex: 1, backgroundColor: isDark ? 'rgba(24, 24, 24, 0.9)' : 'rgba(255, 255, 255, 0.9)' }}
+    />
   );
 }
 
 export default function TabLayout() {
   const colors = useThemeColors();
+  const insets = useSafeAreaInsets();
+  const router = useRouter();
   const pathname = usePathname();
   const { isDesktop, isMobile, isTablet } = useBreakpoint();
   const currentUser = useAuthStore((s) => s.currentUser);
@@ -301,8 +237,14 @@ export default function TabLayout() {
   const hideMobileTabBar = isMobile && shouldHideMobileTabBar(pathname);
   const tabBarStyle = hideMobileTabBar
     ? { display: 'none' as const }
-    : getTabBarStyle(colors, isDesktop, isMobile);
+    : getTabBarStyle(colors, isDesktop, isMobile, insets.bottom);
   const isDark = colors.text.primary === '#FFFFFF';
+
+  // Finance, Insights and Customers share one small nav: a round Home button and a pill with the three of them.
+  const businessPath = pathname.split('?')[0]?.replace(/\/+$/, '') ?? '';
+  const showBusinessNav = isMobile && (businessPath === '/finance' || businessPath === '/insights' || businessPath.startsWith('/insights/') || businessPath === '/customers');
+  const businessNavKey = businessPath === '/finance' ? 'finance' : (businessPath === '/insights' || businessPath.startsWith('/insights/')) ? 'insights' : businessPath === '/customers' ? 'customers' : null;
+  const businessNavItems = useBusinessNavItems(businessNavKey);
 
   return (
     <View style={{ flex: 1, flexDirection: 'row' }}>
@@ -548,6 +490,7 @@ export default function TabLayout() {
         }}
       />
         </Tabs>
+        {showBusinessNav ? <FocusBottomNav items={businessNavItems} onHome={() => router.navigate('/(tabs)' as never)} /> : null}
       </View>
     </View>
   );

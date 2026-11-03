@@ -31,6 +31,7 @@ export function WhatsAppAlertsCard({ bordered = false }: { bordered?: boolean })
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [isTesting, setIsTesting] = useState(false);
+  const [isPhoneFocused, setIsPhoneFocused] = useState(false);
 
   useEffect(() => {
     if (!businessId) return;
@@ -103,10 +104,10 @@ export function WhatsAppAlertsCard({ bordered = false }: { bordered?: boolean })
   };
 
   const toggleRow = (label: string, hint: string, value: boolean, onChange: (next: boolean) => void) => (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 }}>
+    <View style={{ minHeight: 62, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 }}>
       <View style={{ flex: 1 }}>
-        <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>{label}</Text>
-        <Text style={{ color: palette.faint, fontSize: 12, marginTop: 2 }}>{hint}</Text>
+        <Text style={{ color: palette.text, fontSize: 14, lineHeight: 18, fontWeight: '600' }}>{label}</Text>
+        <Text style={{ color: palette.faint, fontSize: 12, lineHeight: 16, marginTop: 2 }}>{hint}</Text>
       </View>
       <LimeToggle value={value} onValueChange={onChange} compact inactiveColor={palette.softFill} inactiveBorderColor={palette.outline} />
     </View>
@@ -121,9 +122,9 @@ export function WhatsAppAlertsCard({ bordered = false }: { bordered?: boolean })
         backgroundColor: palette.card,
         paddingHorizontal: 18,
         paddingVertical: 16,
-      } : { paddingHorizontal: 18, paddingVertical: 18 }}
+      } : { paddingHorizontal: 18, paddingVertical: 16 }}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+      <View style={{ minHeight: 54, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
         <View style={{ width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.nudgeBg }}>
           <MessageCircle size={18} color={palette.limeOnSurface} strokeWidth={2} />
         </View>
@@ -141,19 +142,21 @@ export function WhatsAppAlertsCard({ bordered = false }: { bordered?: boolean })
       </View>
 
       {form.enabled ? (
-        <View style={{ marginTop: 18, paddingTop: 18, gap: 8, borderTopWidth: 1, borderTopColor: palette.hairline }}>
-          <Text style={{ color: palette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>WhatsApp number</Text>
+        <View style={{ marginTop: 16, paddingTop: 16, gap: 8, borderTopWidth: 1, borderTopColor: palette.hairline }}>
+          <Text style={{ color: palette.muted, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: 0.75, textTransform: 'uppercase' }}>WhatsApp number</Text>
           <TextInput
             value={form.phone}
             onChangeText={(phone) => setForm((f) => ({ ...f, phone }))}
+            onFocus={() => setIsPhoneFocused(true)}
+            onBlur={() => setIsPhoneFocused(false)}
             placeholder="+234 801 234 5678"
             placeholderTextColor={palette.faint}
             keyboardType="phone-pad"
             selectionColor={FYLL_LIME}
-            style={[{ height: 50, borderRadius: 16, borderWidth: 1, borderColor: palette.outline, backgroundColor: palette.inset, color: palette.text, paddingHorizontal: 16, fontSize: 14 }, noWebOutline]}
+            style={[{ height: 52, borderRadius: 16, borderWidth: 1, borderColor: isPhoneFocused ? FYLL_LIME : palette.outline, backgroundColor: palette.inset, color: palette.text, paddingHorizontal: 16, fontSize: 14, lineHeight: 18 }, noWebOutline]}
           />
           <Text style={{ color: palette.faint, fontSize: 12, lineHeight: 17 }}>Include the country code. Numbers starting with 0 are treated as Nigerian (+234).</Text>
-          <View style={{ marginTop: 8, borderRadius: 20, paddingHorizontal: 14, backgroundColor: palette.inset, borderWidth: 1, borderColor: palette.border }}>
+          <View style={{ marginTop: 8, borderRadius: 20, paddingHorizontal: 14, backgroundColor: palette.inset, borderWidth: 1, borderColor: palette.border, overflow: 'hidden' }}>
             {toggleRow('New orders', 'Storefront and in-app orders', form.orders, (orders) => setForm((f) => ({ ...f, orders })))}
             <View style={{ height: 1, backgroundColor: palette.hairline }} />
             {toggleRow('Payments', 'Fyll Checkout and storefront payments', form.payments, (payments) => setForm((f) => ({ ...f, payments })))}
@@ -161,12 +164,12 @@ export function WhatsAppAlertsCard({ bordered = false }: { bordered?: boolean })
         </View>
       ) : null}
 
-      {message ? <View style={{ marginTop: 14, padding: 12, borderRadius: 14, backgroundColor: message.ok ? palette.nudgeBg : palette.dangerBg, borderWidth: 1, borderColor: message.ok ? palette.nudgeBorder : palette.dangerBorder }}><Text style={{ color: message.ok ? palette.limeOnSurface : palette.danger, fontSize: 12, lineHeight: 17 }}>{message.text}</Text></View> : null}
+      {message ? <View style={{ marginTop: 14, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 14, backgroundColor: message.ok ? palette.nudgeBg : palette.dangerBg, borderWidth: 1, borderColor: message.ok ? palette.nudgeBorder : palette.dangerBorder }}><Text style={{ color: message.ok ? palette.limeOnSurface : palette.danger, fontSize: 12, lineHeight: 17 }}>{message.text}</Text></View> : null}
 
       <Pressable
         onPress={save}
         disabled={isSaving || isLoading}
-        style={({ pressed }) => ({ marginTop: 18, height: 48, borderRadius: 999, backgroundColor: FYLL_LIME, alignItems: 'center', justifyContent: 'center', opacity: pressed || isSaving ? 0.8 : 1 })}
+        style={({ pressed }) => ({ marginTop: 18, height: 50, borderRadius: 999, backgroundColor: FYLL_LIME, alignItems: 'center', justifyContent: 'center', opacity: pressed || isSaving ? 0.8 : 1 })}
       >
         {isSaving ? <ActivityIndicator color={FYLL_LIME_INK} /> : <Text style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '600' }}>Save WhatsApp settings</Text>}
       </Pressable>

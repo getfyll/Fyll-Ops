@@ -7,10 +7,14 @@ import { DetailHeader } from '@/components/stats/DetailHeader';
 import { BreakdownTable } from '@/components/stats/BreakdownTable';
 import { useAnalytics } from '@/hooks/useAnalytics';
 import { TimeRange } from '@/lib/analytics-utils';
-import { useStatsColors } from '@/lib/theme';
+import { FigureText } from '@/components/stats/FigureText';
+import { InsightsRangeTabs } from '@/components/stats/InsightsRangeTabs';
+import { useInsightsBottomPad, useInsightsColors, useInsightsTopCardHeight } from '@/lib/insights-theme';
 
 export default function LogisticsInsightScreen() {
-  const colors = useStatsColors();
+  const bottomPad = useInsightsBottomPad();
+  const topCardMinHeight = useInsightsTopCardHeight();
+  const colors = useInsightsColors();
   const [timeRange, setTimeRange] = useState<TimeRange>('7d');
   const analytics = useAnalytics(timeRange, 'orders');
 
@@ -63,40 +67,16 @@ export default function LogisticsInsightScreen() {
         <ScrollView
           className="flex-1"
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
+          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: bottomPad }}
         >
           {/* Time Range Selector */}
-          <View className="flex-row mt-4">
-            {timeRangeOptions.map((option) => (
-              <Pressable
-                key={option.key}
-                onPress={() => setTimeRange(option.key)}
-                className="mr-2 px-4 py-2 rounded-full"
-                style={{
-                  backgroundColor:
-                    timeRange === option.key ? colors.bar : colors.bg.input,
-                }}
-              >
-                <Text
-                  style={{
-                    color:
-                      timeRange === option.key
-                        ? colors.bg.screen
-                        : colors.text.tertiary,
-                  }}
-                  className="text-sm font-semibold"
-                >
-                  {option.label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
+          <InsightsRangeTabs options={timeRangeOptions} value={timeRange} onChange={setTimeRange} />
 
           {/* Top Carrier Card */}
           {topCarrier && (
             <View
-              className="rounded-2xl p-5 mt-4"
-              style={colors.getCardStyle()}
+              className="rounded-[26px] p-5 mt-4"
+              style={[colors.getCardStyle(), { minHeight: topCardMinHeight }]}
             >
               <View className="flex-row items-center mb-2">
                 <Truck size={20} color={colors.text.tertiary} strokeWidth={2} />
@@ -107,12 +87,12 @@ export default function LogisticsInsightScreen() {
                   Top Carrier
                 </Text>
               </View>
-              <Text
+              <FigureText desktop={30} mobile={20}
                 style={{ color: colors.text.primary }}
-                className="text-3xl font-bold"
+                
               >
                 {topCarrier.label}
-              </Text>
+              </FigureText>
               <View className="flex-row items-center mt-2">
                 <Text
                   style={{ color: colors.text.secondary }}
@@ -146,7 +126,7 @@ export default function LogisticsInsightScreen() {
           {/* KPI Row */}
           <View className="flex-row mt-4" style={{ gap: 12 }}>
             <View
-              className="flex-1 rounded-2xl p-4"
+              className="flex-1 rounded-[26px] p-4"
               style={colors.getCardStyle()}
             >
               <View className="flex-row items-center mb-2">
@@ -158,16 +138,16 @@ export default function LogisticsInsightScreen() {
                   Total Shipped
                 </Text>
               </View>
-              <Text
+              <FigureText desktop={24} mobile={24}
                 style={{ color: colors.text.primary }}
-                className="text-2xl font-bold"
+                
               >
                 {totalShipped}
-              </Text>
+              </FigureText>
             </View>
 
             <View
-              className="flex-1 rounded-2xl p-4"
+              className="flex-1 rounded-[26px] p-4"
               style={colors.getCardStyle()}
             >
               <View className="flex-row items-center mb-2">
@@ -179,21 +159,21 @@ export default function LogisticsInsightScreen() {
                   Avg Delivery Rate
                 </Text>
               </View>
-              <Text
+              <FigureText desktop={24} mobile={24}
                 style={{
                   color:
                     Number(avgDeliveryRate) >= 90 ? colors.success : colors.text.primary,
                 }}
-                className="text-2xl font-bold"
+                
               >
                 {avgDeliveryRate}%
-              </Text>
+              </FigureText>
             </View>
           </View>
 
           {/* Processing Orders */}
           <View
-            className="rounded-2xl p-5 mt-4"
+            className="rounded-[26px] p-5 mt-4"
             style={colors.getCardStyle()}
           >
             <View className="flex-row items-center mb-4">

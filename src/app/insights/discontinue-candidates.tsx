@@ -6,10 +6,12 @@ import { XCircle, ChevronRight, AlertTriangle, Calendar } from 'lucide-react-nat
 import useFyllStore from '@/lib/state/fyll-store';
 import { calculateDiscontinueCandidates, type DiscontinuePeriod } from '@/lib/inventory-analytics';
 import { DetailHeader } from '@/components/stats/DetailHeader';
-import { useStatsColors } from '@/lib/theme';
+import { FigureText } from '@/components/stats/FigureText';
+import { useInsightsBottomPad, useInsightsColors } from '@/lib/insights-theme';
 
 export default function DiscontinueCandidatesScreen() {
-  const colors = useStatsColors();
+  const bottomPad = useInsightsBottomPad();
+  const colors = useInsightsColors();
   const router = useRouter();
   const params = useLocalSearchParams<{ period?: string; threshold?: string }>();
 
@@ -61,7 +63,7 @@ export default function DiscontinueCandidatesScreen() {
         <ScrollView
           className="flex-1"
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
+          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: bottomPad }}
         >
           {/* Period Selector */}
           <View className="flex-row mt-4">
@@ -170,9 +172,9 @@ export default function DiscontinueCandidatesScreen() {
             <Text style={{ color: colors.text.tertiary }} className="text-xs">
               Total Candidates Found
             </Text>
-            <Text style={{ color: colors.text.primary }} className="text-2xl font-bold">
+            <FigureText desktop={24} mobile={24} style={{ color: colors.text.primary }} >
               {result.totalCandidates}
-            </Text>
+            </FigureText>
           </View>
 
           {/* Results */}

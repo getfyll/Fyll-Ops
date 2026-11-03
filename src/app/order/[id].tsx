@@ -683,7 +683,7 @@ export default function OrderDetailScreen() {
   }, [headerActionMenuAnchor, insets.top, isWebDesktop, width]);
 
   const headerActionMenuTextStyle = {
-    fontSize: isWebDesktop ? 14 : 12,
+    fontSize: 14,
     fontWeight: isWebDesktop ? '500' as const : '600' as const,
     marginLeft: 12,
   };
@@ -693,7 +693,7 @@ export default function OrderDetailScreen() {
       <SafeAreaView className="flex-1 items-center justify-center" style={{ backgroundColor: colors.bg.primary }}>
         <Text style={{ color: colors.text.tertiary }} className="text-lg">Order not found</Text>
         <Pressable onPress={handleBack} className="mt-4 active:opacity-50">
-          <Text style={{ color: colors.text.secondary }} className="font-semibold">Go Back</Text>
+          <Text style={{ fontSize: isWebDesktop ? 14 : 14, color: colors.text.secondary }} className="font-semibold">Go Back</Text>
         </Pressable>
       </SafeAreaView>
     );
@@ -2141,79 +2141,35 @@ export default function OrderDetailScreen() {
     </View>
   ) : null;
 
+  // Every small action button inside a card (Edit, Add, Request Refund, Create Case, Send to Partner) shares one look:
+  // the same outline pill and the same 13px label, on phones and desktop.
   const actionPillBaseStyle = {
     minHeight: 32,
     minWidth: 90,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-  };
-
-  const primaryActionPillStyle = {
-    ...actionPillBaseStyle,
-    backgroundColor: FYLL_LIME,
-  };
-
-  const primaryActionTextStyle = {
-    color: FYLL_LIME_INK,
-    fontSize: 12,
-    fontWeight: '600' as const,
-  };
-
-  const secondaryActionPillStyle = {
-    ...actionPillBaseStyle,
-    backgroundColor: colors.bg.secondary,
-    borderWidth: 1,
-    borderColor: colors.border.light,
-  };
-
-  const secondaryActionTextStyle = {
-    color: colors.text.secondary,
-    fontSize: 12,
-    fontWeight: '600' as const,
-  };
-
-  const refundActionPillStyle = {
-    minHeight: 32,
-    minWidth: 90,
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: palette.outline,
+    backgroundColor: 'transparent',
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   };
-
-  const refundActionTextStyle = {
+  const actionPillTextStyle = {
     color: colors.text.secondary,
     fontSize: 13,
     fontWeight: '600' as const,
   };
 
-  const outlineActionPillStyle = {
-    ...actionPillBaseStyle,
-    borderWidth: 1,
-    borderColor: colors.border.light,
-  };
-
-  const outlineActionTextStyle = {
-    color: colors.text.secondary,
-    fontSize: 13,
-    fontWeight: '600' as const,
-  };
-
-  const addActionPillStyle = {
-    ...actionPillBaseStyle,
-    borderWidth: 1,
-    borderColor: colors.border.light,
-  };
-
-  const addActionTextStyle = {
-    color: colors.text.secondary,
-    fontSize: 13,
-    fontWeight: '600' as const,
-  };
+  const primaryActionPillStyle = actionPillBaseStyle;
+  const primaryActionTextStyle = actionPillTextStyle;
+  const secondaryActionPillStyle = actionPillBaseStyle;
+  const secondaryActionTextStyle = actionPillTextStyle;
+  const refundActionPillStyle = actionPillBaseStyle;
+  const refundActionTextStyle = actionPillTextStyle;
+  const outlineActionPillStyle = actionPillBaseStyle;
+  const outlineActionTextStyle = actionPillTextStyle;
+  const addActionPillStyle = actionPillBaseStyle;
+  const addActionTextStyle = actionPillTextStyle;
 
   const logisticsSection = (
     <View style={sectionCardStyle}>
@@ -2507,7 +2463,7 @@ export default function OrderDetailScreen() {
               className="flex-row items-center justify-between rounded-2xl px-4 py-3"
               style={{ backgroundColor: colors.bg.primary, borderWidth: 1, borderColor: colors.border.light }}
             >
-              <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '600' }}>{caseItem.caseNumber}</Text>
+              <Text style={{ color: colors.text.primary, fontSize: isWebDesktop ? 12 : 14, fontWeight: '600' }}>{caseItem.caseNumber}</Text>
               <ChevronRight size={18} color={colors.text.tertiary} strokeWidth={2} />
             </Pressable>
           ))}
@@ -2552,10 +2508,10 @@ export default function OrderDetailScreen() {
                 style={{ backgroundColor: colors.bg.primary, borderWidth: 1, borderColor: colors.border.light }}
               >
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>
+                  <Text style={{ color: colors.text.primary, fontSize: isWebDesktop ? 12 : 14, fontWeight: '600' }} numberOfLines={1}>
                     {partner?.name ?? 'Unknown partner'}
                   </Text>
-                  <Text style={{ color: isAwaitingDispatch ? '#B45309' : colors.text.tertiary, fontSize: 11, marginTop: 2 }}>
+                  <Text style={{ color: isAwaitingDispatch ? '#B45309' : colors.text.tertiary, fontSize: isWebDesktop ? 11 : 14, marginTop: 2 }}>
                     {statusLabel}
                   </Text>
                 </View>
@@ -2577,11 +2533,12 @@ export default function OrderDetailScreen() {
     <View style={{ marginTop: isWebDesktop ? 18 : 14, marginHorizontal: isWebDesktop ? 0 : 16 }}>
       <Pressable
         onPress={handlePrintLabel}
+        accessibilityRole="button"
         className="active:opacity-80"
-        style={[ghostPillStyle, { height: 48, width: '100%' }]}
+        style={{ height: 48, width: '100%', borderRadius: 999, backgroundColor: FYLL_LIME, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 }}
       >
-        <Printer size={16} color={palette.text} strokeWidth={2} />
-        <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>Print Shipping Label</Text>
+        <Printer size={16} color={FYLL_LIME_INK} strokeWidth={2.2} />
+        <Text style={{ color: FYLL_LIME_INK, fontSize: isWebDesktop ? 14 : 14, fontWeight: '700' }}>Print Shipping Label</Text>
       </Pressable>
     </View>
   );
@@ -2615,8 +2572,8 @@ export default function OrderDetailScreen() {
       >
         <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: activeStatusDisplay.color }} />
         <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
-          <Text style={{ color: palette.muted, fontSize: 10, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>Current status</Text>
-          <Text style={{ color: activeStatusDisplay.color, fontSize: 14, fontWeight: '600' }} numberOfLines={1}>
+          <Text style={{ color: palette.muted, fontSize: isWebDesktop ? 10 : 14, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>Current status</Text>
+          <Text style={{ color: activeStatusDisplay.color, fontSize: isWebDesktop ? 14 : 14, fontWeight: '600' }} numberOfLines={1}>
             {activeStatusDisplay.label}
           </Text>
         </View>
@@ -2657,7 +2614,7 @@ export default function OrderDetailScreen() {
                 }}
               >
                 <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: optionDisplay.color }} />
-                <Text style={{ color: isCancel ? palette.danger : palette.text, fontSize: isWebDesktop ? 14 : 12, fontWeight: isSelected ? '600' : '500', flex: 1 }}>
+                <Text style={{ color: isCancel ? palette.danger : palette.text, fontSize: isWebDesktop ? 14 : 14, fontWeight: isSelected ? '600' : '500', flex: 1 }}>
                   {optionDisplay.label}
                 </Text>
                 {isSelected ? <Check size={14} color={palette.text} strokeWidth={2.6} /> : null}
@@ -2724,7 +2681,7 @@ export default function OrderDetailScreen() {
         style={{ height: 40, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.secondary, gap: 8 }}
       >
         <ExternalLink size={15} color={colors.text.primary} strokeWidth={2.2} />
-        <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '700' }}>View payment</Text>
+        <Text style={{ color: colors.text.primary, fontSize: isWebDesktop ? 13 : 14, fontWeight: '700' }}>View payment</Text>
       </Pressable>
     </View>
   ) : null;
@@ -2904,9 +2861,9 @@ export default function OrderDetailScreen() {
                     />
                   </Pressable>
 
-                  <Pressable onPress={handlePrintLabel} accessibilityLabel="Print shipping label" className="active:opacity-80" style={ghostPillStyle}>
-                    <Printer size={15} color={palette.text} strokeWidth={2} />
-                    <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>Shipping label</Text>
+                  <Pressable onPress={handlePrintLabel} accessibilityRole="button" accessibilityLabel="Print shipping label" className="active:opacity-80" style={{ ...ghostPillStyle, borderWidth: 0, backgroundColor: FYLL_LIME }}>
+                    <Printer size={15} color={FYLL_LIME_INK} strokeWidth={2.2} />
+                    <Text style={{ color: FYLL_LIME_INK, fontSize: isWebDesktop ? 14 : 14, fontWeight: '700' }}>Shipping label</Text>
                   </Pressable>
 
                   <Pressable
@@ -3018,6 +2975,7 @@ export default function OrderDetailScreen() {
           ) : (
             <>
               {updateStatusSection}
+              {printLabelSection}
               {itemsSection}
               {sourcePaymentSection}
               {wooCommerceSection}
@@ -3029,7 +2987,6 @@ export default function OrderDetailScreen() {
               {refundSection}
               {qcSection}
               {casesSection}
-              {printLabelSection}
               {staffActivitySection}
             </>
           )}
@@ -3278,7 +3235,7 @@ export default function OrderDetailScreen() {
                       className="flex-1 rounded-xl items-center justify-center"
                       style={{ height: 48, borderWidth: 1.5, borderColor: colors.accent.danger }}
                     >
-                      <Text style={{ color: colors.accent.danger }} className="font-semibold">Remove Flag</Text>
+                      <Text style={{ fontSize: isWebDesktop ? 14 : 14, color: colors.accent.danger }} className="font-semibold">Remove Flag</Text>
                     </Pressable>
                   ) : (
                     <Pressable
@@ -3286,7 +3243,7 @@ export default function OrderDetailScreen() {
                       className="flex-1 rounded-xl items-center justify-center"
                       style={{ height: 48, backgroundColor: colors.bg.secondary }}
                     >
-                      <Text style={{ color: colors.text.secondary }} className="font-semibold">Cancel</Text>
+                      <Text style={{ fontSize: isWebDesktop ? 14 : 14, color: colors.text.secondary }} className="font-semibold">Cancel</Text>
                     </Pressable>
                   )}
                   <Pressable
@@ -3295,7 +3252,7 @@ export default function OrderDetailScreen() {
                     className="flex-1 rounded-xl items-center justify-center"
                     style={{ height: 48, backgroundColor: colors.text.primary, opacity: !flagNoteDraft.trim() ? 0.5 : 1 }}
                   >
-                    <Text style={{ color: colors.bg.primary }} className="font-semibold">Save</Text>
+                    <Text style={{ fontSize: isWebDesktop ? 14 : 14, color: colors.bg.primary }} className="font-semibold">Save</Text>
                   </Pressable>
                 </View>
               </View>
@@ -3329,14 +3286,14 @@ export default function OrderDetailScreen() {
                   className="flex-1 rounded-full items-center justify-center"
                   style={{ height: 48, backgroundColor: '#F3F4F6' }}
                 >
-                  <Text className="text-gray-700 font-semibold">Close</Text>
+                  <Text className="text-gray-700 font-semibold" style={{ fontSize: isWebDesktop ? 14 : 14 }}>Close</Text>
                 </Pressable>
                 <Pressable
                   onPress={confirmDeleteOrder}
                   className="flex-1 rounded-full items-center justify-center"
                   style={{ height: 48, backgroundColor: '#111111' }}
                 >
-                  <Text className="text-white font-semibold">Move to Bin</Text>
+                  <Text className="text-white font-semibold" style={{ fontSize: isWebDesktop ? 14 : 14 }}>Move to Bin</Text>
                 </Pressable>
               </View>
             </Pressable>
@@ -3369,14 +3326,14 @@ export default function OrderDetailScreen() {
                   className="flex-1 rounded-full items-center justify-center"
                   style={{ height: 48, backgroundColor: '#F3F4F6' }}
                 >
-                  <Text className="text-gray-700 font-semibold">Close</Text>
+                  <Text className="text-gray-700 font-semibold" style={{ fontSize: isWebDesktop ? 14 : 14 }}>Close</Text>
                 </Pressable>
                 <Pressable
                   onPress={confirmCancelOrder}
                   className="flex-1 rounded-full items-center justify-center"
                   style={{ height: 48, backgroundColor: '#EF4444' }}
                 >
-                  <Text className="text-white font-semibold">Cancel Order</Text>
+                  <Text className="text-white font-semibold" style={{ fontSize: isWebDesktop ? 14 : 14 }}>Cancel Order</Text>
                 </Pressable>
               </View>
             </Pressable>
@@ -3483,7 +3440,7 @@ export default function OrderDetailScreen() {
                       className="rounded-xl px-4 flex-row items-center justify-between"
                       style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.input.border, height: 52 }}
                     >
-                      <Text style={{ color: editState ? colors.input.text : colors.input.placeholder }}>
+                      <Text style={{ fontSize: isWebDesktop ? 14 : 14, color: editState ? colors.input.text : colors.input.placeholder }}>
                         {editState || 'Select State'}
                       </Text>
                       <ChevronDown size={18} color={colors.text.tertiary} strokeWidth={2} />
@@ -3601,7 +3558,7 @@ export default function OrderDetailScreen() {
                         style={{ backgroundColor: colors.bg.secondary }}
                       >
                         <Plus size={14} color={colors.text.primary} strokeWidth={2} />
-                        <Text style={{ color: colors.text.primary }} className="text-xs font-medium ml-1">Add</Text>
+                        <Text style={{ fontSize: isWebDesktop ? 12 : 14, color: colors.text.primary }} className="text-xs font-medium ml-1">Add</Text>
                       </Pressable>
                     </View>
 
@@ -3698,7 +3655,7 @@ export default function OrderDetailScreen() {
                                         style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
                                       >
                                         <Plus size={13} color={colors.text.primary} strokeWidth={2} />
-                                        <Text className="text-xs font-semibold ml-1" style={{ color: colors.text.primary }}>Add Option</Text>
+                                        <Text className="text-xs font-semibold ml-1" style={{ fontSize: isWebDesktop ? 12 : 14, color: colors.text.primary }}>Add Option</Text>
                                       </Pressable>
                                     ) : null}
                                   </View>
@@ -3775,7 +3732,7 @@ export default function OrderDetailScreen() {
                       className="rounded-xl px-4 flex-row items-center justify-between"
                       style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.input.border, height: 52 }}
                     >
-                      <Text style={{ color: editPaymentMethod ? colors.input.text : colors.input.placeholder }}>
+                      <Text style={{ fontSize: isWebDesktop ? 14 : 14, color: editPaymentMethod ? colors.input.text : colors.input.placeholder }}>
                         {editPaymentMethod || 'Select Payment Method'}
                       </Text>
                       <ChevronDown size={18} color={colors.text.tertiary} strokeWidth={2} />
@@ -3809,7 +3766,7 @@ export default function OrderDetailScreen() {
                       className="rounded-xl px-4 flex-row items-center justify-between"
                       style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.input.border, height: 52 }}
                     >
-                      <Text style={{ color: editSource ? colors.input.text : colors.input.placeholder }}>
+                      <Text style={{ fontSize: isWebDesktop ? 14 : 14, color: editSource ? colors.input.text : colors.input.placeholder }}>
                         {editSource || 'Select Source'}
                       </Text>
                       <ChevronDown size={18} color={colors.text.tertiary} strokeWidth={2} />
@@ -3909,7 +3866,7 @@ export default function OrderDetailScreen() {
                       className="rounded-xl px-4 flex-row items-center justify-between"
                       style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.input.border, height: 52 }}
                     >
-                      <Text style={{ color: editCarrierName ? colors.input.text : colors.input.placeholder }}>
+                      <Text style={{ fontSize: isWebDesktop ? 14 : 14, color: editCarrierName ? colors.input.text : colors.input.placeholder }}>
                         {editCarrierName || 'Select Carrier'}
                       </Text>
                       <ChevronDown size={18} color={colors.text.tertiary} strokeWidth={2} />
@@ -3943,7 +3900,7 @@ export default function OrderDetailScreen() {
                       className="rounded-xl px-4 flex-row items-center justify-between"
                       style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.input.border, height: 52 }}
                     >
-                      <Text style={{ color: editDatePickedUp ? colors.input.text : colors.input.placeholder }}>
+                      <Text style={{ fontSize: isWebDesktop ? 14 : 14, color: editDatePickedUp ? colors.input.text : colors.input.placeholder }}>
                         {editDatePickedUp ? editDatePickedUp.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Select date'}
                       </Text>
                       <Calendar size={18} color={colors.text.tertiary} strokeWidth={2} />
@@ -3977,7 +3934,7 @@ export default function OrderDetailScreen() {
                   >
                     <Text
                       className="font-semibold text-base"
-                      style={{ color: isDark ? '#111111' : '#FFFFFF' }}
+                      style={{ fontSize: isWebDesktop ? 16 : 14, color: isDark ? '#111111' : '#FFFFFF' }}
                     >
                       Save
                     </Text>
@@ -4041,7 +3998,7 @@ export default function OrderDetailScreen() {
                               className="flex-row items-center justify-between px-5 py-3 active:opacity-70"
                               style={{ borderTopWidth: optionIndex === 0 ? 0 : 1, borderTopColor: colors.border.light }}
                             >
-                              <Text style={{ color: colors.text.primary }} className="text-sm font-medium">{option.name}</Text>
+                              <Text style={{ fontSize: isWebDesktop ? 14 : 14, color: colors.text.primary }} className="text-sm font-medium">{option.name}</Text>
                               <ChevronRight size={16} color={colors.text.muted} strokeWidth={2} />
                             </Pressable>
                           ))
@@ -4097,7 +4054,7 @@ export default function OrderDetailScreen() {
                               className="flex-row items-center justify-between px-5 py-3 active:opacity-70"
                               style={{ borderTopWidth: valueIndex === 0 ? 0 : 1, borderTopColor: colors.border.light }}
                             >
-                              <Text style={{ color: colors.text.primary }} className="text-sm font-medium">{value}</Text>
+                              <Text style={{ fontSize: isWebDesktop ? 14 : 14, color: colors.text.primary }} className="text-sm font-medium">{value}</Text>
                               {selected ? <Check size={16} color={colors.text.primary} strokeWidth={2.4} /> : null}
                             </Pressable>
                           );
@@ -4261,13 +4218,13 @@ export default function OrderDetailScreen() {
                     }}
                     className="flex-1 py-3 rounded-full items-center bg-gray-200"
                   >
-                    <Text className="text-gray-700 font-semibold">Clear</Text>
+                    <Text className="text-gray-700 font-semibold" style={{ fontSize: isWebDesktop ? 14 : 14 }}>Clear</Text>
                   </Pressable>
                   <Pressable
                     onPress={() => setShowDatePicker(false)}
                     className="flex-1 py-3 rounded-full items-center bg-gray-900"
                   >
-                    <Text className="text-white font-semibold">Done</Text>
+                    <Text className="text-white font-semibold" style={{ fontSize: isWebDesktop ? 14 : 14 }}>Done</Text>
                   </Pressable>
                 </View>
               </View>
@@ -4333,8 +4290,8 @@ export default function OrderDetailScreen() {
                       className="flex-row items-center justify-between"
                     >
                       <View style={{ flex: 1, paddingRight: 12 }}>
-                        <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">Apply bank charges</Text>
-                        <Text style={{ color: colors.text.muted }} className="text-xs mt-1">
+                        <Text style={{ fontSize: isWebDesktop ? 14 : 14, color: colors.text.primary }} className="text-sm font-semibold">Apply bank charges</Text>
+                        <Text style={{ fontSize: isWebDesktop ? 12 : 14, color: colors.text.muted }} className="text-xs mt-1">
                           Include transfer fee, VAT and stamp duty in debit total
                         </Text>
                       </View>
@@ -4416,7 +4373,7 @@ export default function OrderDetailScreen() {
                         className="rounded-xl px-4 flex-row items-center justify-between"
                         style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.input.border, height: 52 }}
                       >
-                        <Text style={{ color: colors.input.text }}>
+                        <Text style={{ fontSize: isWebDesktop ? 14 : 14, color: colors.input.text }}>
                           {refundDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                         </Text>
                         <Calendar size={18} color={colors.text.tertiary} strokeWidth={2} />
@@ -4462,8 +4419,8 @@ export default function OrderDetailScreen() {
                         >
                           <Camera size={20} color={colors.text.tertiary} strokeWidth={2} />
                         </View>
-                        <Text style={{ color: colors.text.primary, fontSize: 15, fontWeight: '600' }}>Upload screenshot</Text>
-                        <Text style={{ color: colors.text.muted, fontSize: 12, marginTop: 4, textAlign: 'center' }}>
+                        <Text style={{ color: colors.text.primary, fontSize: isWebDesktop ? 15 : 14, fontWeight: '600' }}>Upload screenshot</Text>
+                        <Text style={{ color: colors.text.muted, fontSize: isWebDesktop ? 12 : 14, marginTop: 4, textAlign: 'center' }}>
                           Optional context for the refund reason. Refund proof is uploaded after approval.
                         </Text>
                       </Pressable>
@@ -4529,7 +4486,7 @@ export default function OrderDetailScreen() {
                             borderColor: colors.input.border,
                           }}
                         >
-                          <Text style={{ color: colors.text.secondary, fontSize: 13, fontWeight: '600' }}>+ Add Another Image</Text>
+                          <Text style={{ color: colors.text.secondary, fontSize: isWebDesktop ? 13 : 14, fontWeight: '600' }}>+ Add Another Image</Text>
                         </Pressable>
                       </View>
                     )}
@@ -4547,7 +4504,7 @@ export default function OrderDetailScreen() {
                       className="rounded-full px-5"
                       style={{ height: 44, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border.light }}
                     >
-                      <Text style={{ color: colors.text.secondary, fontWeight: '600' }}>Save Draft</Text>
+                      <Text style={{ fontSize: isWebDesktop ? 14 : 14, color: colors.text.secondary, fontWeight: '600' }}>Save Draft</Text>
                     </Pressable>
                     <Button bricolage
                       onPress={() => { void handleSubmitRefundRequest('submit'); }}
@@ -4654,7 +4611,7 @@ export default function OrderDetailScreen() {
                         className="rounded-xl px-4 flex-row items-center justify-between"
                         style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.input.border, height: 52 }}
                       >
-                        <Text style={{ color: colors.input.text }}>
+                        <Text style={{ fontSize: isWebDesktop ? 14 : 14, color: colors.input.text }}>
                           {refundDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                         </Text>
                         <Calendar size={18} color={colors.text.tertiary} strokeWidth={2} />
@@ -4700,7 +4657,7 @@ export default function OrderDetailScreen() {
                         style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light, borderStyle: 'dashed' }}
                       >
                         <Camera size={24} color={colors.text.tertiary} strokeWidth={1.5} />
-                        <Text style={{ color: colors.text.tertiary }} className="text-sm mt-2">Upload proof image</Text>
+                        <Text style={{ fontSize: isWebDesktop ? 14 : 14, color: colors.text.tertiary }} className="text-sm mt-2">Upload proof image</Text>
                       </Pressable>
                     )}
                   </View>
@@ -4768,7 +4725,7 @@ export default function OrderDetailScreen() {
                       onPress={() => setShowRefundDatePicker(false)}
                       className="mt-4 w-full py-3 rounded-full items-center bg-gray-900"
                     >
-                      <Text className="text-white font-semibold">Done</Text>
+                      <Text className="text-white font-semibold" style={{ fontSize: isWebDesktop ? 14 : 14 }}>Done</Text>
                     </Pressable>
                   )}
                 </View>

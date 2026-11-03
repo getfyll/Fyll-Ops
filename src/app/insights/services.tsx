@@ -10,10 +10,15 @@ import { SalesBarChart } from '@/components/stats/SalesBarChart';
 import { useAnalytics } from '@/hooks/useAnalytics';
 import { formatCurrency } from '@/lib/state/fyll-store';
 import { TimeRange } from '@/lib/analytics-utils';
-import { useStatsColors } from '@/lib/theme';
+import { FigureCaption, FigureText, InsightSentence } from '@/components/stats/FigureText';
+import { topItemSentence } from '@/lib/insights-sentences';
+import { InsightsRangeTabs } from '@/components/stats/InsightsRangeTabs';
+import { useInsightsBottomPad, useInsightsColors, useInsightsTopCardHeight } from '@/lib/insights-theme';
 
 export default function ServicesInsightScreen({ inline }: { inline?: boolean }) {
-  const colors = useStatsColors();
+  const bottomPad = useInsightsBottomPad();
+  const topCardMinHeight = useInsightsTopCardHeight();
+  const colors = useInsightsColors();
   const [timeRange, setTimeRange] = useState<TimeRange>('7d');
   const analytics = useAnalytics(timeRange, 'services');
 
@@ -71,39 +76,15 @@ export default function ServicesInsightScreen({ inline }: { inline?: boolean }) 
         <ScrollView
           className="flex-1"
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
+          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: bottomPad }}
         >
           {/* Time Range Selector */}
-          <View className="flex-row mt-4">
-            {timeRangeOptions.map((option) => (
-              <Pressable
-                key={option.key}
-                onPress={() => setTimeRange(option.key)}
-                className="mr-2 px-4 py-2 rounded-full"
-                style={{
-                  backgroundColor:
-                    timeRange === option.key ? colors.bar : colors.bg.input,
-                }}
-              >
-                <Text
-                  style={{
-                    color:
-                      timeRange === option.key
-                        ? colors.bg.screen
-                        : colors.text.tertiary,
-                  }}
-                  className="text-sm font-semibold"
-                >
-                  {option.label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
+          <InsightsRangeTabs options={timeRangeOptions} value={timeRange} onChange={setTimeRange} />
 
           {/* Total Service Revenue Card */}
           <View
-            className="rounded-2xl p-5 mt-4"
-            style={colors.getCardStyle()}
+            className="rounded-[26px] p-5 mt-4"
+            style={[colors.getCardStyle(), { minHeight: topCardMinHeight }]}
           >
             <View className="flex-row items-center mb-2">
               <DollarSign size={20} color={colors.text.tertiary} strokeWidth={2} />
@@ -114,28 +95,29 @@ export default function ServicesInsightScreen({ inline }: { inline?: boolean }) 
                 Total Service Revenue
               </Text>
             </View>
-            <Text
+            <FigureText desktop={36} mobile={20}
               style={{ color: colors.text.primary }}
-              className="text-4xl font-bold"
+              
             >
               {formatCurrency(analytics.serviceMetrics?.revenue ?? 0)}
-            </Text>
+            </FigureText>
             <View className="flex-row items-center mt-2">
               {serviceRevenueChange >= 0 ? (
                 <TrendingUp size={14} color={colors.success} strokeWidth={2.5} />
               ) : (
                 <TrendingDown size={14} color={colors.danger} strokeWidth={2.5} />
               )}
-              <Text
+              <FigureCaption desktop={14}
                 style={{
                   color: serviceRevenueChange >= 0 ? colors.success : colors.danger,
                 }}
-                className="text-sm font-medium ml-1"
+                className="font-medium ml-1"
               >
                 {serviceRevenueChange >= 0 ? '+' : ''}
                 {serviceRevenueChange.toFixed(1)}% vs last period
-              </Text>
+              </FigureCaption>
             </View>
+            <InsightSentence parts={topItemSentence(analytics.serviceBreakdown ?? [], 'service')} />
             <View className="flex-row items-center mt-3">
               <View className="flex-row items-center mr-4">
                 <Package size={14} color={colors.text.tertiary} strokeWidth={2} />
@@ -161,7 +143,7 @@ export default function ServicesInsightScreen({ inline }: { inline?: boolean }) 
           {/* Revenue Trend */}
           {serviceByPeriod.length > 0 && (
             <View
-              className="rounded-2xl p-5 mt-4"
+              className="rounded-[26px] p-5 mt-4"
               style={colors.getCardStyle()}
             >
               <Text
@@ -183,7 +165,7 @@ export default function ServicesInsightScreen({ inline }: { inline?: boolean }) 
           {/* Top Service Card */}
           {topService && (
             <View
-              className="rounded-2xl p-5 mt-4"
+              className="rounded-[26px] p-5 mt-4"
               style={colors.getCardStyle()}
             >
               <View className="flex-row items-center mb-2">
@@ -195,12 +177,12 @@ export default function ServicesInsightScreen({ inline }: { inline?: boolean }) 
                   Top Service
                 </Text>
               </View>
-              <Text
+              <FigureText desktop={24} mobile={24}
                 style={{ color: colors.text.primary }}
-                className="text-2xl font-bold"
+                
               >
                 {topService.name}
-              </Text>
+              </FigureText>
               <View className="flex-row items-center mt-2">
                 <Text
                   style={{ color: colors.success }}
@@ -221,7 +203,7 @@ export default function ServicesInsightScreen({ inline }: { inline?: boolean }) 
           {/* Service Revenue Chart */}
           {serviceChartData.length > 0 && (
             <View
-              className="rounded-2xl p-5 mt-4"
+              className="rounded-[26px] p-5 mt-4"
               style={colors.getCardStyle()}
             >
               <Text
@@ -259,7 +241,7 @@ export default function ServicesInsightScreen({ inline }: { inline?: boolean }) 
           {serviceVariableBreakdown.length > 0 && (
             <View className="mt-4">
               <View
-                className="rounded-2xl p-5"
+                className="rounded-[26px] p-5"
                 style={colors.getCardStyle()}
               >
                 <Text

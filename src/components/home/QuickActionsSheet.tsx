@@ -11,7 +11,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { ChevronRight, Package, Plus, Receipt, Scan, ShoppingCart, Wallet } from 'lucide-react-native';
+import { ChevronRight, Package, Plus, Receipt, RotateCcw, Scan, ShoppingCart, Sparkles, Truck, Wallet } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
 import { BricolageGrotesque_600SemiBold, useFonts } from '@expo-google-fonts/bricolage-grotesque';
 import { FYLL_LIME, FYLL_LIME_INK, isHovered, usePaymentsPalette } from '@/components/payments/payments-ui';
@@ -23,6 +23,9 @@ const ICONS: Record<QuickActionKey, LucideIcon> = {
   scan: Scan,
   product: Package,
   expense: Receipt,
+  refund: RotateCcw,
+  procurement: Truck,
+  ai: Sparkles,
 };
 
 const OPEN = { duration: 300, easing: Easing.out(Easing.cubic) } as const;
@@ -37,6 +40,7 @@ export function QuickActionsSheet({
   actions,
   onSelect,
   fabBottom,
+  heading = 'Create',
 }: {
   visible: boolean;
   onClose: () => void;
@@ -44,6 +48,7 @@ export function QuickActionsSheet({
   onSelect: (route: string) => void;
   // Distance of the plus button from the bottom of the screen, so the close button lands exactly on top of it.
   fabBottom: number;
+  heading?: string;
 }) {
   const palette = usePaymentsPalette();
   const reduced = useReducedMotion();
@@ -142,7 +147,7 @@ export function QuickActionsSheet({
           <GestureDetector gesture={drag}>
             <View style={{ alignItems: 'center', paddingTop: 2, paddingBottom: 10 }}>
               <View style={{ width: 38, height: 5, borderRadius: 3, backgroundColor: palette.outline }} />
-              <Text style={{ alignSelf: 'flex-start', color: palette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1.3, textTransform: 'uppercase', paddingHorizontal: 8, paddingTop: 10 }}>Create</Text>
+              <Text style={{ alignSelf: 'flex-start', color: palette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1.3, textTransform: 'uppercase', paddingHorizontal: 8, paddingTop: 10 }}>{heading}</Text>
             </View>
           </GestureDetector>
 

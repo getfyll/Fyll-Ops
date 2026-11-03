@@ -13,10 +13,13 @@ import {
 import { DetailHeader } from '@/components/stats/DetailHeader';
 import useFyllStore, { formatCurrency } from '@/lib/state/fyll-store';
 import { computeInventoryAnalytics } from '@/lib/inventory-analytics';
-import { useStatsColors } from '@/lib/theme';
+import { FigureText } from '@/components/stats/FigureText';
+import { useInsightsBottomPad, useInsightsColors, useInsightsTopCardHeight } from '@/lib/insights-theme';
 
 export default function InventoryTodayScreen({ inline }: { inline?: boolean }) {
-  const colors = useStatsColors();
+  const bottomPad = useInsightsBottomPad();
+  const topCardMinHeight = useInsightsTopCardHeight();
+  const colors = useInsightsColors();
   const router = useRouter();
   const products = useFyllStore((s) => s.products);
   const orders = useFyllStore((s) => s.orders);
@@ -61,12 +64,12 @@ export default function InventoryTodayScreen({ inline }: { inline?: boolean }) {
         <ScrollView
           className="flex-1"
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
+          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: bottomPad }}
         >
           {/* Main Stats Card */}
           <View
-            className="rounded-2xl p-5 mt-4"
-            style={colors.getCardStyle()}
+            className="rounded-[26px] p-5 mt-4"
+            style={[colors.getCardStyle(), { minHeight: topCardMinHeight }]}
           >
             <Text
               style={{ color: colors.text.tertiary }}
@@ -74,12 +77,12 @@ export default function InventoryTodayScreen({ inline }: { inline?: boolean }) {
             >
               Total Units in Stock
             </Text>
-            <Text
+            <FigureText desktop={36} mobile={20}
               style={{ color: colors.text.primary }}
-              className="text-4xl font-bold"
+              
             >
               {inventoryAnalytics.overview.totalUnitsInStock.toLocaleString()}
-            </Text>
+            </FigureText>
             <Text
               style={{ color: colors.text.tertiary }}
               className="text-sm mt-1"
@@ -91,7 +94,7 @@ export default function InventoryTodayScreen({ inline }: { inline?: boolean }) {
           {/* KPI Grid */}
           <View className="flex-row mt-4" style={{ gap: 12 }}>
             <View
-              className="flex-1 rounded-2xl p-4"
+              className="flex-1 rounded-[26px] p-4"
               style={colors.getCardStyle()}
             >
               <View className="flex-row items-center mb-2">
@@ -103,16 +106,16 @@ export default function InventoryTodayScreen({ inline }: { inline?: boolean }) {
                   Products
                 </Text>
               </View>
-              <Text
+              <FigureText desktop={24} mobile={24}
                 style={{ color: colors.text.primary }}
-                className="text-2xl font-bold"
+                
               >
                 {inventoryAnalytics.overview.totalProducts}
-              </Text>
+              </FigureText>
             </View>
 
             <View
-              className="flex-1 rounded-2xl p-4"
+              className="flex-1 rounded-[26px] p-4"
               style={colors.getCardStyle()}
             >
               <View className="flex-row items-center mb-2">
@@ -124,18 +127,18 @@ export default function InventoryTodayScreen({ inline }: { inline?: boolean }) {
                   Variants
                 </Text>
               </View>
-              <Text
+              <FigureText desktop={24} mobile={24}
                 style={{ color: colors.text.primary }}
-                className="text-2xl font-bold"
+                
               >
                 {inventoryAnalytics.overview.totalVariants}
-              </Text>
+              </FigureText>
             </View>
           </View>
 
           <View className="flex-row mt-3" style={{ gap: 12 }}>
             <View
-              className="flex-1 rounded-2xl p-4"
+              className="flex-1 rounded-[26px] p-4"
               style={colors.getCardStyle()}
             >
               <View className="flex-row items-center mb-2">
@@ -147,16 +150,16 @@ export default function InventoryTodayScreen({ inline }: { inline?: boolean }) {
                   Low Stock
                 </Text>
               </View>
-              <Text
+              <FigureText desktop={24} mobile={24}
                 style={{ color: inventoryAnalytics.overview.lowStockItems > 0 ? colors.warning : colors.text.primary }}
-                className="text-2xl font-bold"
+                
               >
                 {inventoryAnalytics.overview.lowStockItems}
-              </Text>
+              </FigureText>
             </View>
 
             <View
-              className="flex-1 rounded-2xl p-4"
+              className="flex-1 rounded-[26px] p-4"
               style={colors.getCardStyle()}
             >
               <View className="flex-row items-center mb-2">
@@ -168,18 +171,18 @@ export default function InventoryTodayScreen({ inline }: { inline?: boolean }) {
                   Out of Stock
                 </Text>
               </View>
-              <Text
+              <FigureText desktop={24} mobile={24}
                 style={{ color: inventoryAnalytics.overview.outOfStockItems > 0 ? colors.danger : colors.text.primary }}
-                className="text-2xl font-bold"
+                
               >
                 {inventoryAnalytics.overview.outOfStockItems}
-              </Text>
+              </FigureText>
             </View>
           </View>
 
           {/* Inventory Value */}
           <View
-            className="rounded-2xl p-5 mt-4"
+            className="rounded-[26px] p-5 mt-4"
             style={colors.getCardStyle()}
           >
             <View className="flex-row items-center mb-2">
@@ -191,17 +194,17 @@ export default function InventoryTodayScreen({ inline }: { inline?: boolean }) {
                 Inventory Value
               </Text>
             </View>
-            <Text
+            <FigureText desktop={30} mobile={20}
               style={{ color: colors.text.primary }}
-              className="text-3xl font-bold"
+              
             >
               {formatCurrency(inventoryAnalytics.overview.totalInventoryValue)}
-            </Text>
+            </FigureText>
           </View>
 
           {/* Today's Restocks */}
           <View
-            className="rounded-2xl p-5 mt-4"
+            className="rounded-[26px] p-5 mt-4"
             style={colors.getCardStyle()}
           >
             <View className="flex-row items-center mb-4">
@@ -215,12 +218,12 @@ export default function InventoryTodayScreen({ inline }: { inline?: boolean }) {
             </View>
             {todayRestocks.length > 0 ? (
               <>
-                <Text
+                <FigureText desktop={24} mobile={24} className="mb-3"
                   style={{ color: colors.success }}
-                  className="text-2xl font-bold mb-3"
+                  
                 >
                   +{todayRestockUnits} units
-                </Text>
+                </FigureText>
                 {todayRestocks.map((log, index) => {
                   const product = products.find((p) => p.id === log.productId);
                   return (
@@ -277,7 +280,7 @@ export default function InventoryTodayScreen({ inline }: { inline?: boolean }) {
               className="mt-4"
             >
               <View
-                className="rounded-2xl p-5"
+                className="rounded-[26px] p-5"
                 style={colors.getCardStyle()}
               >
                 <View className="flex-row items-center justify-between mb-4">
@@ -347,7 +350,7 @@ export default function InventoryTodayScreen({ inline }: { inline?: boolean }) {
               className="mt-4"
             >
               <View
-                className="rounded-2xl p-5"
+                className="rounded-[26px] p-5"
                 style={colors.getCardStyle()}
               >
                 <View className="flex-row items-center justify-between mb-4">

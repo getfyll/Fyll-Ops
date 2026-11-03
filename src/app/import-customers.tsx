@@ -17,6 +17,8 @@ import { getSettingsWebPanelStyles, isFromSettingsRoute } from '@/lib/settings-w
 import { useSettingsBack } from '@/lib/useSettingsBack';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
+import { InternalSettingsHeader } from '@/components/settings/InternalSettingsHeader';
+import { InventorySettingsHero } from '@/components/settings/InventorySettingsScaffold';
 
 type ImportRow = {
   name: string;
@@ -274,41 +276,23 @@ export default function ImportCustomersScreen() {
     <View style={panelStyles.outer}>
       <View style={panelStyles.inner}>
     <SafeAreaView className="flex-1" style={{ backgroundColor: palette.ground }} edges={['top']}>
-      <LinearGradient pointerEvents="none" colors={[palette.topGlow, palette.topGlowEnd]} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: openedFromSettings ? 390 : 300 }} />
-      {/* Header */}
-      <View
-        className="flex-row items-center"
-        style={{ minHeight: isMobile ? 66 : openedFromSettings ? 58 : 56, paddingHorizontal: openedFromSettings ? 20 : 10, paddingTop: isMobile ? 12 : 4, paddingBottom: 4 }}
-      >
-        <Pressable
-          onPress={goBack}
-          className="w-10 h-10 items-center justify-center mr-3 active:opacity-50"
-          style={{ borderRadius: 20, backgroundColor: palette.navButton }}
-        >
-          <ArrowLeft size={18} color={palette.ink} strokeWidth={2.2} />
-        </Pressable>
-        <View className="flex-1">
-          <Text style={{ color: palette.faint, fontSize: 9.5, lineHeight: 12, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Settings</Text>
-          <Text
-            style={{
-              color: palette.ink,
-              fontSize: 17,
-              lineHeight: 21,
-              fontWeight: '600',
-            }}
-          >
-            Import Customers
-          </Text>
-        </View>
-      </View>
+      {!isDesktop ? (
+        <LinearGradient
+          pointerEvents="none"
+          colors={[palette.topGlow, palette.topGlowEnd]}
+          style={{ position: 'absolute', left: 0, right: 0, top: 0, height: openedFromSettings ? 390 : 300 }}
+        />
+      ) : null}
+      <InternalSettingsHeader title="Import Customers" description="Upload, preview, and import customer records from a CSV file." isDesktop={isDesktop} onBack={goBack} />
 
       <ScrollView className="flex-1" contentContainerStyle={{ paddingHorizontal: 16, paddingTop: openedFromSettings ? 22 : 12, paddingBottom: isDesktop ? 64 : tabBarHeight + 48 }} showsVerticalScrollIndicator={false}>
-        <View style={{ width: '100%', maxWidth: openedFromSettings ? 720 : 520, alignSelf: 'center' }}>
-        <View style={{ position: 'relative', overflow: 'hidden', minHeight: 156, marginBottom: 28, padding: 20, borderRadius: 28, borderWidth: 1, borderColor: palette.edge, backgroundColor: palette.surface, shadowColor: '#000000', shadowOpacity: isDark ? 0.24 : 0.07, shadowRadius: 24, shadowOffset: { width: 0, height: 10 } }}>
-          <LinearGradient pointerEvents="none" colors={[palette.limeWash, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -44, right: -36, width: 210, height: 210, borderRadius: 105 }} />
-          <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, borderBottomLeftRadius: 3, borderBottomRightRadius: 3, backgroundColor: palette.lime }} />
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 15 }}><LinearGradient colors={[palette.lime, palette.limeDeep]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 66, height: 66, borderRadius: 22, alignItems: 'center', justifyContent: 'center' }}><Upload size={28} color="#202117" strokeWidth={2.1} /></LinearGradient><View style={{ flex: 1, minWidth: 0 }}><Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Customer data</Text><Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_800ExtraBold', fontSize: 26, lineHeight: 31, letterSpacing: -0.7 }}>CSV import</Text><Text style={{ color: palette.faint, fontSize: 12.5, marginTop: 3 }}>{summary ? `${summary.totalRows} rows processed` : rows.length ? `${rows.length} customers ready` : 'Upload, preview, then import'}</Text></View></View>
-        </View>
+        <View style={isDesktop ? { width: '100%', maxWidth: 1440, alignSelf: 'flex-start' } : { width: '100%', maxWidth: 520, alignSelf: 'center' }}>
+        <InventorySettingsHero
+          eyebrow="Customer data"
+          title="CSV import"
+          description={summary ? `${summary.totalRows} rows processed` : rows.length ? `${rows.length} customers ready` : 'Upload, preview, then import'}
+          isDesktop={isDesktop}
+        />
         {/* Instructions */}
         {!rows.length && !summary && (
           <View className="p-5 mb-6" style={{ borderRadius: 26, backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.edge }}>
@@ -416,7 +400,7 @@ export default function ImportCustomersScreen() {
                   className="p-4"
                   style={index < preview.length - 1 ? { borderBottomWidth: 1, borderBottomColor: palette.edge } : undefined}
                 >
-                  <Text style={{ color: palette.ink, fontSize: isMobile ? 14 : 15.5, fontWeight: '600' }} className="mb-1">
+                  <Text style={{ color: palette.ink, fontSize: 12, fontWeight: '500', marginBottom: 4 }}>
                     {row.name}
                   </Text>
                   {row.email && (

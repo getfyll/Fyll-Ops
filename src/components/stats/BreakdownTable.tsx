@@ -1,6 +1,8 @@
 import React from 'react';
 import { View, Text, ScrollView, type StyleProp, type ViewStyle } from 'react-native';
-import { useStatsColors } from '@/lib/theme';
+import { useInsightsColors } from '@/lib/insights-theme';
+import { MoneyText } from '@/components/payments/payments-ui';
+import { useBreakpoint } from '@/lib/useBreakpoint';
 
 interface BreakdownRow {
   label: string;
@@ -36,21 +38,19 @@ export function BreakdownTable({
   emptyMessage = 'No data available',
   containerStyle,
 }: BreakdownTableProps) {
-  const colors = useStatsColors();
+  const colors = useInsightsColors();
+  const { isMobile } = useBreakpoint();
+  const rowSize = isMobile ? 12 : 14;
+  const subSize = isMobile ? 10 : 12;
 
   if (data.length === 0) {
     return (
       <View
-        className="rounded-2xl p-5"
+        className="rounded-[26px] p-5"
         style={[colors.getCardStyle(), containerStyle]}
       >
         {title && (
-          <Text
-            style={{ color: colors.text.primary }}
-            className="text-lg font-bold mb-4"
-          >
-            {title}
-          </Text>
+          <MoneyText style={{ color: colors.text.primary, fontSize: isMobile ? 16 : 18, letterSpacing: -0.3, marginBottom: 16 }}>{title}</MoneyText>
         )}
         <Text
           style={{ color: colors.text.tertiary }}
@@ -64,16 +64,11 @@ export function BreakdownTable({
 
   return (
     <View
-      className="rounded-2xl p-5"
+      className="rounded-[26px] p-5"
       style={[colors.getCardStyle(), containerStyle]}
     >
       {title && (
-        <Text
-          style={{ color: colors.text.primary }}
-          className="text-lg font-bold mb-4"
-        >
-          {title}
-        </Text>
+        <MoneyText style={{ color: colors.text.primary, fontSize: isMobile ? 16 : 18, letterSpacing: -0.3, marginBottom: 16 }}>{title}</MoneyText>
       )}
 
       {/* Table Header */}
@@ -83,29 +78,29 @@ export function BreakdownTable({
       >
         {showIndex && (
           <Text
-            style={{ color: colors.text.tertiary }}
-            className="text-xs font-medium w-8"
+            style={{ color: colors.text.tertiary, fontSize: subSize }}
+            className="font-medium w-8"
           >
             #
           </Text>
         )}
         <Text
-          style={{ color: colors.text.tertiary }}
-          className="text-xs font-medium flex-1"
+          style={{ color: colors.text.tertiary, fontSize: subSize }}
+          className="font-medium flex-1"
         >
           {columns.label}
         </Text>
         <Text
-          style={{ color: colors.text.tertiary }}
-          className="text-xs font-medium text-right"
+          style={{ color: colors.text.tertiary, fontSize: subSize }}
+          className="font-medium text-right"
           numberOfLines={1}
         >
           {columns.value}
         </Text>
         {columns.percentage && (
           <Text
-            style={{ color: colors.text.tertiary }}
-            className="text-xs font-medium text-right w-14 ml-3"
+            style={{ color: colors.text.tertiary, fontSize: subSize }}
+            className="font-medium text-right w-14 ml-3"
           >
             {columns.percentage}
           </Text>
@@ -128,8 +123,8 @@ export function BreakdownTable({
           >
             {showIndex && (
               <Text
-                style={{ color: colors.text.tertiary }}
-                className="text-sm font-medium w-8"
+                style={{ color: colors.text.tertiary, fontSize: rowSize }}
+                className="font-medium w-8"
               >
                 {index + 1}
               </Text>
@@ -143,8 +138,8 @@ export function BreakdownTable({
                   />
                 )}
                 <Text
-                  style={{ color: colors.text.primary }}
-                  className="text-sm font-medium"
+                  style={{ color: colors.text.primary, fontSize: rowSize }}
+                  className="font-medium"
                   numberOfLines={1}
                 >
                   {row.label}
@@ -152,8 +147,8 @@ export function BreakdownTable({
               </View>
               {row.subValue && (
                 <Text
-                  style={{ color: colors.text.tertiary }}
-                  className="text-xs mt-0.5"
+                  style={{ color: colors.text.tertiary, fontSize: subSize }}
+                  className="mt-0.5"
                   numberOfLines={1}
                 >
                   {row.subValue}
@@ -161,8 +156,8 @@ export function BreakdownTable({
               )}
             </View>
             <Text
-              style={{ color: colors.text.primary }}
-              className="text-sm font-semibold text-right"
+              style={{ color: colors.text.primary, fontSize: rowSize }}
+              className="font-semibold text-right"
             >
               {typeof row.value === 'number' ? row.value.toLocaleString() : row.value}
             </Text>
@@ -171,12 +166,12 @@ export function BreakdownTable({
                 className="ml-3 w-14 items-end"
               >
                 <View
-                  className="px-2 py-0.5 rounded"
+                  className="px-2.5 py-1 rounded-full"
                   style={{ backgroundColor: colors.bg.input }}
                 >
                   <Text
-                    style={{ color: colors.text.secondary }}
-                    className="text-xs font-medium"
+                    style={{ color: colors.text.secondary, fontSize: subSize }}
+                    className="font-medium"
                   >
                     {row.percentage}%
                   </Text>

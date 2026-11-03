@@ -15,10 +15,15 @@ import { HorizontalBarChart } from '@/components/stats/HorizontalBarChart';
 import { useAnalytics } from '@/hooks/useAnalytics';
 import { formatCurrency } from '@/lib/state/fyll-store';
 import { TimeRange } from '@/lib/analytics-utils';
-import { useStatsColors } from '@/lib/theme';
+import { FigureCaption, FigureText, InsightSentence } from '@/components/stats/FigureText';
+import { customersSentence } from '@/lib/insights-sentences';
+import { InsightsRangeTabs } from '@/components/stats/InsightsRangeTabs';
+import { useInsightsBottomPad, useInsightsColors, useInsightsTopCardHeight } from '@/lib/insights-theme';
 
 export default function CustomersInsightScreen({ inline }: { inline?: boolean }) {
-  const colors = useStatsColors();
+  const bottomPad = useInsightsBottomPad();
+  const topCardMinHeight = useInsightsTopCardHeight();
+  const colors = useInsightsColors();
   const [timeRange, setTimeRange] = useState<TimeRange>('7d');
   const analytics = useAnalytics(timeRange, 'customers');
 
@@ -51,39 +56,15 @@ export default function CustomersInsightScreen({ inline }: { inline?: boolean })
         <ScrollView
           className="flex-1"
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
+          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: bottomPad }}
         >
           {/* Time Range Selector */}
-          <View className="flex-row mt-4">
-            {timeRangeOptions.map((option) => (
-              <Pressable
-                key={option.key}
-                onPress={() => setTimeRange(option.key)}
-                className="mr-2 px-4 py-2 rounded-full"
-                style={{
-                  backgroundColor:
-                    timeRange === option.key ? colors.bar : colors.bg.input,
-                }}
-              >
-                <Text
-                  style={{
-                    color:
-                      timeRange === option.key
-                        ? colors.bg.screen
-                        : colors.text.tertiary,
-                  }}
-                  className="text-sm font-semibold"
-                >
-                  {option.label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
+          <InsightsRangeTabs options={timeRangeOptions} value={timeRange} onChange={setTimeRange} />
 
           {/* Main Customers Card */}
           <View
-            className="rounded-2xl p-5 mt-4"
-            style={colors.getCardStyle()}
+            className="rounded-[26px] p-5 mt-4"
+            style={[colors.getCardStyle(), { minHeight: topCardMinHeight }]}
           >
             <View className="flex-row items-center mb-2">
               <Users size={20} color={colors.text.tertiary} strokeWidth={2} />
@@ -94,36 +75,37 @@ export default function CustomersInsightScreen({ inline }: { inline?: boolean })
                 Unique Customers
               </Text>
             </View>
-            <Text
+            <FigureText desktop={36} mobile={20}
               style={{ color: colors.text.primary }}
-              className="text-4xl font-bold"
+              
             >
               {analytics.kpiMetrics.customers.value}
-            </Text>
+            </FigureText>
             <View className="flex-row items-center mt-2">
               {analytics.kpiMetrics.customers.change >= 0 ? (
                 <TrendingUp size={16} color={colors.success} strokeWidth={2.5} />
               ) : (
                 <TrendingDown size={16} color={colors.danger} strokeWidth={2.5} />
               )}
-              <Text
+              <FigureCaption desktop={14}
                 style={{
                   color:
                     analytics.kpiMetrics.customers.change >= 0
                       ? colors.success
                       : colors.danger,
                 }}
-                className="text-sm font-medium ml-1"
+                className="font-medium ml-1"
               >
                 {analytics.kpiMetrics.customers.change >= 0 ? '+' : ''}
                 {analytics.kpiMetrics.customers.change.toFixed(1)}% vs last period
-              </Text>
+              </FigureCaption>
             </View>
+            <InsightSentence parts={customersSentence(analytics.newCustomers, analytics.returningCustomers, analytics.returningVsNew.returningPercentage)} />
           </View>
 
           {/* New vs Returning */}
           <View
-            className="rounded-2xl p-5 mt-4"
+            className="rounded-[26px] p-5 mt-4"
             style={colors.getCardStyle()}
           >
             <Text
@@ -140,12 +122,12 @@ export default function CustomersInsightScreen({ inline }: { inline?: boolean })
                 >
                   <UserPlus size={28} color={colors.success} strokeWidth={2} />
                 </View>
-                <Text
+                <FigureText desktop={30} mobile={20}
                   style={{ color: colors.text.primary }}
-                  className="text-3xl font-bold"
+                  
                 >
                   {analytics.returningVsNew.new}
-                </Text>
+                </FigureText>
                 <Text
                   style={{ color: colors.text.tertiary }}
                   className="text-sm mt-1"
@@ -166,12 +148,12 @@ export default function CustomersInsightScreen({ inline }: { inline?: boolean })
                 >
                   <UserCheck size={28} color={colors.bar} strokeWidth={2} />
                 </View>
-                <Text
+                <FigureText desktop={30} mobile={20}
                   style={{ color: colors.text.primary }}
-                  className="text-3xl font-bold"
+                  
                 >
                   {analytics.returningVsNew.returning}
-                </Text>
+                </FigureText>
                 <Text
                   style={{ color: colors.text.tertiary }}
                   className="text-sm mt-1"
@@ -199,7 +181,7 @@ export default function CustomersInsightScreen({ inline }: { inline?: boolean })
           {/* Customer Locations */}
           {analytics.customersByLocation.length > 0 && (
             <View
-              className="rounded-2xl p-5 mt-4"
+              className="rounded-[26px] p-5 mt-4"
               style={colors.getCardStyle()}
             >
               <Text
@@ -222,7 +204,7 @@ export default function CustomersInsightScreen({ inline }: { inline?: boolean })
           {/* Customer Platforms */}
           {analytics.customersByPlatform.length > 0 && (
             <View
-              className="rounded-2xl p-5 mt-4"
+              className="rounded-[26px] p-5 mt-4"
               style={colors.getCardStyle()}
             >
               <Text

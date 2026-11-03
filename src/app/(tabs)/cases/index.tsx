@@ -1,9 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { View, Text, TextInput, Pressable, ScrollView, Platform, Modal, ActivityIndicator, Image } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { Search, FileText, Plus, ChevronLeft, Filter, Check, X, AlertCircle, ImagePlus, Trash2, Sparkles } from 'lucide-react-native';
+import { Search, FileText, Plus, ChevronLeft, LayoutDashboard, Filter, Check, X, AlertCircle, ImagePlus, Trash2, Sparkles } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { useFonts, BricolageGrotesque_700Bold } from '@expo-google-fonts/bricolage-grotesque';
@@ -33,7 +33,6 @@ import { CaseAiSheet } from '@/components/cases/CaseAiSheet';
 import { parseCaseDraft, type CaseDraftData } from '@/lib/ai-case-parser';
 import { SearchClearButton } from '@/components/SearchClearButton';
 import { EmptyState } from '@/components/EmptyState';
-import { useTabBarHeight } from '@/lib/useTabBarHeight';
 import { FYLL_LIME, FYLL_LIME_INK, MoneyText } from '@/components/payments/payments-ui';
 import { FilterButton } from '@/components/filter-ui';
 
@@ -76,7 +75,10 @@ export default function CasesScreen() {
   const router = useRouter();
   const { from } = useLocalSearchParams<{ from?: string }>();
   const { isDesktop, isMobile } = useBreakpoint();
-  const tabBarHeight = useTabBarHeight();
+  const insets = useSafeAreaInsets();
+  const homeSize = Platform.OS === 'ios' ? 82 : 76;
+  // Starts at the same height as the Fyll Print nav, so the two pages feel alike.
+  const homeBottom = 28 + Math.max(14, insets.bottom + 6);
   const isWebDesktop = Platform.OS === 'web' && isDesktop;
   const pageHeadingStyle = usePageHeadingStyle(isMobile);
   const desktopHeaderMinHeight = DESKTOP_PAGE_HEADER_MIN_HEIGHT;
@@ -200,6 +202,11 @@ export default function CasesScreen() {
   const handleBackToSettings = () => {
     if (Platform.OS !== 'web') Haptics.selectionAsync();
     router.push('/settings');
+  };
+
+  const handleGoHome = () => {
+    if (Platform.OS !== 'web') Haptics.selectionAsync();
+    router.navigate('/(tabs)' as never);
   };
 
   const handleSaveCase = async (caseData: Case) => {
@@ -465,15 +472,6 @@ export default function CasesScreen() {
           {/* Header */}
           <View className="px-5 pb-2" style={{ paddingTop: openedFromSettings ? 24 : 16 }}>
             <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
-              {openedFromSettings ? (
-                <Pressable
-                  onPress={handleBackToSettings}
-                  className="w-10 h-10 rounded-xl items-center justify-center active:opacity-50"
-                  style={{ backgroundColor: colors.bg.secondary }}
-                >
-                  <ChevronLeft size={20} color={colors.text.primary} strokeWidth={2} />
-                </Pressable>
-              ) : null}
 
               <View style={{ flex: 1, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
                 <View style={{ flex: 1 }}>
@@ -572,7 +570,7 @@ export default function CasesScreen() {
                 return (
                   <View key={caseItem.id} style={{ marginTop: isFirstInGroup && index > 0 ? 18 : 0 }}>
                     {isFirstInGroup ? (
-                      <Text style={{ color: colors.text.muted, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', paddingHorizontal: 4, marginBottom: 8 }}>
+                      <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', paddingHorizontal: 4, marginBottom: 8 }}>
                         {getCaseDayLabel(caseItem)}
                       </Text>
                     ) : null}
@@ -751,13 +749,46 @@ export default function CasesScreen() {
         {isMobile ? (
           <Pressable
             accessibilityRole="button"
+            accessibilityLabel="Home"
+            onPress={handleGoHome}
+            style={(state) => [
+              {
+                position: 'absolute',
+                left: 14,
+                // Same round Home button as the Fyll Print nav, centred on the + button's row.
+                bottom: homeBottom,
+                width: homeSize,
+                height: homeSize,
+                borderRadius: homeSize / 2,
+                alignItems: 'center',
+                justifyContent: 'center',
+                overflow: 'hidden',
+                borderWidth: 1,
+                borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.72)',
+                backgroundColor: isDark ? 'rgba(24,24,24,0.9)' : 'rgba(255,255,255,0.9)',
+                opacity: state.pressed ? 0.85 : 1,
+                zIndex: 40,
+              },
+              Platform.OS === 'web'
+                ? ({ boxShadow: '0 10px 28px rgba(0,0,0,0.35)' } as object)
+                : { shadowColor: '#000000', shadowOpacity: 0.3, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
+            ]}
+          >
+            <LayoutDashboard size={23} color={colors.tabBar.inactive} strokeWidth={2} />
+            <Text style={{ color: colors.tabBar.inactive, fontSize: 10, fontWeight: '600', lineHeight: 12, marginTop: 3 }}>Home</Text>
+          </Pressable>
+        ) : null}
+        {isMobile ? (
+          <Pressable
+            accessibilityRole="button"
             accessibilityLabel="Open new case"
             onPress={handleCreateCase}
             style={(state) => [
               {
                 position: 'absolute',
                 right: 20,
-                bottom: Math.max(96, tabBarHeight - 48),
+                // Centred on the Home button's row.
+                bottom: homeBottom + (homeSize - 56) / 2,
                 width: 56,
                 height: 56,
                 borderRadius: 28,

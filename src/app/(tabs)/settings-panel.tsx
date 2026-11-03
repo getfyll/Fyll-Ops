@@ -46,9 +46,9 @@ export default function SettingsPanelScreen() {
     case 'order-automation':
       return <OrderAutomationScreen />;
     case 'email-settings':
-      return <EmailSettingsScreen />;
+      return <EmailSettingsScreen embeddedInSettings />;
     case 'whatsapp-settings':
-      return <WhatsAppSettingsScreen />;
+      return <WhatsAppSettingsScreen embeddedInSettings />;
     case 'account-settings':
       return <AccountSettingsScreen embeddedInSettings />;
     case 'payment-accounts':

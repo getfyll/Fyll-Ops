@@ -15,6 +15,8 @@ import { EmptyState } from '@/components/EmptyState';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
 import { FYLL_LIME, FYLL_LIME_INK, MoneyText, usePaymentsPalette } from '@/components/payments/payments-ui';
+import { InternalSettingsHeader } from '@/components/settings/InternalSettingsHeader';
+import { InventorySettingsContent, InventorySettingsHero } from '@/components/settings/InventorySettingsScaffold';
 
 export default function CategoryManagerScreen() {
   const { from } = useLocalSearchParams<{ from?: string | string[] }>();
@@ -125,25 +127,17 @@ export default function CategoryManagerScreen() {
     <View style={panelStyles.outer}>
       <View style={panelStyles.inner}>
       <SafeAreaView className="flex-1" edges={['top']} style={{ backgroundColor: settingsPalette.page }}>
-        <LinearGradient pointerEvents="none" colors={resolvedThemeMode === 'dark' ? ['rgba(111,125,18,0.55)', 'rgba(20,20,20,0)'] : ['rgba(213,224,87,0.42)', 'rgba(244,243,235,0)']} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 360 }} />
-        <View className="flex-row items-center" style={{ minHeight: isMobile ? 66 : 58, paddingHorizontal: 10, paddingTop: isMobile ? 12 : 4, paddingBottom: 4 }}>
-          <Pressable
-            onPress={goBack}
-            className="w-10 h-10 items-center justify-center mr-3 active:opacity-50"
-            style={{ borderRadius: 20, backgroundColor: settingsPalette.softFill }}
-          >
-            <ArrowLeft size={18} color={settingsPalette.text} strokeWidth={2.2} />
-          </Pressable>
-          <View><Text style={{ color: settingsPalette.faint, fontSize: 9.5, lineHeight: 12, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Settings</Text><Text style={{ color: settingsPalette.text, fontSize: 17, lineHeight: 21, fontWeight: '600' }}>Categories</Text></View>
-        </View>
+        {!isDesktop ? <LinearGradient pointerEvents="none" colors={resolvedThemeMode === 'dark' ? ['rgba(111,125,18,0.55)', 'rgba(20,20,20,0)'] : ['rgba(213,224,87,0.42)', 'rgba(244,243,235,0)']} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 360 }} /> : null}
+        <InternalSettingsHeader title="Categories" description="Organise the product groups shared across your catalogue." isDesktop={isDesktop} onBack={goBack} />
 
         <KeyboardAwareScrollView className="flex-1" contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 18, paddingBottom: isDesktop ? 64 : tabBarHeight + 40 }} showsVerticalScrollIndicator={false} enableOnAndroid extraScrollHeight={100}>
-          <View style={{ width: '100%', maxWidth: 720, alignSelf: 'center' }}>
-          <View style={{ position: 'relative', overflow: 'hidden', minHeight: 156, marginBottom: 20, padding: 20, borderRadius: 28, borderWidth: 1, borderColor: settingsPalette.border, backgroundColor: settingsPalette.card, shadowColor: '#000', shadowOpacity: resolvedThemeMode === 'dark' ? 0.24 : 0.07, shadowRadius: 24, shadowOffset: { width: 0, height: 10 } }}>
-            <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -44, right: -36, width: 210, height: 210, borderRadius: 105 }} />
-            <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
-            <View className="flex-row items-center" style={{ gap: 15 }}><LinearGradient colors={[FYLL_LIME, '#879400']} style={{ width: 66, height: 66, borderRadius: 22, alignItems: 'center', justifyContent: 'center' }}><Tag size={28} color={FYLL_LIME_INK} strokeWidth={2.1} /></LinearGradient><View style={{ flex: 1 }}><Text style={{ color: settingsPalette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Product organisation</Text><MoneyText style={{ color: settingsPalette.text, fontSize: 26, lineHeight: 31 }}>{categories.length} {categories.length === 1 ? 'category' : 'categories'}</MoneyText><Text style={{ color: settingsPalette.faint, fontSize: 12.5, marginTop: 3 }}>Shared across your product catalogue</Text></View></View>
-          </View>
+          <InventorySettingsContent isDesktop={isDesktop}>
+          <InventorySettingsHero
+            eyebrow="Product organisation"
+            title={`${categories.length} ${categories.length === 1 ? 'category' : 'categories'}`}
+            description="Shared across your product catalogue"
+            isDesktop={isDesktop}
+          />
 
           <Pressable onPress={() => setShowAddCategoryForm((value) => !value)} className="rounded-full flex-row items-center justify-center active:opacity-80 mb-4" style={{ minHeight: 48, gap: 8, backgroundColor: FYLL_LIME }}>
             {showAddCategoryForm ? <X size={16} color={FYLL_LIME_INK} strokeWidth={2.4} /> : <Plus size={16} color={FYLL_LIME_INK} strokeWidth={2.4} />}
@@ -183,24 +177,10 @@ export default function CategoryManagerScreen() {
               description="Add your first category above to organize your products."
             />
           ) : (
-            categories.map((category) => (
-              <View
-                key={category}
-                className="mb-2"
-              >
-                <View
-                  className="rounded-3xl px-4 flex-row items-center justify-between"
-                  style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border, minHeight: 68 }}
-                >
-                  <View className="flex-row items-center flex-1">
-                    <View
-                      className="w-10 h-10 rounded-2xl items-center justify-center mr-3"
-                      style={{ backgroundColor: settingsPalette.nudgeBg }}
-                    >
-                      <Tag size={17} color={settingsPalette.limeOnSurface} strokeWidth={2} />
-                    </View>
-                    <Text style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '600' }}>{category}</Text>
-                  </View>
+            <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+            {categories.map((category, index) => (
+                <View key={category} className="px-4 flex-row items-center justify-between" style={{ minHeight: 68, borderBottomWidth: index < categories.length - 1 ? 1 : 0, borderBottomColor: settingsPalette.hairline }}>
+                  <Text style={{ color: settingsPalette.text, fontSize: 12, fontWeight: '500', flex: 1 }} numberOfLines={1}>{category}</Text>
                   <View className="flex-row items-center">
                     <Pressable
                       onPress={() => openEditCategory(category)}
@@ -218,12 +198,12 @@ export default function CategoryManagerScreen() {
                     </Pressable>
                   </View>
                 </View>
-              </View>
-            ))
+            ))}
+            </View>
           )}
 
           <View className="h-24" />
-          </View>
+          </InventorySettingsContent>
         </KeyboardAwareScrollView>
       </SafeAreaView>
       </View>

@@ -298,9 +298,12 @@ function Stepper({ quantity, onMinus, onPlus, palette, fontSize = 16 }: { quanti
   );
 }
 
-export default function NewOrderScreen() {
+// The same screen creates a new order and edits an existing one: pass `editOrderId` (the /order-edit/[id] route does) and
+// it loads that order into the form and saves the changes back instead of creating a new order.
+export default function NewOrderScreen({ editOrderId: editOrderIdProp }: { editOrderId?: string } = {}) {
   const router = useRouter();
   const params = useLocalSearchParams<{
+    returnTo?: string | string[];
     aiParsed?: string;
     customerName?: string;
     customerPhone?: string;
@@ -376,6 +379,7 @@ export default function NewOrderScreen() {
   const queryClient = useQueryClient();
   const orders = useFyllStore((s) => s.orders);
   const addOrder = useFyllStore((s) => s.addOrder);
+  const updateOrder = useFyllStore((s) => s.updateOrder);
   const addCustomer = useFyllStore((s) => s.addCustomer);
   const updateVariantStock = useFyllStore((s) => s.updateVariantStock);
   const addProduct = useFyllStore((s) => s.addProduct);
@@ -390,6 +394,13 @@ export default function NewOrderScreen() {
     businessName,
     businessSlug,
   } = useBusinessSettings();
+
+  const editOrderId = typeof editOrderIdProp === 'string' ? editOrderIdProp : '';
+  const isEditing = editOrderId.length > 0;
+  const editingOrder = useMemo(() => (isEditing ? orders.find((entry) => entry.id === editOrderId) : undefined), [isEditing, orders, editOrderId]);
+  const [isEditHydrated, setIsEditHydrated] = useState(false);
+  const originalItemsRef = useRef<OrderItem[]>([]);
+  const returnTarget = Array.isArray(params.returnTo) ? params.returnTo[0] : params.returnTo;
 
   // Loading state
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -465,7 +476,7 @@ export default function NewOrderScreen() {
   useEffect(() => {
     setItems((previous) => previous.filter((item) => {
       const product = products.find((candidate) => candidate.id === item.productId);
-      const isService = product ? normalizeProductType(product.productType) === 'service' : false;
+      const isService = (product ? normalizeProductType(product.productType) === 'service' : false) || Boolean(item.serviceId);
       return isServiceOrder ? isService : !isService;
     }));
   }, [isServiceOrder, products]);
@@ -553,6 +564,54 @@ export default function NewOrderScreen() {
   const [timePickerTarget, setTimePickerTarget] = useState<TimePickerTarget | null>(null);
   const [pickerHour, setPickerHour] = useState(9);
   const [pickerMinute, setPickerMinute] = useState(0);
+
+  // Editing: load the saved order into the form once.
+  useEffect(() => {
+    if (!isEditing || !editingOrder || isEditHydrated) return;
+    const resolvedDate = new Date(editingOrder.orderDate || editingOrder.createdAt);
+    const now = new Date();
+    const isToday = resolvedDate.getFullYear() === now.getFullYear() && resolvedDate.getMonth() === now.getMonth() && resolvedDate.getDate() === now.getDate();
+    const savedItems = (editingOrder.items ?? []).map((item) => (item.id ? item : { ...item, id: createOrderLineId() }));
+    const isServiceOnly = savedItems.length > 0 && savedItems.every((item) => {
+      const product = products.find((candidate) => candidate.id === item.productId);
+      return (product ? normalizeProductType(product.productType) === 'service' : false) || Boolean(item.serviceId);
+    });
+
+    setOrderFlowMode(isServiceOnly ? 'service' : 'product');
+    setCustomerName(editingOrder.customerName ?? '');
+    setCustomerEmail(editingOrder.customerEmail ?? '');
+    setCustomerPhone(editingOrder.customerPhone ?? '');
+    setDeliveryState(normalizeDeliveryStateValue(editingOrder.deliveryState ?? ''));
+    setDeliveryAddress(editingOrder.deliveryAddress ?? '');
+    setFulfillmentMethod(editingOrder.fulfillmentMethod === 'pickup' ? 'pickup' : 'delivery');
+    setOrderTypeId(editingOrder.orderTypeId ?? orderTimelineSettings.orderTypes[0]?.id ?? orderTimelineSettings.defaultOrderType.id);
+    setSelectedCustomerId(editingOrder.customerId ?? null);
+    setSource(editingOrder.source || saleSources[0]?.name || '');
+    setPaymentMethod(editingOrder.paymentMethod || paymentMethods[0]?.name || '');
+    setOrderClassification(editingOrder.orderClassification ?? 'Sale');
+    setItems(savedItems);
+    setServices(editingOrder.services ?? []);
+    setDeliveryFee(String(editingOrder.deliveryFee ?? 0));
+    setAdditionalCharges(String(editingOrder.additionalCharges ?? 0));
+    setAdditionalChargesNote(editingOrder.additionalChargesNote ?? '');
+    if (editingOrder.discountAmount != null) {
+      setDiscountAmount(String(editingOrder.discountAmount));
+      setShowDiscountInput(true);
+    }
+    setWebsiteOrderRef(editingOrder.websiteOrderReference ?? '');
+    setSelectedWooOrderPreview(editingOrder.websiteOrderReference
+      ? { reference: editingOrder.websiteOrderReference, customerName: editingOrder.customerName ?? '', customerEmail: editingOrder.customerEmail ?? '' }
+      : null);
+    setCustomerPrescription(editingOrder.prescription
+      ?? (editingOrder.customerNote ? { text: editingOrder.customerNote, uploadedAt: editingOrder.createdAt } : undefined));
+    setOrderDateType(isToday ? 'today' : 'another');
+    setSelectedDate(resolvedDate);
+    setCalendarViewDate(resolvedDate);
+    setPickerDate(resolvedDate);
+
+    originalItemsRef.current = savedItems;
+    setIsEditHydrated(true);
+  }, [isEditing, editingOrder, isEditHydrated, orderTimelineSettings.defaultOrderType.id, orderTimelineSettings.orderTypes, paymentMethods, products, saleSources]);
 
   // A verified quote: its inventory items arrive as exact product/variant lines.
   const quoteItemsHydratedRef = useRef(false);
@@ -1369,6 +1428,72 @@ export default function NewOrderScreen() {
 
       // Compute the order date - use today or selected date
       const orderDateValue = orderDateType === 'today' ? new Date() : selectedDate;
+
+      // Editing: save the changes onto the existing order. Nothing else from "create" (alerts, receipt, WooCommerce
+      // copy, payment links) runs again.
+      if (isEditing && editingOrder) {
+        const editTimeline = resolveOrderTimeline({ orderTypeId, orderTypeName: editingOrder.orderTypeName, deliveryState: isServiceOrder || isPickup ? '' : deliveryState, fulfillmentMethod: isPickup ? 'pickup' : 'delivery' }, orderTimelineSettings);
+        const nextOriginalEta = addBusinessDays(new Date(orderDateValue), editTimeline.maxBusinessDays);
+        const keepRevisedEta = Boolean(
+          editingOrder.fulfillmentEffectiveEta
+          && editingOrder.fulfillmentOriginalEta
+          && editingOrder.fulfillmentEffectiveEta !== editingOrder.fulfillmentOriginalEta
+        );
+
+        const isServiceLine = (item: OrderItem) => {
+          const product = products.find((p) => p.id === item.productId);
+          return (product ? normalizeProductType(product.productType) === 'service' : false) || Boolean(item.serviceId);
+        };
+        // Put the old quantities back in stock, then take out the new ones.
+        await Promise.all(originalItemsRef.current.map((item) => (
+          isServiceLine(item) ? Promise.resolve() : updateVariantStock(item.productId, item.variantId, item.quantity, businessId)
+        )));
+        await Promise.all(items.map((item) => (
+          isServiceLine(item) ? Promise.resolve() : updateVariantStock(item.productId, item.variantId, -item.quantity, businessId)
+        )));
+
+        await updateOrder(editingOrder.id, {
+          websiteOrderReference: websiteOrderRef.trim() || undefined,
+          customerId: resolvedCustomerId ?? editingOrder.customerId,
+          customerName: customerName.trim(),
+          customerNote: customerPrescription?.text?.trim() || undefined,
+          customerEmail: customerEmail.trim(),
+          customerPhone: customerPhone.trim(),
+          deliveryState: isServiceOrder || isPickup ? '' : deliveryState,
+          deliveryAddress: isServiceOrder || isPickup ? '' : deliveryAddress.trim(),
+          fulfillmentMethod: isServiceOrder ? undefined : fulfillmentMethod,
+          orderTypeId: editTimeline.orderType.id,
+          orderTypeName: editTimeline.orderType.name,
+          items,
+          services,
+          additionalCharges: additionalChargesNum,
+          additionalChargesNote: additionalChargesNote.trim(),
+          deliveryFee: isServiceOrder || isPickup ? 0 : deliveryFeeNum,
+          discountAmount: discountAmountNum || undefined,
+          paymentMethod,
+          orderClassification,
+          source,
+          subtotal,
+          totalAmount,
+          prescription: customerPrescription,
+          fulfillmentStartedAt: orderDateValue.toISOString(),
+          fulfillmentTimelineDays: editTimeline.maxBusinessDays,
+          fulfillmentOriginalEta: nextOriginalEta.toISOString(),
+          fulfillmentEffectiveEta: keepRevisedEta ? editingOrder.fulfillmentEffectiveEta : nextOriginalEta.toISOString(),
+          orderDate: orderDateValue.toISOString(),
+          updatedAt: new Date().toISOString(),
+          updatedBy: currentUser?.name,
+        }, businessId);
+
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        showToast('success', 'Order updated successfully.');
+        setTimeout(() => {
+          if (returnTarget === 'finance-revenue') router.replace('/finance?section=revenue' as any);
+          else router.back();
+        }, 900);
+        return;
+      }
+
       const orderNumber = generateOrderNumber();
       const orderDateIso = orderDateValue.toISOString();
       const resolvedTimeline = resolveOrderTimeline({ orderTypeId, deliveryState: isServiceOrder || isPickup ? '' : deliveryState, fulfillmentMethod: isPickup ? 'pickup' : 'delivery' }, orderTimelineSettings);
@@ -1687,6 +1812,23 @@ export default function NewOrderScreen() {
     setTimePickerTarget(null);
   };
 
+  if (isEditing && !isEditHydrated) {
+    return (
+      <View className="flex-1 flex-row" style={{ backgroundColor: canvasBg }}>
+        {isDesktop ? <DesktopSidebar /> : null}
+        <SafeAreaView className="flex-1" style={{ backgroundColor: canvasBg }}>
+          <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
+            <BackButton onPress={() => router.back()} palette={palette} label="Back" />
+          </View>
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+            {editingOrder || orders.length === 0 ? <ActivityIndicator color={palette.limeOnSurface} /> : null}
+            <Text style={{ color: palette.muted, fontSize: 14 }}>{editingOrder || orders.length === 0 ? 'Loading order…' : 'This order could not be found.'}</Text>
+          </View>
+        </SafeAreaView>
+      </View>
+    );
+  }
+
   const contentWrapperStyle: StyleProp<ViewStyle> = isDesktopWeb
     ? { width: '100%', maxWidth: webMaxWidth, alignSelf: 'flex-start', paddingHorizontal: 28, paddingBottom: 56 }
     : isDesktop
@@ -1726,12 +1868,12 @@ export default function NewOrderScreen() {
           >
             <BackButton onPress={() => router.back()} palette={palette} label="Back" />
             <View style={{ flex: 1, minWidth: 0 }}>
-              <MoneyText style={{ color: palette.text, fontSize: isDesktopWeb ? 28 : 22, letterSpacing: -0.8 }} numberOfLines={1}>New order</MoneyText>
+              <MoneyText style={{ color: palette.text, fontSize: isDesktopWeb ? 28 : 22, letterSpacing: -0.8 }} numberOfLines={1}>{isEditing ? 'Edit order' : 'New order'}</MoneyText>
               {isDesktopWeb ? (
-                <Text style={{ color: palette.muted, fontSize: 14, marginTop: 2 }}>Customer, items, delivery and payment. Everything else is optional.</Text>
+                <Text style={{ color: palette.muted, fontSize: 14, marginTop: 2 }}>{isEditing ? `Changing ${editingOrder?.orderNumber ?? 'this order'}. Stock is adjusted for any item changes.` : 'Customer, items, delivery and payment. Everything else is optional.'}</Text>
               ) : null}
             </View>
-            <View style={{ flexDirection: 'row', height: isDesktopWeb ? 44 : 38, padding: 3, borderRadius: 999, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.segmentBg }}>
+            {isEditing ? null : <View style={{ flexDirection: 'row', height: isDesktopWeb ? 44 : 38, padding: 3, borderRadius: 999, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.segmentBg }}>
               {([['product', 'Product'], ['service', 'Service']] as const).map(([mode, label]) => {
                 const selected = orderFlowMode === mode;
                 return (
@@ -1749,7 +1891,7 @@ export default function NewOrderScreen() {
                   </Pressable>
                 );
               })}
-            </View>
+            </View>}
             {isDesktopWeb ? (
               <Pressable
                 accessibilityRole="button"
@@ -3046,7 +3188,7 @@ export default function NewOrderScreen() {
                 <Text style={{ color: palette.text, fontSize: 17, fontWeight: '600' }}>Total</Text>
                 <MoneyText style={{ color: palette.text, fontSize: compact ? 30 : 38, letterSpacing: -1.2 }} numberOfLines={1} adjustsFontSizeToFit>{formatCurrency(totalAmount)}</MoneyText>
               </View>
-              <Pressable
+              {isEditing ? null : <Pressable
                 accessibilityRole="checkbox"
                 accessibilityState={{ checked: sendReceipt, disabled: !receiptPhone }}
                 disabled={!receiptPhone}
@@ -3057,8 +3199,8 @@ export default function NewOrderScreen() {
                   {sendReceipt && receiptPhone ? <Check size={15} color={FYLL_LIME_INK} strokeWidth={3} /> : null}
                 </View>
                 <Text style={{ color: palette.text, fontSize: 15 }}>Send receipt on WhatsApp</Text>
-              </Pressable>
-              {showWooOption ? (
+              </Pressable>}
+              {showWooOption && !isEditing ? (
                 <View style={{ gap: 10 }}>
                   <Pressable
                     accessibilityRole="checkbox"
@@ -3098,10 +3240,10 @@ export default function NewOrderScreen() {
                 style={(state) => ({ ...limeButtonStyle({ pressed: state.pressed, hovered: isHovered(state) }, 48), paddingHorizontal: 22, opacity: canCreateOrder ? (state.pressed ? 0.85 : 1) : 0.45 })}
               >
                 {isSubmitting ? <ActivityIndicator size="small" color={FYLL_LIME_INK} /> : null}
-                <Text style={{ color: FYLL_LIME_INK, fontSize: 18, fontWeight: '600' }}>{isSubmitting ? 'Creating...' : isServiceOrder ? 'Create service order' : 'Create order'}</Text>
+                <Text style={{ color: FYLL_LIME_INK, fontSize: 18, fontWeight: '600' }}>{isSubmitting ? (isEditing ? 'Saving...' : 'Creating...') : isEditing ? 'Save changes' : isServiceOrder ? 'Create service order' : 'Create order'}</Text>
               </Pressable>
               <Text style={{ color: palette.faint, fontSize: 13.5, textAlign: 'center' }}>
-                {sendReceipt && receiptPhone ? `Receipt goes to ${customerName.trim().split(/\s+/)[0] || 'the customer'} on WhatsApp` : 'You can edit the order after you create it'}
+                {isEditing ? 'Changes update the order straight away' : sendReceipt && receiptPhone ? `Receipt goes to ${customerName.trim().split(/\s+/)[0] || 'the customer'} on WhatsApp` : 'You can edit the order after you create it'}
               </Text>
             </View>
           );
@@ -3679,7 +3821,7 @@ export default function NewOrderScreen() {
                 >
                   {isSubmitting ? <ActivityIndicator size="small" color={FYLL_LIME_INK} /> : null}
                   <Text style={{ color: FYLL_LIME_INK, fontSize: 18, fontWeight: '600' }}>
-                    {isSubmitting ? 'Creating...' : `${isServiceOrder ? 'Create service order' : 'Create order'}${totalAmount > 0 ? ` · ${formatCurrency(totalAmount)}` : ''}`}
+                    {isSubmitting ? (isEditing ? 'Saving...' : 'Creating...') : `${isEditing ? 'Save changes' : isServiceOrder ? 'Create service order' : 'Create order'}${totalAmount > 0 ? ` · ${formatCurrency(totalAmount)}` : ''}`}
                   </Text>
                 </Pressable>
               );

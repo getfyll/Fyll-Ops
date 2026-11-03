@@ -10,7 +10,10 @@ import { SalesBarChart } from '@/components/stats/SalesBarChart';
 import { SparklineChart } from '@/components/stats/SparklineChart';
 import useFyllStore, { formatCurrency } from '@/lib/state/fyll-store';
 import { getDateRange, type TimeRange } from '@/lib/analytics-utils';
-import { useStatsColors } from '@/lib/theme';
+import { HeadlineCard, SideCard } from '@/components/stats/InsightsHeadlineCards';
+import { MoneyText } from '@/components/payments/payments-ui';
+import { InsightsRangeTabs } from '@/components/stats/InsightsRangeTabs';
+import { useInsightsColors } from '@/lib/insights-theme';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 
 const countBy = <T,>(items: T[], getKey: (item: T) => string | null | undefined) => {
@@ -26,9 +29,9 @@ const countBy = <T,>(items: T[], getKey: (item: T) => string | null | undefined)
 };
 
 export default function PartnerJobsInsightScreen({ inline }: { inline?: boolean }) {
-  const colors = useStatsColors();
+  const colors = useInsightsColors();
   const insets = useSafeAreaInsets();
-  const { isDesktop } = useBreakpoint();
+  const { isDesktop, isMobile } = useBreakpoint();
   const [timeRange, setTimeRange] = useState<TimeRange>('month');
   const partnerJobs = useFyllStore((s) => s.partnerJobs);
   const partners = useFyllStore((s) => s.partners);
@@ -130,6 +133,36 @@ export default function PartnerJobsInsightScreen({ inline }: { inline?: boolean 
 
   const topCategory = categoryBreakdown[0];
   const topService = serviceBreakdown[0];
+  const awaitingDispatch = partnerJobs.filter((job) => job.status === 'awaiting_dispatch').length;
+  const jobsThisMonth = jobsByMonth[jobsByMonth.length - 1]?.value ?? 0;
+  const rangeLong = timeRange === '7d' ? 'last 7 days' : timeRange === '30d' ? 'last 30 days' : timeRange === 'year' ? 'this year' : 'this month';
+  const jobsSentence = topCategory
+    ? { bold: `${topCategory.label} is your top category`, rest: topService ? `, and ${topService.label} is your top service.` : '.' }
+    : { bold: 'No partner jobs yet', rest: ' in this period.' };
+  const headlineCard = (
+    <HeadlineCard
+      compact={!isDesktop || isMobile}
+      label={`Jobs sent · ${rangeLong}`}
+      figure={String(jobsInRange.length)}
+      sentence={jobsSentence}
+      stats={[
+        { label: 'Total bills', value: String(billStats.totalBills) },
+        { label: 'Total billed', value: formatCurrency(billStats.totalBilled) },
+        { label: 'Total paid', value: formatCurrency(billStats.totalPaid) },
+        { label: 'Pending payment', value: formatCurrency(billStats.totalPending), dim: billStats.totalPending === 0 },
+      ]}
+    />
+  );
+  const sideCard = (
+    <SideCard
+      compact={!isDesktop || isMobile}
+      label="Jobs this month"
+      figure={String(jobsThisMonth)}
+      series={jobsByMonth.map((m) => m.value)}
+      lines={[`${partnerBreakdown.length} partner${partnerBreakdown.length === 1 ? '' : 's'} active`, `${billStats.totalBills} bill${billStats.totalBills === 1 ? '' : 's'}`, `${awaitingDispatch} awaiting dispatch`, partnerBreakdown[0] ? `Top: ${partnerBreakdown[0].label}` : 'No top partner yet']}
+      subline={`${partnerBreakdown.length} partners · ${awaitingDispatch} awaiting dispatch`}
+    />
+  );
 
   const content = (
     <View className="flex-1" style={{ backgroundColor: colors.bg.screen }}>
@@ -147,98 +180,23 @@ export default function PartnerJobsInsightScreen({ inline }: { inline?: boolean 
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: isDesktop ? 40 : insets.bottom + 140 }}
         >
-          <View className="rounded-2xl p-5 mt-4" style={colors.getCardStyle()}>
-            <View className="flex-row items-start justify-between">
-              <View className="flex-1">
-                <View className="flex-row items-center mb-2">
-                  <Briefcase size={20} color={colors.text.tertiary} strokeWidth={2} />
-                  <Text style={{ color: colors.text.tertiary }} className="text-sm font-medium ml-2">
-                    Total Jobs Sent
-                  </Text>
-                </View>
-                <Text style={{ color: colors.text.primary }} className="text-4xl font-bold">
-                  {jobsInRange.length}
-                </Text>
-                <View className="flex-row items-center mt-3">
-                  <View className="flex-row items-center mr-4">
-                    <Tag size={14} color={colors.text.tertiary} strokeWidth={2} />
-                    <Text style={{ color: colors.text.secondary }} className="text-sm ml-1.5">
-                      {topCategory ? `Top category: ${topCategory.label}` : 'No categories yet'}
-                    </Text>
-                  </View>
-                </View>
-                <View className="flex-row items-center mt-1">
-                  <Wrench size={14} color={colors.text.tertiary} strokeWidth={2} />
-                  <Text style={{ color: colors.text.secondary }} className="text-sm ml-1.5">
-                    {topService ? `Top service: ${topService.label}` : 'No services yet'}
-                  </Text>
-                </View>
-              </View>
-              {jobsByMonth.some((m) => m.value > 0) && (
-                <View className="ml-4">
-                  <SparklineChart
-                    data={jobsByMonth.map((m) => m.value)}
-                    width={100}
-                    height={50}
-                    strokeColor={colors.bar}
-                    strokeWidth={2}
-                  />
-                </View>
-              )}
+          <InsightsRangeTabs options={timeRangeOptions} value={timeRange} onChange={setTimeRange} />
+
+          {isDesktop && !isMobile ? (
+            <View style={{ flexDirection: 'row', alignItems: 'stretch', gap: 16, marginTop: 16 }}>
+              <View style={{ flex: 7, minWidth: 0 }}>{headlineCard}</View>
+              <View style={{ flex: 3, minWidth: 0 }}>{sideCard}</View>
             </View>
-          </View>
-
-          <View className="flex-row mt-4">
-            {timeRangeOptions.map((option) => (
-              <Pressable
-                key={option.key}
-                onPress={() => setTimeRange(option.key)}
-                className="mr-2 px-4 py-2 rounded-full"
-                style={{ backgroundColor: timeRange === option.key ? colors.bar : colors.bg.input }}
-              >
-                <Text
-                  style={{ color: timeRange === option.key ? colors.bg.screen : colors.text.tertiary, fontSize: 10 }}
-                  className="font-semibold"
-                >
-                  {option.label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-
-          <View className="flex-row flex-wrap mt-4" style={{ gap: 12 }}>
-            {[
-              { label: 'Total Bills', value: String(billStats.totalBills), icon: Banknote },
-              { label: 'Total Billed', value: formatCurrency(billStats.totalBilled), icon: Banknote },
-              { label: 'Total Paid', value: formatCurrency(billStats.totalPaid), icon: CheckCircle2 },
-              { label: 'Pending Payment', value: formatCurrency(billStats.totalPending), icon: Clock },
-            ].map((stat) => {
-              const Icon = stat.icon;
-              return (
-                <View
-                  key={stat.label}
-                  className="rounded-2xl p-4"
-                  style={[colors.getCardStyle(), { flexBasis: '47%', flexGrow: 1 }]}
-                >
-                  <View className="flex-row items-center mb-2">
-                    <Icon size={16} color={colors.text.tertiary} strokeWidth={2} />
-                    <Text style={{ color: colors.text.tertiary }} className="text-xs font-medium ml-1.5">
-                      {stat.label}
-                    </Text>
-                  </View>
-                  <Text style={{ color: colors.text.primary }} className="text-xl font-bold" numberOfLines={1} adjustsFontSizeToFit>
-                    {stat.value}
-                  </Text>
-                </View>
-              );
-            })}
-          </View>
+          ) : (
+            <View style={{ marginTop: 16, gap: 12 }}>
+              {headlineCard}
+              {sideCard}
+            </View>
+          )}
 
           {jobsByMonth.some((m) => m.value > 0) && (
-            <View className="rounded-2xl p-5 mt-4" style={colors.getCardStyle()}>
-              <Text style={{ color: colors.text.primary }} className={` font-bold mb-4`}>
-                Jobs by Month
-              </Text>
+            <View className="rounded-[26px] p-5 mt-4" style={colors.getCardStyle()}>
+              <MoneyText style={{ color: colors.text.primary, fontSize: isMobile ? 16 : 18, letterSpacing: -0.3, marginBottom: 16 }}>Jobs by Month</MoneyText>
               <SalesBarChart
                 data={jobsByMonth}
                 height={160}
@@ -251,28 +209,28 @@ export default function PartnerJobsInsightScreen({ inline }: { inline?: boolean 
           )}
 
           <Pressable onPress={() => router.push('/insights/partner-services')} className="mt-4">
-            <View className="rounded-2xl p-5" style={colors.getCardStyle()}>
+            <View className="rounded-[26px] p-5" style={colors.getCardStyle()}>
               <View className="flex-row items-center justify-between mb-4">
                 <View className="flex-row items-center">
                   <Tag size={18} color={colors.text.tertiary} strokeWidth={2} />
-                  <Text style={{ color: colors.text.primary }} className="font-bold ml-2">Category & Service Breakdown</Text>
+                  <MoneyText style={{ color: colors.text.primary, fontSize: isMobile ? 16 : 18, letterSpacing: -0.3, marginLeft: 8 }}>Category & Service Breakdown</MoneyText>
                 </View>
                 <ChevronRight size={16} color={colors.text.tertiary} strokeWidth={2} />
               </View>
               <View className="flex-row items-center justify-between py-2" style={{ borderBottomWidth: 1, borderBottomColor: colors.divider }}>
                 <View className="flex-1 mr-3">
-                  <Text style={{ color: colors.text.primary }} className="text-sm font-medium" numberOfLines={1}>
+                  <Text style={{ color: colors.text.primary, fontSize: isMobile ? 12 : 14, fontWeight: '500' }} numberOfLines={1}>
                     {topCategory ? topCategory.label : 'No categories yet'}
                   </Text>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mt-0.5">Top category • {topCategory?.value ?? 0} jobs</Text>
+                  <Text style={{ color: colors.text.tertiary, fontSize: isMobile ? 10 : 12, marginTop: 2 }}>Top category • {topCategory?.value ?? 0} jobs</Text>
                 </View>
               </View>
               <View className="flex-row items-center justify-between py-2">
                 <View className="flex-1 mr-3">
-                  <Text style={{ color: colors.text.primary }} className="text-sm font-medium" numberOfLines={1}>
+                  <Text style={{ color: colors.text.primary, fontSize: isMobile ? 12 : 14, fontWeight: '500' }} numberOfLines={1}>
                     {topService ? topService.label : 'No services yet'}
                   </Text>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mt-0.5">Top service • {topService?.value ?? 0} jobs</Text>
+                  <Text style={{ color: colors.text.tertiary, fontSize: isMobile ? 10 : 12, marginTop: 2 }}>Top service • {topService?.value ?? 0} jobs</Text>
                 </View>
               </View>
             </View>
@@ -289,21 +247,21 @@ export default function PartnerJobsInsightScreen({ inline }: { inline?: boolean 
           </View>
 
           <Pressable onPress={() => router.push('/insights/partner-bills')} className="mt-4">
-            <View className="rounded-2xl p-5" style={colors.getCardStyle()}>
+            <View className="rounded-[26px] p-5" style={colors.getCardStyle()}>
               <View className="flex-row items-center justify-between mb-4">
                 <View className="flex-row items-center">
                   <Banknote size={18} color={colors.text.tertiary} strokeWidth={2} />
-                  <Text style={{ color: colors.text.primary }} className="font-bold ml-2">Bills & Payments</Text>
+                  <MoneyText style={{ color: colors.text.primary, fontSize: isMobile ? 16 : 18, letterSpacing: -0.3, marginLeft: 8 }}>Bills & Payments</MoneyText>
                 </View>
                 <ChevronRight size={16} color={colors.text.tertiary} strokeWidth={2} />
               </View>
               <View className="flex-row items-center justify-between py-2" style={{ borderBottomWidth: 1, borderBottomColor: colors.divider }}>
-                <Text style={{ color: colors.text.tertiary }} className="text-sm">Billed this period</Text>
-                <Text style={{ color: colors.text.primary }} className="text-sm font-bold">{formatCurrency(billStats.totalBilled)}</Text>
+                <Text style={{ color: colors.text.tertiary, fontSize: isMobile ? 12 : 14 }}>Billed this period</Text>
+                <Text style={{ color: colors.text.primary, fontSize: isMobile ? 12 : 14, fontWeight: '700' }}>{formatCurrency(billStats.totalBilled)}</Text>
               </View>
               <View className="flex-row items-center justify-between py-2">
-                <Text style={{ color: colors.text.tertiary }} className="text-sm">Paid this period</Text>
-                <Text style={{ color: colors.text.primary }} className="text-sm font-bold">{formatCurrency(billStats.totalPaid)}</Text>
+                <Text style={{ color: colors.text.tertiary, fontSize: isMobile ? 12 : 14 }}>Paid this period</Text>
+                <Text style={{ color: colors.text.primary, fontSize: isMobile ? 12 : 14, fontWeight: '700' }}>{formatCurrency(billStats.totalPaid)}</Text>
               </View>
             </View>
           </Pressable>

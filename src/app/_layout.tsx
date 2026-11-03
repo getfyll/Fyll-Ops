@@ -40,6 +40,8 @@ import { useWhatsNew } from '@/hooks/useWhatsNew';
 import { RootErrorBoundary } from '@/components/RootErrorBoundary';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { useThemeColors } from '@/lib/theme';
+import { FocusBottomNav } from '@/components/FocusBottomNav';
+import { useBusinessNavItems } from '@/lib/useBusinessNavItems';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
 import { isBusinessFeatureEnabled, type BusinessFeatureKey } from '@/lib/feature-access';
 import { useBusinessDisabled } from '@/hooks/useBusinessDisabled';
@@ -100,11 +102,13 @@ const ROUTE_FEATURES: Record<string, BusinessFeatureKey> = {
   'import-ai': 'aiImport',
 };
 
-function RootMobileBottomNav({ visible }: { visible: boolean }) {
+// Pages that are a task of their own (Fyll Print) show a smaller nav: a round Home button, then the other main places.
+function RootMobileBottomNav({ visible, variant = 'full' }: { visible: boolean; variant?: 'full' | 'focus' | 'business' }) {
   const router = useRouter();
   const pathname = usePathname();
   const colors = useThemeColors();
   const insets = useSafeAreaInsets();
+  const businessNavItems = useBusinessNavItems('insights');
 
   if (!visible) return null;
 
@@ -149,6 +153,39 @@ function RootMobileBottomNav({ visible }: { visible: boolean }) {
     },
   ];
 
+  const glassStyle = {
+    overflow: 'hidden' as const,
+    borderWidth: 1,
+    borderColor: isLight ? 'rgba(255, 255, 255, 0.72)' : 'rgba(255, 255, 255, 0.12)',
+    // A bit more solid than the main nav, so what is behind it never washes out the icons.
+    backgroundColor: isLight ? 'rgba(255, 255, 255, 0.9)' : 'rgba(24, 24, 24, 0.9)',
+    shadowColor: '#000000',
+    shadowOpacity: isLight ? 0.14 : 0.28,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 18,
+  };
+  const focusItems = items.filter((item) => item.key !== 'home');
+
+  // Pages opened from Insights: the same small nav as Finance, Insights and Customers, with Insights highlighted.
+  if (variant === 'business') {
+    return <FocusBottomNav items={businessNavItems} onHome={() => router.dismissTo('/(tabs)' as never)} />;
+  }
+
+  if (variant === 'focus') {
+    return (
+      <FocusBottomNav
+        onHome={() => router.dismissTo('/(tabs)' as never)}
+        items={focusItems.map((item) => ({
+          key: item.key,
+          label: item.label,
+          Icon: item.Icon,
+          onPress: () => router.dismissTo(item.route as never),
+        }))}
+      />
+    );
+  }
+
   return (
     <View
       pointerEvents="box-none"
@@ -172,7 +209,7 @@ function RootMobileBottomNav({ visible }: { visible: boolean }) {
           overflow: 'hidden',
           borderWidth: 1,
           borderColor: isLight ? 'rgba(255, 255, 255, 0.72)' : 'rgba(255, 255, 255, 0.12)',
-          backgroundColor: isLight ? 'rgba(255, 255, 255, 0.78)' : 'rgba(24, 24, 24, 0.72)',
+          backgroundColor: isLight ? 'rgba(255, 255, 255, 0.9)' : 'rgba(24, 24, 24, 0.9)',
           shadowColor: '#000000',
           shadowOpacity: isLight ? 0.14 : 0.28,
           shadowRadius: 24,
@@ -316,10 +353,15 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
     && pathname !== '/'
     && pathname !== '/(tabs)'
     && !pathname.startsWith('/threads')
-    && !pathname.startsWith('/(tabs)/threads');
+    && !pathname.startsWith('/(tabs)/threads')
+    && !pathname.startsWith('/finance')
+    && !pathname.startsWith('/(tabs)/finance');
   const whatsNew = useWhatsNew(isAuthenticated && !inPublicRoute && isNavigationReady);
   const isBottomActionRoute = firstSegment === 'new-order'
     || firstSegment === 'scan'
+    || firstSegment === 'fulfillment-pipeline'
+    || firstSegment === 'label-print'
+    || firstSegment === 'order-label-preview'
     || firstSegment === 'order'
     || firstSegment === 'order-edit'
     || firstSegment === 'new-product'
@@ -734,7 +776,7 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
           <Stack.Screen name="debug-seed-fyll-checkout" options={{ headerShown: false }} />
           <Stack.Screen name="supabase-check" options={{ headerShown: false }} />
         </Stack>
-        <RootMobileBottomNav visible={showRootMobileBottomNav} />
+        <RootMobileBottomNav visible={showRootMobileBottomNav} variant={firstSegment === 'fyll-print' ? 'focus' : firstSegment === 'insights' ? 'business' : 'full'} />
         {showGlobalFloatingActions ? <GlobalFloatingActions /> : null}
         <WhatsNewModal state={whatsNew.state} onDismiss={whatsNew.dismiss} onUpdate={whatsNew.applyUpdate} />
       </RootErrorBoundary>

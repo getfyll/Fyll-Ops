@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { View, Text, Pressable, ScrollView, TextInput, Alert, Switch, Platform, Modal, Dimensions, type GestureResponderEvent } from 'react-native';
+import { View, Text, Pressable, ScrollView, TextInput, Alert, Switch, Platform, Modal, Dimensions, ActivityIndicator, type GestureResponderEvent } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Trash2, Edit2, Check, X, ChevronRight, ChevronUp, ChevronDown, ArrowLeft, Package, ShoppingCart, Tag, RotateCcw, Info, CreditCard, Truck, Wrench, Users, Moon, Sun, Laptop, LogOut, Shield, Building2, AlertTriangle, UserCircle, Upload, FileText, BarChart3, TrendingUp, Zap, Search, Sparkles, ListTodo, Bell, BellOff, Boxes, Clock3, Plus, MoreVertical, Megaphone, Printer, Copy, Link2, Landmark, Store, Mail, LayoutGrid, Award, MessageCircle } from 'lucide-react-native';
@@ -53,6 +53,8 @@ import { FYLL_LIME, FYLL_LIME_INK, MoneyText, usePaymentsPalette } from '@/compo
 import { isPickupTimeline } from '@/lib/fulfillment';
 import { FeaturesSettings, type FeatureRowKey } from '@/components/FeaturesSettings';
 import { LimeToggle } from '@/components/settings/LimeToggle';
+import { InternalSettingsHeader } from '@/components/settings/InternalSettingsHeader';
+import { SettingsDetailHero } from '@/components/settings/InventorySettingsScaffold';
 import { SETTINGS_NAV, getSettingsNavItem, normalizeSettingsNavKey, searchSettings, type SettingsNavKey, type SettingsSearchEntry } from '@/lib/settings-nav';
 import useSettingsNavStore from '@/lib/state/settings-nav-store';
 
@@ -242,6 +244,14 @@ interface EditableItemProps {
   showWooCommerceStatusSlug?: boolean;
   modern?: boolean;
   plainActions?: boolean;
+  compactLabel?: boolean;
+  highlighted?: boolean;
+  onEditRequest?: () => void;
+  hideActions?: boolean;
+  trailingAccessory?: React.ReactNode;
+  grouped?: boolean;
+  showDivider?: boolean;
+  compactRow?: boolean;
 }
 
 function EditableItem({
@@ -255,6 +265,14 @@ function EditableItem({
   showWooCommerceStatusSlug = false,
   modern = false,
   plainActions = false,
+  compactLabel = false,
+  highlighted = false,
+  onEditRequest,
+  hideActions = false,
+  trailingAccessory,
+  grouped = false,
+  showDivider = false,
+  compactRow = false,
 }: EditableItemProps) {
   const colors = useThemeColors();
   const palette = usePaymentsPalette();
@@ -313,8 +331,8 @@ function EditableItem({
   };
 
   return (
-    <View className="mb-2">
-      <View style={{ borderRadius: modern ? 24 : 12, overflow: 'hidden', backgroundColor: modern ? palette.card : colors.bg.card, borderWidth: 1, borderColor: modern ? palette.border : colors.border.light }}>
+    <View className={grouped ? '' : 'mb-2'}>
+      <View style={{ borderRadius: grouped ? 0 : modern ? 24 : 12, overflow: 'hidden', backgroundColor: modern ? palette.card : colors.bg.card, borderWidth: grouped ? 0 : 1, borderBottomWidth: grouped && showDivider ? 1 : grouped ? 0 : 1, borderColor: modern ? palette.border : colors.border.light, borderBottomColor: grouped ? palette.hairline : modern ? palette.border : colors.border.light }}>
         {isEditing ? (
           <View className="p-4">
             <View className="rounded-xl px-4 mb-3" style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.border.light, height: 50, justifyContent: 'center' }}>
@@ -444,7 +462,7 @@ function EditableItem({
             </View>
           </View>
         ) : (
-          <View className="flex-row items-center p-4" style={{ minHeight: modern ? 76 : undefined }}>
+          <View className="flex-row items-center" style={{ minHeight: modern ? (compactRow ? 60 : 76) : undefined, paddingHorizontal: 16, paddingVertical: compactRow ? 10 : 16 }}>
             {showColor && (
               <View
                 className="w-4 h-4 rounded-full mr-3"
@@ -452,7 +470,7 @@ function EditableItem({
               />
             )}
             <View className="flex-1">
-              <Text style={{ color: modern ? palette.text : colors.text.primary, fontSize: modern ? 14 : undefined, fontWeight: modern ? '600' : undefined }} className={modern ? '' : 'font-medium text-sm'}>{item.name}</Text>
+              <Text style={{ color: modern ? palette.text : colors.text.primary, fontSize: modern ? (compactLabel ? 12 : 14) : undefined, fontWeight: modern ? (compactLabel ? '500' : '600') : undefined }} className={modern ? '' : 'font-medium text-sm'}>{item.name}</Text>
               {showPrice && item.defaultPrice !== undefined && (
                 <Text style={{ color: colors.text.tertiary }} className="text-xs">{formatCurrency(item.defaultPrice)}</Text>
               )}
@@ -472,10 +490,13 @@ function EditableItem({
                 </Text>
               ) : null}
             </View>
+            {trailingAccessory}
+            {!hideActions ? <>
             <Pressable
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setIsEditing(true);
+                if (onEditRequest) onEditRequest();
+                else setIsEditing(true);
               }}
               className="p-2 active:opacity-50"
               style={modern ? { width: plainActions ? 30 : 38, height: plainActions ? 30 : 38, borderRadius: plainActions ? 0 : 19, alignItems: 'center', justifyContent: 'center', backgroundColor: plainActions ? 'transparent' : palette.softFill, marginRight: plainActions ? 2 : 6 } : undefined}
@@ -492,8 +513,10 @@ function EditableItem({
             >
               <Trash2 size={plainActions ? 14 : 16} color="#EF4444" strokeWidth={2} />
             </Pressable>
+            </> : null}
           </View>
         )}
+        {highlighted ? <View pointerEvents="none" style={{ position: 'absolute', left: 18, right: 18, bottom: 0, height: 3, borderTopLeftRadius: 3, borderTopRightRadius: 3, backgroundColor: FYLL_LIME }} /> : null}
       </View>
     </View>
   );
@@ -521,6 +544,7 @@ function SettingsRow({
   showDivider = true,
 }: SettingsRowProps) {
   const palette = usePaymentsPalette();
+  const { isMobile } = useBreakpoint();
   // One icon colour for every row (the new branding), whatever colour the caller passed.
   const tintedIcon = React.isValidElement(icon)
     ? React.cloneElement(icon as React.ReactElement<{ color?: string }>, { color: palette.limeOnSurface })
@@ -552,7 +576,7 @@ function SettingsRow({
           {tintedIcon}
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }} numberOfLines={1}>
+          <Text style={{ color: palette.text, fontSize: 14, fontWeight: isMobile ? '500' : '600' }} numberOfLines={1}>
             {title}
           </Text>
           {description ? (
@@ -739,6 +763,15 @@ export default function SettingsScreen() {
     orderedOrderStatuses.filter((status) => isOrderStatusException(status))
   ), [orderedOrderStatuses]);
 
+  const showOrderStatusMoveFeedback = (statusId: string) => {
+    setRecentlyMovedOrderStatusId(statusId);
+    if (movedStatusFeedbackTimerRef.current) clearTimeout(movedStatusFeedbackTimerRef.current);
+    movedStatusFeedbackTimerRef.current = setTimeout(() => {
+      setRecentlyMovedOrderStatusId(null);
+      movedStatusFeedbackTimerRef.current = null;
+    }, 1600);
+  };
+
   const handleMoveOrderStatus = (statusId: string, direction: -1 | 1) => {
     const currentIndex = fulfillmentOrderStatuses.findIndex((status) => status.id === statusId);
     const nextIndex = currentIndex + direction;
@@ -749,6 +782,7 @@ export default function SettingsScreen() {
     nextStatuses.splice(nextIndex, 0, movedStatus);
     reorderOrderStatuses([...nextStatuses, ...exceptionOrderStatuses].map((status) => status.id));
     triggerGlobalSave();
+    showOrderStatusMoveFeedback(statusId);
   };
 
   const unmappedOrderPaymentMethods = useMemo(() => {
@@ -916,6 +950,30 @@ export default function SettingsScreen() {
                 />
               </View>
             </View>
+
+            {editingOrderStatusId ? (
+              <View>
+                <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '600', textTransform: 'uppercase', marginBottom: 7 }}>
+                  Order Position
+                </Text>
+                <View
+                  className="rounded-2xl px-4"
+                  style={{ backgroundColor: settingsPalette.softFill, borderWidth: 1, borderColor: settingsPalette.outline, minHeight: 50, justifyContent: 'center' }}
+                >
+                  <TextInput
+                    value={newItemOrder}
+                    onChangeText={(value) => setNewItemOrder(value.replace(/[^0-9]/g, ''))}
+                    keyboardType="number-pad"
+                    inputMode="numeric"
+                    style={{ color: colors.input.text, fontSize: 15, fontWeight: '500' }}
+                    selectionColor={colors.text.primary}
+                  />
+                </View>
+                <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 7 }}>
+                  Choose a position from 1 to {orderedOrderStatuses.length}. Statuses are renumbered automatically.
+                </Text>
+              </View>
+            ) : null}
 
             <View>
               <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '600', textTransform: 'uppercase', marginBottom: 7 }}>
@@ -1927,6 +1985,7 @@ export default function SettingsScreen() {
   const openCreateOrderStatusModal = () => {
     setEditingOrderStatusId(null);
     setNewItemName('');
+    setNewItemOrder(String(orderedOrderStatuses.length + 1));
     setNewItemColor('#3B82F6');
     setNewItemTrackingStage('received');
     setNewItemWooStatusSlug('');
@@ -1939,6 +1998,7 @@ export default function SettingsScreen() {
     if (!status) return;
     setEditingOrderStatusId(status.id);
     setNewItemName(status.name);
+    setNewItemOrder(String(orderedOrderStatuses.findIndex((item) => item.id === status.id) + 1));
     setNewItemColor(status.color);
     setNewItemTrackingStage(status.trackingStage ?? 'received');
     setNewItemWooStatusSlug(status.wooCommerceStatusSlug ?? '');
@@ -2143,6 +2203,17 @@ export default function SettingsScreen() {
         trackingStage: newItemTrackingStage,
         wooCommerceStatusSlug: newItemWooStatusSlug.trim() || undefined,
       });
+      const currentPosition = orderedOrderStatuses.findIndex((status) => status.id === editingOrderStatusId) + 1;
+      const requestedPosition = Math.min(
+        orderedOrderStatuses.length,
+        Math.max(1, Number.parseInt(newItemOrder, 10) || currentPosition)
+      );
+      const reorderedIds = orderedOrderStatuses
+        .filter((status) => status.id !== editingOrderStatusId)
+        .map((status) => status.id);
+      reorderedIds.splice(requestedPosition - 1, 0, editingOrderStatusId);
+      reorderOrderStatuses(reorderedIds);
+      showOrderStatusMoveFeedback(editingOrderStatusId);
     } else {
       addOrderStatus({
         id: `order-status-${Date.now().toString(36)}`,
@@ -2158,6 +2229,7 @@ export default function SettingsScreen() {
     triggerGlobalSave();
     setEditingOrderStatusId(null);
     setNewItemName('');
+    setNewItemOrder('1');
     setNewItemColor('#3B82F6');
     setNewItemTrackingStage('received');
     setNewItemWooStatusSlug('');
@@ -2443,6 +2515,7 @@ export default function SettingsScreen() {
   }, [activeSection, activeWebInlinePanel, activeWebSettingsMenu, setNavActiveKey]);
   const [searchQuery, setSearchQuery] = useState('');
   const [newItemName, setNewItemName] = useState('');
+  const [newItemOrder, setNewItemOrder] = useState('1');
   const [newItemColor, setNewItemColor] = useState('#3B82F6');
   const [newItemTrackingStage, setNewItemTrackingStage] = useState<OrderTrackingStage>('received');
   const [newItemWooStatusSlug, setNewItemWooStatusSlug] = useState('');
@@ -2459,6 +2532,8 @@ export default function SettingsScreen() {
   const [editingOrderStatusId, setEditingOrderStatusId] = useState<string | null>(null);
   const [editingOrderTimelineId, setEditingOrderTimelineId] = useState<string | null>(null);
   const [editingShippingZoneId, setEditingShippingZoneId] = useState<string | null>(null);
+  const [recentlyMovedOrderStatusId, setRecentlyMovedOrderStatusId] = useState<string | null>(null);
+  const movedStatusFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [orderStatusMenu, setOrderStatusMenu] = useState<{
     id: string;
     top: number;
@@ -2540,7 +2615,7 @@ export default function SettingsScreen() {
       },
       {
         key: 'order-tracking',
-        title: 'Order Tracking',
+        title: 'Track orders',
         description: `${FYLL_TRACKING_ORIGIN}${baseBusinessPath}`,
       },
     ];
@@ -2790,6 +2865,9 @@ export default function SettingsScreen() {
     () => {
       if (toastTimerRef.current) {
         clearTimeout(toastTimerRef.current);
+      }
+      if (movedStatusFeedbackTimerRef.current) {
+        clearTimeout(movedStatusFeedbackTimerRef.current);
       }
     }
   ), []);
@@ -3067,21 +3145,18 @@ export default function SettingsScreen() {
         case 'recycle-bin':
           return (
             <View className="pt-1">
-              <View className="p-5 mb-5" style={{ position: 'relative', overflow: 'hidden', minHeight: 156, justifyContent: 'center', borderRadius: 28, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border, shadowColor: '#000000', shadowOpacity: resolvedThemeMode === 'dark' ? 0.24 : 0.07, shadowRadius: 24, shadowOffset: { width: 0, height: 10 } }}>
+              <View className="p-5 mb-5" style={{ position: 'relative', overflow: 'hidden', minHeight: isWebDesktop ? 138 : 150, justifyContent: 'center', borderRadius: 28, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
                 <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -44, right: -36, width: 210, height: 210, borderRadius: 105 }} />
                 <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
-                <View className="flex-row items-center" style={{ gap: 15 }}>
-                  <LinearGradient colors={[FYLL_LIME, '#879400']} style={{ width: 66, height: 66, borderRadius: 22, alignItems: 'center', justifyContent: 'center' }}><Trash2 size={28} color={FYLL_LIME_INK} strokeWidth={2.1} /></LinearGradient>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={{ color: settingsPalette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Recovery centre</Text>
-                    <MoneyText style={{ color: settingsPalette.text, fontSize: 27, lineHeight: 32 }}>{recycleBin.length} deleted {recycleBin.length === 1 ? 'item' : 'items'}</MoneyText>
-                    <Text style={{ color: settingsPalette.faint, fontSize: 12.5, marginTop: 2 }}>Restore records or remove them permanently</Text>
-                  </View>
+                <View style={{ flex: 1, minWidth: 0, justifyContent: 'center' }}>
+                  <Text style={{ color: settingsPalette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Recovery centre</Text>
+                  <MoneyText style={{ color: settingsPalette.text, fontSize: isWebDesktop ? 28 : 24, lineHeight: isWebDesktop ? 34 : 29 }}>{recycleBin.length} deleted {recycleBin.length === 1 ? 'item' : 'items'}</MoneyText>
+                  <Text style={{ color: settingsPalette.faint, fontSize: 12.5, lineHeight: 18, marginTop: 4 }}>Restore records or remove them permanently.</Text>
                 </View>
               </View>
 
               <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Deleted items</Text>
-              <View className="rounded-3xl p-4 mb-4" style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+              <View className="rounded-3xl p-4 mb-5" style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
                 <View
                   className="rounded-2xl flex-row items-center px-4"
                   style={{ height: 48, backgroundColor: settingsPalette.inset, borderWidth: 1, borderColor: settingsPalette.outline }}
@@ -3092,19 +3167,22 @@ export default function SettingsScreen() {
                     placeholderTextColor={colors.input.placeholder}
                     value={recycleBinSearchQuery}
                     onChangeText={setRecycleBinSearchQuery}
-                    style={{ color: settingsPalette.text, fontSize: 14, flex: 1, marginLeft: 9 }}
+                    style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '500', flex: 1, marginLeft: 9 }}
                     selectionColor={FYLL_LIME}
                   />
                   <SearchClearButton visible={Boolean(recycleBinSearchQuery.trim())} onPress={() => setRecycleBinSearchQuery('')} />
                 </View>
-                <Text style={{ color: settingsPalette.faint, fontSize: 11, marginTop: 10, marginLeft: 2 }}>{filteredRecycleBin.length} of {recycleBin.length} items shown</Text>
+                <View className="flex-row items-center justify-between" style={{ marginTop: 10, marginLeft: 2, gap: 10 }}>
+                  <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '500' }}>{filteredRecycleBin.length} of {recycleBin.length} items shown</Text>
+                  {recycleBinSearchQuery.trim() ? <Text style={{ color: settingsPalette.limeOnSurface, fontSize: 10, fontWeight: '700', letterSpacing: 0.7, textTransform: 'uppercase' }}>Filtered</Text> : null}
+                </View>
               </View>
 
               {recentlyRestoredItems.length > 0 ? (
                 <View className="rounded-3xl p-4 mb-4" style={{ backgroundColor: settingsPalette.nudgeBg, borderWidth: 1, borderColor: settingsPalette.nudgeBorder }}>
                   <View className="flex-row items-center justify-between" style={{ gap: 12 }}>
-                    <Text style={{ color: settingsPalette.text }} className="font-semibold text-sm">Recently restored</Text>
-                    <Text style={{ color: settingsPalette.faint }} className="text-[11px]">{recentlyRestoredItems.length}</Text>
+                    <Text style={{ color: settingsPalette.text, fontSize: 12, fontWeight: '500' }}>Recently restored</Text>
+                    <Text style={{ color: settingsPalette.faint, fontSize: 10, fontWeight: '500' }}>{recentlyRestoredItems.length}</Text>
                   </View>
                   <Text style={{ color: settingsPalette.nudgeSub }} className="text-xs mt-1">
                     Tap a chip to copy its name, then search for it in the relevant page if you need to delete it again.
@@ -3118,7 +3196,7 @@ export default function SettingsScreen() {
                         style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border, paddingHorizontal: 10, paddingVertical: 7, gap: 6 }}
                       >
                         <RotateCcw size={12} color="#059669" strokeWidth={2.2} />
-                        <Text style={{ color: settingsPalette.text }} className="text-xs font-semibold" numberOfLines={1}>
+                        <Text style={{ color: settingsPalette.text, fontSize: 12, fontWeight: '500' }} numberOfLines={1}>
                           {item.label}
                         </Text>
                         <Text style={{ color: settingsPalette.faint }} className="text-[10px]" numberOfLines={1}>
@@ -3147,46 +3225,47 @@ export default function SettingsScreen() {
                   </Text>
                 </View>
               ) : (
-                filteredRecycleBin.map((item) => {
-                  const isRestoring = restoringDeletedItemId === item.id;
-                  return (
-                    <View key={item.id} className="rounded-3xl p-4 mb-3" style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
-                      <View className="flex-row items-center">
-                        <View className="w-[42px] h-[42px] rounded-[13px] items-center justify-center mr-3" style={{ backgroundColor: settingsPalette.dangerBg }}>
-                          <Trash2 size={17} color={settingsPalette.danger} strokeWidth={2} />
-                        </View>
-                        <View className="flex-1">
-                          <Text style={{ color: settingsPalette.text }} className="font-semibold text-sm">{item.label}</Text>
-                          <Text style={{ color: settingsPalette.faint }} className="text-[11px] mt-0.5">
+                <View className="rounded-3xl overflow-hidden" style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+                  {filteredRecycleBin.map((item, index) => {
+                    const isRestoring = restoringDeletedItemId === item.id;
+                    return (
+                      <View key={item.id} style={{ minHeight: isWebDesktop ? 76 : 82, paddingHorizontal: 16, paddingVertical: 13, flexDirection: 'row', alignItems: 'center', borderBottomWidth: index < filteredRecycleBin.length - 1 ? 1 : 0, borderBottomColor: settingsPalette.hairline }}>
+                        <View className="flex-1" style={{ minWidth: 0 }}>
+                          <Text style={{ color: settingsPalette.text, fontSize: 12, lineHeight: 17, fontWeight: '500' }} numberOfLines={1}>{item.label}</Text>
+                          <Text style={{ color: settingsPalette.faint, fontSize: 10, lineHeight: 15, fontWeight: '500', marginTop: 2 }} numberOfLines={1}>
                             {getDeletedItemTypeLabel(item)} · Deleted {formatDeletedAt(item.deletedAt)}
                           </Text>
                           {item.parentLabel ? (
-                            <Text style={{ color: settingsPalette.muted }} className="text-[11px] mt-0.5">
+                            <Text style={{ color: settingsPalette.muted, fontSize: 10, lineHeight: 15, fontWeight: '500' }} numberOfLines={1}>
                               From {item.parentLabel}
                             </Text>
                           ) : null}
                         </View>
-                        <View className="flex-row items-center gap-2 ml-2">
+                        <View className="flex-row items-center ml-2" style={{ gap: isMobile ? 6 : 10 }}>
                           <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel={`Restore ${item.label}`}
                             onPress={() => handleRestoreDeletedItem(item)}
                             disabled={isRestoring}
-                            className="w-9 h-9 rounded-full items-center justify-center active:opacity-70"
-                            style={{ backgroundColor: FYLL_LIME, opacity: isRestoring ? 0.6 : 1 }}
+                            className="rounded-full flex-row items-center justify-center active:opacity-70"
+                            style={{ minHeight: 38, paddingHorizontal: isMobile ? 10 : 14, gap: 6, backgroundColor: FYLL_LIME, opacity: isRestoring ? 0.6 : 1 }}
                           >
-                            <RotateCcw size={14} color={FYLL_LIME_INK} strokeWidth={2.5} />
+                            {isRestoring ? <ActivityIndicator size="small" color={FYLL_LIME_INK} /> : <RotateCcw size={13} color={FYLL_LIME_INK} strokeWidth={2.4} />}
+                            {!isMobile ? <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 12 }}>Restore</MoneyText> : null}
                           </Pressable>
                           <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel={`Delete ${item.label} forever`}
                             onPress={() => { setConfirmDeleteText(''); setConfirmDeleteItem(item); }}
-                            className="w-9 h-9 rounded-full items-center justify-center active:opacity-70"
-                            style={{ backgroundColor: settingsPalette.dangerBg }}
+                            className="w-9 h-9 items-center justify-center active:opacity-70"
                           >
-                            <Trash2 size={13} color={settingsPalette.danger} strokeWidth={2} />
+                            <Trash2 size={14} color={settingsPalette.danger} strokeWidth={2} />
                           </Pressable>
                         </View>
                       </View>
-                    </View>
-                  );
-                })
+                    );
+                  })}
+                </View>
               )}
               <Modal
                 visible={confirmDeleteItem !== null}
@@ -3252,24 +3331,26 @@ export default function SettingsScreen() {
       case 'order-statuses':
         return (
           <View className="pt-1">
-            <View className="p-5 mb-7" style={{ position: 'relative', overflow: 'hidden', borderRadius: 28, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border, shadowColor: '#000000', shadowOpacity: resolvedThemeMode === 'dark' ? 0.24 : 0.07, shadowRadius: 24, shadowOffset: { width: 0, height: 10 } }}>
-              <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -44, right: -36, width: 210, height: 210, borderRadius: 105 }} />
+            <View className="p-5 mb-4" style={{ position: 'relative', overflow: 'hidden', borderRadius: 28, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border, ...(!isWebDesktop ? { shadowColor: '#000000', shadowOpacity: resolvedThemeMode === 'dark' ? 0.24 : 0.07, shadowRadius: 24, shadowOffset: { width: 0, height: 10 } } : {}) }}>
+              {!isWebDesktop ? <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -44, right: -36, width: 210, height: 210, borderRadius: 105 }} /> : null}
               <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, borderBottomLeftRadius: 3, borderBottomRightRadius: 3, backgroundColor: FYLL_LIME }} />
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 15, marginBottom: 18 }}>
-                <LinearGradient colors={[FYLL_LIME, '#879400']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 66, height: 66, borderRadius: 22, alignItems: 'center', justifyContent: 'center' }}><ShoppingCart size={28} color={FYLL_LIME_INK} strokeWidth={2.1} /></LinearGradient>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={{ color: settingsPalette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Order workflow</Text>
                   <MoneyText style={{ color: settingsPalette.text, fontSize: 27, lineHeight: 32, letterSpacing: -0.7 }}>{orderStatuses.length} statuses</MoneyText>
                   <Text style={{ color: settingsPalette.faint, fontSize: 12.5, marginTop: 2 }}>{fulfillmentOrderStatuses.length} in fulfillment · {exceptionOrderStatuses.length} exceptions</Text>
                 </View>
               </View>
+            </View>
+
+            <View style={{ marginBottom: 20 }}>
               <Pressable
                 onPress={openCreateOrderStatusModal}
                 className="flex-row items-center justify-center active:opacity-80"
                 style={{ height: 46, borderRadius: 999, gap: 8, backgroundColor: FYLL_LIME }}
               >
                 <Plus size={16} color={FYLL_LIME_INK} strokeWidth={2.5} />
-                <Text style={{ color: FYLL_LIME_INK, fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: isMobile ? 14 : 15 }}>Add new status</Text>
+                <Text style={{ color: FYLL_LIME_INK, fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: 14 }}>Add new status</Text>
               </Pressable>
 
               {false && showAddOrderStatusForm ? (
@@ -3381,9 +3462,9 @@ export default function SettingsScreen() {
                           <Text numberOfLines={1} style={{ color: settingsPalette.faint, fontSize: 11.5, marginTop: 4 }}>{trackingLabel}</Text>
                           {status.wooCommerceStatusSlug ? <Text numberOfLines={1} style={{ color: settingsPalette.muted, fontSize: 10, marginTop: 3 }}>WooCommerce · {status.wooCommerceStatusSlug}</Text> : null}
                         </Pressable>
-                        <View style={{ gap: 5 }}>
-                          <Pressable onPress={() => handleMoveOrderStatus(status.id, -1)} disabled={index === 0} style={({ pressed }) => ({ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: settingsPalette.softFill, opacity: index === 0 ? 0.28 : pressed ? 0.65 : 1 })}><ChevronUp size={15} color={settingsPalette.text} strokeWidth={2.2} /></Pressable>
-                          <Pressable onPress={() => handleMoveOrderStatus(status.id, 1)} disabled={index === fulfillmentOrderStatuses.length - 1} style={({ pressed }) => ({ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: settingsPalette.softFill, opacity: index === fulfillmentOrderStatuses.length - 1 ? 0.28 : pressed ? 0.65 : 1 })}><ChevronDown size={15} color={settingsPalette.text} strokeWidth={2.2} /></Pressable>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 1 }}>
+                          <Pressable onPress={() => handleMoveOrderStatus(status.id, -1)} disabled={index === 0} accessibilityLabel={`Move ${status.name} earlier`} style={({ pressed }) => ({ width: 27, height: 32, alignItems: 'center', justifyContent: 'center', opacity: index === 0 ? 0.24 : pressed ? 0.55 : 1 })}><ChevronUp size={15} color={settingsPalette.faint} strokeWidth={2.2} /></Pressable>
+                          <Pressable onPress={() => handleMoveOrderStatus(status.id, 1)} disabled={index === fulfillmentOrderStatuses.length - 1} accessibilityLabel={`Move ${status.name} later`} style={({ pressed }) => ({ width: 27, height: 32, alignItems: 'center', justifyContent: 'center', opacity: index === fulfillmentOrderStatuses.length - 1 ? 0.24 : pressed ? 0.55 : 1 })}><ChevronDown size={15} color={settingsPalette.faint} strokeWidth={2.2} /></Pressable>
                         </View>
                         <Pressable onPress={(event) => openOrderStatusMenu(status.id, event)} style={({ pressed }) => ({ width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: settingsPalette.softFill, opacity: pressed ? 0.65 : 1 })}><MoreVertical size={16} color={settingsPalette.faint} strokeWidth={2.2} /></Pressable>
                       </View>
@@ -3396,10 +3477,25 @@ export default function SettingsScreen() {
                 <View className="flex-row items-center mb-2" style={{ gap: 8 }}>
                   <View className="rounded-full items-center justify-center" style={{ minWidth: 28, height: 28, backgroundColor: settingsPalette.nudgeBg, borderWidth: 1, borderColor: settingsPalette.outline }}><Text style={{ color: settingsPalette.limeOnSurface, fontFamily: 'BricolageGrotesque_700Bold', fontSize: 12, fontWeight: '400' }}>{index + 1}</Text></View>
                   <Text style={{ color: settingsPalette.faint }} className="flex-1 text-xs font-semibold">Step {index + 1}</Text>
-                  <Pressable onPress={() => handleMoveOrderStatus(status.id, -1)} disabled={index === 0} className="w-9 h-9 rounded-full items-center justify-center active:opacity-70" style={{ backgroundColor: settingsPalette.softFill, borderWidth: 1, borderColor: settingsPalette.outline, opacity: index === 0 ? 0.35 : 1 }}><ChevronUp size={17} color={settingsPalette.text} strokeWidth={2.2} /></Pressable>
-                  <Pressable onPress={() => handleMoveOrderStatus(status.id, 1)} disabled={index === fulfillmentOrderStatuses.length - 1} className="w-9 h-9 rounded-full items-center justify-center active:opacity-70" style={{ backgroundColor: settingsPalette.softFill, borderWidth: 1, borderColor: settingsPalette.outline, opacity: index === fulfillmentOrderStatuses.length - 1 ? 0.35 : 1 }}><ChevronDown size={17} color={settingsPalette.text} strokeWidth={2.2} /></Pressable>
                 </View>
-                <EditableItem item={status} showColor showTrackingStage showWooCommerceStatusSlug modern onUpdate={(name, color, _, __, trackingStage, wooCommerceStatusSlug) => { updateOrderStatus(status.id, { name, color, trackingStage, wooCommerceStatusSlug }); triggerGlobalSave(); }} onDelete={() => openDeleteSetting('order-statuses', status)} />
+                <EditableItem
+                  item={status}
+                  showColor
+                  showTrackingStage
+                  showWooCommerceStatusSlug
+                  modern
+                  hideActions
+                  highlighted={recentlyMovedOrderStatusId === status.id}
+                  trailingAccessory={(
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                      <Pressable onPress={() => handleMoveOrderStatus(status.id, -1)} disabled={index === 0} accessibilityLabel={`Move ${status.name} earlier`} style={({ pressed }) => ({ width: 30, height: 34, alignItems: 'center', justifyContent: 'center', opacity: index === 0 ? 0.22 : pressed ? 0.55 : 1 })}><ChevronUp size={16} color={settingsPalette.faint} strokeWidth={2.2} /></Pressable>
+                      <Pressable onPress={() => handleMoveOrderStatus(status.id, 1)} disabled={index === fulfillmentOrderStatuses.length - 1} accessibilityLabel={`Move ${status.name} later`} style={({ pressed }) => ({ width: 30, height: 34, alignItems: 'center', justifyContent: 'center', opacity: index === fulfillmentOrderStatuses.length - 1 ? 0.22 : pressed ? 0.55 : 1 })}><ChevronDown size={16} color={settingsPalette.faint} strokeWidth={2.2} /></Pressable>
+                      <Pressable onPress={(event) => openOrderStatusMenu(status.id, event)} accessibilityLabel={`Actions for ${status.name}`} style={({ pressed }) => ({ width: 32, height: 34, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.55 : 1 })}><MoreVertical size={16} color={settingsPalette.faint} strokeWidth={2.2} /></Pressable>
+                    </View>
+                  )}
+                  onUpdate={(name, color, _, __, trackingStage, wooCommerceStatusSlug) => { updateOrderStatus(status.id, { name, color, trackingStage, wooCommerceStatusSlug }); triggerGlobalSave(); }}
+                  onDelete={() => openDeleteSetting('order-statuses', status)}
+                />
               </View>
             ))}
 
@@ -3425,7 +3521,17 @@ export default function SettingsScreen() {
                     </View>
                   ) : (
                     <View key={status.id} style={{ marginBottom: 10 }}>
-                      <EditableItem item={status} showColor showTrackingStage showWooCommerceStatusSlug modern onUpdate={(name, color, _, __, trackingStage, wooCommerceStatusSlug) => { updateOrderStatus(status.id, { name, color, trackingStage, wooCommerceStatusSlug }); triggerGlobalSave(); }} onDelete={() => openDeleteSetting('order-statuses', status)} />
+                      <EditableItem
+                        item={status}
+                        showColor
+                        showTrackingStage
+                        showWooCommerceStatusSlug
+                        modern
+                        hideActions
+                        trailingAccessory={<Pressable onPress={(event) => openOrderStatusMenu(status.id, event)} accessibilityLabel={`Actions for ${status.name}`} style={({ pressed }) => ({ width: 32, height: 34, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.55 : 1 })}><MoreVertical size={16} color={settingsPalette.faint} strokeWidth={2.2} /></Pressable>}
+                        onUpdate={(name, color, _, __, trackingStage, wooCommerceStatusSlug) => { updateOrderStatus(status.id, { name, color, trackingStage, wooCommerceStatusSlug }); triggerGlobalSave(); }}
+                        onDelete={() => openDeleteSetting('order-statuses', status)}
+                      />
                     </View>
                   );
                 })}
@@ -3437,18 +3543,19 @@ export default function SettingsScreen() {
       case 'quality-control-checks':
         return (
           <View className="pt-1">
-            <View className="p-5 mb-7" style={{ position: 'relative', overflow: 'hidden', borderRadius: 28, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border, shadowColor: '#000000', shadowOpacity: resolvedThemeMode === 'dark' ? 0.24 : 0.07, shadowRadius: 24, shadowOffset: { width: 0, height: 10 } }}>
+            <View className="p-5 mb-4" style={{ position: 'relative', overflow: 'hidden', borderRadius: 28, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
               <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -44, right: -36, width: 210, height: 210, borderRadius: 105 }} />
               <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, borderBottomLeftRadius: 3, borderBottomRightRadius: 3, backgroundColor: FYLL_LIME }} />
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 15, marginBottom: 18 }}>
-                <LinearGradient colors={[FYLL_LIME, '#879400']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 66, height: 66, borderRadius: 22, alignItems: 'center', justifyContent: 'center' }}><ListTodo size={28} color={FYLL_LIME_INK} strokeWidth={2.1} /></LinearGradient>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={{ color: settingsPalette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Dispatch proof</Text>
-                  <MoneyText style={{ color: settingsPalette.text, fontSize: 27, lineHeight: 32, letterSpacing: -0.7 }}>{qcChecklistRequirements.length} {qcChecklistRequirements.length === 1 ? 'check' : 'checks'}</MoneyText>
-                  <Text style={{ color: settingsPalette.faint, fontSize: 12.5, marginTop: 2 }}>Required before an order is dispatched</Text>
+                  <MoneyText style={{ color: settingsPalette.text, fontSize: isWebDesktop ? 28 : 24, lineHeight: isWebDesktop ? 34 : 29, letterSpacing: -0.7, marginTop: 2 }}>{qcChecklistRequirements.length} {qcChecklistRequirements.length === 1 ? 'check' : 'checks'}</MoneyText>
+                  <Text style={{ color: settingsPalette.faint, fontSize: 12.5, lineHeight: 18, marginTop: 4 }}>Required before an order is dispatched</Text>
                 </View>
               </View>
-              <View style={{ gap: 10 }}>
+            </View>
+
+              <View style={{ gap: 10, marginBottom: 20 }}>
                 {showAddQcCheckForm ? (
                   <View>
                     <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 8 }}>New check</Text>
@@ -3463,25 +3570,26 @@ export default function SettingsScreen() {
                 ) : (
                   <Pressable onPress={() => { setNewItemName(''); setShowAddQcCheckForm(true); }} className="rounded-full flex-row items-center justify-center active:opacity-80" style={[primaryPillButtonStyle, { height: 46, gap: 8 }]}><Plus size={16} color={FYLL_LIME_INK} strokeWidth={2.5} /><Text style={[primaryPillTextStyle, { fontSize: isMobile ? 14 : 15 }]}>New check</Text></Pressable>
                 )}
+              </View>
+
+            <View style={{ paddingHorizontal: 4, marginBottom: 10 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '700', letterSpacing: 1.35, textTransform: 'uppercase' }}>Dispatch checklist</Text>
                 <Pressable
                   onPress={() => {
                     resetQcChecklistRequirements();
                     triggerGlobalSave();
                   }}
-                  className="rounded-full flex-row items-center active:opacity-80"
-                  style={{ height: 44, justifyContent: 'center', gap: 8, backgroundColor: settingsPalette.softFill, borderWidth: 1, borderColor: settingsPalette.outline }}
+                  className="flex-row items-center active:opacity-70"
+                  style={{ minHeight: 32, gap: 6, paddingHorizontal: 4 }}
                 >
-                  <RotateCcw size={15} color={settingsPalette.text} strokeWidth={2} />
-                  <Text style={{ color: settingsPalette.text, fontFamily: 'BricolageGrotesque_700Bold', fontSize: 13, fontWeight: '400' }}>Restore defaults</Text>
+                  <RotateCcw size={13} color={settingsPalette.faint} strokeWidth={2} />
+                  <Text style={{ color: settingsPalette.faint, fontSize: 12, fontWeight: '500' }}>Restore defaults</Text>
                 </Pressable>
               </View>
-            </View>
-
-            <View style={{ paddingHorizontal: 4, marginBottom: 10 }}>
-              <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '700', letterSpacing: 1.35, textTransform: 'uppercase' }}>Dispatch checklist</Text>
               <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 17, marginTop: 4 }}>Team members complete these checks before dispatch.</Text>
             </View>
-            <View style={{ borderRadius: 26, borderWidth: 1, borderColor: settingsPalette.border, backgroundColor: settingsPalette.card, paddingHorizontal: 16, overflow: 'hidden' }}>
+            <View style={{ borderRadius: 26, borderWidth: 1, borderColor: settingsPalette.border, backgroundColor: settingsPalette.card, overflow: 'hidden' }}>
               {qcChecklistRequirements.length === 0 ? (
                 <View className="p-5">
                   <Text style={{ color: settingsPalette.text }} className="font-semibold text-sm">No checks configured</Text>
@@ -3492,21 +3600,21 @@ export default function SettingsScreen() {
               ) : qcChecklistRequirements.map((item, index) => (
                 <View
                   key={item.key}
-                  className="py-4 flex-row items-center"
-                  style={{ minHeight: 72, gap: 12, borderTopWidth: index === 0 ? 0 : 1, borderTopColor: settingsPalette.hairline }}
+                  className="flex-row items-center"
+                  style={{ minHeight: 64, paddingHorizontal: 16, paddingVertical: 12, gap: 11, borderTopWidth: index === 0 ? 0 : 1, borderTopColor: settingsPalette.hairline }}
                 >
-                  <View className="w-10 h-10 rounded-2xl items-center justify-center" style={{ backgroundColor: settingsPalette.nudgeBg }}>
-                    <Check size={17} color={settingsPalette.limeOnSurface} strokeWidth={2.6} />
+                  <View style={{ width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: settingsPalette.nudgeBg }}>
+                    <Check size={14} color={settingsPalette.limeOnSurface} strokeWidth={2.5} />
                   </View>
-                  <Text style={{ color: settingsPalette.text, fontSize: isMobile ? 14 : 15 }} className="flex-1 font-semibold">
+                  <Text style={{ flex: 1, color: settingsPalette.text, fontSize: 12, lineHeight: 17, fontWeight: '500' }}>
                     {item.label}
                   </Text>
                   <Pressable
                     onPress={() => openDeleteSetting('quality-control-checks', { id: item.key, name: item.label })}
-                    className="w-9 h-9 rounded-full items-center justify-center active:opacity-70"
-                    style={{ backgroundColor: settingsPalette.dangerBg }}
+                    className="items-center justify-center active:opacity-70"
+                    style={{ width: 28, height: 28 }}
                   >
-                    <Trash2 size={16} color="#EF4444" strokeWidth={2} />
+                    <Trash2 size={13} color="#EF4444" strokeWidth={2} />
                   </Pressable>
                 </View>
               ))}
@@ -3517,21 +3625,19 @@ export default function SettingsScreen() {
       case 'case-statuses':
         return (
           <View className="pt-1">
-            <View className="rounded-3xl overflow-hidden mb-4" style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
-              <LinearGradient colors={resolvedThemeMode === 'dark' ? ['#DDEB3F', '#9EAD00'] : ['#E3EC54', '#B9C722']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ height: 5 }} />
-              <View style={{ padding: isWebDesktop ? 24 : 18 }}>
-                <View className="flex-row items-center" style={{ gap: 14 }}>
-                  <LinearGradient colors={resolvedThemeMode === 'dark' ? ['#E5EF50', '#A9B700'] : ['#E8F15A', '#C4D12B']} style={{ width: isWebDesktop ? 54 : 48, height: isWebDesktop ? 54 : 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }}>
-                    <FileText size={isWebDesktop ? 25 : 22} color={FYLL_LIME_INK} strokeWidth={2.2} />
-                  </LinearGradient>
+            <View className="rounded-3xl overflow-hidden mb-4" style={{ position: 'relative', minHeight: isWebDesktop ? 138 : 150, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+              <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -48, right: -34, width: 220, height: 220, borderRadius: 110 }} />
+              <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
+              <View style={{ flex: 1, justifyContent: 'center', padding: isWebDesktop ? 24 : 20 }}>
+                <View className="flex-row items-center">
                   <View style={{ flex: 1 }}>
                     <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Case workflow</Text>
-                    <MoneyText style={{ color: settingsPalette.text, fontSize: isWebDesktop ? 28 : 24, fontWeight: '700', marginTop: 2 }}>
+                    <MoneyText style={{ color: settingsPalette.text, fontSize: isWebDesktop ? 28 : 24, lineHeight: isWebDesktop ? 34 : 29, fontWeight: '700', marginTop: 2 }}>
                       {caseStatuses.length} {caseStatuses.length === 1 ? 'status' : 'statuses'}
                     </MoneyText>
                   </View>
                 </View>
-                <Text style={{ color: settingsPalette.muted, fontSize: isWebDesktop ? 13 : 12, lineHeight: isWebDesktop ? 20 : 18, marginTop: 14 }}>
+                <Text style={{ color: settingsPalette.faint, fontSize: 12.5, lineHeight: 18, marginTop: 4 }}>
                   Define the stages your team uses to track customer issues from opening to resolution.
                 </Text>
               </View>
@@ -3578,46 +3684,52 @@ export default function SettingsScreen() {
             ) : null}
 
             <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Case statuses</Text>
-            {caseStatuses.map((status) => (
-              <EditableItem
-                key={status.id}
-                item={status}
-                showColor
-                showDescription
-                modern
-                onUpdate={(name, color, _, description) => {
-                  updateCaseStatus(status.id, { name, color, description });
-                  triggerGlobalSave();
-                }}
-                onDelete={() => {
-                  openDeleteSetting('case-statuses', status);
-                }}
-              />
-            ))}
+            <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+              {caseStatuses.length === 0 ? (
+                <View style={{ padding: 20 }}>
+                  <Text style={{ color: settingsPalette.text, fontSize: 12, fontWeight: '500' }}>No case statuses</Text>
+                  <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 17, marginTop: 3 }}>Add the first stage for your customer-care workflow.</Text>
+                </View>
+              ) : caseStatuses.map((status, index) => (
+                <EditableItem
+                  key={status.id}
+                  item={status}
+                  showColor
+                  showDescription
+                  modern
+                  plainActions
+                  compactLabel
+                  grouped
+                  showDivider={index < caseStatuses.length - 1}
+                  onUpdate={(name, color, _, description) => {
+                    updateCaseStatus(status.id, { name, color, description });
+                    triggerGlobalSave();
+                  }}
+                  onDelete={() => {
+                    openDeleteSetting('case-statuses', status);
+                  }}
+                />
+              ))}
+            </View>
           </View>
         );
 
       case 'sale-sources':
         return (
           <View className="pt-1">
-            <View className="rounded-3xl overflow-hidden mb-4" style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
-              <LinearGradient colors={resolvedThemeMode === 'dark' ? ['#DDEB3F', '#9EAD00'] : ['#E3EC54', '#B9C722']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ height: 5 }} />
-              <View style={{ padding: isWebDesktop ? 24 : 18 }}>
-                <View className="flex-row items-center" style={{ gap: 14 }}>
-                  <LinearGradient
-                    colors={resolvedThemeMode === 'dark' ? ['#E5EF50', '#A9B700'] : ['#E8F15A', '#C4D12B']}
-                    style={{ width: isWebDesktop ? 54 : 48, height: isWebDesktop ? 54 : 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }}
-                  >
-                    <Tag size={isWebDesktop ? 25 : 22} color={FYLL_LIME_INK} strokeWidth={2.2} />
-                  </LinearGradient>
+            <View className="rounded-3xl overflow-hidden mb-4" style={{ position: 'relative', minHeight: isWebDesktop ? 138 : 150, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+              <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -48, right: -34, width: 220, height: 220, borderRadius: 110 }} />
+              <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
+              <View style={{ flex: 1, justifyContent: 'center', padding: isWebDesktop ? 24 : 20 }}>
+                <View className="flex-row items-center">
                   <View style={{ flex: 1 }}>
                     <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Order attribution</Text>
-                    <MoneyText style={{ color: settingsPalette.text, fontSize: isWebDesktop ? 28 : 24, fontWeight: '700', marginTop: 2 }}>
+                    <MoneyText style={{ color: settingsPalette.text, fontSize: isWebDesktop ? 28 : 24, lineHeight: isWebDesktop ? 34 : 29, fontWeight: '700', marginTop: 2 }}>
                       {saleSources.length} {saleSources.length === 1 ? 'source' : 'sources'}
                     </MoneyText>
                   </View>
                 </View>
-                <Text style={{ color: settingsPalette.muted, fontSize: isWebDesktop ? 13 : 12, lineHeight: isWebDesktop ? 20 : 18, marginTop: 14 }}>
+                <Text style={{ color: settingsPalette.faint, fontSize: 12.5, lineHeight: 18, marginTop: 4 }}>
                   Keep every sales channel organised so you can see where orders and revenue originate.
                 </Text>
               </View>
@@ -3657,45 +3769,44 @@ export default function SettingsScreen() {
             ) : null}
 
             <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Saved sources</Text>
-            {saleSources.map((source) => (
-              <EditableItem
-                key={source.id}
-                item={source}
-                modern
-                onUpdate={(name) => {
-                  updateSaleSource(source.id, { name });
-                  triggerGlobalSave();
-                }}
-                onDelete={() => {
-                  openDeleteSetting('sale-sources', source);
-                }}
-              />
-            ))}
+            <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+              {saleSources.length === 0 ? (
+                <View style={{ padding: 20 }}>
+                  <Text style={{ color: settingsPalette.text, fontSize: 12, fontWeight: '500' }}>No sales sources</Text>
+                  <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 17, marginTop: 3 }}>Add the first channel your orders come from.</Text>
+                </View>
+              ) : saleSources.map((source, index) => (
+                <EditableItem
+                  key={source.id}
+                  item={source}
+                  modern
+                  plainActions
+                  compactLabel
+                  grouped
+                  compactRow
+                  showDivider={index < saleSources.length - 1}
+                  onUpdate={(name) => {
+                    updateSaleSource(source.id, { name });
+                    triggerGlobalSave();
+                  }}
+                  onDelete={() => {
+                    openDeleteSetting('sale-sources', source);
+                  }}
+                />
+              ))}
+            </View>
           </View>
         );
 
       case 'custom-services':
         return (
-          <View className="pt-1">
-            <View className="rounded-3xl overflow-hidden mb-4" style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
-              <LinearGradient colors={resolvedThemeMode === 'dark' ? ['#DDEB3F', '#9EAD00'] : ['#E3EC54', '#B9C722']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ height: 5 }} />
-              <View style={{ padding: isWebDesktop ? 24 : 18 }}>
-                <View className="flex-row items-center" style={{ gap: 14 }}>
-                  <LinearGradient colors={resolvedThemeMode === 'dark' ? ['#E5EF50', '#A9B700'] : ['#E8F15A', '#C4D12B']} style={{ width: isWebDesktop ? 54 : 48, height: isWebDesktop ? 54 : 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }}>
-                    <Wrench size={isWebDesktop ? 25 : 22} color={FYLL_LIME_INK} strokeWidth={2.2} />
-                  </LinearGradient>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Order extras</Text>
-                    <MoneyText style={{ color: settingsPalette.text, fontSize: isWebDesktop ? 28 : 24, fontWeight: '700', marginTop: 2 }}>
-                      {customServices.length} {customServices.length === 1 ? 'add-on' : 'add-ons'}
-                    </MoneyText>
-                  </View>
-                </View>
-                <Text style={{ color: settingsPalette.muted, fontSize: isWebDesktop ? 13 : 12, lineHeight: isWebDesktop ? 20 : 18, marginTop: 14 }}>
-                  Create optional extras such as lens coatings, gift wrapping, or express delivery.
-                </Text>
-              </View>
-            </View>
+          <View>
+            <SettingsDetailHero
+              eyebrow="Order extras"
+              title={`${customServices.length} ${customServices.length === 1 ? 'add-on' : 'add-ons'}`}
+              description="Create optional extras such as lens coatings, gift wrapping, or express delivery."
+              isDesktop={isWebDesktop}
+            />
 
             <Pressable onPress={() => setShowAddCustomServiceForm((value) => !value)} className="rounded-full flex-row items-center justify-center active:opacity-80 mb-4" style={{ minHeight: 48, gap: 8, backgroundColor: FYLL_LIME }}>
               {showAddCustomServiceForm ? <X size={16} color={FYLL_LIME_INK} strokeWidth={2.4} /> : <Plus size={16} color={FYLL_LIME_INK} strokeWidth={2.4} />}
@@ -3718,21 +3829,33 @@ export default function SettingsScreen() {
             ) : null}
 
             <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Saved add-ons</Text>
-            {customServices.map((service) => (
-              <EditableItem
-                key={service.id}
-                item={service}
-                showPrice
-                modern
-                onUpdate={(name, _, defaultPrice) => {
-                  updateCustomService(service.id, { name, defaultPrice });
-                  triggerGlobalSave();
-                }}
-                onDelete={() => {
-                  openDeleteSetting('custom-services', service);
-                }}
-              />
-            ))}
+            <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+              {customServices.length === 0 ? (
+                <View style={{ padding: 20 }}>
+                  <Text style={{ color: settingsPalette.text, fontSize: 12, fontWeight: '500' }}>No add-ons</Text>
+                  <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 17, marginTop: 3 }}>Create the first optional extra for your orders.</Text>
+                </View>
+              ) : customServices.map((service, index) => (
+                <EditableItem
+                  key={service.id}
+                  item={service}
+                  showPrice
+                  modern
+                  plainActions
+                  compactLabel
+                  grouped
+                  compactRow
+                  showDivider={index < customServices.length - 1}
+                  onUpdate={(name, _, defaultPrice) => {
+                    updateCustomService(service.id, { name, defaultPrice });
+                    triggerGlobalSave();
+                  }}
+                  onDelete={() => {
+                    openDeleteSetting('custom-services', service);
+                  }}
+                />
+              ))}
+            </View>
           </View>
         );
 
@@ -3745,21 +3868,15 @@ export default function SettingsScreen() {
             >
               <LinearGradient colors={resolvedThemeMode === 'dark' ? ['#DDEB3F', '#9EAD00'] : ['#E3EC54', '#B9C722']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ height: 5 }} />
               <View style={{ padding: isWebDesktop ? 24 : 18 }}>
-                <View className="flex-row items-center" style={{ gap: 14 }}>
-                  <LinearGradient
-                    colors={resolvedThemeMode === 'dark' ? ['#E5EF50', '#A9B700'] : ['#E8F15A', '#C4D12B']}
-                    style={{ width: isWebDesktop ? 54 : 48, height: isWebDesktop ? 54 : 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }}
-                  >
-                    <Clock3 size={isWebDesktop ? 25 : 22} color={FYLL_LIME_INK} strokeWidth={2.2} />
-                  </LinearGradient>
+                <View className="flex-row items-center">
                   <View style={{ flex: 1 }}>
                     <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Delivery planning</Text>
-                    <MoneyText style={{ color: settingsPalette.text, fontSize: isWebDesktop ? 28 : 24, fontWeight: '700', marginTop: 2 }}>
+                    <MoneyText style={{ color: settingsPalette.text, fontSize: isWebDesktop ? 28 : 24, lineHeight: isWebDesktop ? 34 : 29, fontWeight: '700', marginTop: 2 }}>
                       {timelineRows.length} {timelineRows.length === 1 ? 'timeline' : 'timelines'}
                     </MoneyText>
                   </View>
                 </View>
-                <Text style={{ color: settingsPalette.muted, fontSize: isWebDesktop ? 13 : 12, lineHeight: isWebDesktop ? 20 : 18, marginTop: 14 }}>
+                <Text style={{ color: settingsPalette.faint, fontSize: 12.5, lineHeight: 18, marginTop: 4 }}>
                   Set processing and delivery windows by location so every order has a clear expected date.
                 </Text>
               </View>
@@ -4170,14 +4287,19 @@ export default function SettingsScreen() {
         );
 
       case 'all-features':
-        return <FeaturesSettings onConfigure={handleConfigureFeature} />;
+        return (
+          <View style={{ backgroundColor: settingsPalette.page, borderWidth: 1, borderColor: settingsPalette.border, borderRadius: 26, padding: 28 }}>
+            <FeaturesSettings onConfigure={handleConfigureFeature} />
+          </View>
+        );
 
       case 'payment-methods':
         return (
           <View className="pt-1">
-            <View className="rounded-3xl overflow-hidden mb-4" style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
-              <LinearGradient colors={resolvedThemeMode === 'dark' ? ['#DDEB3F', '#9EAD00'] : ['#E3EC54', '#B9C722']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ height: 5 }} />
-              <View style={{ padding: isWebDesktop ? 24 : 18 }}>
+            <View className="rounded-3xl overflow-hidden mb-4" style={{ position: 'relative', minHeight: isWebDesktop ? 138 : 150, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+              <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -48, right: -34, width: 220, height: 220, borderRadius: 110 }} />
+              <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
+              <View style={{ flex: 1, justifyContent: 'center', padding: isWebDesktop ? 24 : 20 }}>
                 <View className="flex-row items-center" style={{ gap: 14 }}>
                   {!isWebDesktop ? (
                     <LinearGradient
@@ -4189,12 +4311,12 @@ export default function SettingsScreen() {
                   ) : null}
                   <View style={{ flex: 1 }}>
                     <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Checkout options</Text>
-                    <MoneyText style={{ color: settingsPalette.text, fontSize: isWebDesktop ? 28 : 24, fontWeight: '700', marginTop: 2 }}>
+                    <MoneyText style={{ color: settingsPalette.text, fontSize: isWebDesktop ? 28 : 24, lineHeight: isWebDesktop ? 34 : 29, fontWeight: '700', marginTop: 2 }}>
                       {paymentMethods.length} {paymentMethods.length === 1 ? 'method' : 'methods'}
                     </MoneyText>
                   </View>
                 </View>
-                <Text style={{ color: settingsPalette.muted, fontSize: isWebDesktop ? 13 : 12, lineHeight: isWebDesktop ? 20 : 18, marginTop: 14 }}>
+                <Text style={{ color: settingsPalette.faint, fontSize: 12.5, lineHeight: 18, marginTop: 4 }}>
                   Manage the payment choices available when orders are recorded and checked out.
                 </Text>
               </View>
@@ -4234,21 +4356,32 @@ export default function SettingsScreen() {
             ) : null}
 
             <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Payment methods</Text>
-            {paymentMethods.map((method) => (
-              <EditableItem
-                key={method.id}
-                item={method}
-                modern
-                plainActions
-                onUpdate={(name) => {
-                  updatePaymentMethod(method.id, { name }, businessId);
-                  triggerGlobalSave();
-                }}
-                onDelete={() => {
-                  openDeleteSetting('payment-methods', method);
-                }}
-              />
-            ))}
+            <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+              {paymentMethods.length === 0 ? (
+                <View style={{ padding: 20 }}>
+                  <Text style={{ color: settingsPalette.text, fontSize: 12, fontWeight: '600' }}>No payment methods</Text>
+                  <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 17, marginTop: 3 }}>Add the first payment choice available when recording an order.</Text>
+                </View>
+              ) : paymentMethods.map((method, index) => (
+                <EditableItem
+                  key={method.id}
+                  item={method}
+                  modern
+                  plainActions
+                  compactLabel
+                  grouped
+                  compactRow
+                  showDivider={index < paymentMethods.length - 1}
+                  onUpdate={(name) => {
+                    updatePaymentMethod(method.id, { name }, businessId);
+                    triggerGlobalSave();
+                  }}
+                  onDelete={() => {
+                    openDeleteSetting('payment-methods', method);
+                  }}
+                />
+              ))}
+            </View>
 
             {unmappedOrderPaymentMethods.length > 0 && paymentMethods.length > 0 ? (
               <View className="rounded-3xl p-4 mt-4" style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.nudgeBorder }}>
@@ -4300,24 +4433,19 @@ export default function SettingsScreen() {
       case 'logistics-carriers':
         return (
           <View className="pt-1">
-            <View className="rounded-3xl overflow-hidden mb-4" style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
-              <LinearGradient colors={resolvedThemeMode === 'dark' ? ['#DDEB3F', '#9EAD00'] : ['#E3EC54', '#B9C722']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ height: 5 }} />
-              <View style={{ padding: isWebDesktop ? 24 : 18 }}>
-                <View className="flex-row items-center" style={{ gap: 14 }}>
-                  <LinearGradient
-                    colors={resolvedThemeMode === 'dark' ? ['#E5EF50', '#A9B700'] : ['#E8F15A', '#C4D12B']}
-                    style={{ width: isWebDesktop ? 54 : 48, height: isWebDesktop ? 54 : 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }}
-                  >
-                    <Truck size={isWebDesktop ? 25 : 22} color={FYLL_LIME_INK} strokeWidth={2.2} />
-                  </LinearGradient>
+            <View className="rounded-3xl overflow-hidden mb-4" style={{ position: 'relative', minHeight: isWebDesktop ? 138 : 150, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+              <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -48, right: -34, width: 220, height: 220, borderRadius: 110 }} />
+              <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
+              <View style={{ flex: 1, justifyContent: 'center', padding: isWebDesktop ? 24 : 20 }}>
+                <View className="flex-row items-center">
                   <View style={{ flex: 1 }}>
                     <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Delivery partners</Text>
-                    <MoneyText style={{ color: settingsPalette.text, fontSize: isWebDesktop ? 28 : 24, fontWeight: '700', marginTop: 2 }}>
+                    <MoneyText style={{ color: settingsPalette.text, fontSize: isWebDesktop ? 28 : 24, lineHeight: isWebDesktop ? 34 : 29, fontWeight: '700', marginTop: 2 }}>
                       {logisticsCarriers.length} {logisticsCarriers.length === 1 ? 'carrier' : 'carriers'}
                     </MoneyText>
                   </View>
                 </View>
-                <Text style={{ color: settingsPalette.muted, fontSize: isWebDesktop ? 13 : 12, lineHeight: isWebDesktop ? 20 : 18, marginTop: 14 }}>
+                <Text style={{ color: settingsPalette.faint, fontSize: 12.5, lineHeight: 18, marginTop: 4 }}>
                   Manage the delivery companies available when assigning and tracking order shipments.
                 </Text>
               </View>
@@ -4357,20 +4485,32 @@ export default function SettingsScreen() {
             ) : null}
 
             <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Saved carriers</Text>
-            {logisticsCarriers.map((carrier) => (
-              <EditableItem
-                key={carrier.id}
-                item={carrier}
-                modern
-                onUpdate={(name) => {
-                  updateLogisticsCarrier(carrier.id, { name });
-                  triggerGlobalSave();
-                }}
-                onDelete={() => {
-                  openDeleteSetting('logistics-carriers', carrier);
-                }}
-              />
-            ))}
+            <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+              {logisticsCarriers.length === 0 ? (
+                <View style={{ padding: 20 }}>
+                  <Text style={{ color: settingsPalette.text, fontSize: 12, fontWeight: '500' }}>No logistics carriers</Text>
+                  <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 17, marginTop: 3 }}>Add the first delivery partner available to your team.</Text>
+                </View>
+              ) : logisticsCarriers.map((carrier, index) => (
+                <EditableItem
+                  key={carrier.id}
+                  item={carrier}
+                  modern
+                  plainActions
+                  compactLabel
+                  grouped
+                  compactRow
+                  showDivider={index < logisticsCarriers.length - 1}
+                  onUpdate={(name) => {
+                    updateLogisticsCarrier(carrier.id, { name });
+                    triggerGlobalSave();
+                  }}
+                  onDelete={() => {
+                    openDeleteSetting('logistics-carriers', carrier);
+                  }}
+                />
+              ))}
+            </View>
           </View>
         );
 
@@ -4380,18 +4520,15 @@ export default function SettingsScreen() {
             <View className="rounded-3xl overflow-hidden mb-4" style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
               <LinearGradient colors={resolvedThemeMode === 'dark' ? ['#DDEB3F', '#9EAD00'] : ['#E3EC54', '#B9C722']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ height: 5 }} />
               <View style={{ padding: isWebDesktop ? 24 : 18 }}>
-                <View className="flex-row items-center" style={{ gap: 14 }}>
-                  <LinearGradient colors={resolvedThemeMode === 'dark' ? ['#E5EF50', '#A9B700'] : ['#E8F15A', '#C4D12B']} style={{ width: isWebDesktop ? 54 : 48, height: isWebDesktop ? 54 : 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }}>
-                    <Check size={isWebDesktop ? 25 : 22} color={FYLL_LIME_INK} strokeWidth={2.5} />
-                  </LinearGradient>
+                <View className="flex-row items-center">
                   <View style={{ flex: 1 }}>
                     <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Case outcomes</Text>
-                    <MoneyText style={{ color: settingsPalette.text, fontSize: isWebDesktop ? 28 : 24, fontWeight: '700', marginTop: 2 }}>
+                    <MoneyText style={{ color: settingsPalette.text, fontSize: isWebDesktop ? 28 : 24, lineHeight: isWebDesktop ? 34 : 29, fontWeight: '700', marginTop: 2 }}>
                       {resolutionTypes.length} {resolutionTypes.length === 1 ? 'resolution' : 'resolutions'}
                     </MoneyText>
                   </View>
                 </View>
-                <Text style={{ color: settingsPalette.muted, fontSize: isWebDesktop ? 13 : 12, lineHeight: isWebDesktop ? 20 : 18, marginTop: 14 }}>
+                <Text style={{ color: settingsPalette.faint, fontSize: 12.5, lineHeight: 18, marginTop: 4 }}>
                   Define the outcomes your team records when a customer case is resolved.
                 </Text>
               </View>
@@ -4418,21 +4555,32 @@ export default function SettingsScreen() {
             ) : null}
 
             <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Resolution types</Text>
-            {resolutionTypes.map((type) => (
-              <EditableItem
-                key={type.id}
-                item={type}
-                showDescription
-                modern
-                onUpdate={(name, _, __, description) => {
-                  updateResolutionType(type.id, { name, description });
-                  triggerGlobalSave();
-                }}
-                onDelete={() => {
-                  openDeleteSetting('resolution-types', type);
-                }}
-              />
-            ))}
+            <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+              {resolutionTypes.length === 0 ? (
+                <View style={{ padding: 20 }}>
+                  <Text style={{ color: settingsPalette.text, fontSize: 12, fontWeight: '500' }}>No resolution types</Text>
+                  <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 17, marginTop: 3 }}>Add the first outcome your team can record when closing a case.</Text>
+                </View>
+              ) : resolutionTypes.map((type, index) => (
+                <EditableItem
+                  key={type.id}
+                  item={type}
+                  showDescription
+                  modern
+                  plainActions
+                  compactLabel
+                  grouped
+                  showDivider={index < resolutionTypes.length - 1}
+                  onUpdate={(name, _, __, description) => {
+                    updateResolutionType(type.id, { name, description });
+                    triggerGlobalSave();
+                  }}
+                  onDelete={() => {
+                    openDeleteSetting('resolution-types', type);
+                  }}
+                />
+              ))}
+            </View>
           </View>
         );
 
@@ -4666,13 +4814,34 @@ export default function SettingsScreen() {
   );
 
   const renderWebAppearanceContent = () => (
-    <View style={{ gap: 18 }}>
+    <View>
+      <View style={{ position: 'relative', overflow: 'hidden', minHeight: 138, borderRadius: 26, borderWidth: 1, borderColor: settingsPalette.border, backgroundColor: settingsPalette.inset, padding: 24, justifyContent: 'center', marginBottom: 24 }}>
+        <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -48, right: -34, width: 220, height: 220, borderRadius: 110 }} />
+        <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
+        <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Workspace display</Text>
+        <MoneyText style={{ color: settingsPalette.text, fontSize: 28, lineHeight: 34, marginTop: 2 }}>Appearance</MoneyText>
+        <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 18, marginTop: 4 }}>Choose how Fyll looks on this device.</Text>
+      </View>
+
+      <Text style={{ color: settingsPalette.muted, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: 0.75, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Theme</Text>
       <View style={{ padding: 18, borderRadius: 26, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
-        <View style={{ marginBottom: 16 }}>
-          <Text style={{ color: settingsPalette.text, fontSize: 15, fontWeight: '700' }}>Workspace theme</Text>
-          <Text style={{ color: settingsPalette.faint, fontSize: 12, marginTop: 3 }}>{themeMode === 'system' ? `Following device · ${resolvedThemeMode === 'dark' ? 'Dark' : 'Light'}` : `${themeMode === 'dark' ? 'Dark' : 'Light'} mode selected`}</Text>
+        <View style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+          <View style={{ width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: settingsPalette.nudgeBg }}>
+            {themeMode === 'system'
+              ? <Laptop size={18} color={settingsPalette.limeOnSurface} strokeWidth={2} />
+              : themeMode === 'dark'
+                ? <Moon size={18} color={settingsPalette.limeOnSurface} strokeWidth={2} />
+                : <Sun size={18} color={settingsPalette.limeOnSurface} strokeWidth={2} />}
+          </View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ color: settingsPalette.text, fontSize: 14, lineHeight: 18, fontWeight: '600' }}>Workspace theme</Text>
+            <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 16, marginTop: 2 }}>
+              {themeMode === 'system' ? `Following device · ${resolvedThemeMode === 'dark' ? 'Dark' : 'Light'}` : `${themeMode === 'dark' ? 'Dark' : 'Light'} mode selected`}
+            </Text>
+          </View>
         </View>
-        <View style={{ flexDirection: 'row', gap: 6, padding: 4, borderRadius: 999, backgroundColor: settingsPalette.inset, borderWidth: 1, borderColor: settingsPalette.border }}>
+
+        <View style={{ flexDirection: 'row', gap: 6, padding: 4, marginTop: 18, borderRadius: 999, backgroundColor: settingsPalette.inset, borderWidth: 1, borderColor: settingsPalette.border }}>
           {themeOptions.map((option) => {
             const isSelected = themeMode === option.mode;
             return (
@@ -4683,18 +4852,9 @@ export default function SettingsScreen() {
                   setThemeMode(option.mode);
                 }}
                 className="active:opacity-80"
-                style={{
-                  flex: 1,
-                  height: 42,
-                  borderRadius: 999,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: isSelected ? FYLL_LIME : 'transparent',
-                }}
+                style={{ flex: 1, height: 42, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: isSelected ? FYLL_LIME : 'transparent' }}
               >
-                <Text style={{ color: isSelected ? FYLL_LIME_INK : settingsPalette.faint, fontSize: 14, fontWeight: '700' }}>
-                  {option.label}
-                </Text>
+                <Text style={{ color: isSelected ? FYLL_LIME_INK : settingsPalette.faint, fontSize: 14, lineHeight: 18, fontWeight: '700' }}>{option.label}</Text>
               </Pressable>
             );
           })}
@@ -4703,232 +4863,521 @@ export default function SettingsScreen() {
     </View>
   );
 
-  const renderWebNotificationsContent = () => (
-    <View style={{ borderRadius: 22, overflow: 'hidden', backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
-      <View
-        style={{
-          minHeight: 72,
-          paddingHorizontal: 18,
-          paddingVertical: 14,
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 14,
-          borderBottomWidth: 1,
-          borderBottomColor: settingsPalette.hairline,
-        }}
-      >
-        <View
-          style={{
-            width: 42,
-            height: 42,
-            borderRadius: 13,
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: settingsPalette.nudgeBg,
-          }}
-        >
-          {notifPermission === 'granted'
-            ? <Bell size={18} color={settingsPalette.limeOnSurface} strokeWidth={2} />
-            : <BellOff size={18} color={settingsPalette.limeOnSurface} strokeWidth={2} />}
+  const renderWebNotificationsContent = () => {
+    const hasWhatsApp = currentUser?.role === 'admin';
+    const hasEmail = canUseOrderAutomation;
+
+    return (
+      <View>
+        <View style={{ position: 'relative', overflow: 'hidden', minHeight: 138, borderRadius: 26, borderWidth: 1, borderColor: settingsPalette.border, backgroundColor: settingsPalette.inset, padding: 24, justifyContent: 'center', marginBottom: 24 }}>
+          <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -48, right: -34, width: 220, height: 220, borderRadius: 110 }} />
+          <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
+          <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Customer communication</Text>
+          <MoneyText style={{ color: settingsPalette.text, fontSize: 28, lineHeight: 34, marginTop: 2 }}>Notifications</MoneyText>
+          <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 18, marginTop: 4 }}>Choose how you receive activity alerts and how customers receive order updates.</Text>
         </View>
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: colors.text.primary, fontSize: 14, lineHeight: 18, fontWeight: '600' }}>Push notifications</Text>
-          <Text style={{ color: colors.text.tertiary, fontSize: 12, lineHeight: 16, marginTop: 2 }}>
-            {notifPermission === 'granted' ? 'Enabled for browser alerts' : notifPermission === 'denied' ? 'Blocked in browser settings' : 'Not enabled yet'}
-          </Text>
+
+        <Text style={{ color: settingsPalette.muted, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Notification channels</Text>
+        <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+          <View style={{ minHeight: 74, paddingHorizontal: 18, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 14, borderBottomWidth: hasWhatsApp || hasEmail ? 1 : 0, borderBottomColor: settingsPalette.hairline }}>
+            <View style={{ width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: settingsPalette.nudgeBg }}>
+              {notifPermission === 'granted'
+                ? <Bell size={18} color={settingsPalette.limeOnSurface} strokeWidth={2} />
+                : <BellOff size={18} color={settingsPalette.limeOnSurface} strokeWidth={2} />}
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={{ color: settingsPalette.text, fontSize: 14, lineHeight: 18, fontWeight: '600' }}>Push notifications</Text>
+              <Text style={{ color: testPushResult ? (testPushResult.ok ? '#10B981' : '#EF4444') : settingsPalette.faint, fontSize: 12, lineHeight: 16, marginTop: 2 }} numberOfLines={2}>
+                {testPushResult?.message ?? (notifPermission === 'granted' ? 'Enabled for alerts on this browser' : notifPermission === 'denied' ? 'Blocked in your browser settings' : 'Get alerts for orders and team activity')}
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => {
+                if (notifPermission === 'granted') {
+                  void sendTestPushToThisDevice();
+                } else if (notifPermission === 'denied') {
+                  if (typeof window !== 'undefined') window.open('https://support.apple.com/guide/safari/customize-settings-for-a-website-ibrw7f78f7fe/mac', '_blank');
+                } else {
+                  promptForPermission();
+                  setTimeout(() => setNotifPermission(window.Notification?.permission ?? null), 1500);
+                }
+              }}
+              disabled={!notifReady || isSendingTestPush}
+              className="active:opacity-80"
+              style={{ height: 36, minWidth: 78, paddingHorizontal: 14, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: notifPermission === 'denied' ? settingsPalette.softFill : FYLL_LIME, borderWidth: notifPermission === 'denied' ? 1 : 0, borderColor: notifPermission === 'denied' ? settingsPalette.outline : 'transparent', opacity: notifReady && !isSendingTestPush ? 1 : 0.5 }}
+            >
+              <Text style={{ color: notifPermission === 'denied' ? settingsPalette.textSoft : FYLL_LIME_INK, fontSize: 12, lineHeight: 16, fontWeight: '700' }}>{isSendingTestPush ? 'Sending…' : notifPermission === 'granted' ? 'Test' : notifPermission === 'denied' ? 'Fix' : 'Enable'}</Text>
+            </Pressable>
+          </View>
+
+          {hasWhatsApp ? (
+            <SettingsRow
+              title="WhatsApp alerts"
+              description="Receive new order and payment alerts on WhatsApp"
+              icon={<MessageCircle size={18} color={settingsPalette.limeOnSurface} strokeWidth={2} />}
+              onPress={() => openSettingsPanel('whatsapp-settings', '/whatsapp-settings?from=settings')}
+              showDivider={hasEmail}
+            />
+          ) : null}
+
+          {hasEmail ? (
+            <SettingsRow
+              title="Customer emails"
+              description="Automate order status and delivery confirmation emails"
+              icon={<Mail size={18} color={settingsPalette.limeOnSurface} strokeWidth={2} />}
+              onPress={() => openSettingsPanel('email-settings', '/email-settings?from=settings')}
+              showDivider={false}
+            />
+          ) : null}
         </View>
-        {notifPermission !== 'denied' ? (
-          <Pressable
-            onPress={() => {
-              if (notifPermission === 'granted') void sendTestPushToThisDevice();
-              else {
-                promptForPermission();
-                setTimeout(() => setNotifPermission(window.Notification?.permission ?? null), 1500);
-              }
-            }}
-            disabled={!notifReady || isSendingTestPush}
-            className="active:opacity-80"
-            style={{ height: 36, minWidth: 78, paddingHorizontal: 14, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: FYLL_LIME, opacity: notifReady && !isSendingTestPush ? 1 : 0.5 }}
-          >
-            <Text style={{ color: FYLL_LIME_INK, fontSize: 12, fontWeight: '700' }}>{isSendingTestPush ? 'Sending…' : notifPermission === 'granted' ? 'Test' : 'Enable'}</Text>
-          </Pressable>
-        ) : null}
       </View>
+    );
+  };
 
-      {currentUser?.role === 'admin' ? (
-        <SettingsRow
-          title="WhatsApp alerts"
-          description="Orders and payments sent to WhatsApp"
-          icon={<MessageCircle size={18} color={settingsPalette.limeOnSurface} strokeWidth={2} />}
-          onPress={() => openSettingsPanel('whatsapp-settings', '/whatsapp-settings?from=settings')}
-          showDivider={canUseOrderAutomation}
-        />
-      ) : null}
+  const renderWebProfileContent = () => {
+    const profileItems = getSettingsItems(['my-account', 'switch-business']);
 
-      {canUseOrderAutomation ? (
-        <SettingsRow
-          title="Emails"
-          description="Order status updates and delivery confirmations"
-          icon={<Mail size={18} color={settingsPalette.limeOnSurface} strokeWidth={2} />}
-          onPress={() => openSettingsPanel('email-settings', '/email-settings?from=settings')}
-          showDivider={false}
-        />
-      ) : null}
-      {testPushResult ? <Text style={{ color: testPushResult.ok ? '#10B981' : '#EF4444', fontSize: 12, paddingHorizontal: 18, paddingBottom: 12 }}>{testPushResult.message}</Text> : null}
-    </View>
-  );
+    return (
+      <View>
+        <View style={{ position: 'relative', overflow: 'hidden', minHeight: 138, borderRadius: 26, borderWidth: 1, borderColor: settingsPalette.border, backgroundColor: settingsPalette.inset, padding: 24, justifyContent: 'center', marginBottom: 24 }}>
+          <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -48, right: -34, width: 220, height: 220, borderRadius: 110 }} />
+          <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
+          <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Account access</Text>
+          <MoneyText style={{ color: settingsPalette.text, fontSize: 28, lineHeight: 34, marginTop: 2 }}>Profile</MoneyText>
+          <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 18, marginTop: 4 }}>Manage your account, password, and the businesses available to you.</Text>
+        </View>
 
-  const renderWebLinksContent = () => (
-    <View style={{ gap: 14 }}>
-      {currentUser?.role === 'admin' && businessId ? (
+        <Text style={{ color: settingsPalette.muted, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Profile settings</Text>
+        <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+          {profileItems.map((item, index) => (
+            <Pressable
+              key={item.id}
+              onPress={item.onPress}
+              className="active:opacity-80"
+              style={{ minHeight: 74, paddingHorizontal: 18, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 14, borderBottomWidth: index < profileItems.length - 1 ? 1 : 0, borderBottomColor: settingsPalette.hairline }}
+            >
+              <View style={{ width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: settingsPalette.nudgeBg }}>
+                {React.isValidElement(item.icon)
+                  ? React.cloneElement(item.icon as React.ReactElement<{ color?: string }>, { color: settingsPalette.limeOnSurface })
+                  : item.icon}
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ color: settingsPalette.text, fontSize: 14, lineHeight: 18, fontWeight: '600' }} numberOfLines={1}>{item.title}</Text>
+                {item.description ? <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 16, marginTop: 2 }} numberOfLines={1}>{item.description}</Text> : null}
+              </View>
+              <ChevronRight size={17} color={settingsPalette.faint} strokeWidth={2} />
+            </Pressable>
+          ))}
+        </View>
+      </View>
+    );
+  };
+
+  const renderWebLinksContent = () => {
+    const linkRows = [
+      ...(currentUser?.role === 'admin' && businessId
+        ? [{ key: 'business-id', title: 'Fyll Business ID', description: businessId, isBusinessId: true }]
+        : []),
+      ...publicLinks.map((link) => ({ ...link, isBusinessId: false })),
+    ];
+
+    return (
+      <View>
+        <View style={{ position: 'relative', overflow: 'hidden', minHeight: 138, borderRadius: 26, borderWidth: 1, borderColor: settingsPalette.border, backgroundColor: settingsPalette.inset, padding: 24, justifyContent: 'center', marginBottom: 24 }}>
+          <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -48, right: -34, width: 220, height: 220, borderRadius: 110 }} />
+          <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
+          <Text style={{ color: settingsPalette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Customer access</Text>
+          <MoneyText style={{ color: settingsPalette.text, fontSize: 28, lineHeight: 34, marginTop: 2 }}>Business Links</MoneyText>
+          <Text style={{ color: settingsPalette.faint, fontSize: 12.5, lineHeight: 18, marginTop: 4 }}>Copy the public addresses customers use for tracking, returns, and delivery confirmation.</Text>
+        </View>
+
+        <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Available links</Text>
+        <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+          {linkRows.map((link, index) => (
+            <Pressable
+              key={link.key}
+              onPress={() => link.isBusinessId ? copyBusinessId() : copyPublicLink(link.description, link.title)}
+              className="active:opacity-80"
+              style={{ minHeight: 74, paddingHorizontal: 18, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 14, borderBottomWidth: index < linkRows.length - 1 ? 1 : 0, borderBottomColor: settingsPalette.hairline }}
+            >
+              <View style={{ width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: settingsPalette.nudgeBg }}>
+                {link.isBusinessId
+                  ? <Building2 size={18} color={settingsPalette.limeOnSurface} strokeWidth={2} />
+                  : <Link2 size={18} color={settingsPalette.limeOnSurface} strokeWidth={2} />}
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ color: settingsPalette.text, fontSize: 12, lineHeight: 17, fontWeight: '600' }} numberOfLines={1}>{link.title}</Text>
+                <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 16, marginTop: 2 }} numberOfLines={1}>{link.description}</Text>
+              </View>
+              <Copy size={16} color={settingsPalette.faint} strokeWidth={2} />
+            </Pressable>
+          ))}
+        </View>
+      </View>
+    );
+  };
+
+  const renderWebInventoryContent = () => {
+    const inventoryItems = getSettingsItems(['low-stock-alert', 'warehouse-settings', 'categories', 'product-variables', 'product-options', 'service-catalog']);
+
+    return (
+      <View>
+        <View style={{ position: 'relative', overflow: 'hidden', minHeight: 138, borderRadius: 26, borderWidth: 1, borderColor: settingsPalette.border, backgroundColor: settingsPalette.inset, padding: 24, justifyContent: 'center', marginBottom: 24 }}>
+          <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -48, right: -34, width: 220, height: 220, borderRadius: 110 }} />
+          <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
+          <Text style={{ color: settingsPalette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Catalog structure</Text>
+          <MoneyText style={{ color: settingsPalette.text, fontSize: 28, lineHeight: 34, marginTop: 2 }}>Inventory</MoneyText>
+          <Text style={{ color: settingsPalette.faint, fontSize: 12.5, lineHeight: 18, marginTop: 4 }}>Organise stock, warehouse rules, product structure, and the services your team sells.</Text>
+        </View>
+
+        <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Inventory settings</Text>
+        <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+          {inventoryItems.map((item, index) => (
+            <Pressable
+              key={item.id}
+              onPress={item.onPress}
+              className="active:opacity-80"
+              style={{ minHeight: 74, paddingHorizontal: 18, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 14, borderBottomWidth: index < inventoryItems.length - 1 ? 1 : 0, borderBottomColor: settingsPalette.hairline }}
+            >
+              <View style={{ width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: settingsPalette.nudgeBg }}>
+                {React.isValidElement(item.icon)
+                  ? React.cloneElement(item.icon as React.ReactElement<{ color?: string }>, { color: settingsPalette.limeOnSurface })
+                  : item.icon}
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ color: settingsPalette.text, fontSize: 12, lineHeight: 17, fontWeight: '500' }} numberOfLines={1}>{item.title}</Text>
+                {item.description ? <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 16, marginTop: 2 }} numberOfLines={1}>{item.description}</Text> : null}
+              </View>
+              {item.rightText ? <Text style={{ color: settingsPalette.faint, fontSize: 12, fontWeight: '500' }}>{item.rightText}</Text> : null}
+              <ChevronRight size={17} color={settingsPalette.faint} strokeWidth={2} />
+            </Pressable>
+          ))}
+        </View>
+      </View>
+    );
+  };
+
+  const renderWebOrdersContent = () => {
+    const orderItems = getSettingsItems(['order-statuses', 'quality-control-checks', 'order-timelines', 'sale-sources', 'addons', 'logistics-carriers', 'order-automation']);
+
+    return (
+      <View>
+        <View style={{ position: 'relative', overflow: 'hidden', minHeight: 138, borderRadius: 26, borderWidth: 1, borderColor: settingsPalette.border, backgroundColor: settingsPalette.inset, padding: 24, justifyContent: 'center', marginBottom: 24 }}>
+          <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -48, right: -34, width: 220, height: 220, borderRadius: 110 }} />
+          <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
+          <Text style={{ color: settingsPalette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Order operations</Text>
+          <MoneyText style={{ color: settingsPalette.text, fontSize: 28, lineHeight: 34, marginTop: 2 }}>Orders</MoneyText>
+          <Text style={{ color: settingsPalette.faint, fontSize: 12.5, lineHeight: 18, marginTop: 4 }}>Shape the workflow from a new order through quality checks, fulfillment, delivery, and automation.</Text>
+        </View>
+
+        <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Order settings</Text>
+        <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+          {orderItems.map((item, index) => (
+            <Pressable
+              key={item.id}
+              onPress={item.onPress}
+              className="active:opacity-80"
+              style={{ minHeight: 74, paddingHorizontal: 18, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 14, borderBottomWidth: index < orderItems.length - 1 ? 1 : 0, borderBottomColor: settingsPalette.hairline }}
+            >
+              <View style={{ width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: settingsPalette.nudgeBg }}>
+                {React.isValidElement(item.icon)
+                  ? React.cloneElement(item.icon as React.ReactElement<{ color?: string }>, { color: settingsPalette.limeOnSurface })
+                  : item.icon}
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ color: settingsPalette.text, fontSize: 12, lineHeight: 17, fontWeight: '500' }} numberOfLines={1}>{item.title}</Text>
+                {item.description ? <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 16, marginTop: 2 }} numberOfLines={1}>{item.description}</Text> : null}
+              </View>
+              {item.rightText ? <Text style={{ color: settingsPalette.faint, fontSize: 12, fontWeight: '500' }}>{item.rightText}</Text> : null}
+              <ChevronRight size={17} color={settingsPalette.faint} strokeWidth={2} />
+            </Pressable>
+          ))}
+        </View>
+      </View>
+    );
+  };
+
+  const renderWebPaymentsContent = () => {
+    const paymentItems = getSettingsItems(['payment-accounts', 'payment-methods']);
+
+    return (
+      <View>
+        <View style={{ position: 'relative', overflow: 'hidden', minHeight: 138, borderRadius: 26, borderWidth: 1, borderColor: settingsPalette.border, backgroundColor: settingsPalette.inset, padding: 24, justifyContent: 'center', marginBottom: 24 }}>
+          <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -48, right: -34, width: 220, height: 220, borderRadius: 110 }} />
+          <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
+          <Text style={{ color: settingsPalette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Money collection</Text>
+          <MoneyText style={{ color: settingsPalette.text, fontSize: 28, lineHeight: 34, marginTop: 2 }}>Payments</MoneyText>
+          <Text style={{ color: settingsPalette.faint, fontSize: 12.5, lineHeight: 18, marginTop: 4 }}>Manage bank accounts shown on payment links and the payment methods recorded on orders.</Text>
+        </View>
+
+        <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Payment settings</Text>
+        <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+          {paymentItems.map((item, index) => (
+            <Pressable
+              key={item.id}
+              onPress={item.onPress}
+              className="active:opacity-80"
+              style={{ minHeight: 74, paddingHorizontal: 18, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 14, borderBottomWidth: index < paymentItems.length - 1 ? 1 : 0, borderBottomColor: settingsPalette.hairline }}
+            >
+              <View style={{ width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: settingsPalette.nudgeBg }}>
+                {React.isValidElement(item.icon)
+                  ? React.cloneElement(item.icon as React.ReactElement<{ color?: string }>, { color: settingsPalette.limeOnSurface })
+                  : item.icon}
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ color: settingsPalette.text, fontSize: 12, lineHeight: 17, fontWeight: '600' }} numberOfLines={1}>{item.title}</Text>
+                {item.description ? <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 16, marginTop: 2 }} numberOfLines={1}>{item.description}</Text> : null}
+              </View>
+              {item.rightText ? <Text style={{ color: settingsPalette.faint, fontSize: 12, fontWeight: '500' }}>{item.rightText}</Text> : null}
+              <ChevronRight size={17} color={settingsPalette.faint} strokeWidth={2} />
+            </Pressable>
+          ))}
+        </View>
+      </View>
+    );
+  };
+
+  const renderWebTeamContent = () => {
+    const teamItems = getSettingsItems(['team-members', 'invitations']);
+
+    return (
+      <View>
+        <View style={{ position: 'relative', overflow: 'hidden', minHeight: 138, borderRadius: 26, borderWidth: 1, borderColor: settingsPalette.border, backgroundColor: settingsPalette.inset, padding: 24, justifyContent: 'center', marginBottom: 24 }}>
+          <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -48, right: -34, width: 220, height: 220, borderRadius: 110 }} />
+          <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
+          <Text style={{ color: settingsPalette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Workspace access</Text>
+          <MoneyText style={{ color: settingsPalette.text, fontSize: 28, lineHeight: 34, marginTop: 2 }}>Team & roles</MoneyText>
+          <Text style={{ color: settingsPalette.faint, fontSize: 12.5, lineHeight: 18, marginTop: 4 }}>Manage who can use Fyll, what they can access, and the invitations you have shared.</Text>
+        </View>
+
+        <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Access management</Text>
+        <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+          {teamItems.map((item, index) => (
+            <Pressable
+              key={item.id}
+              onPress={item.onPress}
+              className="active:opacity-80"
+              style={{ minHeight: 74, paddingHorizontal: 18, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 14, borderBottomWidth: index < teamItems.length - 1 ? 1 : 0, borderBottomColor: settingsPalette.hairline }}
+            >
+              <View style={{ width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: settingsPalette.nudgeBg }}>
+                {React.isValidElement(item.icon)
+                  ? React.cloneElement(item.icon as React.ReactElement<{ color?: string }>, { color: settingsPalette.limeOnSurface })
+                  : item.icon}
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ color: settingsPalette.text, fontSize: 12, lineHeight: 17, fontWeight: '600' }} numberOfLines={1}>{item.title}</Text>
+                {item.description ? <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 16, marginTop: 2 }} numberOfLines={1}>{item.description}</Text> : null}
+              </View>
+              {item.rightText ? <Text style={{ color: settingsPalette.faint, fontSize: 12, fontWeight: '500' }}>{item.rightText}</Text> : null}
+              <ChevronRight size={17} color={settingsPalette.faint} strokeWidth={2} />
+            </Pressable>
+          ))}
+        </View>
+      </View>
+    );
+  };
+
+  const renderWebImportExportContent = () => {
+    const importItems = getSettingsItems(['import-orders', 'import-products', 'import-customers', 'import-ai']);
+
+    return (
+      <View>
+        <View style={{ position: 'relative', overflow: 'hidden', minHeight: 138, borderRadius: 26, borderWidth: 1, borderColor: settingsPalette.border, backgroundColor: settingsPalette.inset, padding: 24, justifyContent: 'center', marginBottom: 24 }}>
+          <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -48, right: -34, width: 220, height: 220, borderRadius: 110 }} />
+          <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
+          <Text style={{ color: settingsPalette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Data movement</Text>
+          <MoneyText style={{ color: settingsPalette.text, fontSize: 28, lineHeight: 34, marginTop: 2 }}>Import & export</MoneyText>
+          <Text style={{ color: settingsPalette.faint, fontSize: 12.5, lineHeight: 18, marginTop: 4 }}>Bring structured business data into Fyll and manage every import from one place.</Text>
+        </View>
+
+        <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Import tools</Text>
+        <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+          {importItems.map((item, index) => (
+            <Pressable
+              key={item.id}
+              onPress={item.onPress}
+              className="active:opacity-80"
+              style={{ minHeight: 74, paddingHorizontal: 18, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 14, borderBottomWidth: index < importItems.length - 1 ? 1 : 0, borderBottomColor: settingsPalette.hairline }}
+            >
+              <View style={{ width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: settingsPalette.nudgeBg }}>
+                {React.isValidElement(item.icon)
+                  ? React.cloneElement(item.icon as React.ReactElement<{ color?: string }>, { color: settingsPalette.limeOnSurface })
+                  : item.icon}
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ color: settingsPalette.text, fontSize: 12, lineHeight: 17, fontWeight: '500' }} numberOfLines={1}>{item.title}</Text>
+                {item.description ? <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 16, marginTop: 2 }} numberOfLines={1}>{item.description}</Text> : null}
+              </View>
+              <ChevronRight size={17} color={settingsPalette.faint} strokeWidth={2} />
+            </Pressable>
+          ))}
+        </View>
+      </View>
+    );
+  };
+
+  const renderWebCasesContent = () => {
+    const caseItems = getSettingsItems(['all-cases', 'case-statuses', 'resolution-types']);
+
+    return (
+      <View>
+        <View style={{ position: 'relative', overflow: 'hidden', minHeight: 138, borderRadius: 26, borderWidth: 1, borderColor: settingsPalette.border, backgroundColor: settingsPalette.inset, padding: 24, justifyContent: 'center', marginBottom: 24 }}>
+          <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -48, right: -34, width: 220, height: 220, borderRadius: 110 }} />
+          <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
+          <Text style={{ color: settingsPalette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Customer care</Text>
+          <MoneyText style={{ color: settingsPalette.text, fontSize: 28, lineHeight: 34, marginTop: 2 }}>Cases</MoneyText>
+          <Text style={{ color: settingsPalette.faint, fontSize: 12.5, lineHeight: 18, marginTop: 4 }}>Manage customer issues, workflow stages, and the outcomes your team records.</Text>
+        </View>
+
+        <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Case management</Text>
+        <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+          {caseItems.map((item, index) => (
+            <Pressable
+              key={item.id}
+              onPress={item.onPress}
+              className="active:opacity-80"
+              style={{ minHeight: 74, paddingHorizontal: 18, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 14, borderBottomWidth: index < caseItems.length - 1 ? 1 : 0, borderBottomColor: settingsPalette.hairline }}
+            >
+              <View style={{ width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: settingsPalette.nudgeBg }}>
+                {React.isValidElement(item.icon)
+                  ? React.cloneElement(item.icon as React.ReactElement<{ color?: string }>, { color: settingsPalette.limeOnSurface })
+                  : item.icon}
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ color: settingsPalette.text, fontSize: 12, lineHeight: 17, fontWeight: '500' }} numberOfLines={1}>{item.title}</Text>
+                {item.description ? <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 16, marginTop: 2 }} numberOfLines={1}>{item.description}</Text> : null}
+              </View>
+              {item.rightText ? <Text style={{ color: settingsPalette.faint, fontSize: 12, fontWeight: '500' }}>{item.rightText}</Text> : null}
+              <ChevronRight size={17} color={settingsPalette.faint} strokeWidth={2} />
+            </Pressable>
+          ))}
+        </View>
+      </View>
+    );
+  };
+
+  const renderWebConnectionsContent = () => {
+    const connectionItems = getSettingsItems(['storefront-settings', 'woocommerce-settings']);
+
+    return (
+      <View>
+        <View style={{ position: 'relative', overflow: 'hidden', minHeight: 138, borderRadius: 26, borderWidth: 1, borderColor: settingsPalette.border, backgroundColor: settingsPalette.inset, padding: 24, justifyContent: 'center', marginBottom: 24 }}>
+          <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -48, right: -34, width: 220, height: 220, borderRadius: 110 }} />
+          <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
+          <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Commerce connections</Text>
+          <MoneyText style={{ color: settingsPalette.text, fontSize: 28, lineHeight: 34, marginTop: 2 }}>Connections</MoneyText>
+          <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 18, marginTop: 4 }}>Publish your storefront and keep external commerce systems in sync.</Text>
+        </View>
+
+        <Text style={{ color: settingsPalette.muted, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: 0.75, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Available connections</Text>
+        <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+          {connectionItems.map((item, index) => (
+            <Pressable
+              key={item.id}
+              onPress={item.onPress}
+              className="active:opacity-80"
+              style={{ minHeight: 74, paddingHorizontal: 18, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 14, borderBottomWidth: index < connectionItems.length - 1 ? 1 : 0, borderBottomColor: settingsPalette.hairline }}
+            >
+              <View style={{ width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: settingsPalette.nudgeBg }}>
+                {React.isValidElement(item.icon)
+                  ? React.cloneElement(item.icon as React.ReactElement<{ color?: string }>, { color: settingsPalette.limeOnSurface })
+                  : item.icon}
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ color: settingsPalette.text, fontSize: 14, lineHeight: 18, fontWeight: '600' }} numberOfLines={1}>{item.title}</Text>
+                {item.description ? <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 16, marginTop: 2 }} numberOfLines={1}>{item.description}</Text> : null}
+              </View>
+              <ChevronRight size={17} color={settingsPalette.faint} strokeWidth={2} />
+            </Pressable>
+          ))}
+        </View>
+      </View>
+    );
+  };
+
+  const renderWebSystemContent = () => {
+    const systemItems = getSettingsItems(['recycle-bin', 'milestone-replay', 'import-ai']);
+    const logoutItem = getSettingsItem('log-out');
+
+    const renderSystemRow = (
+      item: (typeof searchItems)[number],
+      showDivider: boolean,
+    ) => {
+      const isLogout = item.id === 'log-out';
+      return (
         <Pressable
-          onPress={copyBusinessId}
+          key={item.id}
+          onPress={item.onPress}
           className="active:opacity-80"
           style={{
-            minHeight: 72,
-            borderRadius: 22,
-            borderWidth: 1,
-            borderColor: colors.border.light,
-            backgroundColor: colors.bg.primary,
+            minHeight: 74,
             paddingHorizontal: 18,
             paddingVertical: 14,
             flexDirection: 'row',
             alignItems: 'center',
             gap: 14,
+            borderBottomWidth: showDivider ? 1 : 0,
+            borderBottomColor: settingsPalette.hairline,
           }}
         >
-          <View
-            style={{
-              width: 42,
-              height: 42,
-              borderRadius: 13,
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: settingsPalette.nudgeBg,
-            }}
-          >
-            <Building2 size={18} color={settingsPalette.limeOnSurface} strokeWidth={2} />
+          <View style={{ width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: isLogout ? settingsPalette.dangerBg : settingsPalette.nudgeBg }}>
+            {React.isValidElement(item.icon)
+              ? React.cloneElement(item.icon as React.ReactElement<{ color?: string }>, { color: isLogout ? settingsPalette.danger : settingsPalette.limeOnSurface })
+              : item.icon}
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ color: colors.text.primary, fontSize: 14, lineHeight: 18, fontWeight: '600' }} numberOfLines={1}>
-              Fyll Business ID
-            </Text>
-            <Text style={{ color: colors.text.tertiary, fontSize: 12, lineHeight: 16, marginTop: 2 }} numberOfLines={1}>
-              {businessId}
-            </Text>
+            <Text style={{ color: isLogout ? settingsPalette.danger : settingsPalette.text, fontSize: 12, lineHeight: 17, fontWeight: '500' }} numberOfLines={1}>{item.title}</Text>
+            {item.description ? <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 16, marginTop: 2 }} numberOfLines={1}>{item.description}</Text> : null}
           </View>
-          <View
-            style={{
-              width: 38,
-              height: 38,
-              borderRadius: 999,
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: colors.bg.secondary,
-              borderWidth: 1,
-              borderColor: colors.border.light,
-            }}
-          >
-            <Copy size={15} color={colors.text.secondary} strokeWidth={2} />
-          </View>
+          {item.rightText ? <Text style={{ color: settingsPalette.faint, fontSize: 12, fontWeight: '500' }}>{item.rightText}</Text> : null}
+          <ChevronRight size={17} color={settingsPalette.faint} strokeWidth={2} />
         </Pressable>
-      ) : null}
-      {publicLinks.map((link) => (
-        <Pressable
-          key={link.key}
-          onPress={() => copyPublicLink(link.description, link.title)}
-          className="active:opacity-80"
-          style={{
-            minHeight: 72,
-            borderRadius: 22,
-            borderWidth: 1,
-            borderColor: colors.border.light,
-            backgroundColor: colors.bg.primary,
-            paddingHorizontal: 18,
-            paddingVertical: 14,
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 14,
-          }}
-        >
-          <View
-            style={{
-              width: 42,
-              height: 42,
-              borderRadius: 13,
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: settingsPalette.nudgeBg,
-            }}
-          >
-            <Link2 size={18} color={settingsPalette.limeOnSurface} strokeWidth={2} />
-          </View>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ color: colors.text.primary, fontSize: 14, lineHeight: 18, fontWeight: '600' }} numberOfLines={1}>
-              {link.title}
-            </Text>
-            <Text style={{ color: colors.text.tertiary, fontSize: 12, lineHeight: 16, marginTop: 2 }} numberOfLines={1}>
-              {link.description}
-            </Text>
-          </View>
-          <View
-            style={{
-              width: 38,
-              height: 38,
-              borderRadius: 999,
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: colors.bg.secondary,
-              borderWidth: 1,
-              borderColor: colors.border.light,
-            }}
-          >
-            <Copy size={15} color={colors.text.secondary} strokeWidth={2} />
-          </View>
-        </Pressable>
-      ))}
-    </View>
-  );
+      );
+    };
 
-  const renderWebSystemContent = () => (
-    <View style={{ gap: 14 }}>
-      {renderWebSettingsRows(getSettingsItems(['recycle-bin', 'milestone-replay', 'import-ai', 'log-out']))}
-      <Pressable
-        onPress={handleRefreshApp}
-        className="active:opacity-80"
-        style={{
-          minHeight: 72,
-          borderRadius: 14,
-          borderWidth: 1,
-          borderColor: colors.border.light,
-          backgroundColor: colors.bg.primary,
-          paddingHorizontal: 18,
-          paddingVertical: 14,
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 14,
-        }}
-      >
-        <View
-          style={{
-            width: 42,
-            height: 42,
-            borderRadius: 13,
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: settingsPalette.nudgeBg,
-          }}
-        >
-          <RotateCcw size={18} color={settingsPalette.limeOnSurface} strokeWidth={2} />
+    return (
+      <View>
+        <View style={{ position: 'relative', overflow: 'hidden', minHeight: 138, borderRadius: 26, borderWidth: 1, borderColor: settingsPalette.border, backgroundColor: settingsPalette.inset, padding: 24, justifyContent: 'center', marginBottom: 24 }}>
+          <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -48, right: -34, width: 220, height: 220, borderRadius: 110 }} />
+          <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
+          <Text style={{ color: settingsPalette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Workspace controls</Text>
+          <MoneyText style={{ color: settingsPalette.text, fontSize: 28, lineHeight: 34, marginTop: 2 }}>System</MoneyText>
+          <Text style={{ color: settingsPalette.faint, fontSize: 12.5, lineHeight: 18, marginTop: 4 }}>Recovery, data tools, refresh controls, and account access.</Text>
         </View>
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: colors.text.primary, fontSize: 14, lineHeight: 18, fontWeight: '600' }}>Refresh app</Text>
-          <Text style={{ color: colors.text.tertiary, fontSize: 12, lineHeight: 16, marginTop: 2 }}>Reload app data</Text>
+
+        <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>System tools</Text>
+        <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+          {systemItems.map((item) => renderSystemRow(item, true))}
+          <Pressable
+            onPress={handleRefreshApp}
+            className="active:opacity-80"
+            style={{ minHeight: 74, paddingHorizontal: 18, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 14, borderBottomWidth: logoutItem ? 1 : 0, borderBottomColor: settingsPalette.hairline }}
+          >
+            <View style={{ width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: settingsPalette.nudgeBg }}>
+              <RotateCcw size={18} color={settingsPalette.limeOnSurface} strokeWidth={2} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: settingsPalette.text, fontSize: 12, lineHeight: 17, fontWeight: '500' }}>Refresh app</Text>
+              <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 16, marginTop: 2 }}>Reload app data</Text>
+            </View>
+            <ChevronRight size={17} color={settingsPalette.faint} strokeWidth={2} />
+          </Pressable>
+          {logoutItem ? renderSystemRow(logoutItem, false) : null}
         </View>
-        <ChevronRight size={17} color={colors.text.tertiary} strokeWidth={2} />
-      </Pressable>
-    </View>
-  );
+
+        <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginTop: 24, marginBottom: 10, marginLeft: 2 }}>About</Text>
+        <View style={{ minHeight: 74, borderRadius: 26, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border, paddingHorizontal: 18, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+          <View style={{ width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: settingsPalette.nudgeBg }}>
+            <Info size={18} color={settingsPalette.limeOnSurface} strokeWidth={2} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: settingsPalette.text, fontSize: 12, lineHeight: 17, fontWeight: '500' }}>Fyll ERP</Text>
+            <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 16, marginTop: 2 }}>{appVersionLabel}</Text>
+          </View>
+        </View>
+      </View>
+    );
+  };
 
   const webInlinePanelTitles: Partial<Record<WebInlineSettingsPanel, string>> = {
     'account-settings': 'My Account',
@@ -4971,9 +5420,9 @@ export default function SettingsScreen() {
       case 'order-automation':
         return <OrderAutomationScreen />;
       case 'email-settings':
-        return <EmailSettingsScreen />;
+        return <EmailSettingsScreen embeddedInSettings />;
       case 'whatsapp-settings':
-        return <WhatsAppSettingsScreen />;
+        return <WhatsAppSettingsScreen embeddedInSettings />;
       case 'warehouse-settings':
         return <WarehouseSettingsScreen />;
       case 'category-manager':
@@ -5000,19 +5449,21 @@ export default function SettingsScreen() {
   const renderWebInlinePanel = () => {
     if (!activeWebInlinePanel) return null;
 
+    const inlinePanelMinHeight = Math.max(680, Dimensions.get('window').height - 260);
+
     return (
       <View
         style={{
-          backgroundColor: colors.bg.primary,
+          backgroundColor: colors.bg.card,
           borderWidth: 1,
           borderColor: colors.border.light,
           borderRadius: 18,
           overflow: 'hidden',
-          minHeight: Math.max(680, Dimensions.get('window').height - 260),
+          minHeight: inlinePanelMinHeight,
         }}
       >
         <SettingsBackOverrideProvider onBack={closeWebInlinePanel}>
-          <View style={{ backgroundColor: colors.bg.primary, borderRadius: 18 }}>
+          <View style={{ backgroundColor: colors.bg.card, borderRadius: 18, minHeight: inlinePanelMinHeight, overflow: 'hidden' }}>
             {renderWebInlinePanelComponent()}
           </View>
         </SettingsBackOverrideProvider>
@@ -5107,11 +5558,7 @@ export default function SettingsScreen() {
 
     switch (activeWebSettingsMenu) {
       case 'profile':
-        return renderWebSettingsCard(
-          'Profile',
-          renderWebSettingsRows(getSettingsItems(['my-account', 'switch-business'])),
-          'Your account, password and workspaces.'
-        );
+        return renderWebProfileContent();
       case 'business-details':
         // One page, so it opens straight into the form instead of a list with a single row.
         return (
@@ -5122,57 +5569,33 @@ export default function SettingsScreen() {
           </View>
         );
       case 'team':
-        return renderWebSettingsCard(
-          'Team & roles',
-          renderWebSettingsRows(getSettingsItems(['team-members', 'invitations'])),
-          'Who can use Fyll, what they can do, and who you have invited.'
-        );
+        return renderWebTeamContent();
       case 'payments':
-        return renderWebSettingsCard(
-          'Payments',
-          renderWebSettingsRows(getSettingsItems(['payment-accounts', 'payment-methods'])),
-          'Bank accounts shown on payment links, and the payment methods you record on orders.'
-        );
+        return renderWebPaymentsContent();
       case 'links':
-        return renderWebSettingsCard('Business Links', renderWebLinksContent(), 'Copy customer-facing URLs for tracking, returns, and delivery confirmation.');
+        return renderWebLinksContent();
       case 'all-features':
         return <FeaturesSettings onConfigure={handleConfigureFeature} />;
       case 'orders':
-        return renderWebSettingsCard(
-          'Orders',
-          renderWebSettingsRows(getSettingsItems(['order-statuses', 'quality-control-checks', 'order-timelines', 'sale-sources', 'addons', 'logistics-carriers', 'order-automation'])),
-          'Order workflows, quality control, fulfillment timelines, sources, add-ons and carriers.'
-        );
+        return renderWebOrdersContent();
       case 'inventory':
-        return renderWebSettingsCard(
-          'Inventory',
-          renderWebSettingsRows(getSettingsItems(['low-stock-alert', 'warehouse-settings', 'categories', 'product-variables', 'product-options', 'service-catalog'])),
-          'Stock alerts, warehouse, categories, variants and services.'
-        );
+        return renderWebInventoryContent();
       case 'import-export':
-        return renderWebSettingsCard(
-          'Import & export',
-          renderWebSettingsRows(getSettingsItems(['import-orders', 'import-products', 'import-customers', 'import-ai'])),
-          'Bring orders, products and customers into Fyll.'
+        return (
+          <View style={{ backgroundColor: settingsPalette.page, borderWidth: 1, borderColor: settingsPalette.border, borderRadius: 26, padding: 28 }}>
+            {renderWebImportExportContent()}
+          </View>
         );
       case 'cases':
-        return renderWebSettingsCard(
-          'Cases',
-          renderWebSettingsRows(getSettingsItems(['all-cases', 'case-statuses', 'resolution-types'])),
-          'Support case workflows and resolution settings.'
-        );
+        return renderWebCasesContent();
       case 'appearance':
-        return renderWebSettingsCard('Appearance', renderWebAppearanceContent(), 'Control the workspace theme.');
+        return renderWebAppearanceContent();
       case 'notifications':
-        return renderWebSettingsCard('Notifications', renderWebNotificationsContent(), 'Push notifications for this browser and customer email settings.');
+        return renderWebNotificationsContent();
       case 'integrations':
-        return renderWebSettingsCard(
-          'Connections',
-          renderWebSettingsRows(getSettingsItems(['storefront-settings', 'woocommerce-settings'])),
-          'Connected stores and external sync settings.'
-        );
+        return renderWebConnectionsContent();
       case 'system':
-        return renderWebSettingsCard('System', renderWebSystemContent(), 'Sync, refresh, recycle bin, import assistant, and account actions.');
+        return renderWebSystemContent();
       default:
         return null;
     }
@@ -5180,7 +5603,6 @@ export default function SettingsScreen() {
 
   const renderActiveWebSectionCard = () => {
     if (!activeSection) return null;
-    const usePaymentHeader = activeSection === 'payment-methods';
 
     const titles: Record<SettingsSection, string> = {
       'order-statuses': 'Order Statuses',
@@ -5215,90 +5637,36 @@ export default function SettingsScreen() {
     return (
       <View
         style={{
-          backgroundColor: colors.bg.card,
+          backgroundColor: settingsPalette.page,
           borderWidth: 1,
-          borderColor: colors.border.light,
+          borderColor: settingsPalette.border,
           borderRadius: 18,
           overflow: 'hidden',
+          minHeight: Math.max(680, Dimensions.get('window').height - 260),
         }}
       >
-        <View
-          style={{
-            minHeight: usePaymentHeader ? 58 : 60,
-            paddingHorizontal: usePaymentHeader ? 20 : 28,
-            paddingVertical: usePaymentHeader ? 4 : 14,
-            borderBottomWidth: usePaymentHeader ? 0 : 1,
-            borderBottomColor: colors.border.light,
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 16,
+        <InternalSettingsHeader
+          title={titles[activeSection]}
+          description={subtitles[activeSection]}
+          isDesktop
+          onBack={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            handleBackFromSection();
           }}
-        >
-          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 }}>
-            <Pressable
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                handleBackFromSection();
-              }}
-              className="active:opacity-60"
-              style={{
-                width: usePaymentHeader ? 38 : 34,
-                height: usePaymentHeader ? 38 : 34,
-                borderRadius: usePaymentHeader ? 19 : 0,
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: usePaymentHeader ? settingsPalette.softFill : 'transparent',
-                marginRight: usePaymentHeader ? 10 : 12,
-              }}
-            >
-              <ArrowLeft size={usePaymentHeader ? 18 : 20} color={colors.text.primary} strokeWidth={2.2} />
-            </Pressable>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              {usePaymentHeader ? (
-                <>
-                  <Text style={{ color: colors.text.tertiary, fontSize: 9.5, lineHeight: 12, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase' }}>Settings</Text>
-                  <Text style={{ color: colors.text.primary, fontSize: 17, lineHeight: 21, fontWeight: '600' }} numberOfLines={1}>{titles[activeSection]}</Text>
-                </>
-              ) : (
-                <>
-                  <MoneyText style={{ color: colors.text.primary, fontSize: 20, lineHeight: 26, letterSpacing: -0.5 }} numberOfLines={1}>
-                    {titles[activeSection]}
-                  </MoneyText>
-                  <Text style={{ color: colors.text.tertiary, fontSize: 13, marginTop: 4, lineHeight: 18 }} numberOfLines={2}>
-                    {subtitles[activeSection]}
-                  </Text>
-                </>
-              )}
-            </View>
-          </View>
-
-          {activeSection !== 'recycle-bin' && activeSection !== 'all-features' ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              {activeSection === 'order-timelines' ? (
-                <Pressable
-                  onPress={openCreateOrderTimelineModal}
-                  className="px-4 rounded-full flex-row items-center justify-center active:opacity-80"
-                  style={[primaryPillButtonStyle, { height: 40, minWidth: 130, gap: 8 }]}
-                >
-                  <Plus size={14} color={primaryPillTextStyle.color} strokeWidth={2.2} />
-                  <Text style={primaryPillTextStyle} className="text-sm font-semibold">New Timeline</Text>
-                </Pressable>
-              ) : null}
+          rightElement={activeSection !== 'recycle-bin' && activeSection !== 'all-features' ? (
               <Pressable
                 onPress={handleSectionSave}
                 className="px-4 rounded-full items-center justify-center active:opacity-80"
-                style={[primaryPillButtonStyle, { height: 40, minWidth: 96 }]}
+                style={[primaryPillButtonStyle, { width: 136, height: 40 }]}
               >
-                <Text style={[primaryPillTextStyle, { fontSize: 14 }]} className="font-semibold">
+                <Text style={[primaryPillTextStyle, { fontSize: 14 }]}>
                   {sectionSaveStatus === 'saving' ? 'Saving…' : 'Save'}
                 </Text>
               </Pressable>
-            </View>
           ) : null}
-        </View>
+        />
 
-        <View style={{ paddingHorizontal: 18, paddingVertical: 18 }}>
+        <View style={{ paddingHorizontal: 16, paddingTop: 18, paddingBottom: 64 }}>
           {renderSectionContent()}
         </View>
       </View>
@@ -5335,7 +5703,7 @@ export default function SettingsScreen() {
                 }}
               >
                 {renderWebSettingsTopBar()}
-              <View style={{ width: '100%', maxWidth: activeSection === 'payment-methods' ? 1120 : 960, paddingBottom: 16 }}>
+        <View style={{ width: '100%', maxWidth: 960, paddingBottom: 16 }}>
                 {renderActiveWebSectionCard()}
               </View>
             </View>
@@ -5412,22 +5780,12 @@ export default function SettingsScreen() {
                 </View>
                 {activeSection !== 'recycle-bin' && activeSection !== 'all-features' ? (
                   <View className="flex-row items-center" style={{ gap: 10 }}>
-                    {isWebDesktop && activeSection === 'order-timelines' ? (
-                      <Pressable
-                        onPress={openCreateOrderTimelineModal}
-                        className="px-4 rounded-full flex-row items-center justify-center active:opacity-80"
-                        style={[primaryPillButtonStyle, { height: 42, minWidth: 136, gap: 8 }]}
-                      >
-                        <Plus size={14} color={primaryPillTextStyle.color} strokeWidth={2.2} />
-                        <Text style={primaryPillTextStyle} className="text-sm font-semibold">New Timeline</Text>
-                      </Pressable>
-                    ) : null}
                     <Pressable
                       onPress={handleSectionSave}
                       className="px-4 rounded-full items-center justify-center active:opacity-80"
-                      style={[primaryPillButtonStyle, { height: 42, minWidth: 104 }]}
+                      style={[primaryPillButtonStyle, { width: 136, height: 42 }]}
                     >
-                      <Text style={[primaryPillTextStyle, { fontSize: 14 }]} className="font-semibold">
+                      <Text style={[primaryPillTextStyle, { fontSize: 14 }]}>
                         {sectionSaveStatus === 'saving' ? 'Saving…' : 'Save'}
                       </Text>
                     </Pressable>
@@ -5511,8 +5869,7 @@ export default function SettingsScreen() {
               style={{ maxWidth: 440, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}
             >
               <View className="flex-row items-start justify-between mb-4">
-                <View className="flex-row items-center flex-1 pr-3" style={{ gap: 12 }}>
-                  <LinearGradient colors={[FYLL_LIME, '#879400']} style={{ width: 46, height: 46, borderRadius: 15, alignItems: 'center', justifyContent: 'center' }}><AlertTriangle size={21} color={FYLL_LIME_INK} strokeWidth={2.2} /></LinearGradient>
+                <View className="flex-row items-center flex-1 pr-3">
                   <View style={{ flex: 1 }}>
                     <MoneyText style={{ color: settingsPalette.text, fontSize: 20, fontWeight: '700' }}>Low stock alert</MoneyText>
                     <Text style={{ color: settingsPalette.muted, fontSize: 12, marginTop: 2 }}>Set one warning threshold across inventory.</Text>
@@ -5528,7 +5885,7 @@ export default function SettingsScreen() {
               </View>
               <View className="flex-row items-center justify-between rounded-2xl p-4 mb-4" style={{ backgroundColor: settingsPalette.inset, borderWidth: 1, borderColor: settingsPalette.border }}>
                 <View style={{ flex: 1, paddingRight: 14 }}>
-                  <Text style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '600' }}>Use global threshold</Text>
+                  <Text style={{ color: settingsPalette.text, fontSize: 12, fontWeight: '500' }}>Use global threshold</Text>
                   <Text style={{ color: settingsPalette.faint, fontSize: 12, marginTop: 3 }}>{useGlobalLowStockThreshold ? 'Applied to every product' : 'Products use individual thresholds'}</Text>
                 </View>
                 <LimeToggle compact
@@ -6314,8 +6671,7 @@ export default function SettingsScreen() {
           <View className="flex-1 items-center justify-center px-5" style={{ backgroundColor: 'rgba(0, 0, 0, 0.72)' }}>
             <View className="w-full rounded-3xl p-5" style={{ maxWidth: 440, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
               <View className="flex-row items-start justify-between mb-4">
-                <View className="flex-row items-center flex-1 pr-3" style={{ gap: 12 }}>
-                  <LinearGradient colors={[FYLL_LIME, '#879400']} style={{ width: 46, height: 46, borderRadius: 15, alignItems: 'center', justifyContent: 'center' }}><AlertTriangle size={21} color={FYLL_LIME_INK} strokeWidth={2.2} /></LinearGradient>
+                <View className="flex-row items-center flex-1 pr-3">
                   <View style={{ flex: 1 }}>
                     <MoneyText style={{ color: settingsPalette.text, fontSize: 18, fontWeight: '700' }}>Low stock alert</MoneyText>
                     <Text style={{ color: settingsPalette.muted, fontSize: 12, marginTop: 2 }}>Set one warning threshold across inventory.</Text>
@@ -6332,7 +6688,7 @@ export default function SettingsScreen() {
 
               <View className="flex-row items-center justify-between rounded-2xl p-4 mb-4" style={{ backgroundColor: settingsPalette.inset, borderWidth: 1, borderColor: settingsPalette.border }}>
                 <View style={{ flex: 1, paddingRight: 14 }}>
-                  <Text style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '600' }}>Use global threshold</Text>
+                  <Text style={{ color: settingsPalette.text, fontSize: 12, fontWeight: '500' }}>Use global threshold</Text>
                   <Text style={{ color: settingsPalette.faint, fontSize: 12, marginTop: 3 }}>{useGlobalLowStockThreshold ? 'Applied to every product' : 'Products use individual thresholds'}</Text>
                 </View>
                 <LimeToggle compact

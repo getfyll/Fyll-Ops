@@ -6,11 +6,13 @@ import { ChevronRight, AlertTriangle } from 'lucide-react-native';
 import useFyllStore, { formatCurrency } from '@/lib/state/fyll-store';
 import { calculateSlowMovers } from '@/lib/inventory-analytics';
 import { getDateRange, type TimeRange } from '@/lib/analytics-utils';
-import { useStatsColors } from '@/lib/theme';
+import { InsightsRangeTabs } from '@/components/stats/InsightsRangeTabs';
+import { useInsightsBottomPad, useInsightsColors } from '@/lib/insights-theme';
 import { DetailHeader } from '@/components/stats/DetailHeader';
 
 export default function SlowMoversScreen({ inline }: { inline?: boolean }) {
-  const colors = useStatsColors();
+  const bottomPad = useInsightsBottomPad();
+  const colors = useInsightsColors();
   const router = useRouter();
   const [timeRange, setTimeRange] = useState<TimeRange>('7d');
   const [limit, setLimit] = useState<20 | 50>(20);
@@ -49,31 +51,10 @@ export default function SlowMoversScreen({ inline }: { inline?: boolean }) {
         <ScrollView
           className="flex-1"
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
+          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: bottomPad }}
         >
           {/* Time Range Selector */}
-          <View className="flex-row mt-4">
-            {timeRangeOptions.map((option) => (
-              <Pressable
-                key={option.key}
-                onPress={() => setTimeRange(option.key)}
-                className="mr-2 px-4 py-2 rounded-full"
-                style={{
-                  backgroundColor:
-                    timeRange === option.key ? '#FFFFFF' : colors.bg.card,
-                }}
-              >
-                <Text
-                  style={{
-                    color: timeRange === option.key ? '#000000' : colors.text.tertiary,
-                  }}
-                  className="text-sm font-medium"
-                >
-                  {option.label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
+          <InsightsRangeTabs options={timeRangeOptions} value={timeRange} onChange={setTimeRange} />
 
           {/* Limit Toggle */}
           <View className="flex-row mt-3">

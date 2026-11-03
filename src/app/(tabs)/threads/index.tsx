@@ -21,6 +21,7 @@ import { FilterButton } from '@/components/filter-ui';
 import * as Haptics from 'expo-haptics';
 import { collaborationData, type CollaborationThreadSummary } from '@/lib/supabase/collaboration';
 import { storage } from '@/lib/storage';
+import { formatThreadPreview } from '@/lib/thread-preview';
 import {
   readVerifiedThreadItems,
   writeVerifiedThreadItems,
@@ -270,12 +271,12 @@ export default function ThreadsScreen() {
     if (!isMobile) return;
     const parent = navigation.getParent();
     if (!parent) return;
-    const restoredStyle = getTabBarStyle(colors, isDesktop, isMobile);
+    const restoredStyle = getTabBarStyle(colors, isDesktop, isMobile, insets.bottom);
     parent.setOptions({ tabBarStyle: isThreadOpen ? { display: 'none' } : restoredStyle });
     return () => {
       parent.setOptions({ tabBarStyle: restoredStyle });
     };
-  }, [navigation, colors, isDesktop, isMobile, isThreadOpen]);
+  }, [navigation, colors, isDesktop, isMobile, isThreadOpen, insets.bottom]);
 
   const [hoveredOrderId, setHoveredOrderId] = useState<string | null>(null);
   const [showCreateThreadPicker, setShowCreateThreadPicker] = useState(false);
@@ -420,7 +421,7 @@ export default function ThreadsScreen() {
           orderId: order.id,
           orderNumber: order.orderNumber,
           customerName: order.customerName || 'Unknown customer',
-          preview: summary.latestComment?.body?.trim() || 'No messages yet. Start the conversation.',
+          preview: formatThreadPreview(summary.latestComment?.body) || 'No messages yet. Start the conversation.',
           updatedAt: summary.latestComment?.created_at ?? summary.thread.updated_at,
           unreadCount: unreadCounts[order.id] ?? 0,
           orderStatus: (order.status ?? 'Pending').trim() || 'Pending',
@@ -536,7 +537,7 @@ export default function ThreadsScreen() {
 
     teamThreadSummaryByEntityId.forEach((summary, entityId) => {
       const overrideName = teamThreadNameOverrides[entityId]?.trim();
-      const latestMessageBody = summary.latestComment?.body?.trim().replace(/\s+/g, ' ') ?? '';
+      const latestMessageBody = formatThreadPreview(summary.latestComment?.body).replace(/\s+/g, ' ');
       const latestMessageAuthorId = summary.latestComment?.author_user_id ?? '';
       const latestMessageAuthorName = teamMemberNameById.get(latestMessageAuthorId) ?? 'Team';
       const previewText = latestMessageBody.length > 0

@@ -109,7 +109,7 @@ export function NeedsYouCard({ needs, onAction, onDismiss }: NeedsProps) {
             className="active:opacity-80"
             style={{ height: 32, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: palette.outline, alignItems: 'center', justifyContent: 'center' }}
           >
-            <Text style={[HOME_BUTTON_TEXT_STYLE, { color: palette.text }]}>{need.cta}</Text>
+            <Text style={[HOME_BUTTON_TEXT_STYLE, { color: palette.text, fontSize: 14 }]}>{need.cta}</Text>
           </Pressable>
           <Pressable
             onPress={() => onDismiss(need.id)}
@@ -194,7 +194,7 @@ export function NeedsYouCarousel({ needs, onAction, onDismiss }: NeedsProps) {
                     className="active:opacity-80"
                     style={{ height: 34, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: palette.outline, alignItems: 'center', justifyContent: 'center' }}
                   >
-                    <Text style={[HOME_BUTTON_TEXT_STYLE, { color: palette.text }]}>{need.cta}</Text>
+                    <Text style={[HOME_BUTTON_TEXT_STYLE, { color: palette.text, fontSize: 14 }]}>{need.cta}</Text>
                   </Pressable>
                   <Pressable
                     onPress={() => onDismiss(need.id)}
@@ -248,7 +248,7 @@ export function NeedsYouCarousel({ needs, onAction, onDismiss }: NeedsProps) {
                         className="active:opacity-80"
                         style={{ height: 34, paddingHorizontal: 14, borderRadius: 999, borderWidth: 1, borderColor: palette.outline, alignItems: 'center', justifyContent: 'center' }}
                       >
-                        <Text style={[HOME_BUTTON_TEXT_STYLE, { color: palette.text }]}>{need.cta}</Text>
+                        <Text style={[HOME_BUTTON_TEXT_STYLE, { color: palette.text, fontSize: 14 }]}>{need.cta}</Text>
                       </Pressable>
                       <Pressable
                         onPress={() => onDismiss(need.id)}

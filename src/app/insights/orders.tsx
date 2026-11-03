@@ -9,10 +9,15 @@ import { SalesBarChart } from '@/components/stats/SalesBarChart';
 import { useAnalytics } from '@/hooks/useAnalytics';
 import useFyllStore, { formatCurrency } from '@/lib/state/fyll-store';
 import { TimeRange } from '@/lib/analytics-utils';
-import { useStatsColors } from '@/lib/theme';
+import { FigureCaption, FigureText, InsightSentence } from '@/components/stats/FigureText';
+import { ordersSentence } from '@/lib/insights-sentences';
+import { InsightsRangeTabs } from '@/components/stats/InsightsRangeTabs';
+import { useInsightsBottomPad, useInsightsColors, useInsightsTopCardHeight } from '@/lib/insights-theme';
 
 export default function OrdersInsightScreen({ inline }: { inline?: boolean }) {
-  const colors = useStatsColors();
+  const bottomPad = useInsightsBottomPad();
+  const topCardMinHeight = useInsightsTopCardHeight();
+  const colors = useInsightsColors();
   const [timeRange, setTimeRange] = useState<TimeRange>('7d');
   const analytics = useAnalytics(timeRange, 'orders');
   const orders = useFyllStore((s) => s.orders);
@@ -63,39 +68,15 @@ export default function OrdersInsightScreen({ inline }: { inline?: boolean }) {
         <ScrollView
           className="flex-1"
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
+          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: bottomPad }}
         >
           {/* Time Range Selector */}
-          <View className="flex-row mt-4">
-            {timeRangeOptions.map((option) => (
-              <Pressable
-                key={option.key}
-                onPress={() => setTimeRange(option.key)}
-                className="mr-2 px-4 py-2 rounded-full"
-                style={{
-                  backgroundColor:
-                    timeRange === option.key ? colors.bar : colors.bg.input,
-                }}
-              >
-                <Text
-                  style={{
-                    color:
-                      timeRange === option.key
-                        ? colors.bg.screen
-                        : colors.text.tertiary,
-                  }}
-                  className="text-sm font-semibold"
-                >
-                  {option.label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
+          <InsightsRangeTabs options={timeRangeOptions} value={timeRange} onChange={setTimeRange} />
 
           {/* Main Orders Card */}
           <View
-            className="rounded-2xl p-5 mt-4"
-            style={colors.getCardStyle()}
+            className="rounded-[26px] p-5 mt-4"
+            style={[colors.getCardStyle(), { minHeight: topCardMinHeight }]}
           >
             <View className="flex-row items-center mb-2">
               <ShoppingCart size={20} color={colors.text.tertiary} strokeWidth={2} />
@@ -106,37 +87,38 @@ export default function OrdersInsightScreen({ inline }: { inline?: boolean }) {
                 Total Orders
               </Text>
             </View>
-            <Text
+            <FigureText desktop={36} mobile={20}
               style={{ color: colors.text.primary }}
-              className="text-4xl font-bold"
+              
             >
               {analytics.totalOrders}
-            </Text>
+            </FigureText>
             <View className="flex-row items-center mt-2">
               {analytics.kpiMetrics.orders.change >= 0 ? (
                 <TrendingUp size={16} color={colors.success} strokeWidth={2.5} />
               ) : (
                 <TrendingDown size={16} color={colors.danger} strokeWidth={2.5} />
               )}
-              <Text
+              <FigureCaption desktop={14}
                 style={{
                   color:
                     analytics.kpiMetrics.orders.change >= 0
                       ? colors.success
                       : colors.danger,
                 }}
-                className="text-sm font-medium ml-1"
+                className="font-medium ml-1"
               >
                 {analytics.kpiMetrics.orders.change >= 0 ? '+' : ''}
                 {analytics.kpiMetrics.orders.change.toFixed(1)}% vs last period
-              </Text>
+              </FigureCaption>
             </View>
+            <InsightSentence parts={ordersSentence(analytics.totalOrders, analytics.completedOrders, analytics.processingOrders, analytics.refundsCount)} />
           </View>
 
           {/* KPI Row */}
           <View className="flex-row mt-4" style={{ gap: 12 }}>
             <View
-              className="flex-1 rounded-2xl p-4"
+              className="flex-1 rounded-[26px] p-4"
               style={colors.getCardStyle()}
             >
               <Text
@@ -154,7 +136,7 @@ export default function OrdersInsightScreen({ inline }: { inline?: boolean }) {
             </View>
 
             <View
-              className="flex-1 rounded-2xl p-4"
+              className="flex-1 rounded-[26px] p-4"
               style={colors.getCardStyle()}
             >
               <Text
@@ -172,7 +154,7 @@ export default function OrdersInsightScreen({ inline }: { inline?: boolean }) {
             </View>
 
             <View
-              className="flex-1 rounded-2xl p-4"
+              className="flex-1 rounded-[26px] p-4"
               style={colors.getCardStyle()}
             >
               <Text
@@ -192,7 +174,7 @@ export default function OrdersInsightScreen({ inline }: { inline?: boolean }) {
 
           {/* Orders Chart */}
           <View
-            className="rounded-2xl p-5 mt-4"
+            className="rounded-[26px] p-5 mt-4"
             style={colors.getCardStyle()}
           >
             <Text

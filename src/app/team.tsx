@@ -16,6 +16,7 @@ import { buildTeamInviteLink } from '@/lib/fyll-app-url';
 import { useQuery } from '@tanstack/react-query';
 import { fetchBusinessPrimaryLink } from '@/lib/primary-account';
 import { PasswordEyeToggle } from '@/components/PasswordEyeToggle';
+import { InternalSettingsHeader } from '@/components/settings/InternalSettingsHeader';
 
 const roleLabels: Record<TeamRole, string> = {
   admin: 'Admin',
@@ -401,44 +402,24 @@ export default function TeamManagementScreen({ embeddedInSettings = false }: Tea
       <SafeAreaView className="flex-1" edges={['top']} style={{ backgroundColor: palette.ground }}>
         {!showWebSettingsPanel ? <LinearGradient pointerEvents="none" colors={[palette.topGlow, palette.topGlowEnd]} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 300 }} /> : null}
         {/* Header */}
-        <View>
-          <View style={desktopContentWrapStyle}>
-            <View
-              className="flex-row items-center justify-between"
-              style={{ minHeight: isMobile ? 66 : showWebSettingsPanel ? 58 : 56, paddingHorizontal: showWebSettingsPanel ? 20 : 10, paddingTop: isMobile ? 12 : 4, paddingBottom: 4 }}
-            >
-              <View className="flex-row items-center">
-                <Pressable
-                  onPress={goBack}
-                  className="w-10 h-10 items-center justify-center mr-3 active:opacity-50"
-                  style={{ borderRadius: 20, backgroundColor: palette.navButton }}
-                >
-                  <ArrowLeft size={18} color={palette.ink} strokeWidth={2.2} />
-                </Pressable>
-                <View>
-                  <Text style={{ color: palette.faint, fontSize: 9.5, lineHeight: 12, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Settings</Text>
-                  <Text
-                    style={{
-                      color: palette.ink,
-                      fontSize: 17,
-                      lineHeight: 21,
-                      fontWeight: '600',
-                    }}
-                  >
-                    Team Settings
-                  </Text>
-                </View>
-              </View>
-              <View style={{ height: 28, paddingHorizontal: 10, borderRadius: 14, flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: palette.limeWash, borderWidth: 1, borderColor: palette.limeBorder }}><UserCog size={13} color={palette.limeInk} strokeWidth={2.2} /><Text style={{ color: palette.limeInk, fontSize: 11, fontWeight: '700' }}>{teamMembers.length} members</Text></View>
+        <InternalSettingsHeader
+          title="Team Members"
+          description="Manage workspace access, member roles, and invitations."
+          isDesktop={isDesktop}
+          onBack={goBack}
+          rightElement={isDesktop ? (
+            <View style={{ height: 30, paddingHorizontal: 11, borderRadius: 15, flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: palette.limeWash, borderWidth: 1, borderColor: palette.limeBorder }}>
+              <UserCog size={13} color={palette.limeInk} strokeWidth={2.2} />
+              <Text style={{ color: palette.limeInk, fontSize: 11, fontWeight: '700' }}>{teamMembers.length} members</Text>
             </View>
-          </View>
-        </View>
+          ) : undefined}
+        />
 
         <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
           <View style={desktopContentWrapStyle}>
-            <View className={isWebDesktop ? 'pl-5 pr-7 pt-4' : 'px-5 pt-4'}>
-              <View style={{ position: 'relative', overflow: 'hidden', minHeight: 184, marginBottom: 28, padding: 20, borderRadius: 28, borderWidth: 1, borderColor: palette.edge, backgroundColor: palette.surface, shadowColor: '#000000', shadowOpacity: isDark ? 0.24 : 0.07, shadowRadius: 24, shadowOffset: { width: 0, height: 10 } }}>
-                <LinearGradient pointerEvents="none" colors={[palette.limeWash, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -44, right: -36, width: 210, height: 210, borderRadius: 105 }} />
+            <View className={isWebDesktop ? 'pl-5 pr-7 pt-5' : 'px-5 pt-4'}>
+              <View style={{ position: 'relative', overflow: 'hidden', minHeight: isDesktop ? 138 : 156, marginBottom: 14, padding: isDesktop ? 24 : 20, borderRadius: 28, borderWidth: 1, borderColor: palette.edge, backgroundColor: palette.surface, justifyContent: 'center' }}>
+                {!isDesktop ? <LinearGradient pointerEvents="none" colors={[palette.limeWash, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -44, right: -36, width: 210, height: 210, borderRadius: 105 }} /> : null}
                 <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, borderBottomLeftRadius: 3, borderBottomRightRadius: 3, backgroundColor: palette.lime }} />
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <View style={{ flex: 1, minWidth: 0 }}>
@@ -447,8 +428,12 @@ export default function TeamManagementScreen({ embeddedInSettings = false }: Tea
                     <Text style={{ color: palette.faint, fontSize: 12.5, marginTop: 2 }}>{pendingInvitesFiltered.length > 0 ? `${pendingInvitesFiltered.length} invitation${pendingInvitesFiltered.length === 1 ? '' : 's'} pending` : 'Roles and access are up to date'}</Text>
                   </View>
                 </View>
-                <Pressable onPress={() => { resetInviteForm(); setShowInviteModal(true); }} style={({ pressed }) => ({ height: 44, marginTop: 18, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, backgroundColor: palette.lime, opacity: pressed ? 0.78 : 1 })}><Mail size={16} color="#202117" strokeWidth={2.5} /><Text style={{ color: '#202117', fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: isMobile ? 14 : 15 }}>Invite team member</Text></Pressable>
               </View>
+
+              <Pressable onPress={() => { resetInviteForm(); setShowInviteModal(true); }} style={({ pressed }) => ({ height: 48, marginBottom: 26, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, backgroundColor: palette.lime, opacity: pressed ? 0.78 : 1 })}>
+                <Mail size={16} color="#202117" strokeWidth={2.5} />
+                <Text style={{ color: '#202117', fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: 14 }}>Invite team member</Text>
+              </Pressable>
 
               {/* Pending Invites Section */}
               {pendingInvitesFiltered.length > 0 && (
@@ -456,77 +441,42 @@ export default function TeamManagementScreen({ embeddedInSettings = false }: Tea
                   <Text style={{ color: palette.faint, marginLeft: 6, fontSize: 11, fontWeight: '700', letterSpacing: 1.4 }} className="uppercase mb-3">
                     Pending Invites ({pendingInvitesFiltered.length})
                   </Text>
-                  {pendingInvitesFiltered.map((invite) => (
-                    <View
-                      key={invite.id}
-                      className="p-4 mb-3"
-                      style={{ borderRadius: 24, backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.edge }}
-                    >
-                      <View className="flex-row items-center">
-                        <View
-                          className="w-10 h-10 rounded-full items-center justify-center mr-3"
-                          style={{ backgroundColor: palette.limeWash }}
-                        >
+                  <View style={{ overflow: 'hidden', borderRadius: 26, backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.edge }}>
+                    {pendingInvitesFiltered.map((invite, index) => (
+                      <View
+                        key={invite.id}
+                        style={{ minHeight: 86, paddingHorizontal: 18, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', borderBottomWidth: index < pendingInvitesFiltered.length - 1 ? 1 : 0, borderBottomColor: palette.edge }}
+                      >
+                        <View style={{ width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 12, backgroundColor: palette.limeWash }}>
                           <Mail size={18} color={palette.limeInk} strokeWidth={2} />
                         </View>
-                        <View className="flex-1">
-                      <Text style={{ color: palette.ink }} className="font-medium text-sm">
-                        {invite.email}
-                      </Text>
-                      <View className="flex-row items-center mt-1">
-                        <View
-                          className="flex-row items-center px-2 py-0.5 rounded-full mr-2"
-                          style={{ backgroundColor: `${roleColors[invite.role]}15` }}
-                        >
-                          <Text style={{ color: roleColors[invite.role] }} className="text-xs font-medium">
-                            {roleLabels[invite.role]}
-                          </Text>
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text numberOfLines={1} style={{ color: palette.ink, fontSize: 12, fontWeight: '600' }}>{invite.email}</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+                            <View style={{ paddingHorizontal: 7, paddingVertical: 3, borderRadius: 999, backgroundColor: `${roleColors[invite.role]}15` }}>
+                              <Text style={{ color: roleColors[invite.role], fontSize: 10, fontWeight: '600' }}>{roleLabels[invite.role]}</Text>
+                            </View>
+                            <View style={{ paddingHorizontal: 7, paddingVertical: 3, borderRadius: 999, backgroundColor: palette.limeWash }}>
+                              <Text style={{ color: palette.limeInk, fontSize: 10, fontWeight: '600' }}>Pending</Text>
+                            </View>
+                            <Clock size={11} color={palette.faint} strokeWidth={2} />
+                            <Text style={{ color: palette.faint, fontSize: 10 }}>{getTimeRemaining(invite.expiresAt)}</Text>
+                          </View>
                         </View>
-                        <View
-                          className="flex-row items-center px-2 py-0.5 rounded-full mr-2"
-                          style={{ backgroundColor: '#FEF3C7' }}
-                        >
-                          <Text style={{ color: '#92400E' }} className="text-xs font-medium">
-                            Pending
-                          </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 10 }}>
+                          <Pressable onPress={() => handleCopyInviteCode(invite.inviteCode)} className="active:opacity-50" style={{ width: 30, height: 30, alignItems: 'center', justifyContent: 'center' }}>
+                            <Copy size={14} color={palette.faint} strokeWidth={2} />
+                          </Pressable>
+                          <Pressable onPress={() => handleShareInvite(invite)} className="active:opacity-50" style={{ width: 30, height: 30, alignItems: 'center', justifyContent: 'center' }}>
+                            <Send size={14} color={palette.faint} strokeWidth={2} />
+                          </Pressable>
+                          <Pressable onPress={() => handleCancelInvite(invite)} className="active:opacity-50" style={{ width: 30, height: 30, alignItems: 'center', justifyContent: 'center' }}>
+                            <Trash2 size={14} color="#EF4444" strokeWidth={2} />
+                          </Pressable>
                         </View>
-                        <Clock size={12} color={colors.text.muted} strokeWidth={2} />
-                        <Text style={{ color: colors.text.muted }} className="text-xs ml-1">
-                          {getTimeRemaining(invite.expiresAt)}
-                        </Text>
                       </View>
-                    </View>
+                    ))}
                   </View>
-
-                  <View className="flex-row items-center mt-3 pt-3" style={{ borderTopWidth: 1, borderTopColor: palette.edge }}>
-                    <View className="flex-1 flex-row items-center mr-2 px-3 py-2 rounded-lg" style={{ backgroundColor: palette.input }}>
-                      <Text style={{ color: palette.muted }} className="text-xs font-mono flex-1">
-                        {invite.inviteCode}
-                      </Text>
-                      <Pressable onPress={() => handleCopyInviteCode(invite.inviteCode)} className="active:opacity-50">
-                        <Copy size={14} color={palette.faint} strokeWidth={2} />
-                      </Pressable>
-                    </View>
-                    <Pressable
-                      onPress={() => handleShareInvite(invite)}
-                      className="p-2 rounded-lg mr-1 active:opacity-50"
-                      style={{ backgroundColor: palette.input }}
-                    >
-                      <Send size={16} color={palette.faint} strokeWidth={2} />
-                    </Pressable>
-                    <Pressable
-                      onPress={() => handleCancelInvite(invite)}
-                      className="p-2 rounded-lg active:opacity-50"
-                      style={{ backgroundColor: palette.dangerWash }}
-                    >
-                      <Trash2 size={16} color="#EF4444" strokeWidth={2} />
-                    </Pressable>
-                    <Text style={{ color: colors.text.muted }} className="text-xs ml-2">
-                      Delete
-                    </Text>
-                  </View>
-                    </View>
-                  ))}
                 </View>
               )}
 
@@ -534,70 +484,43 @@ export default function TeamManagementScreen({ embeddedInSettings = false }: Tea
               <Text style={{ color: palette.faint, marginLeft: 6, fontSize: 11, fontWeight: '700', letterSpacing: 1.4 }} className="uppercase mb-3">
                 Team Members ({teamMembers.length})
               </Text>
-              {teamMembers.map((member) => (
-                <View
-                  key={member.id}
-                  className="p-4 mb-3"
-                  style={{ borderRadius: 24, backgroundColor: palette.surface, borderWidth: 1, borderColor: member.id === currentUser?.id ? palette.limeBorder : palette.edge }}
-                >
-                  <View className="flex-row items-center">
-                    <View
-                      className="w-12 h-12 rounded-full items-center justify-center mr-3"
-                      style={{ backgroundColor: `${roleColors[member.role]}15` }}
-                    >
-                      <Text style={{ color: roleColors[member.role] }} className="text-lg font-bold">
-                        {member.name.charAt(0).toUpperCase()}
-                      </Text>
+              <View style={{ overflow: 'hidden', borderRadius: 26, backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.edge }}>
+                {teamMembers.map((member, index) => (
+                  <View
+                    key={member.id}
+                    style={{ minHeight: 86, paddingHorizontal: 18, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', borderBottomWidth: index < teamMembers.length - 1 ? 1 : 0, borderBottomColor: palette.edge }}
+                  >
+                    <View style={{ width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 12, backgroundColor: `${roleColors[member.role]}15` }}>
+                      <Text style={{ color: roleColors[member.role], fontSize: 15, fontWeight: '700' }}>{member.name.charAt(0).toUpperCase()}</Text>
                     </View>
-                    <View className="flex-1">
-                      <View className="flex-row items-center">
-                        <Text style={{ color: palette.ink, fontSize: isMobile ? 14 : 15.5, fontWeight: '600' }} className="mr-2">
-                          {member.name}
-                        </Text>
-                        {member.id === currentUser?.id && (
-                          <View className="px-2 py-0.5 rounded-full" style={{ backgroundColor: palette.limeWash }}>
-                            <Text style={{ color: palette.limeInk, fontSize: 10, fontWeight: '700' }}>You</Text>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                        <Text numberOfLines={1} style={{ color: palette.ink, fontSize: 12, fontWeight: '600' }}>{member.name}</Text>
+                        {member.id === currentUser?.id ? (
+                          <View style={{ paddingHorizontal: 7, paddingVertical: 3, borderRadius: 999, backgroundColor: palette.limeWash }}>
+                            <Text style={{ color: palette.limeInk, fontSize: 10, fontWeight: '600' }}>You</Text>
                           </View>
-                        )}
+                        ) : null}
+                        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 999, backgroundColor: `${roleColors[member.role]}15` }}>
+                          {React.cloneElement(roleIcons[member.role] as React.ReactElement<{ size?: number }>, { size: 11 })}
+                          <Text style={{ color: roleColors[member.role], fontSize: 10, fontWeight: '600', marginLeft: 4 }}>{roleLabels[member.role]}</Text>
+                        </View>
                       </View>
-                      <Text style={{ color: palette.faint, fontSize: isMobile ? 12 : 13.5, marginTop: 3 }}>{member.email}</Text>
+                      <Text numberOfLines={1} style={{ color: palette.faint, fontSize: 11, marginTop: 5 }}>{member.email} · Last login {formatDate(member.lastLogin)}</Text>
                     </View>
-                    <View
-                      className="flex-row items-center px-2 py-1 rounded-full"
-                      style={{ backgroundColor: `${roleColors[member.role]}15` }}
-                    >
-                      {roleIcons[member.role]}
-                      <Text style={{ color: roleColors[member.role] }} className="text-xs font-medium ml-1">
-                        {roleLabels[member.role]}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View className="flex-row items-center justify-between mt-3 pt-3" style={{ borderTopWidth: 1, borderTopColor: palette.edge }}>
-                    <Text style={{ color: palette.faint, fontSize: isMobile ? 10 : 13 }}>
-                      Last login: {formatDate(member.lastLogin)}
-                    </Text>
-                    <View className="flex-row">
-                      <Pressable
-                        onPress={() => openEditModal(member)}
-                        className="p-2 rounded-lg mr-1 active:opacity-50"
-                        style={{ backgroundColor: palette.input }}
-                      >
-                        <Edit2 size={16} color={palette.faint} strokeWidth={2} />
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 10 }}>
+                      <Pressable onPress={() => openEditModal(member)} className="active:opacity-50" style={{ width: 30, height: 30, alignItems: 'center', justifyContent: 'center' }}>
+                        <Edit2 size={14} color={palette.limeInk} strokeWidth={2} />
                       </Pressable>
-                      {member.id !== currentUser?.id && (
-                        <Pressable
-                          onPress={() => handleDelete(member)}
-                          className="p-2 rounded-lg active:opacity-50"
-                          style={{ backgroundColor: palette.dangerWash }}
-                        >
-                          <Trash2 size={16} color="#EF4444" strokeWidth={2} />
+                      {member.id !== currentUser?.id ? (
+                        <Pressable onPress={() => handleDelete(member)} className="active:opacity-50" style={{ width: 30, height: 30, alignItems: 'center', justifyContent: 'center' }}>
+                          <Trash2 size={14} color="#EF4444" strokeWidth={2} />
                         </Pressable>
-                      )}
+                      ) : null}
                     </View>
                   </View>
-                </View>
-              ))}
+                ))}
+              </View>
               <View className="h-24" />
             </View>
           </View>

@@ -44,6 +44,8 @@ export function PrimaryEmailCard({ fieldBorderColor, appearance = 'default' }: {
   const actionFontStyle = usesAccountAppearance
     ? { fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400' as const }
     : { fontWeight: '600' as const };
+  const accountAccent = appearance === 'account-dark' ? '#D5E057' : '#667000';
+  const accountAccentWash = appearance === 'account-dark' ? 'rgba(213,224,87,0.14)' : 'rgba(135,148,0,0.13)';
   const queryClient = useQueryClient();
   const businessId = useAuthStore((s) => s.businessId);
   const role = useAuthStore((s) => s.currentUser?.role);
@@ -143,7 +145,7 @@ export function PrimaryEmailCard({ fieldBorderColor, appearance = 'default' }: {
       accessibilityRole="alert"
       style={{ marginBottom: 14, padding: 12, borderRadius: 12, backgroundColor: message.tone === 'error' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(34, 197, 94, 0.12)' }}
     >
-      <Text style={{ color: message.tone === 'error' ? '#EF4444' : '#16A34A', fontSize: 13, textAlign: 'center' }}>{message.text}</Text>
+      <Text style={{ color: message.tone === 'error' ? '#EF4444' : '#16A34A', fontSize: usesAccountAppearance ? 12 : 13, lineHeight: 17, letterSpacing: 0, textAlign: 'center' }}>{message.text}</Text>
     </View>
   ) : null;
 
@@ -153,18 +155,18 @@ export function PrimaryEmailCard({ fieldBorderColor, appearance = 'default' }: {
       <View style={{ marginBottom: usesAccountAppearance ? 26 : 32 }}>
         <Text
           style={usesAccountAppearance
-            ? { color: colors.text.tertiary, fontFamily: 'DMSans_700Bold', fontSize: 11, lineHeight: 14, letterSpacing: 1.4, textTransform: 'uppercase', marginLeft: 6, marginBottom: 10 }
+            ? { color: colors.text.tertiary, fontFamily: 'DMSans_700Bold', fontSize: 12, lineHeight: 16, letterSpacing: 0.75, textTransform: 'uppercase', marginLeft: 2, marginBottom: 10 }
             : { color: colors.text.tertiary }}
           className={usesAccountAppearance ? undefined : 'text-xs font-semibold uppercase mb-3 tracking-wider'}
         >
           Primary email
         </Text>
         {messageBox}
-        <View style={{ borderRadius: 14, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <CheckCircle2 size={20} color="#16A34A" strokeWidth={2} />
+        <View style={{ minHeight: usesAccountAppearance ? 78 : undefined, borderRadius: usesAccountAppearance ? 26 : 14, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card, paddingHorizontal: usesAccountAppearance ? 18 : 16, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+          {usesAccountAppearance ? <View style={{ width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: accountAccentWash }}><CheckCircle2 size={18} color={accountAccent} strokeWidth={2} /></View> : <CheckCircle2 size={20} color="#16A34A" strokeWidth={2} />}
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ color: colors.text.primary, fontSize: 15, fontWeight: '600' }} numberOfLines={1}>{loginEmail}</Text>
-            <Text style={{ color: colors.text.tertiary, fontSize: 13 }}>
+            <Text style={{ color: colors.text.primary, fontSize: usesAccountAppearance ? 14 : 15, lineHeight: usesAccountAppearance ? 18 : undefined, letterSpacing: 0, fontWeight: '600' }} numberOfLines={1}>{loginEmail}</Text>
+            <Text style={{ color: colors.text.tertiary, fontSize: usesAccountAppearance ? 12 : 13, lineHeight: usesAccountAppearance ? 17 : undefined, letterSpacing: 0, marginTop: usesAccountAppearance ? 2 : 0 }}>
               You're signed in with your primary email. Use Switch Business to move between your businesses or claim another one.
             </Text>
           </View>
@@ -199,26 +201,26 @@ export function PrimaryEmailCard({ fieldBorderColor, appearance = 'default' }: {
   const field = {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
-    borderRadius: 12,
+    borderRadius: usesAccountAppearance ? 14 : 12,
     paddingHorizontal: 16,
-    height: 56,
+    height: usesAccountAppearance ? 52 : 56,
     backgroundColor: colors.input.bg,
     borderWidth: 1,
     borderColor: fieldBorderColor,
   };
-  const input = { flex: 1, color: colors.input.text, fontSize: 16, marginLeft: 12 };
+  const input = { flex: 1, color: colors.input.text, fontSize: usesAccountAppearance ? 14 : 16, lineHeight: usesAccountAppearance ? 18 : undefined, letterSpacing: 0, marginLeft: 12 };
 
   return (
     <View style={{ marginBottom: usesAccountAppearance ? 26 : 32 }}>
       <Text
           style={usesAccountAppearance
-            ? { color: colors.text.tertiary, fontFamily: 'DMSans_700Bold', fontSize: 11, lineHeight: 14, letterSpacing: 1.4, textTransform: 'uppercase', marginLeft: 6, marginBottom: 10 }
+            ? { color: colors.text.tertiary, fontFamily: 'DMSans_700Bold', fontSize: 12, lineHeight: 16, letterSpacing: 0.75, textTransform: 'uppercase', marginLeft: 2, marginBottom: 10 }
             : { color: colors.text.tertiary }}
           className={usesAccountAppearance ? undefined : 'text-xs font-semibold uppercase mb-3 tracking-wider'}
         >
         Primary email
       </Text>
-      <Text style={{ color: colors.text.secondary, fontSize: 13, lineHeight: 19, marginBottom: 14, marginLeft: usesAccountAppearance ? 6 : 0 }}>
+      <Text style={{ color: colors.text.secondary, fontSize: usesAccountAppearance ? 12 : 13, lineHeight: usesAccountAppearance ? 18 : 19, letterSpacing: 0, maxWidth: usesAccountAppearance ? 820 : undefined, marginBottom: 14, marginLeft: usesAccountAppearance ? 2 : 0 }}>
         Your primary email is the owner's own sign-in for every Fyll product, and can own more than one business. Your work login keeps working as it does today.
       </Text>
 
@@ -228,15 +230,19 @@ export function PrimaryEmailCard({ fieldBorderColor, appearance = 'default' }: {
         <ActivityIndicator color={colors.text.primary} />
       ) : existingLink && !changing ? (
         <View
-          style={{ borderRadius: 14, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card, padding: 16, gap: 12 }}
+          style={{ minHeight: usesAccountAppearance ? 78 : undefined, borderRadius: usesAccountAppearance ? 26 : 14, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card, paddingHorizontal: usesAccountAppearance ? 18 : 16, paddingVertical: usesAccountAppearance ? 12 : 16, gap: 12 }}
         >
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            {existingLink.status === 'active'
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+            {usesAccountAppearance ? (
+              <View style={{ width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: accountAccentWash }}>
+                {existingLink.status === 'active' ? <CheckCircle2 size={18} color={accountAccent} strokeWidth={2} /> : <Clock3 size={18} color={accountAccent} strokeWidth={2} />}
+              </View>
+            ) : existingLink.status === 'active'
               ? <CheckCircle2 size={20} color="#16A34A" strokeWidth={2} />
               : <Clock3 size={20} color="#D97706" strokeWidth={2} />}
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={{ color: colors.text.primary, fontSize: 15, fontWeight: '600' }} numberOfLines={1}>{existingLink.primaryEmail}</Text>
-              <Text style={{ color: colors.text.tertiary, fontSize: 13 }}>
+              <Text style={{ color: colors.text.primary, fontSize: usesAccountAppearance ? 14 : 15, lineHeight: usesAccountAppearance ? 18 : undefined, letterSpacing: 0, fontWeight: '600' }} numberOfLines={1}>{existingLink.primaryEmail}</Text>
+              <Text style={{ color: colors.text.tertiary, fontSize: usesAccountAppearance ? 12 : 13, lineHeight: usesAccountAppearance ? 17 : undefined, letterSpacing: 0, marginTop: usesAccountAppearance ? 2 : 0 }}>
                 {existingLink.status === 'active'
                   ? "Confirmed. This can't be changed. Sign in with it to open this business and your other Fyll products."
                   : 'Not confirmed yet. Enter the 6-digit code we emailed to this address.'}
@@ -307,7 +313,7 @@ export function PrimaryEmailCard({ fieldBorderColor, appearance = 'default' }: {
       ) : (
         <View>
           <View style={{ marginBottom: 14 }}>
-            <Text style={{ color: colors.text.secondary }} className="text-sm font-medium mb-2">Primary email</Text>
+            <Text style={{ color: colors.text.secondary, fontSize: usesAccountAppearance ? 12 : 14, lineHeight: 16, letterSpacing: 0 }} className="font-medium mb-2">Primary email</Text>
             <View style={field}>
               <Mail size={20} color={colors.text.tertiary} strokeWidth={1.5} />
               <TextInput
@@ -327,7 +333,7 @@ export function PrimaryEmailCard({ fieldBorderColor, appearance = 'default' }: {
             </View>
           </View>
           <View style={{ marginBottom: 14 }}>
-            <Text style={{ color: colors.text.secondary }} className="text-sm font-medium mb-2">Password for this email</Text>
+            <Text style={{ color: colors.text.secondary, fontSize: usesAccountAppearance ? 12 : 14, lineHeight: 16, letterSpacing: 0 }} className="font-medium mb-2">Password for this email</Text>
             <View style={field}>
               <Lock size={20} color={colors.text.tertiary} strokeWidth={1.5} />
               <TextInput
@@ -347,7 +353,7 @@ export function PrimaryEmailCard({ fieldBorderColor, appearance = 'default' }: {
             </View>
           </View>
           <View style={{ marginBottom: 14 }}>
-            <Text style={{ color: colors.text.secondary }} className="text-sm font-medium mb-2">Confirm password</Text>
+            <Text style={{ color: colors.text.secondary, fontSize: usesAccountAppearance ? 12 : 14, lineHeight: 16, letterSpacing: 0 }} className="font-medium mb-2">Confirm password</Text>
             <View style={field}>
               <Lock size={20} color={colors.text.tertiary} strokeWidth={1.5} />
               <TextInput

@@ -8,10 +8,14 @@ import { BreakdownTable } from '@/components/stats/BreakdownTable';
 import { HorizontalBarChart } from '@/components/stats/HorizontalBarChart';
 import { useAnalytics } from '@/hooks/useAnalytics';
 import { TimeRange } from '@/lib/analytics-utils';
-import { useStatsColors } from '@/lib/theme';
+import { FigureCaption, FigureText } from '@/components/stats/FigureText';
+import { InsightsRangeTabs } from '@/components/stats/InsightsRangeTabs';
+import { useInsightsBottomPad, useInsightsColors, useInsightsTopCardHeight } from '@/lib/insights-theme';
 
 export default function LocationsInsightScreen({ inline }: { inline?: boolean }) {
-  const colors = useStatsColors();
+  const bottomPad = useInsightsBottomPad();
+  const topCardMinHeight = useInsightsTopCardHeight();
+  const colors = useInsightsColors();
   const [timeRange, setTimeRange] = useState<TimeRange>('7d');
   const analytics = useAnalytics(timeRange, 'customers');
 
@@ -54,40 +58,16 @@ export default function LocationsInsightScreen({ inline }: { inline?: boolean })
         <ScrollView
           className="flex-1"
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
+          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: bottomPad }}
         >
           {/* Time Range Selector */}
-          <View className="flex-row mt-4">
-            {timeRangeOptions.map((option) => (
-              <Pressable
-                key={option.key}
-                onPress={() => setTimeRange(option.key)}
-                className="mr-2 px-4 py-2 rounded-full"
-                style={{
-                  backgroundColor:
-                    timeRange === option.key ? colors.bar : colors.bg.input,
-                }}
-              >
-                <Text
-                  style={{
-                    color:
-                      timeRange === option.key
-                        ? colors.bg.screen
-                        : colors.text.tertiary,
-                  }}
-                  className="text-sm font-semibold"
-                >
-                  {option.label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
+          <InsightsRangeTabs options={timeRangeOptions} value={timeRange} onChange={setTimeRange} />
 
           {/* Top Location Card */}
           {topLocation && (
             <View
-              className="rounded-2xl p-5 mt-4"
-              style={colors.getCardStyle()}
+              className="rounded-[26px] p-5 mt-4"
+              style={[colors.getCardStyle(), { minHeight: topCardMinHeight }]}
             >
               <View className="flex-row items-center mb-2">
                 <MapPin size={20} color={colors.text.tertiary} strokeWidth={2} />
@@ -98,25 +78,25 @@ export default function LocationsInsightScreen({ inline }: { inline?: boolean })
                   Top Location
                 </Text>
               </View>
-              <Text
+              <FigureText desktop={30} mobile={20}
                 style={{ color: colors.text.primary }}
-                className="text-3xl font-bold"
+                
               >
                 {topLocation.label}
-              </Text>
-              <Text
+              </FigureText>
+              <FigureCaption desktop={18}
                 style={{ color: colors.success }}
-                className="text-lg font-semibold mt-1"
+                className="font-semibold mt-1"
               >
                 {topLocation.value} orders ({topLocation.percentage}%)
-              </Text>
+              </FigureCaption>
             </View>
           )}
 
           {/* Orders by Location Chart */}
           {analytics.locationBreakdown.length > 0 && (
             <View
-              className="rounded-2xl p-5 mt-4"
+              className="rounded-[26px] p-5 mt-4"
               style={colors.getCardStyle()}
             >
               <Text

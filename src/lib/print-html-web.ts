@@ -2,7 +2,8 @@
 // (observed on iOS Safari) it ignores the html/uri options entirely and prints the current
 // page instead. Loading the html into a detached iframe and calling print() on that iframe's
 // window is the one technique that reliably prints exactly the given content on every browser.
-export const printHtmlOnWeb = async (html: string): Promise<void> => {
+// `title` becomes the suggested file name when the person saves the print as a PDF.
+export const printHtmlOnWeb = async (html: string, title?: string): Promise<void> => {
   if (typeof document === 'undefined' || typeof window === 'undefined') return;
 
   const frame = document.createElement('iframe');
@@ -29,8 +30,17 @@ export const printHtmlOnWeb = async (html: string): Promise<void> => {
     window.setTimeout(resolve, 250);
   });
 
-  frameWindow.focus();
-  frameWindow.print();
+  const previousTitle = document.title;
+  if (title) {
+    document.title = title;
+    frameDocument.title = title;
+  }
+  try {
+    frameWindow.focus();
+    frameWindow.print();
+  } finally {
+    if (title) document.title = previousTitle;
+  }
 
   window.setTimeout(() => {
     frame.remove();

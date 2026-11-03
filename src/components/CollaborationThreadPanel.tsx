@@ -35,6 +35,7 @@ import { ThreadInfoSettingsSection } from '@/components/thread-info/ThreadInfoSe
 import { SearchClearButton } from '@/components/SearchClearButton';
 import { ResolvedAttachmentImage } from '@/components/ResolvedAttachmentImage';
 import { FYLL_LIME, FYLL_LIME_INK } from '@/components/payments/payments-ui';
+import { formatThreadPreview } from '@/lib/thread-preview';
 import {
   type CollaborationAttachment,
   collaborationData,
@@ -2267,8 +2268,8 @@ export function CollaborationThreadPanel({
                         borderRadius: 12,
                         overflow: 'hidden',
                         backgroundColor: isOwnComment
-                          ? 'rgba(20,20,20,0.1)'
-                          : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(17,17,17,0.05)'),
+                          ? 'rgba(20,20,20,0.12)'
+                          : (isDark ? 'rgba(255,255,255,0.09)' : 'rgba(17,17,17,0.08)'),
                       }}
                     >
                       <View style={{ flexDirection: 'row', alignItems: 'stretch', minWidth: 0 }}>
@@ -2288,7 +2289,9 @@ export function CollaborationThreadPanel({
                           </Text>
                           <Text
                             style={{
-                              color: isOwnComment ? 'rgba(20,20,20,0.7)' : colors.text.muted,
+                              // Stronger than the muted grey so the quoted message stays readable: darker in light
+                              // mode, lighter in dark mode.
+                              color: isOwnComment ? 'rgba(20,20,20,0.88)' : (isDark ? '#E4E5DC' : '#3A3A36'),
                               fontSize: 12,
                               lineHeight: 17,
                               flexShrink: 1,
@@ -2297,7 +2300,7 @@ export function CollaborationThreadPanel({
                             numberOfLines={2}
                             ellipsizeMode="tail"
                           >
-                            {parentComment.body.trim() || 'Attachment'}
+                            {formatThreadPreview(parentComment.body) || 'Attachment'}
                           </Text>
                         </View>
                       </View>

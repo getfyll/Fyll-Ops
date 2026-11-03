@@ -4,6 +4,7 @@ import {
   Animated,
   Easing,
   Image,
+  ImageBackground,
   Linking,
   Platform,
   Pressable,
@@ -17,7 +18,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
-import { ArrowRight, Check, CheckCircle2, Clock3 } from 'lucide-react-native';
+import { ArrowRight, Check, ChevronRight, Clock3, MapPin, Package } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useFonts, BricolageGrotesque_700Bold, BricolageGrotesque_800ExtraBold } from '@expo-google-fonts/bricolage-grotesque';
+import { DMSans_400Regular, DMSans_600SemiBold, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
 import {
   confirmPublicOrderDelivery,
   fetchPublicTrackingBusiness,
@@ -29,23 +33,30 @@ import { findOrderTrackingStageByName } from '@/lib/order-status';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
 import useAuthStore from '@/lib/state/auth-store';
 import { supabase } from '@/lib/supabase';
-import { CustomerAccountPromptCard } from '@/components/public/CustomerAccountPromptCard';
+import { buildCustomerTrackingHostUrl } from '@/lib/tracking-url';
+import { TrackLanding, type TrackLandingCopy } from '@/app/track';
+import type { PublicTrackingBusinessMatch } from '@/lib/supabase/public-tracking';
 
 const fyllWordmarkPng = require('../../assets/fyllfyll wordmark.png');
-const fyllCombinationPng = require('../../assets/Group 20fyll combination.png');
+const fyllFieldPhone = require('../../assets/fyll-field-phone.jpg');
+const fyllFieldDesktop = require('../../assets/fyll-field-desktop.jpg');
 
-const PAGE_BG = '#FFFFFF';
-const SURFACE = '#FFFFFF';
-const SURFACE_BORDER = '#EEF2F7';
-const MUTED = '#97A3BB';
-const BODY = '#6D778B';
-const HEADING = '#1A2440';
-const FYLL_BLACK = '#0F1115';
-const FYLL_BLACK_SOFT = '#F3F5F8';
-const AMBER = '#E2A12A';
-const AMBER_SOFT = '#FFF7E3';
-const GREEN = '#16A34A';
-const GREEN_SOFT = '#EBF8F0';
+// Same look as the tracking and payment pages: the Fyll Field on top, a soft sheet of cards below.
+const PAGE_BG = '#F8F8F4';
+const INK = '#1E1E1E';
+const BODY = '#55564E';
+const MUTED = '#6B6C63';
+const LIME = '#D5E057';
+const LIME_DEEP = '#3F4A08';
+const LIME_TEXT = '#5F6A00';
+const CARD_BORDER = 'rgba(30,30,30,0.08)';
+const AMBER = '#A8741C';
+const AMBER_SOFT = 'rgba(227,177,90,0.18)';
+const DANGER = '#C2410C';
+const DISPLAY_FONT = Platform.OS === 'web' ? "BricolageGrotesque_800ExtraBold, 'Arial Black', sans-serif" : 'BricolageGrotesque_800ExtraBold';
+const DISPLAY_FONT_COMPACT = Platform.OS === 'web' ? "BricolageGrotesque_700Bold, 'Arial Black', sans-serif" : 'BricolageGrotesque_700Bold';
+const BODY_FONT = Platform.OS === 'web' ? "DMSans_400Regular, system-ui, -apple-system, 'Segoe UI', sans-serif" : 'DMSans_400Regular';
+const BODY_FONT_BOLD = 'DMSans_600SemiBold';
 
 const CONFETTI_PIECES = [
   { x: -108, y: -10, rotate: '-28deg', color: '#16A34A' },
@@ -210,175 +221,6 @@ const normalizeExternalUrl = (value?: string | null) => {
   return `https://${trimmed}`;
 };
 
-function PublicFooter({ compact }: { compact: boolean }) {
-  return (
-    <View
-      style={{
-        width: '100%',
-        marginTop: 'auto',
-        borderTopWidth: 1,
-        borderTopColor: '#E8EDF5',
-      }}
-    >
-      <View
-        style={{
-          width: '100%',
-          maxWidth: 1280,
-          alignSelf: 'center',
-          paddingHorizontal: compact ? 18 : 28,
-          paddingTop: compact ? 14 : 18,
-          paddingBottom: compact ? 12 : 10,
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: compact ? 10 : 24,
-        }}
-      >
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: compact ? 8 : 10,
-            flex: compact ? 0.7 : 1,
-          }}
-        >
-          <Text style={{ color: MUTED, fontSize: 12, fontWeight: '500' }}>Powered by</Text>
-          <Image
-            source={fyllCombinationPng}
-            resizeMode="contain"
-            style={{ width: compact ? 74 : 92, height: compact ? 20 : 24 }}
-          />
-        </View>
-        <Text
-          style={{
-            color: MUTED,
-            fontSize: compact ? 12 : 13,
-            lineHeight: compact ? 18 : 19,
-            textAlign: 'right',
-            flex: compact ? 0.3 : undefined,
-          }}
-        >
-          © Fyll 2026
-        </Text>
-      </View>
-    </View>
-  );
-}
-
-function PublicHeader({
-  compact,
-  brandLabel,
-  brandLogo,
-  rightContent,
-}: {
-  compact: boolean;
-  brandLabel: string;
-  brandLogo?: string | null;
-  rightContent: React.ReactNode;
-}) {
-  const [logoFailed, setLogoFailed] = useState(false);
-  const trimmedBrandLogo = useTrimmedLogoUri(brandLogo && !logoFailed ? brandLogo : null);
-  const brandLogoAspectRatio = useImageAspectRatio(trimmedBrandLogo);
-  const businessHeaderMaxWidth = compact ? 160 : 220;
-  const businessLogoHeight = compact ? 30 : 36;
-  const businessHeaderWidth = Math.min(
-    businessHeaderMaxWidth,
-    businessLogoHeight * (brandLogoAspectRatio ?? 2.8)
-  );
-
-  useEffect(() => {
-    setLogoFailed(false);
-  }, [brandLogo]);
-
-  return (
-    <View style={{ width: '100%', borderBottomWidth: 1, borderBottomColor: '#E8EDF5' }}>
-      <View
-        style={{
-          width: '100%',
-          maxWidth: 1280,
-          alignSelf: 'center',
-          paddingHorizontal: compact ? 18 : 28,
-          paddingVertical: compact ? 18 : 20,
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 16,
-        }}
-      >
-        <View
-          style={{
-            width: businessHeaderMaxWidth,
-            alignItems: 'flex-start',
-            justifyContent: 'center',
-            flexShrink: 0,
-          }}
-        >
-          {trimmedBrandLogo ? (
-            <View
-              style={{
-                width: businessHeaderWidth,
-                height: businessLogoHeight,
-                overflow: 'hidden',
-                alignItems: 'flex-start',
-                justifyContent: 'center',
-              }}
-            >
-              <Image
-                source={{ uri: trimmedBrandLogo }}
-                resizeMode="contain"
-                onError={() => setLogoFailed(true)}
-                style={[
-                  {
-                    width: businessHeaderWidth,
-                    height: businessLogoHeight,
-                    backgroundColor: 'transparent',
-                  },
-                  Platform.OS === 'web'
-                    ? ({ objectFit: 'contain', objectPosition: 'left center' } as any)
-                    : null,
-                ]}
-              />
-            </View>
-          ) : (
-            <Text
-              numberOfLines={1}
-              style={{ color: FYLL_BLACK, fontSize: compact ? 16 : 20, fontWeight: '600' }}
-            >
-              {brandLabel}
-            </Text>
-          )}
-        </View>
-        {rightContent}
-      </View>
-    </View>
-  );
-}
-
-type LookupCardProps = {
-  businessName: string;
-  lookupCode: string;
-  lookupEmail: string;
-  lookupMutationPending: boolean;
-  lookupFeedback: string | null;
-  hasSearched: boolean;
-  hasOrder: boolean;
-  onLookupCodeChange: (value: string) => void;
-  onLookupEmailChange: (value: string) => void;
-  onSearch: () => void;
-  compact: boolean;
-};
-
-type ChoiceCardProps = {
-  icon: React.ReactNode;
-  title: string;
-  subtitle: string;
-  onPress: () => void;
-  disabled: boolean;
-  accentColor: string;
-  accentBackground: string;
-  hoverBackground: string;
-};
-
 function ConfettiBurst() {
   const progress = React.useRef(CONFETTI_PIECES.map(() => new Animated.Value(0))).current;
 
@@ -453,219 +295,237 @@ function ConfettiBurst() {
   );
 }
 
-function LookupCard({
+const GLASS_CARD = { borderRadius: 22, backgroundColor: 'rgba(20,20,20,0.5)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' } as const;
+const CONFIRM_LANDING_COPY: TrackLandingCopy = {
+  tag: 'Confirm',
+  domain: 'confirm.fyll.app',
+  headline: 'Confirm your delivery',
+  headlineWide: 'Confirm your\ndelivery',
+  sub: (businessName) => (businessName
+    ? `Let ${businessName} know your order has arrived.`
+    : 'Let the business you bought from know your order has arrived.'),
+  steps: ['Find your order', 'Confirm delivery', 'Done'],
+  formTitle: 'Your order details',
+  formSub: (hasBusiness) => (hasBusiness ? 'Both details help us find the right order.' : 'Pick the business, then your order details.'),
+  submit: 'Confirm delivery',
+  submitting: 'Finding your order…',
+  hint: 'Your order number is in your confirmation email and in the DM from the business.',
+};
+
+const CARD = { borderRadius: 22, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: CARD_BORDER } as const;
+
+function HeroHeader({
+  wide,
   businessName,
-  lookupCode,
-  lookupEmail,
-  lookupMutationPending,
-  lookupFeedback,
-  hasSearched,
-  hasOrder,
-  onLookupCodeChange,
-  onLookupEmailChange,
-  onSearch,
-  compact,
-}: LookupCardProps) {
-  return (
-    <>
-      <View
-        style={{
-          width: '100%',
-          maxWidth: 540,
-          alignSelf: 'center',
-          borderRadius: 30,
-          borderWidth: 1,
-          borderColor: '#E9E5DD',
-          backgroundColor: SURFACE,
-          paddingHorizontal: compact ? 22 : 28,
-          paddingVertical: compact ? 28 : 34,
-        }}
-      >
-        <View>
-          <Text
-            style={{
-              marginBottom: 12,
-              fontSize: 14,
-              fontWeight: '500',
-              color: '#7A7A7A',
-            }}
-          >
-            Order number
-          </Text>
-          <TextInput
-            value={lookupCode}
-            onChangeText={onLookupCodeChange}
-            placeholder="e.g. 47249"
-            placeholderTextColor="#A3A3A3"
-            autoCapitalize="characters"
-            style={{
-              minHeight: 56,
-              borderRadius: 999,
-              borderWidth: 1,
-              borderColor: '#E9E5DD',
-              backgroundColor: '#FFFFFF',
-              paddingHorizontal: 20,
-              fontSize: 16,
-              color: HEADING,
-            }}
+  businessLogo,
+  subline,
+}: {
+  wide: boolean;
+  businessName: string;
+  businessLogo: string | null;
+  subline: string;
+}) {
+  const [logoFailed, setLogoFailed] = useState(false);
+  const logoUri = useTrimmedLogoUri(businessLogo && !logoFailed ? businessLogo : null);
+  useEffect(() => {
+    setLogoFailed(false);
+  }, [businessLogo]);
+
+  const logoSize = wide ? 48 : 40;
+  const header = (
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+      <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: wide ? 12 : 10 }}>
+        {logoUri ? (
+          <Image
+            source={{ uri: logoUri }}
+            onError={() => setLogoFailed(true)}
+            style={{ width: logoSize, height: logoSize, borderRadius: logoSize / 2, borderWidth: 2, borderColor: LIME, backgroundColor: '#FFFFFF' }}
+            resizeMode="cover"
           />
-
-          <Text
-            style={{
-              marginTop: 24,
-              marginBottom: 12,
-              fontSize: 14,
-              fontWeight: '500',
-              color: '#7A7A7A',
-            }}
-          >
-            Billing email
-          </Text>
-          <TextInput
-            value={lookupEmail}
-            onChangeText={onLookupEmailChange}
-            placeholder="name@email.com"
-            placeholderTextColor="#A3A3A3"
-            autoCapitalize="none"
-            keyboardType="email-address"
-            style={{
-              minHeight: 56,
-              borderRadius: 999,
-              borderWidth: 1,
-              borderColor: '#E9E5DD',
-              backgroundColor: '#FFFFFF',
-              paddingHorizontal: 20,
-              fontSize: 16,
-              color: HEADING,
-            }}
-          />
-
-          <Pressable
-            onPress={onSearch}
-            disabled={lookupMutationPending}
-            style={{
-              marginTop: 28,
-              minHeight: 54,
-              borderRadius: 999,
-              backgroundColor: FYLL_BLACK,
-              alignItems: 'center',
-              justifyContent: 'center',
-              opacity: lookupMutationPending ? 0.6 : 1,
-            }}
-          >
-          <Text
-            style={{
-              fontSize: 16,
-              fontWeight: '500',
-              color: '#FFFFFF',
-            }}
-          >
-            {lookupMutationPending ? 'Loading...' : 'Confirm Delivery'}
-            </Text>
-          </Pressable>
-
-          {lookupFeedback ? (
-            <Text style={{ marginTop: 14, textAlign: 'center', color: '#C2410C', fontSize: 13, lineHeight: 20 }}>
-              {lookupFeedback}
-            </Text>
-          ) : null}
-
-          {hasSearched && !lookupMutationPending && !hasOrder && !lookupFeedback ? (
-            <Text style={{ marginTop: 14, textAlign: 'center', color: '#C2410C', fontSize: 13, lineHeight: 20 }}>
-              No order matched that order reference and email.
-            </Text>
-          ) : null}
+        ) : (
+          <View style={{ width: logoSize, height: logoSize, borderRadius: logoSize / 2, alignItems: 'center', justifyContent: 'center', backgroundColor: LIME }}>
+            <Text style={{ fontFamily: BODY_FONT_BOLD, fontSize: 16, color: INK }}>{(businessName.trim()[0] ?? 'F').toUpperCase()}</Text>
+          </View>
+        )}
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text numberOfLines={1} style={{ fontFamily: BODY_FONT_BOLD, fontSize: wide ? 17 : 15, color: '#FFFFFF' }}>{businessName}</Text>
+          <Text numberOfLines={1} style={{ fontFamily: BODY_FONT, fontSize: wide ? 13 : 12, color: 'rgba(244,244,239,0.75)' }}>{subline}</Text>
         </View>
       </View>
+      <View style={{ height: wide ? 34 : 30, paddingHorizontal: wide ? 14 : 12, borderRadius: 999, justifyContent: 'center', backgroundColor: 'rgba(20,20,20,0.35)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)' }}>
+        <Text style={{ fontFamily: BODY_FONT_BOLD, fontSize: wide ? 12.5 : 11.5, color: '#EEF2C4' }}>Delivery check</Text>
+      </View>
+    </View>
+  );
+  return header;
+}
+
+function Hero({
+  compact,
+  wide,
+  businessName,
+  businessLogo,
+  subline,
+  eyebrow,
+  headline,
+  sub,
+  summary,
+  bare,
+}: {
+  compact: boolean;
+  wide: boolean;
+  // Wide screens put the Field behind the whole page, so the hero only brings its text.
+  bare?: boolean;
+  businessName: string;
+  businessLogo: string | null;
+  subline: string;
+  eyebrow: string;
+  headline: string;
+  sub: string;
+  // Wide screens show the order on the Field itself, on a frosted pane; phones show it as a card below.
+  summary?: { title: string; subtitle: string } | null;
+}) {
+  const header = <HeroHeader wide={wide} businessName={businessName} businessLogo={businessLogo} subline={subline} />;
+
+  const heading = (
+    <View style={{ gap: wide ? 12 : 8, maxWidth: wide ? 520 : undefined }}>
+      <Text style={{ fontFamily: BODY_FONT_BOLD, fontSize: wide ? 17 : 15, color: 'rgba(244,244,239,0.9)' }}>{eyebrow}</Text>
       <Text
         style={{
-          marginTop: 12,
-          textAlign: 'center',
-          fontSize: 12,
-          lineHeight: 18,
-          color: '#7A7A7A',
+          fontFamily: wide ? DISPLAY_FONT : DISPLAY_FONT_COMPACT,
+          fontWeight: wide ? '800' : '700',
+          fontSize: wide ? 56 : 36,
+          lineHeight: wide ? 56 : 37,
+          letterSpacing: wide ? -2 : -1.3,
+          color: '#FFFFFF',
         }}
       >
-        We only use this information to identify the right order and record your delivery response for {businessName}.
+        {headline}
       </Text>
-      <View style={{ width: '100%', maxWidth: 540, alignSelf: 'center', marginTop: 18 }}>
-        <CustomerAccountPromptCard compact={compact} />
+      <Text style={{ fontFamily: BODY_FONT, fontSize: wide ? 16 : 14, lineHeight: wide ? 23 : 20, color: 'rgba(244,244,239,0.85)' }}>{sub}</Text>
+      {wide && summary ? (
+        <View
+          style={[
+            { marginTop: 14, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingLeft: 10, paddingRight: 16, borderRadius: 18, backgroundColor: 'rgba(20,20,20,0.35)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)' },
+            Platform.OS === 'web' ? ({ backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)' } as object) : null,
+          ]}
+        >
+          <View style={{ width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.12)' }}>
+            <Package size={22} color="#FFFFFF" strokeWidth={2} />
+          </View>
+          <View style={{ gap: 2, flexShrink: 1 }}>
+            <Text numberOfLines={1} style={{ fontFamily: BODY_FONT_BOLD, fontSize: 15, color: '#FFFFFF' }}>{summary.title}</Text>
+            <Text numberOfLines={1} style={{ fontFamily: BODY_FONT, fontSize: 13, color: 'rgba(244,244,239,0.75)' }}>{summary.subtitle}</Text>
+          </View>
+        </View>
+      ) : null}
+    </View>
+  );
+
+  if (bare && !wide) {
+    return (
+      <View style={{ flexGrow: 1, paddingHorizontal: 20, paddingTop: 22, paddingBottom: 24 }}>
+        {header}
+        <View style={{ flex: 1, justifyContent: 'center', paddingVertical: 28 }}>{heading}</View>
       </View>
-    </>
+    );
+  }
+
+  if (bare) {
+    return (
+      <View style={{ flex: 1, paddingHorizontal: 56, paddingTop: 40, paddingBottom: 56 }}>
+        {header}
+        <View style={{ flex: 1, justifyContent: 'flex-end' }}>{heading}</View>
+      </View>
+    );
+  }
+
+  return (
+    <ImageBackground
+      source={wide ? fyllFieldDesktop : fyllFieldPhone}
+      resizeMode="cover"
+      style={[{ overflow: 'hidden', backgroundColor: '#3F4A08' }, wide ? { flex: 1 } : null]}
+    >
+      <LinearGradient
+        pointerEvents="none"
+        colors={wide ? ['rgba(20,20,20,0.3)', 'rgba(20,20,20,0.05)', 'rgba(20,20,20,0.55)'] : ['rgba(20,20,20,0.25)', 'rgba(20,20,20,0.1)', 'rgba(20,20,20,0.3)']}
+        locations={wide ? [0, 0.45, 1] : [0, 0.6, 1]}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+      />
+      <SafeAreaView edges={['top']} style={wide ? { flex: 1 } : undefined}>
+        {wide ? (
+          <View style={{ flex: 1, paddingHorizontal: 56, paddingTop: 40, paddingBottom: 56, justifyContent: 'space-between' }}>
+            {header}
+            {heading}
+          </View>
+        ) : (
+          <View style={{ width: '100%', alignSelf: 'center', paddingHorizontal: 20, paddingTop: 52, paddingBottom: 104, gap: 34 }}>
+            {header}
+            {heading}
+          </View>
+        )}
+      </SafeAreaView>
+    </ImageBackground>
   );
 }
 
-function ChoiceCard({
+function LimePill({ label, onPress, disabled }: { label: string; onPress: () => void; disabled?: boolean }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      style={({ pressed }) => ({ height: 54, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? '#E1EB6B' : LIME, opacity: disabled ? 0.6 : 1 })}
+    >
+      <Text style={{ fontFamily: 'DMSans_700Bold', fontSize: 16, color: INK }}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function ChoiceRow({
   icon,
   title,
   subtitle,
   onPress,
   disabled,
-  accentColor,
-  accentBackground,
-  hoverBackground,
-}: ChoiceCardProps) {
-  const { width } = useWindowDimensions();
-  const compact = width < 768;
-
+  primary,
+  glass,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  subtitle: string;
+  onPress: () => void;
+  disabled: boolean;
+  primary?: boolean;
+  glass?: boolean;
+}) {
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled}
-      style={({ hovered, pressed }) => ({
-        width: '100%',
-        maxWidth: 430,
-        minHeight: compact ? 88 : 94,
-        borderRadius: 26,
-        borderWidth: 1.2,
-        borderColor: hovered ? accentColor : '#E8EDF5',
-        backgroundColor: hovered ? hoverBackground : SURFACE,
-        paddingHorizontal: compact ? 20 : 24,
-        paddingVertical: compact ? 18 : 20,
+      accessibilityRole="button"
+      style={({ pressed }) => ({
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'space-between',
-        opacity: disabled ? 0.65 : 1,
-        transform: [{ scale: pressed ? 0.995 : 1 }],
+        gap: 14,
+        paddingVertical: 14,
+        paddingHorizontal: 16,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: primary ? LIME : glass ? 'rgba(255,255,255,0.22)' : CARD_BORDER,
+        backgroundColor: primary ? (pressed ? '#E1EB6B' : LIME) : glass ? (pressed ? 'rgba(20,20,20,0.6)' : 'rgba(20,20,20,0.45)') : '#FFFFFF',
+        opacity: disabled ? 0.6 : 1,
+        transform: [{ scale: pressed ? 0.99 : 1 }],
       })}
     >
-      {({ hovered }) => (
-        <>
-          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-            <View
-              style={{
-                width: compact ? 48 : 52,
-                height: compact ? 48 : 52,
-                borderRadius: 999,
-                backgroundColor: accentBackground,
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginRight: compact ? 14 : 16,
-              }}
-            >
-              {icon}
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 16, fontWeight: '600', color: HEADING }}>
-                {title}
-              </Text>
-              <Text
-                style={{
-                  marginTop: 5,
-                  fontSize: 12,
-                  fontWeight: '500',
-                  letterSpacing: 1.1,
-                  color: MUTED,
-                  textTransform: 'uppercase',
-                }}
-              >
-                {subtitle}
-              </Text>
-            </View>
-          </View>
-          <ArrowRight size={18} color={hovered ? accentColor : '#A8B3C5'} strokeWidth={2.1} />
-        </>
-      )}
+      <View style={{ width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: primary ? 'rgba(30,30,30,0.1)' : glass ? 'rgba(245,201,118,0.22)' : AMBER_SOFT }}>
+        {icon}
+      </View>
+      <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
+        <Text style={{ fontFamily: 'DMSans_700Bold', fontSize: 16, color: glass && !primary ? '#F4F4EF' : INK }}>{title}</Text>
+        <Text style={{ fontFamily: BODY_FONT, fontSize: 13, color: primary ? LIME_DEEP : glass ? 'rgba(244,244,239,0.82)' : MUTED }}>{subtitle}</Text>
+      </View>
+      <ChevronRight size={18} color={primary ? INK : glass ? 'rgba(244,244,239,0.8)' : '#9A9B90'} strokeWidth={2.2} />
     </Pressable>
   );
 }
@@ -687,13 +547,17 @@ export default function ConfirmDeliveryScreen() {
     businessLogo: localBusinessLogo,
   } = useBusinessSettings();
 
+  const [issueView, setIssueView] = useState(false);
   const [responseMessage, setResponseMessage] = useState<string | null>(null);
   const [lookupFeedback, setLookupFeedback] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
 
   const initialCode = getParamValue(params.code) || getParamValue(params.order_id);
   const initialEmail = getParamValue(params.email);
-  const businessSlug = getParamValue(params.businessSlug);
+  const routeBusinessSlug = getParamValue(params.businessSlug);
+  // A business can be picked on the landing page when the link does not name one.
+  const [pickedBusiness, setPickedBusiness] = useState<PublicTrackingBusinessMatch | null>(null);
+  const businessSlug = routeBusinessSlug || pickedBusiness?.slug || '';
 
   const publicBusinessQuery = useQuery({
     queryKey: ['public-confirm-delivery-business', businessSlug],
@@ -853,46 +717,6 @@ export default function ConfirmDeliveryScreen() {
   const showPendingState = submissionResult === 'pending';
   const showDecisionState = Boolean(order) && !isDelivered && submissionResult === null;
   const headerBrandLabel = businessName || 'Fyll';
-  const lookupHeaderAction = (
-    <View
-      style={{
-        minHeight: compact ? 42 : 50,
-        paddingHorizontal: compact ? 16 : 22,
-        borderRadius: 999,
-        backgroundColor: FYLL_BLACK,
-        alignItems: 'center',
-        justifyContent: 'center',
-        flexDirection: 'row',
-      }}
-    >
-      <Text style={{ color: '#FFFFFF', fontSize: compact ? 13 : 15, fontWeight: '500' }}>
-        Delivery confirmation
-      </Text>
-    </View>
-  );
-  const orderHeaderAction = (
-    <View
-      style={{
-        borderRadius: 999,
-        borderWidth: 1,
-        borderColor: '#DCE5F3',
-        backgroundColor: '#FFFFFF',
-        paddingHorizontal: 14,
-        paddingVertical: 8,
-      }}
-    >
-      <Text
-        style={{
-          fontSize: compact ? 12 : 12,
-          fontWeight: '700',
-          letterSpacing: compact ? 1.1 : 1.8,
-          color: FYLL_BLACK,
-        }}
-      >
-        ORDER #{displayOrderId}
-      </Text>
-    </View>
-  );
   const handleContinueShopping = async () => {
     if (!businessWebsite) return;
     try {
@@ -900,341 +724,302 @@ export default function ConfirmDeliveryScreen() {
     } catch {}
   };
 
-  return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: PAGE_BG }}>
-      <PublicHeader
-        compact={compact}
-        brandLabel={headerBrandLabel}
-        brandLogo={businessLogo}
-        rightContent={showLookupScreen || showLoadingState ? lookupHeaderAction : orderHeaderAction}
-      />
-      <ScrollView
-        bounces={false}
-        contentContainerStyle={{
-          flexGrow: 1,
-          paddingHorizontal: compact ? 24 : 28,
-          paddingTop: compact ? 32 : 38,
-          paddingBottom: compact ? 36 : 44,
-        }}
-      >
-        {showLookupScreen ? (
-          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-            <View style={{ alignItems: 'center', marginBottom: 34 }}>
-              <Text
-                style={{
-                  fontSize: compact ? 28 : 34,
-                  lineHeight: compact ? 34 : 40,
-                  color: '#111111',
-                  textAlign: 'center',
-                  fontWeight: '600',
-                }}
-              >
-                Confirm your order
-              </Text>
-              <Text
-                style={{
-                  marginTop: 8,
-                  maxWidth: 360,
-                  fontSize: compact ? 13 : 15,
-                  lineHeight: compact ? 19 : 22,
-                  color: '#7A7A7A',
-                  textAlign: 'center',
-                  fontWeight: '400',
-                }}
-              >
-                Enter your order number and billing email to open the delivery confirmation page.
-              </Text>
+
+  const trackUrl = order
+    ? buildCustomerTrackingHostUrl({
+      businessName,
+      businessSlug: lookupMutation.data?.businessSlug || businessSlug || null,
+      trackingCode: lookupCode.trim(),
+      email: lookupEmail.trim(),
+    })
+    : null;
+  const handleTrackOrder = async () => {
+    if (!trackUrl) return;
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.location.href = trackUrl;
+      return;
+    }
+    try {
+      await Linking.openURL(trackUrl);
+    } catch {}
+  };
+  const whatsappDigits = (lookupMutation.data?.businessPhone ?? '').replace(/[^0-9]/g, '');
+  const handleMessageBusiness = async () => {
+    if (!whatsappDigits) return;
+    try {
+      await Linking.openURL(`https://wa.me/${whatsappDigits}`);
+    } catch {}
+  };
+  const wide = width >= 1000;
+
+  const [fontsLoaded] = useFonts({ BricolageGrotesque_700Bold, BricolageGrotesque_800ExtraBold, DMSans_400Regular, DMSans_600SemiBold, DMSans_700Bold });
+  void fontsLoaded;
+
+  const firstName = (order?.customerName ?? '').trim().split(/\s+/)[0] ?? '';
+  // Hide payment labels (Fyll Checkout, how they paid) that some orders carry as an item or variant name.
+  const isPaymentLabel = (value?: string) => /checkout|paid|payment/i.test(value ?? '');
+  const orderItems = (order?.items ?? []).filter((item) => !isPaymentLabel(item.productName));
+  const firstItem = orderItems[0];
+  const firstVariant = firstItem?.variantName && !isPaymentLabel(firstItem.variantName) ? firstItem.variantName : '';
+  const itemsTitle = firstItem
+    ? `${firstItem.productName ?? 'Your order'}${firstVariant ? ` \u00b7 ${firstVariant}` : ''}${orderItems.length > 1 ? ` + ${orderItems.length - 1} more` : ''}`
+    : `Order ${displayOrderId}`;
+  const dispatchRaw = order?.logistics?.dispatchDate;
+  const dispatchDate = dispatchRaw && !Number.isNaN(new Date(dispatchRaw).getTime())
+    ? new Date(dispatchRaw).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+    : null;
+  const itemsSubtitle = [dispatchDate ? `Dispatched ${dispatchDate}` : null, order?.deliveryState || null].filter(Boolean).join(' \u00b7 ') || `Order ${displayOrderId}`;
+
+  const showIssueState = showDecisionState && issueView;
+  const hero = showIssueState
+    ? { eyebrow: firstName ? `Thanks, ${firstName}` : 'Thanks', headline: 'Sorry about that', sub: `Let ${businessName} know what went wrong.` }
+    : showLoadingState
+    ? { eyebrow: 'One moment', headline: 'Finding your order', sub: 'This only takes a second.' }
+    : showLookupScreen
+      ? { eyebrow: 'Delivery check', headline: 'Confirm your order', sub: 'Enter your order number and billing email to continue.' }
+      : showDeliveredState
+        ? { eyebrow: 'Delivered', headline: firstName ? `Enjoy your order, ${firstName}!` : 'Enjoy your order!', sub: 'Thanks for confirming.' }
+        : showPendingState
+          ? { eyebrow: firstName ? `Thanks, ${firstName}` : 'Thanks', headline: "We're on it", sub: `${businessName} has been told.` }
+          : { eyebrow: 'Quick question', headline: firstName ? `Have you received your order, ${firstName}?` : 'Have you received your order?', sub: `Tell us if ${businessName} has delivered it to you.` };
+
+  const continueShopping = businessWebsite ? <LimePill label="Continue shopping" onPress={handleContinueShopping} /> : null;
+  const messageText = responseMessage ? (
+    <Text style={{ textAlign: 'center', fontFamily: BODY_FONT, fontSize: 12, lineHeight: 18, color: 'rgba(244,244,239,0.8)' }}>{responseMessage}</Text>
+  ) : null;
+
+  const summary = showDecisionState && !issueView ? { title: itemsTitle, subtitle: itemsSubtitle } : null;
+  const trackButton = trackUrl ? (
+    <Pressable
+      onPress={handleTrackOrder}
+      accessibilityRole="button"
+      style={({ pressed }) => ({ height: 52, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)', backgroundColor: pressed ? 'rgba(20,20,20,0.6)' : 'rgba(20,20,20,0.45)' })}
+    >
+      <MapPin size={17} color="#F4F4EF" strokeWidth={2} />
+      <Text style={{ fontFamily: BODY_FONT_BOLD, fontSize: 15, color: '#F4F4EF' }}>Track my order</Text>
+    </Pressable>
+  ) : null;
+  const whatsappButton = whatsappDigits ? (
+    <Pressable
+      onPress={handleMessageBusiness}
+      accessibilityRole="button"
+      style={({ pressed }) => ({ height: 54, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? '#E1EB6B' : LIME })}
+    >
+      <Text style={{ fontFamily: 'DMSans_700Bold', fontSize: 16, color: INK }}>Message {businessName} on WhatsApp</Text>
+    </Pressable>
+  ) : null;
+
+  const glass = true;
+  const cardSurface = glass ? GLASS_CARD : CARD;
+  const textInk = glass ? '#F4F4EF' : INK;
+  const textBody = glass ? 'rgba(244,244,239,0.8)' : BODY;
+  const body = (
+    <View style={{ width: '100%', maxWidth: 480, alignSelf: 'center', flexGrow: wide ? 0 : 1, gap: 12 }}>
+      {showDecisionState && !issueView ? (
+        <>
+          {wide ? (
+            <Text style={{ fontFamily: 'DMSans_700Bold', fontSize: 20, letterSpacing: -0.3, color: textInk, marginBottom: 4 }}>Let {businessName} know</Text>
+          ) : (
+            <View style={[cardSurface, { padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }]}>
+              <View style={{ width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.12)' }}>
+                <Package size={22} color="#FFFFFF" strokeWidth={2} />
+              </View>
+              <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                <Text numberOfLines={1} style={{ fontFamily: BODY_FONT_BOLD, fontSize: 14.5, color: '#FFFFFF' }}>{itemsTitle}</Text>
+                <Text numberOfLines={1} style={{ fontFamily: BODY_FONT, fontSize: 13, color: 'rgba(244,244,239,0.78)' }}>{itemsSubtitle}</Text>
+              </View>
             </View>
-            <LookupCard
-              businessName={businessName}
-              lookupCode={lookupCode}
-              lookupEmail={lookupEmail}
-              lookupMutationPending={lookupMutation.isPending}
-              lookupFeedback={lookupFeedback}
-              hasSearched={hasSearched}
-              hasOrder={Boolean(order)}
-              onLookupCodeChange={setLookupCode}
-              onLookupEmailChange={setLookupEmail}
-              onSearch={handleSearch}
-              compact={compact}
+          )}
+
+          <View style={{ gap: 10, marginTop: 4 }}>
+            <ChoiceRow
+              primary
+              icon={<Check size={20} color={INK} strokeWidth={2.8} />}
+              title="Yes, I have it"
+              subtitle="Everything arrived"
+              onPress={() => updateMutation.mutate(true)}
+              disabled={updateMutation.isPending}
+            />
+            <ChoiceRow
+              glass={glass}
+              icon={<Clock3 size={20} color={glass ? '#F5C976' : AMBER} strokeWidth={2.2} />}
+              title="Not yet"
+              subtitle="I'm still waiting"
+              onPress={() => updateMutation.mutate(false)}
+              disabled={updateMutation.isPending}
             />
           </View>
-        ) : null}
+          {trackButton}
+          <Pressable onPress={() => setIssueView(true)} accessibilityRole="button" style={{ alignSelf: 'center', paddingVertical: 6 }}>
+            <Text style={{ fontFamily: BODY_FONT_BOLD, fontSize: 14.5, color: glass ? LIME : LIME_TEXT }}>It arrived, but something's wrong</Text>
+          </Pressable>
+          {messageText}
+        </>
+      ) : null}
 
-        {showLoadingState ? (
-          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-            <ActivityIndicator color={FYLL_BLACK} />
-            <Text style={{ marginTop: 14, fontSize: 16, color: BODY }}>Loading order…</Text>
+      {showIssueState ? (
+        <>
+          <View style={[cardSurface, { padding: 16, gap: 6 }]}>
+            <Text style={{ fontFamily: 'DMSans_700Bold', fontSize: 15, color: textInk }}>Tell them what happened</Text>
+            <Text style={{ fontFamily: BODY_FONT, fontSize: 14, lineHeight: 21, color: textBody }}>
+              Send a message with a photo of the problem and {businessName} will sort it out with you.
+            </Text>
           </View>
-        ) : null}
+          {whatsappButton}
+          {trackButton}
+          <Pressable onPress={() => setIssueView(false)} accessibilityRole="button" style={{ alignSelf: 'center', paddingVertical: 6 }}>
+            <Text style={{ fontFamily: BODY_FONT_BOLD, fontSize: 14.5, color: glass ? LIME : LIME_TEXT }}>Back</Text>
+          </Pressable>
+        </>
+      ) : null}
 
-        {showDecisionState ? (
-          <View style={{ flex: 1 }}>
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-              <Text
-                style={{
-                  fontSize: 20,
-                  lineHeight: 26,
-                  color: HEADING,
-                  textAlign: 'center',
-                  fontWeight: '600',
-                }}
-              >
-                Hi, {order?.customerName}
-              </Text>
-              <Text
-                style={{
-                  marginTop: 12,
-                  fontSize: 12,
-                  lineHeight: 18,
-                  color: BODY,
-                  textAlign: 'center',
-                  maxWidth: 360,
-                }}
-              >
-                It&apos;s been a few days. Has your order arrived?
-              </Text>
+      {showPendingState ? (
+        <>
+          <View style={[cardSurface, { padding: 16, gap: 6 }]}>
+            <Text style={{ fontFamily: 'DMSans_700Bold', fontSize: 15, color: textInk }}>What happens now</Text>
+            <Text style={{ fontFamily: BODY_FONT, fontSize: 14, lineHeight: 21, color: textBody }}>
+              We have marked this order as Pending Delivery and {businessName} will keep following up. Deliveries outside Lagos may take up to 7 days, and you will get an update by email shortly.
+            </Text>
+          </View>
+          {whatsappButton}
+          {trackButton}
+          {continueShopping}
+          {messageText}
+        </>
+      ) : null}
 
-              <View style={{ marginTop: 40, width: '100%', alignItems: 'center', gap: 16 }}>
-                <ChoiceCard
-                  icon={<CheckCircle2 size={24} color={GREEN} strokeWidth={2.2} />}
-                  title="Yes, I have it"
-                  subtitle="Everything is perfect"
-                  onPress={() => updateMutation.mutate(true)}
-                  disabled={updateMutation.isPending}
-                  accentColor={GREEN}
-                  accentBackground={GREEN_SOFT}
-                  hoverBackground="#F3FBF5"
-                />
-                <ChoiceCard
-                  icon={<Clock3 size={24} color={AMBER} strokeWidth={2.2} />}
-                  title="No, not yet"
-                  subtitle="I am still waiting"
-                  onPress={() => updateMutation.mutate(false)}
-                  disabled={updateMutation.isPending}
-                  accentColor={AMBER}
-                  accentBackground={AMBER_SOFT}
-                  hoverBackground="#FFF9EC"
-                />
-              </View>
+      {showDeliveredState ? (
+        <>
+          <View style={[cardSurface, { padding: 22, alignItems: 'center', gap: 12 }]}>
+            {showCelebration ? <ConfettiBurst /> : null}
+            <View style={{ width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center', backgroundColor: LIME }}>
+              <Check size={30} color={INK} strokeWidth={2.8} />
+            </View>
+            <Text style={{ fontFamily: 'DMSans_700Bold', fontSize: 16, color: textInk }}>Delivery confirmed</Text>
+            <Text style={{ textAlign: 'center', fontFamily: BODY_FONT, fontSize: 14, lineHeight: 21, color: textBody }}>
+              We have updated your order to Delivered. Thank you for shopping with {businessName}.
+            </Text>
+          </View>
+          {continueShopping}
+          {trackButton}
+          {messageText}
+        </>
+      ) : null}
 
-              {responseMessage ? (
-                <Text
-                  style={{
-                    marginTop: 18,
-                    textAlign: 'center',
-                    color: BODY,
-                    fontSize: 12,
-                    lineHeight: 18,
-                    maxWidth: 460,
-                  }}
-                >
-                  {responseMessage}
-                </Text>
-              ) : null}
+      {wide ? null : (
+      <View style={{ marginTop: 'auto', paddingTop: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+        <Text style={{ fontFamily: BODY_FONT, fontSize: 12.5, color: 'rgba(244,244,239,0.7)' }}>Powered by</Text>
+        <Image source={fyllWordmarkPng} accessibilityLabel="Fyll" resizeMode="contain" style={{ width: 15 * (344 / 195), height: 15, tintColor: '#FFFFFF' }} />
+      </View>
+      )}
+    </View>
+  );
+
+  const heroNode = (
+    <Hero
+      compact={compact}
+      wide={wide}
+      businessName={businessName}
+      businessLogo={businessLogo}
+      subline={order ? `Order ${displayOrderId}` : 'Delivery confirmation'}
+      eyebrow={hero.eyebrow}
+      headline={hero.headline}
+      sub={hero.sub}
+      summary={summary}
+      bare
+    />
+  );
+
+  if (showLookupScreen || showLoadingState) {
+    // The same landing page as track.fyll.app. A business sharing its own link gets its name and logo in the form.
+    const landingBusiness = routeBusinessSlug
+      ? { name: businessName, logo: businessLogo }
+      : pickedBusiness
+        ? { name: pickedBusiness.name, logo: pickedBusiness.logo }
+        : null;
+    const handleChangeBusiness = () => {
+      if (!routeBusinessSlug) {
+        setPickedBusiness(null);
+        return;
+      }
+      if (Platform.OS === 'web' && typeof window !== 'undefined') window.location.assign('/');
+    };
+    return (
+      <TrackLanding
+        business={landingBusiness}
+        onChangeBusiness={handleChangeBusiness}
+        onPickBusiness={setPickedBusiness}
+        code={lookupCode}
+        onChangeCode={setLookupCode}
+        email={lookupEmail}
+        onChangeEmail={setLookupEmail}
+        onSubmit={handleSearch}
+        pending={lookupMutation.isPending}
+        openingDeepLink={Boolean(initialCode.trim() && initialEmail.trim())}
+        feedback={lookupFeedback ?? (hasSearched && !lookupMutation.isPending && !order ? 'No order matched that number and email. Check both and try again.' : null)}
+        copy={CONFIRM_LANDING_COPY}
+        sheet
+        split
+        lockBusiness={Boolean(routeBusinessSlug)}
+      />
+    );
+  }
+
+  if (wide) {
+    return (
+      <ImageBackground source={fyllFieldDesktop} resizeMode="cover" style={{ flex: 1, backgroundColor: '#3F4A08' }}>
+        <LinearGradient
+          pointerEvents="none"
+          colors={['rgba(20,20,20,0.3)', 'rgba(20,20,20,0.05)', 'rgba(20,20,20,0.55)']}
+          locations={[0, 0.45, 1]}
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+        />
+        <SafeAreaView edges={['top']} style={{ flex: 1, flexDirection: 'row' }}>
+          <View style={{ flex: 1 }}>{heroNode}</View>
+          <View
+            style={[
+              { flex: 1, borderLeftWidth: 1, borderLeftColor: 'rgba(255,255,255,0.14)', backgroundColor: 'rgba(20,20,20,0.42)' },
+              Platform.OS === 'web' ? ({ backdropFilter: 'blur(22px) saturate(140%)', WebkitBackdropFilter: 'blur(22px) saturate(140%)' } as object) : null,
+            ]}
+          >
+            <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingHorizontal: 72, paddingVertical: 40 }}>
+              {body}
+            </ScrollView>
+            <View style={{ position: 'absolute', left: 0, right: 0, bottom: 32 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+        <Text style={{ fontFamily: BODY_FONT, fontSize: 12.5, color: 'rgba(244,244,239,0.7)' }}>Powered by</Text>
+        <Image source={fyllWordmarkPng} accessibilityLabel="Fyll" resizeMode="contain" style={{ width: 15 * (344 / 195), height: 15, tintColor: '#FFFFFF' }} />
+      </View>
             </View>
           </View>
-        ) : null}
+        </SafeAreaView>
+      </ImageBackground>
+    );
+  }
 
-        {showPendingState ? (
-          <View style={{ flex: 1 }}>
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-              <View
-                style={{
-                  width: 92,
-                  height: 92,
-                  borderRadius: 999,
-                  backgroundColor: '#FFF9EC',
-                  borderWidth: 1,
-                  borderColor: '#F6DC97',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Clock3 size={36} color={AMBER} strokeWidth={2.2} />
-              </View>
-
-              <Text
-                style={{
-                  marginTop: 30,
-                  fontSize: 20,
-                  lineHeight: 26,
-                  color: HEADING,
-                  textAlign: 'center',
-                  fontWeight: '500',
-                }}
-              >
-                Status Updated
-              </Text>
-              <Text
-                style={{
-                  marginTop: 16,
-                  maxWidth: 480,
-                  textAlign: 'center',
-                  fontSize: 12,
-                  lineHeight: 18,
-                  color: BODY,
-                }}
-              >
-                We have marked this order as Pending Delivery. The business will keep following up on it.
-              </Text>
-
-              <View
-                style={{
-                  marginTop: 34,
-                  width: '100%',
-                  maxWidth: 540,
-                  borderRadius: 26,
-                  borderWidth: 1,
-                  borderColor: '#E6ECF5',
-                  backgroundColor: SURFACE,
-                  paddingHorizontal: 22,
-                  paddingVertical: 22,
-                }}
-              >
-                <Text style={{ fontSize: 14, fontWeight: '700', color: HEADING, marginBottom: 12 }}>
-                  NOTE
-                </Text>
-                <Text style={{ fontSize: 12, lineHeight: 18, color: MUTED }}>
-                  Deliveries outside Lagos may take up to 7 days. You will receive an update via email shortly.
-                </Text>
-              </View>
-
-              {businessWebsite ? (
-                <Pressable
-                  onPress={handleContinueShopping}
-                  style={{
-                    marginTop: 42,
-                    minWidth: compact ? 240 : 320,
-                    minHeight: 54,
-                    borderRadius: 999,
-                    backgroundColor: FYLL_BLACK,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    paddingHorizontal: 28,
-                  }}
-                >
-                  <Text style={{ fontSize: 16, fontWeight: '500', color: '#FFFFFF' }}>
-                    Continue Shopping
-                  </Text>
-                </Pressable>
-              ) : null}
-              <View style={{ width: '100%', maxWidth: 540, marginTop: 24 }}>
-                <CustomerAccountPromptCard compact={compact} />
-              </View>
-            </View>
+  // Phones: the same Field and glass as the first screen. The heading sits on the Field and the answers are in a glass
+  // sheet fixed to the bottom.
+  return (
+    <ImageBackground source={fyllFieldPhone} resizeMode="cover" style={{ flex: 1, backgroundColor: '#3F4A08' }}>
+      <LinearGradient
+        pointerEvents="none"
+        colors={['rgba(20,20,20,0.25)', 'rgba(20,20,20,0.08)', 'rgba(20,20,20,0.45)']}
+        locations={[0, 0.5, 1]}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+      />
+      <SafeAreaView edges={['top']} style={{ flex: 1 }}>
+        <ScrollView bounces={false} showsVerticalScrollIndicator={false} contentContainerStyle={{ flexGrow: 1 }}>
+          {heroNode}
+          <View
+            style={[
+              { borderTopLeftRadius: 30, borderTopRightRadius: 30, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.14)', backgroundColor: 'rgba(34,36,26,0.78)', paddingHorizontal: 20, paddingTop: 30, paddingBottom: 38 },
+              Platform.OS === 'web' ? ({ backdropFilter: 'blur(22px) saturate(140%)', WebkitBackdropFilter: 'blur(22px) saturate(140%)' } as object) : null,
+            ]}
+          >
+            {body}
           </View>
-        ) : null}
-
-        {showDeliveredState ? (
-          <View style={{ flex: 1 }}>
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-              <View
-                style={{
-                  width: '100%',
-                  maxWidth: 520,
-                  borderRadius: 30,
-                  borderWidth: 1,
-                  borderColor: SURFACE_BORDER,
-                  backgroundColor: SURFACE,
-                  paddingHorizontal: compact ? 24 : 34,
-                  paddingVertical: compact ? 30 : 38,
-                  alignItems: 'center',
-                  shadowColor: '#111827',
-                  shadowOpacity: 0.04,
-                  shadowRadius: 24,
-                  shadowOffset: { width: 0, height: 10 },
-                  elevation: 2,
-                }}
-              >
-                {showCelebration ? <ConfettiBurst /> : null}
-                <View
-                  style={{
-                    width: 68,
-                    height: 68,
-                    borderRadius: 999,
-                    backgroundColor: '#EBF8F0',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <Check size={32} color={GREEN} strokeWidth={2.4} />
-                </View>
-
-              <Text
-                style={{
-                  marginTop: 26,
-                  fontSize: 20,
-                  lineHeight: 26,
-                  color: HEADING,
-                  textAlign: 'center',
-                  fontWeight: '600',
-                }}
-              >
-                Delivery Confirmed
-              </Text>
-              <Text
-                style={{
-                  marginTop: 14,
-                  maxWidth: 360,
-                  textAlign: 'center',
-                  fontSize: 12,
-                  lineHeight: 18,
-                  color: BODY,
-                }}
-              >
-                Great. We have updated your status to Delivered. Thank you for shopping with {businessName}.
-              </Text>
-
-                {businessWebsite ? (
-                  <Pressable
-                    onPress={handleContinueShopping}
-                    style={{
-                      marginTop: 34,
-                      minWidth: compact ? 260 : 360,
-                      minHeight: 58,
-                      borderRadius: 999,
-                      backgroundColor: FYLL_BLACK,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      paddingHorizontal: 30,
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 16,
-                        fontWeight: '500',
-                        color: '#FFFFFF',
-                      }}
-                    >
-                      Continue Shopping
-                    </Text>
-                  </Pressable>
-                ) : null}
-
-                {responseMessage ? (
-                  <Text
-                    style={{
-                      marginTop: 16,
-                      textAlign: 'center',
-                      color: BODY,
-                      fontSize: 12,
-                      lineHeight: 18,
-                      maxWidth: 460,
-                    }}
-                  >
-                    {responseMessage}
-                  </Text>
-                ) : null}
-              </View>
-              <View style={{ width: '100%', maxWidth: 520, marginTop: 24 }}>
-                <CustomerAccountPromptCard compact={compact} />
-              </View>
-            </View>
-          </View>
-        ) : null}
-      </ScrollView>
-      <PublicFooter compact={compact} />
-    </SafeAreaView>
+        </ScrollView>
+      </SafeAreaView>
+    </ImageBackground>
   );
 }

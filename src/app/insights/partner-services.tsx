@@ -8,7 +8,8 @@ import { BreakdownTable } from '@/components/stats/BreakdownTable';
 import { HorizontalBarChart } from '@/components/stats/HorizontalBarChart';
 import useFyllStore, { formatCurrency } from '@/lib/state/fyll-store';
 import { getDateRange, type TimeRange } from '@/lib/analytics-utils';
-import { useStatsColors } from '@/lib/theme';
+import { InsightsRangeTabs } from '@/components/stats/InsightsRangeTabs';
+import { useInsightsColors } from '@/lib/insights-theme';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 
 interface Breakdown {
@@ -33,7 +34,7 @@ const groupBy = (items: { key?: string; amount?: number }[]) => {
 };
 
 export default function PartnerServicesInsightScreen({ inline }: { inline?: boolean }) {
-  const colors = useStatsColors();
+  const colors = useInsightsColors();
   const insets = useSafeAreaInsets();
   const { isDesktop } = useBreakpoint();
   const [timeRange, setTimeRange] = useState<TimeRange>('month');
@@ -107,23 +108,7 @@ export default function PartnerServicesInsightScreen({ inline }: { inline?: bool
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: isDesktop ? 40 : insets.bottom + 140 }}
         >
-          <View className="flex-row mt-4">
-            {timeRangeOptions.map((option) => (
-              <Pressable
-                key={option.key}
-                onPress={() => setTimeRange(option.key)}
-                className="mr-2 px-4 py-2 rounded-full"
-                style={{ backgroundColor: timeRange === option.key ? colors.bar : colors.bg.input }}
-              >
-                <Text
-                  style={{ color: timeRange === option.key ? colors.bg.screen : colors.text.tertiary, fontSize: 10 }}
-                  className="font-semibold"
-                >
-                  {option.label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
+          <InsightsRangeTabs options={timeRangeOptions} value={timeRange} onChange={setTimeRange} />
 
           <View className="flex-row flex-wrap mt-4" style={{ gap: 12 }}>
             <View className="rounded-2xl p-4" style={[colors.getCardStyle(), { flexBasis: '47%', flexGrow: 1 }]}>

@@ -205,8 +205,8 @@ export default function ServicesScreen() {
           {openedFromSettings ? (
             <Pressable
               onPress={handleBackToSettings}
-              className="w-10 h-10 rounded-xl items-center justify-center active:opacity-50"
-              style={{ backgroundColor: colors.bg.secondary }}
+              className="w-10 h-10 rounded-full items-center justify-center active:opacity-50"
+              style={{ backgroundColor: palette.softFill }}
             >
               <ChevronLeft size={20} color={colors.text.primary} strokeWidth={2} />
             </Pressable>
@@ -214,12 +214,11 @@ export default function ServicesScreen() {
 
           <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <View>
-              <Text style={{ color: palette.text, ...mobileSectionHeadingStyle, fontWeight: bricolageLoaded ? '400' : '700', fontFamily: bricolageLoaded ? 'BricolageGrotesque_700Bold' : undefined, letterSpacing: -0.6 }}>
-                Services
+              {openedFromSettings ? <Text style={{ color: palette.faint, fontSize: 9.5, lineHeight: 12, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Settings</Text> : null}
+              <Text style={openedFromSettings ? { color: palette.text, fontSize: 17, lineHeight: 21, fontWeight: '600' } : { color: palette.text, ...mobileSectionHeadingStyle, fontWeight: bricolageLoaded ? '400' : '700', fontFamily: bricolageLoaded ? 'BricolageGrotesque_700Bold' : undefined, letterSpacing: -0.6 }}>
+                {openedFromSettings ? 'Service Catalog' : 'Services'}
               </Text>
-              <Text style={{ color: palette.faint }} className="text-sm mt-1">
-                Manage what your business offers
-              </Text>
+              {!openedFromSettings ? <Text style={{ color: palette.faint }} className="text-sm mt-1">Manage what your business offers</Text> : null}
             </View>
             <Pressable
               onPress={handleAddService}
@@ -233,7 +232,8 @@ export default function ServicesScreen() {
         </View>
       </View>
 
-      <View style={{ marginHorizontal: 20, marginTop: 10, borderRadius: 20, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, padding: 18, gap: 14 }}>
+      <View style={{ position: 'relative', overflow: 'hidden', marginHorizontal: 20, marginTop: 10, borderRadius: 26, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, padding: 18, paddingTop: 22, gap: 14 }}>
+        <View style={{ position: 'absolute', top: 0, left: 24, right: 24, height: 3, backgroundColor: FYLL_LIME }} />
         <View style={{ gap: 4 }}>
           <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>Service catalogue</Text>
           <Text style={{ color: palette.text, fontSize: 30, lineHeight: 34, fontWeight: bricolageLoaded ? '400' : '700', fontFamily: bricolageLoaded ? 'BricolageGrotesque_700Bold' : undefined, letterSpacing: -0.9 }}>{services.length} services</Text>
@@ -279,7 +279,8 @@ export default function ServicesScreen() {
         {filteredServices.length === 0 ? (
           renderServicesEmptyState()
         ) : (
-          filteredServices.map((service) => {
+          <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}>
+          {filteredServices.map((service, index) => {
             const category = service.serviceTags?.[0] ?? '—';
             const price = service.variants[0]?.sellingPrice ?? 0;
             const isSelected = showSplitView && selectedServiceId === service.id;
@@ -293,11 +294,9 @@ export default function ServicesScreen() {
                 className="active:opacity-70"
                 style={{
                   backgroundColor: colors.bg.card,
-                  borderRadius: 18,
                   overflow: 'hidden',
-                  marginBottom: 12,
-                  borderWidth: 1,
-                  borderColor: palette.border,
+                  borderBottomWidth: index < filteredServices.length - 1 ? 1 : 0,
+                  borderBottomColor: palette.hairline,
                   ...getActiveSplitCardStyle({ isSelected, showSplitView, isDark, colors }),
                 }}
               >
@@ -320,7 +319,7 @@ export default function ServicesScreen() {
                       </View>
                     )}
                     <View className="ml-3 flex-1">
-                      <Text style={{ color: colors.text.primary }} className="font-semibold text-base">
+                      <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '500' }}>
                         {capitalizeDisplayLabel(service.name)}
                       </Text>
                       <Text style={{ color: colors.text.muted }} className="text-xs mt-0.5">
@@ -342,7 +341,8 @@ export default function ServicesScreen() {
                 </View>
               </Pressable>
             );
-          })
+          })}
+          </View>
         )}
       </View>
     </ScrollView>
@@ -377,8 +377,8 @@ export default function ServicesScreen() {
                 {openedFromSettings ? (
                   <Pressable
                     onPress={handleBackToSettings}
-                    className="w-10 h-10 rounded-xl items-center justify-center active:opacity-50"
-                    style={{ backgroundColor: colors.bg.secondary }}
+                    className="w-10 h-10 rounded-full items-center justify-center active:opacity-50"
+                    style={{ backgroundColor: palette.softFill }}
                   >
                     <ChevronLeft size={20} color={colors.text.primary} strokeWidth={2} />
                   </Pressable>

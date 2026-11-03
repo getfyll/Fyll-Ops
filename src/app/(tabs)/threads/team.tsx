@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, Pressable, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useNavigation } from '@react-navigation/native';
 import { ArrowLeft, ChevronDown, Hash, Info, MoreVertical, Pencil, Search, Trash2 } from 'lucide-react-native';
@@ -15,6 +15,7 @@ export default function TeamThreadScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const colors = useThemeColors();
+  const insets = useSafeAreaInsets();
   const { isMobile, isDesktop } = useBreakpoint();
   const isDark = useResolvedThemeMode() === 'dark';
   const businessId = useAuthStore((state) => state.businessId ?? state.currentUser?.businessId ?? null);
@@ -39,12 +40,12 @@ export default function TeamThreadScreen() {
   useEffect(() => {
     const parent = navigation.getParent();
     if (!parent) return;
-    const restoredStyle = getTabBarStyle(colors, isDesktop, isMobile);
+    const restoredStyle = getTabBarStyle(colors, isDesktop, isMobile, insets.bottom);
     parent.setOptions({ tabBarStyle: { display: 'none' } });
     return () => {
       parent.setOptions({ tabBarStyle: restoredStyle });
     };
-  }, [navigation, colors, isDesktop, isMobile]);
+  }, [navigation, colors, isDesktop, isMobile, insets.bottom]);
 
   return (
     <SafeAreaView className="flex-1" edges={['top']} style={{ backgroundColor: colors.bg.primary }}>

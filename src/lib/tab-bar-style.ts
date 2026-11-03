@@ -4,6 +4,11 @@ import type { ThemeColors } from '@/lib/theme';
 const MOBILE_TAB_BAR_HIDDEN_ROUTES = new Set([
   '/inventory-audit',
   '/settings-panel',
+  '/fulfillment',
+  '/cases',
+  '/finance',
+  '/insights',
+  '/customers',
 ]);
 
 // These nested routes are primary workspaces, not drill-down detail screens.
@@ -27,7 +32,8 @@ export const shouldHideMobileTabBar = (pathname: string): boolean => {
 export const getTabBarStyle = (
   colors: ThemeColors,
   isDesktop: boolean,
-  isMobile: boolean
+  isMobile: boolean,
+  bottomInset = 0
 ): ViewStyle => {
   const isWeb = Platform.OS === 'web';
   const tabBarHeight = isMobile ? (Platform.OS === 'ios' ? 82 : 76) : isWeb ? 80 : (Platform.OS === 'ios' ? 88 : 70);
@@ -40,13 +46,15 @@ export const getTabBarStyle = (
     const isDark = colors.text.primary === '#FFFFFF';
     return {
       position: 'absolute',
-      left: 22,
-      right: 22,
-      bottom: Platform.OS === 'ios' ? 24 : 20,
+      // Same spot as the Fyll Print nav (see RootMobileBottomNav in src/app/_layout.tsx), so switching between them does not jump.
+      left: 14,
+      right: 14,
+      bottom: 28 + Math.max(14, bottomInset + 6),
       height: tabBarHeight,
       borderRadius: 999,
       backgroundColor: 'transparent',
-      borderWidth: 0,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.72)',
       overflow: 'hidden',
       paddingTop: 7,
       paddingBottom: Platform.OS === 'ios' ? 12 : 8,

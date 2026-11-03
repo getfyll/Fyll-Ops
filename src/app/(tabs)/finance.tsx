@@ -1,3 +1,5 @@
+import { QuickActionsSheet } from '@/components/home/QuickActionsSheet';
+import type { QuickActionDef } from '@/lib/quick-actions';
 import React, { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { View, Text, ScrollView, Pressable, Platform, Modal, TextInput, Image, ActivityIndicator } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -80,6 +82,7 @@ import { ExpenseHeroCard } from '@/components/finance/ExpenseHeroCard';
 import { PendingExpenseBanner } from '@/components/finance/PendingExpenseBanner';
 import { BricolageGrotesque_600SemiBold, useFonts } from '@expo-google-fonts/bricolage-grotesque';
 import { PeriodTabs } from '@/components/finance/PeriodTabs';
+import { FluidSheet } from '@/components/FluidSheet';
 import { FinanceSectionTabs, FinanceSubTabs, type SectionTab } from '@/components/finance/FinanceSectionTabs';
 import { FinanceHeroCard, buildHeroSegments } from '@/components/finance/FinanceHeroCard';
 
@@ -1711,6 +1714,8 @@ export default function FinanceScreen() {
   const [procurementSearchQuery, setProcurementSearchQuery] = useState('');
   const [showExpenseAiModal, setShowExpenseAiModal] = useState(false);
   const [showFinanceAiPanel, setShowFinanceAiPanel] = useState(false);
+  const [showFinanceQuickActions, setShowFinanceQuickActions] = useState(false);
+  const aiPalette = usePaymentsPalette();
   const [aiType, setAiType] = useState<'expense' | 'procurement'>('expense');
   const [aiStep, setAiStep] = useState<'choose' | 'upload' | 'review'>('choose');
   const [aiParsedDrafts, setAiParsedDrafts] = useState<ExpenseDraftData[]>([]);
@@ -1783,6 +1788,7 @@ export default function FinanceScreen() {
   const [isSavingExpense, setIsSavingExpense] = useState(false);
   const [showRefundRequestModal, setShowRefundRequestModal] = useState(false);
   const [showRefundRequestDetailModal, setShowRefundRequestDetailModal] = useState(false);
+  const [showPendingRefundsSheet, setShowPendingRefundsSheet] = useState(false);
   const [refundOrderSearchQuery, setRefundOrderSearchQuery] = useState('');
   const [selectedRefundOrderId, setSelectedRefundOrderId] = useState<string | null>(null);
   const [refundAmountDraft, setRefundAmountDraft] = useState('');
@@ -6566,7 +6572,12 @@ const buildExpenseDescription = (
     }
     const change = calcPercentChange(refundPeriodStats.total, previousTotal);
     return {
-      groups: Object.entries(byStatus).map(([name, amount]) => ({ name, amount })),
+      // Colours follow the meaning of each status, so "Rejected" is never the bright lime of good news.
+      groups: Object.entries(byStatus).map(([name, amount]) => ({
+        name,
+        amount,
+        color: name === 'Paid' ? FYLL_LIME : name === 'Approved' ? '#B9C46A' : name === 'Pending' ? '#E8B04A' : name === 'Rejected' ? '#D9776D' : undefined,
+      })),
       changeLabel: formatPercentChangeLabel(change),
       changeTone: resolveChangeTone(change, { inverse: true }),
     };
@@ -6618,12 +6629,16 @@ const buildExpenseDescription = (
   useEffect(() => {
     if (!selectedRefundRequestId) return;
     if (activeTab !== 'refunds') return;
+    // In the Pending Approvals view the list is the pending queue (any date), not the date-filtered list. Checking the
+    // wrong list here cleared the selection, the effect below picked it again, and the page flickered endlessly.
+    if (isShowingWebRefundApprovals) return;
     if (filteredRefundRequestRows.some((row) => row.id === selectedRefundRequestId)) return;
     if (showRefundRequestDetailModal && selectedRefundRequest) return;
     setSelectedRefundRequestId(null);
   }, [
     activeTab,
     filteredRefundRequestRows,
+    isShowingWebRefundApprovals,
     selectedRefundRequest,
     selectedRefundRequestId,
     showRefundRequestDetailModal,
@@ -11345,7 +11360,7 @@ const buildExpenseDescription = (
       const biggest = segments[0];
       const share = biggest && refundPeriodStats.total > 0 ? Math.round((biggest.amount / refundPeriodStats.total) * 100) : null;
       const hero = (
-        <View style={{ marginTop: isMobile && !(!(isFinanceApprover && isWebDesktop) && visiblePendingCount > 0) ? 4 : 16 }}>
+        <View style={{ marginTop: isMobile && visiblePendingCount === 0 ? 4 : 16 }}>
           <FinanceHeroCard
             eyebrow={`Refunds · ${labels.label}`}
             amount={formatCurrency(refundPeriodStats.total)}
@@ -11383,8 +11398,9 @@ const buildExpenseDescription = (
 
     return (
       <View style={{ marginTop: activeTab === 'refunds' ? financeSectionTopMargin : 24 }}>
-        {!isWebFinanceApproverRefunds && visiblePendingCount > 0 ? (
-          <View style={{ marginTop: isMobile ? 4 : 16 }}>
+        {visiblePendingCount > 0 ? (
+          // On web the date tabs sit right under the banner, so it needs space below it.
+          <View style={{ marginTop: isMobile ? 4 : 16, marginBottom: isMobile ? 0 : 16 }}>
             <PendingExpenseBanner
               count={visiblePendingCount}
               boldText={`${visiblePendingCount} refund request${visiblePendingCount === 1 ? '' : 's'}`}
@@ -11393,21 +11409,13 @@ const buildExpenseDescription = (
                 : (visiblePendingCount === 1 ? ' of yours is waiting for review or payout' : ' of yours are waiting for review or payout')}
               actionLabel={isFinanceApprover ? 'Review' : 'View'}
               onPress={() => {
-                if (!isFinanceApprover) {
-                  const hasSubmittedRefunds = myPendingRefundRequestRows.some((row) => row.status === 'submitted');
-                  const hasApprovedRefunds = myPendingRefundRequestRows.some((row) => row.status === 'approved');
-                  setRefundRequestFilter(hasSubmittedRefunds ? 'submitted' : hasApprovedRefunds ? 'approved' : 'all');
+                if (isWebFinanceApproverRefunds) {
+                  // Web owners: open the Pending Approvals view.
+                  setRefundWorkspaceView('approvals');
                   return;
                 }
-
-                const hasSubmittedRefunds = pendingRefundApprovalRows.some((row) => row.status === 'submitted');
-                if (hasSubmittedRefunds) {
-                  setRefundRequestFilter('submitted');
-                  return;
-                }
-
-                const hasApprovedRefunds = pendingRefundApprovalRows.some((row) => row.status === 'approved');
-                setRefundRequestFilter(hasApprovedRefunds ? 'approved' : 'all');
+                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setShowPendingRefundsSheet(true);
               }}
             />
           </View>
@@ -11423,11 +11431,11 @@ const buildExpenseDescription = (
               style={{
                 height: 36,
                 borderWidth: 1,
-                borderColor: refundWorkspaceView === 'list' ? colors.bar : colors.divider,
-                backgroundColor: refundWorkspaceView === 'list' ? colors.bar : 'transparent',
+                borderColor: refundWorkspaceView === 'list' ? FYLL_LIME : colors.divider,
+                backgroundColor: refundWorkspaceView === 'list' ? FYLL_LIME : 'transparent',
               }}
             >
-              <Text style={{ color: refundWorkspaceView === 'list' ? colors.bg.screen : colors.text.secondary }} className="text-sm font-semibold">
+              <Text style={{ color: refundWorkspaceView === 'list' ? FYLL_LIME_INK : colors.text.secondary }} className="text-sm font-semibold">
                 Refunds
               </Text>
             </Pressable>
@@ -11437,13 +11445,13 @@ const buildExpenseDescription = (
               style={{
                 height: 36,
                 borderWidth: 1,
-                borderColor: refundWorkspaceView === 'approvals' ? pendingBadgeBorder : colors.divider,
-                backgroundColor: refundWorkspaceView === 'approvals' ? pendingBadgeBg : 'transparent',
+                borderColor: refundWorkspaceView === 'approvals' ? palette.warnBorder : colors.divider,
+                backgroundColor: refundWorkspaceView === 'approvals' ? palette.warnBg : 'transparent',
                 gap: 8,
               }}
             >
               <Text
-                style={{ color: refundWorkspaceView === 'approvals' ? pendingBadgeText : colors.text.secondary }}
+                style={{ color: refundWorkspaceView === 'approvals' ? (palette.isDark ? '#E8B04A' : '#C98A1B') : colors.text.secondary }}
                 className="text-sm font-semibold"
               >
                 Pending Approvals
@@ -11454,10 +11462,10 @@ const buildExpenseDescription = (
                   minWidth: 22,
                   height: 22,
                   paddingHorizontal: 6,
-                  backgroundColor: pendingBadgeSolid,
+                  backgroundColor: palette.isDark ? '#E8B04A' : '#C98A1B',
                 }}
               >
-                <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '700' }}>
+                <Text style={{ color: '#1E1E1E', fontSize: 11, fontWeight: '700' }}>
                   {pendingRefundApprovalRows.length > 99 ? '99+' : pendingRefundApprovalRows.length}
                 </Text>
               </View>
@@ -15032,9 +15040,29 @@ const buildExpenseDescription = (
     );
   }
 
+  // What the plus button on the main Finance page offers.
+  const financeQuickActionCandidates: (QuickActionDef | null)[] = [
+    canCreateExpenseRequest ? { key: 'expense' as const, title: 'New expense', subtitle: 'Record money you spent', route: 'expense', primary: true } : null,
+    canCreateRefundRequest ? { key: 'refund' as const, title: 'New refund', subtitle: 'Send money back to a customer', route: 'refund' } : null,
+    canCreateProcurementRequest ? { key: 'procurement' as const, title: 'New procurement', subtitle: 'Order stock from a supplier', route: 'procurement' } : null,
+    canCreateExpenseRequest || isFinanceApprover || isManagerRole ? { key: 'ai' as const, title: 'Upload receipt', subtitle: 'Fyll AI drafts an expense or procurement', route: 'ai' } : null,
+  ];
+  const financeQuickActions: QuickActionDef[] = financeQuickActionCandidates
+    .filter((action): action is QuickActionDef => action !== null)
+    .map((action, index) => ({ ...action, primary: index === 0 }));
+
+  const handleFinanceQuickAction = (route: string) => {
+    if (route === 'expense') openExpenseComposer();
+    else if (route === 'refund') openRefundRequestComposer();
+    else if (route === 'procurement') openProcurementComposer('procurement');
+    else if (route === 'ai') openAiModal();
+  };
+
   // Phones and tablets: the "add" action for the current Finance tab is one round + button instead of header buttons.
   const financeFab: { label: string; onPress: () => void } | null = (() => {
     if (isWebDesktop || !canAccessFinance || mobileDetail) return null;
+    // The main page's plus opens the same kind of quick-actions sheet as Home.
+    if (activeTab === 'overview') return financeQuickActions.length > 0 ? { label: 'Quick actions', onPress: () => setShowFinanceQuickActions(true) } : null;
     if (activeTab === 'expenses') return canCreateExpenseRequest ? { label: 'Add expense', onPress: openExpenseComposer } : null;
     if (activeTab === 'other-income') return canManageOtherIncome ? { label: 'Add income', onPress: openOtherIncomeComposer } : null;
     if (activeTab === 'refunds') return canCreateRefundRequest ? { label: 'New refund', onPress: () => openRefundRequestComposer() } : null;
@@ -15049,6 +15077,324 @@ const buildExpenseDescription = (
     if (activeTab === 'salary') return salaryTemplates.length > 0 ? { label: 'Run salary', onPress: openSalaryRunLauncher } : null;
     return null;
   })();
+
+  // ---- Fyll AI draft sheet (choose what to create, upload receipts, review the draft) ----
+  const closeAiModal = () => {
+    setShowExpenseAiModal(false);
+    setExpenseUploadError('');
+    setIsGeneratingExpenseDraft(false);
+    setAiStep('choose');
+    setAiParsedDrafts([]);
+    setAiParsedProcurementDraft(null);
+    setExpenseReceiptAssets([]);
+  };
+  const aiGoBack = () => {
+    if (aiStep === 'upload') {
+      setAiStep('choose');
+      setExpenseReceiptAssets([]);
+      setExpenseUploadError('');
+    } else {
+      setAiStep('upload');
+    }
+    setAiParsedDrafts([]);
+    setAiParsedProcurementDraft(null);
+  };
+  const aiTitle = aiStep === 'choose'
+    ? 'Fyll AI'
+    : aiStep === 'review'
+      ? aiType === 'procurement'
+        ? 'Review procurement'
+        : `Review ${aiParsedDrafts.length} expense${aiParsedDrafts.length !== 1 ? 's' : ''}`
+      : aiType === 'expense' ? 'Expense draft' : 'Procurement draft';
+  const aiSubtitle = aiStep === 'choose'
+    ? 'What would you like to create?'
+    : aiStep === 'review'
+      ? 'Check what Fyll AI read, then approve to continue.'
+      : 'Upload receipts and Fyll AI will prefill your draft.';
+  const aiTextSize = isMobile ? 12 : 14;
+  const aiSmallSize = isMobile ? 10 : 12;
+  const aiConfidenceChip = (confidence: string) => {
+    const tone = confidence === 'high'
+      ? { bg: aiPalette.nudgeBg, ink: aiPalette.limeOnSurface }
+      : confidence === 'medium'
+        ? { bg: aiPalette.warnBg, ink: aiPalette.warn }
+        : { bg: aiPalette.dangerBg, ink: aiPalette.danger };
+    return (
+      <View style={{ height: 24, paddingHorizontal: 10, borderRadius: 999, justifyContent: 'center', backgroundColor: tone.bg }}>
+        <Text style={{ color: tone.ink, fontSize: aiSmallSize, fontWeight: '600', textTransform: 'capitalize' }}>{confidence} confidence</Text>
+      </View>
+    );
+  };
+  const aiInfoChip = (label: string, strong = false) => (
+    <View style={{ height: 24, paddingHorizontal: 10, borderRadius: 999, justifyContent: 'center', backgroundColor: aiPalette.softFill }}>
+      <Text style={{ color: strong ? aiPalette.text : aiPalette.muted, fontSize: aiSmallSize, fontWeight: '600' }}>{label}</Text>
+    </View>
+  );
+  const aiPrimaryButton = (label: string, onPress: () => void, options?: { disabled?: boolean; icon?: 'sparkles' | 'check'; flex?: boolean }) => (
+    <Pressable
+      onPress={onPress}
+      disabled={options?.disabled}
+      accessibilityRole="button"
+      style={(state) => ({
+        flex: options?.flex ? 1 : undefined,
+        height: 52,
+        paddingHorizontal: 22,
+        borderRadius: 999,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        backgroundColor: isHovered(state) || state.pressed ? FYLL_LIME_HOVER : FYLL_LIME,
+        opacity: options?.disabled ? 0.45 : 1,
+      })}
+    >
+      {options?.icon === 'sparkles' ? <Sparkles size={16} color={FYLL_LIME_INK} strokeWidth={2.5} /> : options?.icon === 'check' ? <Check size={16} color={FYLL_LIME_INK} strokeWidth={2.8} /> : null}
+      <Text style={[FINANCE_BUTTON_TEXT, { color: FYLL_LIME_INK }]} numberOfLines={1}>{label}</Text>
+    </Pressable>
+  );
+  const aiCancelButton = (
+    <Pressable
+      onPress={closeAiModal}
+      accessibilityRole="button"
+      style={(state) => ({ height: 52, paddingHorizontal: 22, borderRadius: 999, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: aiPalette.border, backgroundColor: isHovered(state) || state.pressed ? aiPalette.softFill : aiPalette.inset })}
+    >
+      <Text style={[FINANCE_BUTTON_TEXT, { color: aiPalette.text }]}>Cancel</Text>
+    </Pressable>
+  );
+
+  const aiChoiceCard = (kind: 'expense' | 'procurement') => {
+    const isExpense = kind === 'expense';
+    const Icon = isExpense ? Receipt : ShoppingCart;
+    return (
+      <Pressable
+        key={kind}
+        onPress={() => { setAiType(kind); setAiStep('upload'); setAiParsedDrafts([]); setAiParsedProcurementDraft(null); }}
+        accessibilityRole="button"
+        style={(state) => ({
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 14,
+          padding: 16,
+          borderRadius: 24,
+          borderWidth: 1,
+          borderColor: aiPalette.border,
+          backgroundColor: isHovered(state) || state.pressed ? aiPalette.cardHover : aiPalette.inset,
+        })}
+      >
+        <View style={{ width: 52, height: 52, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: aiPalette.nudgeBg }}>
+          <Icon size={24} color={aiPalette.limeOnSurface} strokeWidth={2.1} />
+        </View>
+        <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+          <MoneyText style={{ color: aiPalette.text, fontSize: isMobile ? 16 : 18, letterSpacing: -0.3 }}>{isExpense ? 'Expense' : 'Procurement'}</MoneyText>
+          <Text style={{ color: aiPalette.faint, fontSize: aiTextSize }}>
+            {isExpense ? 'Log a business cost from a receipt or invoice' : 'Create a purchase order from an invoice or quote'}
+          </Text>
+        </View>
+        <ChevronRight size={18} color={aiPalette.faint} strokeWidth={2.2} />
+      </Pressable>
+    );
+  };
+
+  const aiReviewCard = (key: string, title: string, subtitle: string | undefined, chips: React.ReactNode, onRemove?: () => void) => (
+    <View key={key} style={{ borderRadius: 24, borderWidth: 1, borderColor: aiPalette.border, backgroundColor: aiPalette.inset, padding: 16, gap: 10 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+        <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+          <Text style={{ color: aiPalette.text, fontSize: isMobile ? 14 : 16, fontWeight: '700' }} numberOfLines={2}>{title}</Text>
+          {subtitle ? <Text style={{ color: aiPalette.faint, fontSize: aiTextSize }} numberOfLines={1}>{subtitle}</Text> : null}
+        </View>
+        {onRemove ? (
+          <Pressable
+            onPress={onRemove}
+            accessibilityRole="button"
+            accessibilityLabel="Remove draft"
+            style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: aiPalette.softFill }}
+          >
+            <X size={15} color={aiPalette.muted} strokeWidth={2.4} />
+          </Pressable>
+        ) : null}
+      </View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{chips}</View>
+    </View>
+  );
+
+  let aiBody: React.ReactNode;
+  let aiFooter: React.ReactNode = null;
+
+  if (aiStep === 'choose') {
+    aiBody = (
+      <View style={{ gap: 12 }}>
+        {aiChoiceCard('expense')}
+        {aiChoiceCard('procurement')}
+      </View>
+    );
+  } else if (aiStep === 'review') {
+    if (aiType === 'procurement') {
+      const draft = aiParsedProcurementDraft;
+      aiBody = draft ? (
+        <View style={{ gap: 12 }}>
+          {aiReviewCard(
+            'procurement',
+            draft.title || 'Procurement draft',
+            draft.supplier || undefined,
+            <>
+              {aiInfoChip(formatCurrency(draft.totalCost), true)}
+              {aiInfoChip(draft.expectedDate)}
+              {aiConfidenceChip(draft.confidence)}
+            </>
+          )}
+        </View>
+      ) : (
+        <Text style={{ color: aiPalette.faint, fontSize: aiTextSize, textAlign: 'center', paddingVertical: 28 }}>No procurement draft to review.</Text>
+      );
+      aiFooter = (
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          {aiCancelButton}
+          {aiPrimaryButton('Approve & continue', handleApproveProcurementReview, { disabled: !draft, icon: 'check', flex: true })}
+        </View>
+      );
+    } else {
+      aiBody = aiParsedDrafts.length > 0 ? (
+        <View style={{ gap: 12 }}>
+          {aiParsedDrafts.map((draft, index) => aiReviewCard(
+            String(index),
+            draft.name || `Expense ${index + 1}`,
+            draft.merchant || undefined,
+            <>
+              {aiInfoChip(formatCurrency(draft.amount), true)}
+              {draft.category ? aiInfoChip(draft.category) : null}
+              {draft.expenseDate ? aiInfoChip(draft.expenseDate) : null}
+              {aiConfidenceChip(draft.confidence)}
+            </>,
+            () => setAiParsedDrafts((previous) => previous.filter((_, i) => i !== index))
+          ))}
+        </View>
+      ) : (
+        <Text style={{ color: aiPalette.faint, fontSize: aiTextSize, textAlign: 'center', paddingVertical: 28 }}>All drafts removed.</Text>
+      );
+      aiFooter = (
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          {aiCancelButton}
+          {aiParsedDrafts.length === 1
+            ? aiPrimaryButton('Approve & continue', handleApproveExpenseReview, { icon: 'check', flex: true })
+            : aiPrimaryButton(`Approve & save ${aiParsedDrafts.length}`, handleSaveAiDrafts, { disabled: aiParsedDrafts.length === 0, icon: 'check', flex: true })}
+        </View>
+      );
+    }
+  } else {
+    aiBody = (
+      <View style={{ gap: 12 }}>
+        {expenseReceiptAssets.length === 0 ? (
+          <Pressable
+            onPress={pickExpenseReceipt}
+            accessibilityRole="button"
+            style={(state) => ({
+              paddingVertical: 36,
+              borderRadius: 26,
+              borderWidth: 1.5,
+              borderStyle: 'dashed',
+              borderColor: aiPalette.nudgeBorder,
+              backgroundColor: isHovered(state) || state.pressed ? aiPalette.nudgeBg : 'transparent',
+              alignItems: 'center',
+              gap: 6,
+            })}
+          >
+            <View style={{ width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', backgroundColor: aiPalette.nudgeBg, marginBottom: 6 }}>
+              <Camera size={24} color={aiPalette.limeOnSurface} strokeWidth={2.1} />
+            </View>
+            <MoneyText style={{ color: aiPalette.text, fontSize: isMobile ? 16 : 18, letterSpacing: -0.3 }}>Upload receipt</MoneyText>
+            <Text style={{ color: aiPalette.faint, fontSize: aiTextSize }}>Tap to take a photo or choose a file</Text>
+          </Pressable>
+        ) : (
+          <View style={{ gap: 8 }}>
+            {expenseReceiptAssets.map((asset, index) => (
+              <View
+                key={`${asset.uri}-${index}`}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, height: 60, borderRadius: 20, borderWidth: 1, borderColor: aiPalette.border, backgroundColor: aiPalette.inset }}
+              >
+                <View style={{ width: 38, height: 38, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: aiPalette.nudgeBg }}>
+                  <FileText size={17} color={aiPalette.limeOnSurface} strokeWidth={2.1} />
+                </View>
+                <Text numberOfLines={1} style={{ flex: 1, minWidth: 0, color: aiPalette.text, fontSize: aiTextSize, fontWeight: '600' }}>{asset.name}</Text>
+                <Pressable
+                  onPress={() => {
+                    setExpenseReceiptAssets((previous) => previous.filter((_, assetIndex) => assetIndex !== index));
+                    setExpenseUploadError('');
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Remove file"
+                  style={{ width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: aiPalette.softFill }}
+                >
+                  <X size={15} color={aiPalette.muted} strokeWidth={2.4} />
+                </Pressable>
+              </View>
+            ))}
+            <Pressable
+              onPress={pickExpenseReceipt}
+              accessibilityRole="button"
+              style={(state) => ({ height: 48, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1.5, borderStyle: 'dashed', borderColor: aiPalette.nudgeBorder, backgroundColor: isHovered(state) || state.pressed ? aiPalette.nudgeBg : 'transparent' })}
+            >
+              <Plus size={16} color={aiPalette.limeOnSurface} strokeWidth={2.6} />
+              <Text style={[FINANCE_BUTTON_TEXT, { color: aiPalette.limeOnSurface }]}>Add another file</Text>
+            </Pressable>
+          </View>
+        )}
+
+        {expenseReceiptAssets.length === 0 ? (
+          <Text style={{ color: aiPalette.faint, fontSize: aiSmallSize, textAlign: 'center' }}>Tip: photos and images work best.</Text>
+        ) : null}
+        {expenseUploadError ? <Text style={{ color: aiPalette.danger, fontSize: aiSmallSize + 1 }}>{expenseUploadError}</Text> : null}
+      </View>
+    );
+    aiFooter = (
+      <View style={{ flexDirection: 'row', gap: 10 }}>
+        {aiCancelButton}
+        {aiPrimaryButton(
+          isGeneratingExpenseDraft ? 'Analyzing...' : 'Parse & continue',
+          () => (aiType === 'expense' ? handleGenerateExpenseDraftWithAI() : handleGenerateProcurementDraftWithAI()),
+          { disabled: isGeneratingExpenseDraft || expenseReceiptAssets.length === 0, icon: 'sparkles', flex: true }
+        )}
+      </View>
+    );
+  }
+
+  const aiSheetContent = (
+    <View style={{ flex: isWebDesktop ? undefined : 1, gap: 18 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        {aiStep !== 'choose' ? (
+          <Pressable
+            onPress={aiGoBack}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            style={(state) => ({ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: aiPalette.border, backgroundColor: state.pressed ? aiPalette.softFill : aiPalette.inset })}
+          >
+            <ChevronLeft size={20} color={aiPalette.text} strokeWidth={2.2} />
+          </Pressable>
+        ) : null}
+        <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+          <MoneyText style={{ color: aiPalette.text, fontSize: isMobile ? 22 : 26, letterSpacing: -0.6 }} numberOfLines={1}>{aiTitle}</MoneyText>
+          <Text style={{ color: aiPalette.faint, fontSize: aiSmallSize + (isMobile ? 0 : 2) }} numberOfLines={2}>{aiSubtitle}</Text>
+        </View>
+        <Pressable
+          onPress={closeAiModal}
+          accessibilityRole="button"
+          accessibilityLabel="Close"
+          style={(state) => ({ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: aiPalette.border, backgroundColor: state.pressed ? aiPalette.softFill : aiPalette.inset })}
+        >
+          <X size={18} color={aiPalette.muted} strokeWidth={2.4} />
+        </Pressable>
+      </View>
+
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        style={isWebDesktop ? { maxHeight: 480, flexGrow: 0 } : { flex: 1 }}
+        contentContainerStyle={{ paddingBottom: 8 }}
+      >
+        {aiBody}
+      </ScrollView>
+
+      {aiFooter}
+    </View>
+  );
 
   return (
     <View className="flex-1" style={{ backgroundColor: colors.bg.screen }}>
@@ -16845,457 +17191,25 @@ const buildExpenseDescription = (
         </View>
       </Modal>
 
-      <Modal
-        visible={showExpenseAiModal}
-        transparent
-        animationType="none"
-        onRequestClose={() => {
-          setShowExpenseAiModal(false);
-          setExpenseUploadError('');
-          setIsGeneratingExpenseDraft(false);
-          setAiStep('choose');
-          setAiParsedDrafts([]);
-          setAiParsedProcurementDraft(null);
-          setExpenseReceiptAssets([]);
-        }}
-      >
-        <Pressable
-          className={isWebDesktop ? 'flex-1 items-center justify-center' : 'flex-1'}
-          style={{ backgroundColor: isWebDesktop ? 'rgba(0, 0, 0, 0.6)' : colors.bg.screen }}
-          onPress={() => {
-            setShowExpenseAiModal(false);
-            setExpenseUploadError('');
-            setIsGeneratingExpenseDraft(false);
-            setAiStep('choose');
-            setAiParsedDrafts([]);
-            setAiParsedProcurementDraft(null);
-            setExpenseReceiptAssets([]);
-          }}
-        >
+      {isWebDesktop ? (
+        <Modal visible={showExpenseAiModal} transparent animationType="fade" onRequestClose={closeAiModal}>
           <Pressable
-            onPress={(event) => event.stopPropagation()}
-            style={{
-              width: isWebDesktop ? '92%' : '100%',
-              maxWidth: isWebDesktop ? 620 : undefined,
-              height: isWebDesktop ? undefined : '100%',
-              borderRadius: isWebDesktop ? 20 : 0,
-              borderWidth: 1,
-              borderColor: colors.divider,
-              backgroundColor: colors.bg.card,
-              overflow: 'visible',
-              padding: isWebDesktop ? 20 : 16,
-              paddingTop: isWebDesktop ? 20 : 24,
-            }}
+            style={{ flex: 1, backgroundColor: aiPalette.isDark ? 'rgba(0,0,0,0.62)' : 'rgba(20,20,20,0.38)', alignItems: 'center', justifyContent: 'center' }}
+            onPress={closeAiModal}
           >
-            <View className="flex-row items-center justify-between">
-              <View style={{ flex: 1, marginRight: 12 }}>
-                {aiStep === 'upload' ? (
-                  <Pressable onPress={() => { setAiStep('choose'); setExpenseReceiptAssets([]); setExpenseUploadError(''); setAiParsedDrafts([]); setAiParsedProcurementDraft(null); }} className="flex-row items-center mb-1" style={{ gap: 4 }}>
-                    <ChevronLeft size={16} color={colors.accent} strokeWidth={2.5} />
-                    <Text style={{ color: colors.accent, fontSize: 13 }} className="font-semibold">Back</Text>
-                  </Pressable>
-                ) : aiStep === 'review' ? (
-                  <Pressable onPress={() => { setAiStep('upload'); setAiParsedDrafts([]); setAiParsedProcurementDraft(null); }} className="flex-row items-center mb-1" style={{ gap: 4 }}>
-                    <ChevronLeft size={16} color={colors.accent} strokeWidth={2.5} />
-                    <Text style={{ color: colors.accent, fontSize: 13 }} className="font-semibold">Back</Text>
-                  </Pressable>
-                ) : null}
-                <Text style={{ color: colors.text.primary }} className="text-xl font-bold">
-                  {aiStep === 'choose'
-                    ? 'Fyll AI'
-                    : aiStep === 'review'
-                      ? aiType === 'procurement'
-                        ? 'Review Procurement Draft'
-                        : `Review ${aiParsedDrafts.length} Expense${aiParsedDrafts.length !== 1 ? 's' : ''}`
-                      : aiType === 'expense'
-                        ? 'Fyll AI Expense Draft'
-                        : 'Fyll AI Procurement Draft'}
-                </Text>
-                <Text style={{ color: colors.text.tertiary }} className="text-sm mt-1">
-                  {aiStep === 'choose'
-                    ? 'What would you like to create?'
-                    : aiStep === 'review'
-                      ? aiType === 'procurement'
-                        ? 'Review the parsed PO draft, then approve to continue.'
-                        : 'Review parsed draft(s), then approve before saving.'
-                      : 'Upload receipt(s) and Fyll AI will prefill your draft.'}
-                </Text>
-              </View>
-              <Pressable
-                onPress={() => {
-                  setShowExpenseAiModal(false);
-                  setExpenseUploadError('');
-                  setIsGeneratingExpenseDraft(false);
-                  setAiStep('choose');
-                  setAiParsedDrafts([]);
-                  setAiParsedProcurementDraft(null);
-                  setExpenseReceiptAssets([]);
-                }}
-                className="rounded-full items-center justify-center"
-                style={{ backgroundColor: colors.bg.input, width: 40, height: 40 }}
-              >
-                <X size={20} color={colors.text.secondary} strokeWidth={2.5} />
-              </Pressable>
-            </View>
-
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              style={isWebDesktop ? { maxHeight: 520 } : { flex: 1 }}
-              contentContainerStyle={{ paddingBottom: 12 }}
+            <Pressable
+              onPress={(event) => event.stopPropagation()}
+              style={{ width: '92%', maxWidth: 620, maxHeight: '88%', borderRadius: 28, borderWidth: 1, borderColor: aiPalette.border, backgroundColor: aiPalette.card, padding: 22 }}
             >
-              {aiStep === 'choose' ? (
-                <View className="mt-5" style={{ gap: 12 }}>
-                  <Pressable
-                    onPress={() => { setAiType('expense'); setAiStep('upload'); setAiParsedDrafts([]); setAiParsedProcurementDraft(null); }}
-                    className="rounded-2xl flex-row items-center px-5"
-                    style={{
-                      paddingVertical: 20,
-                      borderWidth: 1.5,
-                      borderColor: colors.divider,
-                      backgroundColor: colors.bg.input,
-                      gap: 14,
-                    }}
-                  >
-                    <View className="rounded-2xl items-center justify-center" style={{ width: 52, height: 52, backgroundColor: '#7C3AED18' }}>
-                      <Receipt size={24} color="#7C3AED" strokeWidth={2} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: colors.text.primary }} className="text-base font-bold">Expense</Text>
-                      <Text style={{ color: colors.text.tertiary, marginTop: 2 }} className="text-sm">Log a business cost from a receipt or invoice</Text>
-                    </View>
-                    <ChevronRight size={18} color={colors.text.muted} strokeWidth={2} />
-                  </Pressable>
-
-                  <Pressable
-                    onPress={() => { setAiType('procurement'); setAiStep('upload'); setAiParsedDrafts([]); setAiParsedProcurementDraft(null); }}
-                    className="rounded-2xl flex-row items-center px-5"
-                    style={{
-                      paddingVertical: 20,
-                      borderWidth: 1.5,
-                      borderColor: colors.divider,
-                      backgroundColor: colors.bg.input,
-                      gap: 14,
-                    }}
-                  >
-                    <View className="rounded-2xl items-center justify-center" style={{ width: 52, height: 52, backgroundColor: '#0EA5E918' }}>
-                      <ShoppingCart size={24} color="#0EA5E9" strokeWidth={2} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: colors.text.primary }} className="text-base font-bold">Procurement</Text>
-                      <Text style={{ color: colors.text.tertiary, marginTop: 2 }} className="text-sm">Create a purchase order from an invoice or quote</Text>
-                    </View>
-                    <ChevronRight size={18} color={colors.text.muted} strokeWidth={2} />
-                  </Pressable>
-
-                  <Pressable
-                    onPress={() => {
-                      setShowExpenseAiModal(false);
-                      setAiStep('choose');
-                      setAiParsedDrafts([]);
-                      setAiParsedProcurementDraft(null);
-                      setExpenseUploadError('');
-                      setIsGeneratingExpenseDraft(false);
-                      setExpenseReceiptAssets([]);
-                    }}
-                    className="rounded-full items-center justify-center mt-2"
-                    style={{ height: 44, borderWidth: 1, borderColor: colors.divider }}
-                  >
-                    <Text style={{ color: colors.text.secondary }} className="font-semibold">Cancel</Text>
-                  </Pressable>
-                </View>
-              ) : aiStep === 'review' ? (
-                aiType === 'procurement' ? (
-                  <View className="mt-4" style={{ gap: 10 }}>
-                    {aiParsedProcurementDraft ? (
-                      <View
-                        className="rounded-2xl px-4 py-4"
-                        style={{ borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.input, gap: 8 }}
-                      >
-                        <Text style={{ color: colors.text.primary, fontSize: 16 }} className="font-bold" numberOfLines={2}>
-                          {aiParsedProcurementDraft.title || 'Procurement Draft'}
-                        </Text>
-                        {aiParsedProcurementDraft.supplier ? (
-                          <Text style={{ color: colors.text.tertiary, fontSize: 13 }}>{aiParsedProcurementDraft.supplier}</Text>
-                        ) : null}
-                        <View className="flex-row flex-wrap" style={{ gap: 6, marginTop: 2 }}>
-                          <View className="rounded-lg px-2.5 py-1" style={{ backgroundColor: colors.bg.screen, borderWidth: 1, borderColor: colors.divider }}>
-                            <Text style={{ color: colors.text.primary, fontSize: 13 }} className="font-semibold">
-                              {formatCurrency(aiParsedProcurementDraft.totalCost)}
-                            </Text>
-                          </View>
-                          <View className="rounded-lg px-2.5 py-1" style={{ backgroundColor: colors.bg.screen, borderWidth: 1, borderColor: colors.divider }}>
-                            <Text style={{ color: colors.text.secondary, fontSize: 12 }}>{aiParsedProcurementDraft.expectedDate}</Text>
-                          </View>
-                          <View className="rounded-lg px-2.5 py-1" style={{ backgroundColor: aiParsedProcurementDraft.confidence === 'high' ? '#16A34A18' : aiParsedProcurementDraft.confidence === 'medium' ? '#CA8A0418' : '#DC262618', borderWidth: 1, borderColor: aiParsedProcurementDraft.confidence === 'high' ? '#16A34A40' : aiParsedProcurementDraft.confidence === 'medium' ? '#CA8A0440' : '#DC262640' }}>
-                            <Text style={{ color: aiParsedProcurementDraft.confidence === 'high' ? '#16A34A' : aiParsedProcurementDraft.confidence === 'medium' ? '#CA8A04' : '#DC2626', fontSize: 11 }} className="font-semibold capitalize">{aiParsedProcurementDraft.confidence}</Text>
-                          </View>
-                        </View>
-                      </View>
-                    ) : (
-                      <View className="items-center py-8">
-                        <Text style={{ color: colors.text.muted, fontSize: 14 }}>No procurement draft to review.</Text>
-                      </View>
-                    )}
-
-                    <View className="flex-row justify-end mt-2" style={{ gap: 10 }}>
-                      <Pressable
-                        onPress={() => {
-                          setAiStep('choose');
-                          setAiParsedDrafts([]);
-                          setAiParsedProcurementDraft(null);
-                          setShowExpenseAiModal(false);
-                          setExpenseReceiptAssets([]);
-                        }}
-                        className="rounded-full px-6"
-                        style={{ height: 44, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.divider }}
-                      >
-                        <Text style={{ color: colors.text.secondary }} className="font-semibold">Cancel</Text>
-                      </Pressable>
-                      <Pressable
-                        onPress={handleApproveProcurementReview}
-                        disabled={!aiParsedProcurementDraft}
-                        className="overflow-hidden"
-                        style={{ height: 44, borderRadius: 999, opacity: aiParsedProcurementDraft ? 1 : 0.4 }}
-                      >
-                        <LinearGradient
-                          colors={['#0369A1', '#0EA5E9', '#38BDF8']}
-                          start={{ x: 0, y: 0 }}
-                          end={{ x: 1, y: 1 }}
-                          style={{ height: 44, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}
-                        >
-                          <Check size={15} color="#FFFFFF" strokeWidth={2.5} />
-                          <Text style={{ color: '#FFFFFF' }} className="font-semibold">Approve & Continue</Text>
-                        </LinearGradient>
-                      </Pressable>
-                    </View>
-                  </View>
-                ) : (
-                  <View className="mt-4" style={{ gap: 10 }}>
-                    {aiParsedDrafts.map((draft, index) => (
-                      <View
-                        key={index}
-                        className="rounded-2xl px-4 py-4"
-                        style={{ borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.input, gap: 6 }}
-                      >
-                        <View className="flex-row items-start justify-between" style={{ gap: 8 }}>
-                          <View style={{ flex: 1 }}>
-                            <Text style={{ color: colors.text.primary, fontSize: 15 }} className="font-bold" numberOfLines={2}>
-                              {draft.name || `Expense ${index + 1}`}
-                            </Text>
-                            {draft.merchant ? (
-                              <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 1 }}>{draft.merchant}</Text>
-                            ) : null}
-                          </View>
-                          <Pressable
-                            onPress={() => setAiParsedDrafts((prev) => prev.filter((_, i) => i !== index))}
-                            className="rounded-full items-center justify-center"
-                            style={{ width: 28, height: 28, backgroundColor: colors.bg.screen, borderWidth: 1, borderColor: colors.divider, marginTop: 2 }}
-                          >
-                            <X size={14} color={colors.text.tertiary} strokeWidth={2.5} />
-                          </Pressable>
-                        </View>
-                        <View className="flex-row flex-wrap" style={{ gap: 6, marginTop: 2 }}>
-                          <View className="rounded-lg px-2.5 py-1" style={{ backgroundColor: colors.bg.screen, borderWidth: 1, borderColor: colors.divider }}>
-                            <Text style={{ color: colors.text.primary, fontSize: 13 }} className="font-semibold">
-                              {formatCurrency(draft.amount)}
-                            </Text>
-                          </View>
-                          {draft.category ? (
-                            <View className="rounded-lg px-2.5 py-1" style={{ backgroundColor: colors.bg.screen, borderWidth: 1, borderColor: colors.divider }}>
-                              <Text style={{ color: colors.text.secondary, fontSize: 12 }}>{draft.category}</Text>
-                            </View>
-                          ) : null}
-                          {draft.expenseDate ? (
-                            <View className="rounded-lg px-2.5 py-1" style={{ backgroundColor: colors.bg.screen, borderWidth: 1, borderColor: colors.divider }}>
-                              <Text style={{ color: colors.text.secondary, fontSize: 12 }}>{draft.expenseDate}</Text>
-                            </View>
-                          ) : null}
-                          <View className="rounded-lg px-2.5 py-1" style={{ backgroundColor: draft.confidence === 'high' ? '#16A34A18' : draft.confidence === 'medium' ? '#CA8A0418' : '#DC262618', borderWidth: 1, borderColor: draft.confidence === 'high' ? '#16A34A40' : draft.confidence === 'medium' ? '#CA8A0440' : '#DC262640' }}>
-                            <Text style={{ color: draft.confidence === 'high' ? '#16A34A' : draft.confidence === 'medium' ? '#CA8A04' : '#DC2626', fontSize: 11 }} className="font-semibold capitalize">{draft.confidence}</Text>
-                          </View>
-                        </View>
-                      </View>
-                    ))}
-
-                    {aiParsedDrafts.length === 0 ? (
-                      <View className="items-center py-8">
-                        <Text style={{ color: colors.text.muted, fontSize: 14 }}>All drafts removed.</Text>
-                      </View>
-                    ) : null}
-
-                    <View className="flex-row justify-end mt-2" style={{ gap: 10 }}>
-                      <Pressable
-                        onPress={() => {
-                          setAiStep('choose');
-                          setAiParsedDrafts([]);
-                          setAiParsedProcurementDraft(null);
-                          setShowExpenseAiModal(false);
-                          setExpenseReceiptAssets([]);
-                        }}
-                        className="rounded-full px-6"
-                        style={{ height: 44, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.divider }}
-                      >
-                        <Text style={{ color: colors.text.secondary }} className="font-semibold">Cancel</Text>
-                      </Pressable>
-                      {aiParsedDrafts.length === 1 ? (
-                        <Pressable
-                          onPress={handleApproveExpenseReview}
-                          className="overflow-hidden"
-                          style={{ height: 44, borderRadius: 999 }}
-                        >
-                          <LinearGradient
-                            colors={['#7C3AED', '#9333EA', '#A855F7']}
-                            start={{ x: 0, y: 0 }}
-                            end={{ x: 1, y: 1 }}
-                            style={{ height: 44, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}
-                          >
-                            <Check size={15} color="#FFFFFF" strokeWidth={2.5} />
-                            <Text style={{ color: '#FFFFFF' }} className="font-semibold">Approve & Continue</Text>
-                          </LinearGradient>
-                        </Pressable>
-                      ) : (
-                        <Pressable
-                          onPress={handleSaveAiDrafts}
-                          disabled={aiParsedDrafts.length === 0}
-                          className="overflow-hidden"
-                          style={{ height: 44, borderRadius: 999, opacity: aiParsedDrafts.length === 0 ? 0.4 : 1 }}
-                        >
-                          <LinearGradient
-                            colors={['#7C3AED', '#9333EA', '#A855F7']}
-                            start={{ x: 0, y: 0 }}
-                            end={{ x: 1, y: 1 }}
-                            style={{ height: 44, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}
-                          >
-                            <Check size={15} color="#FFFFFF" strokeWidth={2.5} />
-                            <Text style={{ color: '#FFFFFF' }} className="font-semibold">
-                              Approve & Save {aiParsedDrafts.length} Expense{aiParsedDrafts.length !== 1 ? 's' : ''}
-                            </Text>
-                          </LinearGradient>
-                        </Pressable>
-                      )}
-                    </View>
-                  </View>
-                )
-              ) : (
-                <View className="mt-5" style={{ gap: 12 }}>
-                  {expenseReceiptAssets.length === 0 ? (
-                    <Pressable
-                      onPress={pickExpenseReceipt}
-                      className="rounded-2xl items-center justify-center"
-                      style={{
-                        paddingVertical: 28,
-                        borderWidth: 1.5,
-                        borderColor: colors.divider,
-                        borderStyle: 'dashed',
-                      }}
-                    >
-                      <View
-                        className="rounded-full items-center justify-center mb-3"
-                        style={{ width: 48, height: 48, backgroundColor: colors.bg.screen, borderWidth: 1, borderColor: colors.divider }}
-                      >
-                        <Camera size={22} color={colors.text.tertiary} strokeWidth={2} />
-                      </View>
-                      <Text style={{ color: colors.text.primary }} className="text-base font-semibold">Upload Receipt</Text>
-                      <Text style={{ color: colors.text.muted, marginTop: 4 }} className="text-sm">Tap to take a photo or choose file</Text>
-                    </Pressable>
-                  ) : (
-                    <View style={{ gap: 8 }}>
-                      {expenseReceiptAssets.map((asset, index) => (
-                        <View
-                          key={`${asset.uri}-${index}`}
-                          className="rounded-xl flex-row items-center px-3"
-                          style={{ height: 52, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.input }}
-                        >
-                          <View className="rounded-lg items-center justify-center" style={{ width: 36, height: 36, backgroundColor: colors.bg.screen, borderWidth: 1, borderColor: colors.divider }}>
-                            <FileText size={16} color={colors.text.tertiary} strokeWidth={2} />
-                          </View>
-                          <View style={{ flex: 1, minWidth: 0, marginLeft: 10 }}>
-                            <Text numberOfLines={1} style={{ color: colors.text.primary, fontSize: 14 }} className="font-medium">{asset.name}</Text>
-                          </View>
-                          <Pressable
-                            onPress={() => {
-                              setExpenseReceiptAssets((previous) => previous.filter((_, assetIndex) => assetIndex !== index));
-                              setExpenseUploadError('');
-                            }}
-                            className="rounded-md items-center justify-center ml-2"
-                            style={{ width: 30, height: 30 }}
-                          >
-                            <X size={16} color={colors.text.tertiary} strokeWidth={2} />
-                          </Pressable>
-                        </View>
-                      ))}
-                      <Pressable
-                        onPress={pickExpenseReceipt}
-                        className="rounded-xl items-center justify-center"
-                        style={{
-                          height: 44,
-                          borderWidth: 1,
-                          borderColor: colors.divider,
-                          borderStyle: 'dashed',
-                        }}
-                      >
-                        <Text style={{ color: colors.text.secondary }} className="text-sm font-semibold">+ Add Another File</Text>
-                      </Pressable>
-                    </View>
-                  )}
-
-                  {expenseReceiptAssets.length === 0 ? (
-                    <Text style={{ color: colors.text.muted, fontSize: 12 }}>
-                      Tip: images work best for AI parsing.
-                    </Text>
-                  ) : null}
-
-                  {expenseUploadError ? (
-                    <Text style={{ color: colors.danger }} className="text-xs">
-                      {expenseUploadError}
-                    </Text>
-                  ) : null}
-
-                  <View className="flex-row justify-end mt-4" style={{ gap: 10 }}>
-                    <Pressable
-                      onPress={() => {
-                        setShowExpenseAiModal(false);
-                        setExpenseUploadError('');
-                        setIsGeneratingExpenseDraft(false);
-                        setAiStep('choose');
-                      }}
-                      className="rounded-full px-6"
-                      style={{ height: 44, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.divider }}
-                    >
-                      <Text style={{ color: colors.text.secondary }} className="font-semibold">Cancel</Text>
-                    </Pressable>
-                    <Pressable
-                      onPress={() => aiType === 'expense'
-                        ? handleGenerateExpenseDraftWithAI()
-                        : handleGenerateProcurementDraftWithAI()
-                      }
-                      disabled={isGeneratingExpenseDraft || expenseReceiptAssets.length === 0}
-                      className="overflow-hidden"
-                      style={{
-                        height: 44,
-                        borderRadius: 999,
-                        opacity: isGeneratingExpenseDraft || expenseReceiptAssets.length === 0 ? 0.5 : 1,
-                      }}
-                    >
-                      <LinearGradient
-                        colors={aiType === 'procurement' ? ['#0369A1', '#0EA5E9', '#38BDF8'] : ['#7C3AED', '#9333EA', '#A855F7']}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                        style={{ height: 44, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
-                      >
-                        <Sparkles size={14} color="#FFFFFF" strokeWidth={2.5} />
-                        <Text style={{ color: '#FFFFFF' }} className="font-semibold ml-1.5">
-                          {isGeneratingExpenseDraft ? 'Analyzing...' : 'Parse & Continue'}
-                        </Text>
-                      </LinearGradient>
-                    </Pressable>
-                  </View>
-                </View>
-              )}
-            </ScrollView>
+              {aiSheetContent}
+            </Pressable>
           </Pressable>
-        </Pressable>
-      </Modal>
+        </Modal>
+      ) : (
+        <FluidSheet visible={showExpenseAiModal} onClose={closeAiModal} heightFraction={0.92}>
+          {aiSheetContent}
+        </FluidSheet>
+      )}
 
       <Modal
         visible={showRefundRequestModal}
@@ -17930,6 +17844,60 @@ const buildExpenseDescription = (
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* Phones and tablets: the pending refunds behind the amber banner, as a sheet. Tap one to open its details. */}
+      <FluidSheet visible={showPendingRefundsSheet} onClose={() => setShowPendingRefundsSheet(false)} heightFraction={0.86}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 14 }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <MoneyText style={{ color: palette.text, fontSize: 24, letterSpacing: -0.5 }}>{isFinanceApprover ? 'Pending refunds' : 'My pending refunds'}</MoneyText>
+            <Text style={{ color: palette.faint, fontSize: 12, marginTop: 2 }}>
+              {isFinanceApprover ? 'Waiting for your approval' : 'Waiting for review or payout'}
+            </Text>
+          </View>
+          <Pressable
+            onPress={() => setShowPendingRefundsSheet(false)}
+            accessibilityRole="button"
+            accessibilityLabel="Close"
+            style={(state) => ({ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: state.pressed ? palette.softFill : palette.inset, borderWidth: 1, borderColor: palette.border })}
+          >
+            <X size={17} color={palette.muted} strokeWidth={2.4} />
+          </Pressable>
+        </View>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 16 }}>
+          {(isFinanceApprover ? pendingRefundApprovalRows : myPendingRefundRequestRows).length === 0 ? (
+            <Text style={{ color: palette.faint, fontSize: 14, textAlign: 'center', paddingVertical: 40 }}>No pending refunds right now.</Text>
+          ) : (isFinanceApprover ? pendingRefundApprovalRows : myPendingRefundRequestRows).map((row) => {
+            const statusLabel = capitalizeDisplayValue(formatRefundRequestStatusLabel(row));
+            const statusTone = getStatusTone(statusLabel, colors);
+            return (
+              <Pressable
+                key={row.id}
+                onPress={() => {
+                  setShowPendingRefundsSheet(false);
+                  // Let the sheet close before the details open on top of it.
+                  setTimeout(() => openRefundRequestDetail(row.id, { modal: true }), 260);
+                }}
+                style={(state) => ({ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 22, borderWidth: 1, borderColor: palette.border, backgroundColor: state.pressed ? palette.softFill : palette.inset })}
+              >
+                <View style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.nudgeBg, borderWidth: 1, borderColor: palette.nudgeBorder }}>
+                  <Text style={{ color: palette.limeOnSurface, fontSize: 12, fontWeight: '700' }}>{getNameInitials(row.customerName)}</Text>
+                </View>
+                <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                  <Text style={{ color: palette.text, fontSize: 13, fontWeight: '600' }} numberOfLines={1}>{capitalizeDisplayValue(row.customerName)}</Text>
+                  <Text style={{ color: palette.faint, fontSize: 11 }} numberOfLines={1}>{row.orderNumber} · {row.refundType === 'full' ? 'Full refund' : 'Partial refund'} · {row.requestedDate}</Text>
+                </View>
+                <View style={{ alignItems: 'flex-end', gap: 3 }}>
+                  <MoneyText style={{ color: palette.text, fontSize: 14 }} numberOfLines={1}>{formatCurrency(row.amount)}</MoneyText>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: statusTone.text }} />
+                    <Text style={{ color: statusTone.text, fontSize: 10, fontWeight: '600' }}>{statusLabel}</Text>
+                  </View>
+                </View>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </FluidSheet>
 
       <Modal
         visible={showRefundRequestDetailModal}
@@ -22243,6 +22211,14 @@ const buildExpenseDescription = (
           <Plus size={24} color={FYLL_LIME_INK} strokeWidth={2.6} />
         </Pressable>
       ) : null}
+
+      <QuickActionsSheet
+        visible={showFinanceQuickActions}
+        onClose={() => setShowFinanceQuickActions(false)}
+        actions={financeQuickActions}
+        onSelect={handleFinanceQuickAction}
+        fabBottom={Math.max(96, tabBarHeight - 48)}
+      />
 
       {canAccessFinance ? (
         <FyllAiAssistantDrawer

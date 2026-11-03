@@ -6,10 +6,11 @@ import { ChevronRight } from 'lucide-react-native';
 import useFyllStore from '@/lib/state/fyll-store';
 import { calculateNewDesignAnalytics } from '@/lib/inventory-analytics';
 import { DetailHeader } from '@/components/stats/DetailHeader';
-import { useStatsColors } from '@/lib/theme';
+import { useInsightsBottomPad, useInsightsColors } from '@/lib/insights-theme';
 
 export default function TopRestockedNewDesignsScreen() {
-  const colors = useStatsColors();
+  const bottomPad = useInsightsBottomPad();
+  const colors = useInsightsColors();
   const router = useRouter();
   const params = useLocalSearchParams<{ year?: string }>();
   const initialYear = params.year ? parseInt(params.year, 10) : new Date().getFullYear();
@@ -51,7 +52,7 @@ export default function TopRestockedNewDesignsScreen() {
         <ScrollView
           className="flex-1"
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
+          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: bottomPad }}
         >
           {/* Year Selector */}
           <View className="flex-row mt-4">

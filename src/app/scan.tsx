@@ -5,7 +5,7 @@ import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions, BarcodeScanningResult } from 'expo-camera';
-import { X, Zap, ZapOff, Package, ShoppingCart, ScanLine, Plus, Check } from 'lucide-react-native';
+import { X, Zap, ZapOff, Package, ShoppingCart, ScanLine, Plus, Minus, Check } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { BricolageGrotesque_600SemiBold, useFonts } from '@expo-google-fonts/bricolage-grotesque';
 import useFyllStore, { formatCurrency } from '@/lib/state/fyll-store';
@@ -50,6 +50,7 @@ export default function ScanScreen() {
   const [scannedProduct, setScannedProduct] = useState<ScannedProduct | null>(null);
   const [notFound, setNotFound] = useState<boolean>(false);
   const [addedCount, setAddedCount] = useState<number>(0);
+  const [addQty, setAddQty] = useState<number>(1);
 
   const frameSize = Math.min(width * 0.72, 320);
 
@@ -58,6 +59,7 @@ export default function ScanScreen() {
     setScannedProduct(null);
     setNotFound(false);
     setAddedCount(0);
+    setAddQty(1);
   };
 
   const findProductByBarcode = useCallback(
@@ -103,8 +105,9 @@ export default function ScanScreen() {
   const handleAddStock = () => {
     if (!scannedProduct) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    void updateVariantStock(scannedProduct.productId, scannedProduct.variantId, 1, businessId);
-    setAddedCount((count) => count + 1);
+    void updateVariantStock(scannedProduct.productId, scannedProduct.variantId, addQty, businessId);
+    setAddedCount((count) => count + addQty);
+    setAddQty(1);
     const updated = findProductByBarcode(scannedProduct.barcode);
     if (updated) setScannedProduct(updated);
   };
@@ -135,7 +138,7 @@ export default function ScanScreen() {
 
   const primaryButton = (disabled: boolean) => (state: PressableStateCallbackType) => ({
     flex: 1,
-    height: 52,
+    height: 58,
     borderRadius: 999,
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
@@ -145,14 +148,32 @@ export default function ScanScreen() {
   });
 
   const secondaryButton = (state: PressableStateCallbackType) => ({
-    height: 52,
-    paddingHorizontal: 22,
+    flex: 1,
+    height: 54,
+    paddingHorizontal: 18,
+    flexDirection: 'row' as const,
+    gap: 8,
     borderRadius: 999,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
     borderWidth: 1,
     borderColor: palette.border,
     backgroundColor: isHovered(state) || state.pressed ? palette.softFill : palette.inset,
+  });
+
+  // Done: lime outline, so it reads as the way out of the scan flow.
+  const doneButton = (state: PressableStateCallbackType) => ({
+    flex: 1,
+    height: 54,
+    paddingHorizontal: 18,
+    flexDirection: 'row' as const,
+    gap: 8,
+    borderRadius: 999,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    borderWidth: 1.5,
+    borderColor: FYLL_LIME,
+    backgroundColor: isHovered(state) || state.pressed ? palette.nudgeBg : 'transparent',
   });
 
   if (!permission) {
@@ -188,7 +209,7 @@ export default function ScanScreen() {
           accessibilityRole="button"
           style={(state) => ({ height: 54, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: isHovered(state) || state.pressed ? FYLL_LIME_HOVER : FYLL_LIME })}
         >
-          <Text style={[{ color: FYLL_LIME_INK, fontSize: 16 }, semiBold]}>Allow camera</Text>
+          <Text style={[{ color: FYLL_LIME_INK, fontSize: 14 }, semiBold]}>Allow camera</Text>
         </Pressable>
       </View>
     );
@@ -292,8 +313,8 @@ export default function ScanScreen() {
             borderTopLeftRadius: 28,
             borderTopRightRadius: 28,
             paddingHorizontal: 20,
-            paddingTop: 10,
-            paddingBottom: insets.bottom + 20,
+            paddingTop: 12,
+            paddingBottom: insets.bottom + 28,
             backgroundColor: palette.card,
             borderWidth: 1,
             borderBottomWidth: 0,
@@ -303,60 +324,110 @@ export default function ScanScreen() {
           <View style={{ alignSelf: 'center', width: 38, height: 5, borderRadius: 3, backgroundColor: palette.outline, marginBottom: 16 }} />
 
           {scannedProduct ? (
-            <View style={{ gap: 16 }}>
+            <View style={{ gap: 20 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-                <View style={{ width: 52, height: 52, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.nudgeBg }}>
-                  <Package size={24} color={palette.limeOnSurface} strokeWidth={2} />
+                <View style={{ width: 56, height: 56, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.nudgeBg }}>
+                  <Package size={25} color={palette.limeOnSurface} strokeWidth={2} />
                 </View>
-                <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-                  <MoneyText style={{ color: palette.text, fontSize: 18, letterSpacing: -0.3 }} numberOfLines={2}>{scannedProduct.productName}</MoneyText>
+                <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+                  <MoneyText style={{ color: palette.text, fontSize: 20, letterSpacing: -0.3 }} numberOfLines={2}>{scannedProduct.productName}</MoneyText>
                   {scannedProduct.variantName ? (
                     <Text style={{ color: palette.faint, fontSize: 13 }} numberOfLines={1}>{scannedProduct.variantName}</Text>
                   ) : null}
                 </View>
+                <View style={{ height: 30, paddingHorizontal: 12, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: outOfStock ? palette.dangerBg : palette.nudgeBg }}>
+                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: outOfStock ? palette.danger : palette.limeOnSurface }} />
+                  <Text style={{ color: outOfStock ? palette.danger : palette.limeOnSurface, fontSize: 12, fontWeight: '700' }}>{outOfStock ? 'Out of stock' : 'In stock'}</Text>
+                </View>
               </View>
 
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-                <View style={{ flex: 1, padding: 14, borderRadius: 20, backgroundColor: palette.inset, borderWidth: 1, borderColor: palette.border, gap: 4 }}>
+              <View style={{ flexDirection: 'row', borderRadius: 22, backgroundColor: palette.inset, borderWidth: 1, borderColor: palette.border, overflow: 'hidden' }}>
+                <View style={{ flex: 1, paddingVertical: 16, paddingHorizontal: 18, gap: 6 }}>
                   <Text style={{ color: palette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1.2, textTransform: 'uppercase' }}>In stock</Text>
-                  <MoneyText style={{ color: outOfStock ? '#F87171' : palette.text, fontSize: 22, letterSpacing: -0.4 }}>{scannedProduct.stock}</MoneyText>
+                  <MoneyText style={{ color: outOfStock ? palette.danger : palette.text, fontSize: 26, letterSpacing: -0.4 }}>{scannedProduct.stock}</MoneyText>
                 </View>
-                <View style={{ flex: 1, padding: 14, borderRadius: 20, backgroundColor: palette.inset, borderWidth: 1, borderColor: palette.border, gap: 4 }}>
+                <View style={{ width: 1, backgroundColor: palette.border }} />
+                <View style={{ flex: 1, paddingVertical: 16, paddingHorizontal: 18, gap: 6 }}>
                   <Text style={{ color: palette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1.2, textTransform: 'uppercase' }}>Price</Text>
-                  <MoneyText style={{ color: palette.text, fontSize: 22, letterSpacing: -0.4 }} numberOfLines={1}>{formatCurrency(scannedProduct.sellingPrice)}</MoneyText>
+                  <MoneyText style={{ color: palette.text, fontSize: 26, letterSpacing: -0.4 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{formatCurrency(scannedProduct.sellingPrice)}</MoneyText>
                 </View>
               </View>
 
               {scanMode === 'add-stock' ? (
-                <View style={{ gap: 10 }}>
-                  {addedCount > 0 ? (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                      <Check size={15} color={palette.limeOnSurface} strokeWidth={2.8} />
-                      <Text style={{ color: palette.limeOnSurface, fontSize: 13, fontWeight: '700' }}>Added {addedCount} so far</Text>
+                <View style={{ gap: 14 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                    <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                      <Text style={{ color: palette.text, fontSize: 15, fontWeight: '700' }}>Quantity to add</Text>
+                      <Text style={{ color: palette.faint, fontSize: 13 }}>
+                        {addedCount > 0 ? `Added ${addedCount} so far · ` : ''}New total: {scannedProduct.stock + addQty}
+                      </Text>
                     </View>
-                  ) : null}
-                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+                      <Pressable
+                        onPress={() => { Haptics.selectionAsync(); setAddQty((qty) => Math.max(1, qty - 1)); }}
+                        accessibilityRole="button"
+                        accessibilityLabel="Remove one"
+                        style={(state) => ({ width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', backgroundColor: isHovered(state) || state.pressed ? palette.softFill : palette.inset, borderWidth: 1, borderColor: palette.border })}
+                      >
+                        <Minus size={20} color={palette.text} strokeWidth={2.6} />
+                      </Pressable>
+                      <Text style={[{ color: palette.text, fontSize: 24, minWidth: 28, textAlign: 'center' }, semiBold]}>{addQty}</Text>
+                      <Pressable
+                        onPress={() => { Haptics.selectionAsync(); setAddQty((qty) => qty + 1); }}
+                        accessibilityRole="button"
+                        accessibilityLabel="Add one"
+                        style={(state) => ({ width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', backgroundColor: isHovered(state) || state.pressed ? palette.softFill : palette.inset, borderWidth: 1, borderColor: palette.border })}
+                      >
+                        <Plus size={20} color={palette.text} strokeWidth={2.6} />
+                      </Pressable>
+                    </View>
+                  </View>
+                  <View style={{ flexDirection: 'row' }}>
                     <Pressable onPress={handleAddStock} accessibilityRole="button" style={primaryButton(false)}>
-                      <Plus size={19} color={FYLL_LIME_INK} strokeWidth={2.6} />
-                      <Text style={[{ color: FYLL_LIME_INK, fontSize: 16 }, semiBold]}>Add 1 to stock</Text>
-                    </Pressable>
-                    <Pressable onPress={handleScanAgain} accessibilityRole="button" style={secondaryButton}>
-                      <Text style={[{ color: palette.text, fontSize: 15 }, semiBold]}>Scan next</Text>
+                      <Plus size={20} color={FYLL_LIME_INK} strokeWidth={2.6} />
+                      <Text style={[{ color: FYLL_LIME_INK, fontSize: 14 }, semiBold]}>Add {addQty} to stock</Text>
                     </Pressable>
                   </View>
-                  <Pressable onPress={handleClose} accessibilityRole="button" style={{ height: 40, alignItems: 'center', justifyContent: 'center' }}>
-                    <Text style={[{ color: palette.muted, fontSize: 14 }, semiBold]}>Done</Text>
-                  </Pressable>
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <Pressable onPress={handleScanAgain} accessibilityRole="button" style={secondaryButton}>
+                      <ScanLine size={18} color={palette.text} strokeWidth={2.2} />
+                      <Text style={[{ color: palette.text, fontSize: 14 }, semiBold]}>Scan next</Text>
+                    </Pressable>
+                    <Pressable onPress={handleClose} accessibilityRole="button" style={doneButton}>
+                      <Check size={18} color={palette.limeOnSurface} strokeWidth={2.8} />
+                      <Text style={[{ color: palette.limeOnSurface, fontSize: 14 }, semiBold]}>Done</Text>
+                    </Pressable>
+                  </View>
                 </View>
               ) : (
-                <View style={{ flexDirection: 'row', gap: 10 }}>
-                  <Pressable onPress={handleSell} disabled={outOfStock} accessibilityRole="button" style={primaryButton(outOfStock)}>
-                    <ShoppingCart size={19} color={outOfStock ? palette.faint : FYLL_LIME_INK} strokeWidth={2.4} />
-                    <Text style={[{ color: outOfStock ? palette.faint : FYLL_LIME_INK, fontSize: 16 }, semiBold]}>{outOfStock ? 'Out of stock' : 'Create order'}</Text>
-                  </Pressable>
-                  <Pressable onPress={handleScanAgain} accessibilityRole="button" style={secondaryButton}>
-                    <Text style={[{ color: palette.text, fontSize: 15 }, semiBold]}>Scan again</Text>
-                  </Pressable>
+                <View style={{ gap: 14 }}>
+                  <View style={{ flexDirection: 'row' }}>
+                    {outOfStock ? (
+                      <Pressable
+                        onPress={() => { Haptics.selectionAsync(); setScanMode('add-stock'); }}
+                        accessibilityRole="button"
+                        style={(state) => ({ flex: 1, height: 58, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: isHovered(state) || state.pressed ? palette.softFill : palette.inset, borderWidth: 1, borderColor: palette.border })}
+                      >
+                        <Plus size={20} color={palette.text} strokeWidth={2.4} />
+                        <Text style={[{ color: palette.text, fontSize: 14 }, semiBold]}>Add stock instead</Text>
+                      </Pressable>
+                    ) : (
+                      <Pressable onPress={handleSell} accessibilityRole="button" style={primaryButton(false)}>
+                        <ShoppingCart size={20} color={FYLL_LIME_INK} strokeWidth={2.4} />
+                        <Text style={[{ color: FYLL_LIME_INK, fontSize: 14 }, semiBold]}>Create order</Text>
+                      </Pressable>
+                    )}
+                  </View>
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <Pressable onPress={handleScanAgain} accessibilityRole="button" style={secondaryButton}>
+                      <ScanLine size={18} color={palette.text} strokeWidth={2.2} />
+                      <Text style={[{ color: palette.text, fontSize: 14 }, semiBold]}>Scan next</Text>
+                    </Pressable>
+                    <Pressable onPress={handleClose} accessibilityRole="button" style={doneButton}>
+                      <Check size={18} color={palette.limeOnSurface} strokeWidth={2.8} />
+                      <Text style={[{ color: palette.limeOnSurface, fontSize: 14 }, semiBold]}>Done</Text>
+                    </Pressable>
+                  </View>
                 </View>
               )}
             </View>
@@ -371,7 +442,7 @@ export default function ScanScreen() {
               </Text>
               <View style={{ flexDirection: 'row', gap: 10, marginTop: 14, alignSelf: 'stretch' }}>
                 <Pressable onPress={handleScanAgain} accessibilityRole="button" style={primaryButton(false)}>
-                  <Text style={[{ color: FYLL_LIME_INK, fontSize: 16 }, semiBold]}>Scan again</Text>
+                  <Text style={[{ color: FYLL_LIME_INK, fontSize: 14 }, semiBold]}>Scan again</Text>
                 </Pressable>
               </View>
             </View>

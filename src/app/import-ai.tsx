@@ -37,6 +37,8 @@ import {
 import { getSettingsWebPanelStyles, isFromSettingsRoute } from '@/lib/settings-web-panel';
 import { useSettingsBack } from '@/lib/useSettingsBack';
 import { FYLL_LIME, FYLL_LIME_INK, MoneyText, usePaymentsPalette } from '@/components/payments/payments-ui';
+import { InternalSettingsHeader } from '@/components/settings/InternalSettingsHeader';
+import { InventorySettingsHero } from '@/components/settings/InventorySettingsScaffold';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
 
 type ParseStats = {
@@ -978,28 +980,23 @@ export default function ImportAiScreen() {
     <View style={panelStyles.outer}>
       <View style={panelStyles.inner}>
         <SafeAreaView className="flex-1" style={{ backgroundColor: palette.page }} edges={['top']}>
-          <LinearGradient pointerEvents="none" colors={resolvedThemeMode === 'dark' ? ['rgba(111,125,18,0.55)', 'rgba(20,20,20,0)'] : ['rgba(213,224,87,0.42)', 'rgba(244,243,235,0)']} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 360 }} />
-          <View className="flex-row items-center" style={{ minHeight: isMobile ? 66 : 58, paddingHorizontal: 10, paddingTop: isMobile ? 12 : 4, paddingBottom: 4 }}>
-            <Pressable
-              onPress={goBack}
-              className="w-10 h-10 rounded-full items-center justify-center mr-3 active:opacity-50"
-              style={{ backgroundColor: palette.softFill }}
-            >
-              <ArrowLeft size={20} color={palette.text} strokeWidth={2} />
-            </Pressable>
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: palette.faint, fontSize: 9.5, lineHeight: 12, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Settings</Text>
-              <Text style={{ color: palette.text, fontSize: 17, lineHeight: 21, fontWeight: '600' }}>AI Import Assistant</Text>
-            </View>
-          </View>
+          {!isDesktop ? (
+            <LinearGradient
+              pointerEvents="none"
+              colors={resolvedThemeMode === 'dark' ? ['rgba(111,125,18,0.55)', 'rgba(20,20,20,0)'] : ['rgba(213,224,87,0.42)', 'rgba(244,243,235,0)']}
+              style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 360 }}
+            />
+          ) : null}
+          <InternalSettingsHeader title="AI Import Assistant" description="Map and validate structured business data with guided assistance." isDesktop={isDesktop} onBack={goBack} />
 
           <ScrollView className="flex-1" contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 18, paddingBottom: isDesktop ? 64 : tabBarHeight + 40 }} showsVerticalScrollIndicator={false}>
-            <View style={{ width: '100%', maxWidth: 760, alignSelf: 'center' }}>
-            <View style={{ position: 'relative', overflow: 'hidden', minHeight: 156, marginBottom: 20, padding: 20, justifyContent: 'center', borderRadius: 28, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, shadowColor: '#000', shadowOpacity: resolvedThemeMode === 'dark' ? 0.24 : 0.07, shadowRadius: 24, shadowOffset: { width: 0, height: 10 } }}>
-              <LinearGradient pointerEvents="none" colors={[palette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -44, right: -36, width: 210, height: 210, borderRadius: 105 }} />
-              <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 15 }}><LinearGradient colors={[FYLL_LIME, '#879400']} style={{ width: 66, height: 66, borderRadius: 22, alignItems: 'center', justifyContent: 'center' }}><Sparkles size={28} color={FYLL_LIME_INK} strokeWidth={2.1} /></LinearGradient><View style={{ flex: 1 }}><Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Smart data setup</Text><MoneyText style={{ color: palette.text, fontSize: 26, lineHeight: 31 }}>Import with AI</MoneyText><Text style={{ color: palette.faint, fontSize: 12.5, marginTop: 3 }}>Map and validate CSV files automatically</Text></View></View>
-            </View>
+            <View style={isDesktop ? { width: '100%', maxWidth: 1440, alignSelf: 'flex-start' } : { width: '100%', maxWidth: 760, alignSelf: 'center' }}>
+            <InventorySettingsHero
+              eyebrow="Smart data setup"
+              title="Import with AI"
+              description="Map and validate CSV files automatically"
+              isDesktop={isDesktop}
+            />
 
             <Text style={{ color: palette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Choose import type</Text>
             <View className="rounded-3xl p-4 overflow-hidden" style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}>
@@ -1059,7 +1056,7 @@ export default function ImportAiScreen() {
                               {active ? <CheckCircle2 size={15} color={colors.text.primary} strokeWidth={2.2} /> : null}
                             </View>
                           </View>
-                          <Text style={{ color: colors.text.primary }} className="text-sm font-semibold mt-2">{option.title}</Text>
+                          <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '500', marginTop: 8 }}>{option.title}</Text>
                           <Text style={{ color: colors.text.tertiary }} className="text-xs mt-0.5" numberOfLines={2}>{option.description}</Text>
                         </>
                       ) : (
@@ -1068,7 +1065,7 @@ export default function ImportAiScreen() {
                             <Icon size={16} color={active ? palette.limeOnSurface : palette.faint} strokeWidth={2} />
                           </View>
                           <View className="ml-3" style={{ flex: 1 }}>
-                            <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">{option.title}</Text>
+                            <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '500' }}>{option.title}</Text>
                             <Text style={{ color: colors.text.tertiary }} className="text-xs mt-0.5">{option.description}</Text>
                           </View>
                           {recommendedStep ? (

@@ -26,7 +26,6 @@ import {
   User as UserIcon,
   Truck,
   CircleAlert,
-  Printer,
   MoreHorizontal,
   Settings,
   RotateCcw,
@@ -83,6 +82,7 @@ import { POLL_MS } from '@/lib/polling';
 import { EmptyLine, HomeCard, HomeCardHeader, HomeLink, HomeRow, KpiStrip, StatusText, HOME_BUTTON_TEXT_STYLE, HOME_GAP, type KpiItem } from '@/components/home/home-ui';
 import useWhatsNewStore from '@/lib/state/whats-new-store';
 import { CURRENT_RELEASE } from '@/lib/release-notes';
+import { PendingExpenseBanner } from '@/components/finance/PendingExpenseBanner';
 import { FYLL_LIME, FYLL_LIME_INK, usePaymentsPalette } from '@/components/payments/payments-ui';
 import { useFonts, BricolageGrotesque_600SemiBold, BricolageGrotesque_700Bold } from '@expo-google-fonts/bricolage-grotesque';
 
@@ -256,32 +256,15 @@ function PrintQueueBanner({
   onPress: () => void;
   inset?: boolean;
 }) {
-  const colors = useThemeColors();
-  const titleStyle = useBannerTitleStyle();
+  // The same amber notice used for pending expenses and refunds.
   const content = (
-    <Pressable
+    <PendingExpenseBanner
+      count={count}
       onPress={onPress}
-      className="rounded-2xl p-4 active:opacity-90"
-      style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
-    >
-      <View className="flex-row items-center">
-        <View
-          className="w-12 h-12 rounded-xl items-center justify-center mr-4"
-          style={{ backgroundColor: colors.bg.secondary }}
-        >
-          <Printer size={23} color={colors.text.primary} strokeWidth={2} />
-        </View>
-        <View className="flex-1">
-          <Text style={[{ color: colors.text.primary, fontSize: 16 }, titleStyle]}>
-            Fyll Print queue
-          </Text>
-          <Text style={{ color: colors.text.secondary }} className="text-sm mt-0.5">
-            {count} label{count === 1 ? '' : 's'} waiting to print
-          </Text>
-        </View>
-        <ChevronRight size={20} color={colors.text.tertiary} strokeWidth={2} />
-      </View>
-    </Pressable>
+      boldText={`${count} label${count === 1 ? '' : 's'}`}
+      restText=" waiting in the Fyll Print queue"
+      actionLabel="Print"
+    />
   );
 
   if (!inset) return content;

@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Check, CreditCard, Landmark, MoreVertical, Plus, ShieldCheck, Star, Trash2, X } from 'lucide-react-native';
+import { ArrowLeft, Check, CreditCard, Edit2, Landmark, MoreVertical, Plus, ShieldCheck, Star, Trash2, X } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFonts, BricolageGrotesque_700Bold, BricolageGrotesque_800ExtraBold } from '@expo-google-fonts/bricolage-grotesque';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
@@ -25,6 +25,7 @@ import { supabaseSettings } from '@/lib/supabase/settings';
 import { getSettingsWebPanelStyles, isFromSettingsRoute } from '@/lib/settings-web-panel';
 import { useSettingsBack } from '@/lib/useSettingsBack';
 import type { BankAccount } from '@/lib/state/fyll-store';
+import { InternalSettingsHeader } from '@/components/settings/InternalSettingsHeader';
 
 type PaymentAccountsScreenProps = {
   embeddedInSettings?: boolean;
@@ -261,7 +262,20 @@ export default function PaymentAccountsScreen({ embeddedInSettings = false }: Pa
       <SafeAreaView style={[panelStyles.inner, { flex: 1, backgroundColor: palette.ground }]} edges={['top']}>
         {!isEmbeddedWeb ? <LinearGradient pointerEvents="none" colors={[palette.topGlow, palette.topGlowEnd]} locations={[0, 1]} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 300 }} /> : null}
 
-        <View style={{ minHeight: isMobile ? 66 : openedFromSettings ? 58 : 56, paddingHorizontal: openedFromSettings ? 20 : 10, paddingTop: isMobile ? 12 : 4, paddingBottom: 4, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        {isDesktop ? (
+          <InternalSettingsHeader
+            title="Bank Accounts"
+            description="Manage the payment destinations shown on customer payment links."
+            isDesktop
+            onBack={goBack}
+            rightElement={(
+              <View style={{ height: 28, paddingHorizontal: 10, borderRadius: 14, flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: palette.limeWashStrong, borderWidth: 1, borderColor: palette.limeBorder }}>
+                <ShieldCheck size={13} color={palette.limeInk} strokeWidth={2.2} />
+                <Text style={{ color: palette.limeInk, fontSize: 11, fontWeight: '700' }}>Admin</Text>
+              </View>
+            )}
+          />
+        ) : <View style={{ minHeight: 66, paddingHorizontal: 10, paddingTop: 12, paddingBottom: 4, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
           <Pressable onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); goBack(); }} accessibilityRole="button" accessibilityLabel="Back" hitSlop={4} style={({ pressed }) => ({ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.navButton, opacity: pressed ? 0.62 : 1 })}>
             <ArrowLeft size={18} color={palette.ink} strokeWidth={2.2} />
           </Pressable>
@@ -273,7 +287,7 @@ export default function PaymentAccountsScreen({ embeddedInSettings = false }: Pa
             <ShieldCheck size={13} color={palette.limeInk} strokeWidth={2.2} />
             <Text style={{ color: palette.limeInk, fontSize: 11, fontWeight: '700' }}>Admin</Text>
           </View>
-        </View>
+        </View>}
 
         <KeyboardAwareScrollView
           style={{ flex: 1 }}
@@ -283,7 +297,7 @@ export default function PaymentAccountsScreen({ embeddedInSettings = false }: Pa
           extraScrollHeight={110}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={{ position: 'relative', overflow: 'hidden', minHeight: 160, marginBottom: 24, padding: 20, borderRadius: 28, borderWidth: 1, borderColor: palette.edge, backgroundColor: palette.surface, ...(!isEmbeddedWeb ? { shadowColor: '#000000', shadowOpacity: isDark ? 0.24 : 0.07, shadowRadius: 24, shadowOffset: { width: 0, height: 10 } } : {}) }}>
+          <View style={{ position: 'relative', overflow: 'hidden', minHeight: isDesktop ? 138 : 160, marginBottom: 20, padding: isDesktop ? 24 : 20, justifyContent: 'center', borderRadius: 28, borderWidth: 1, borderColor: palette.edge, backgroundColor: palette.surface, ...(!isEmbeddedWeb ? { shadowColor: '#000000', shadowOpacity: isDark ? 0.24 : 0.07, shadowRadius: 24, shadowOffset: { width: 0, height: 10 } } : {}) }}>
             {!isEmbeddedWeb ? <LinearGradient pointerEvents="none" colors={[palette.limeWashStrong, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -40, right: -34, width: 190, height: 190, borderRadius: 95 }} /> : null}
             <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, borderBottomLeftRadius: 3, borderBottomRightRadius: 3, backgroundColor: palette.lime }} />
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: isEmbeddedWeb ? 0 : 15 }}>
@@ -294,13 +308,14 @@ export default function PaymentAccountsScreen({ embeddedInSettings = false }: Pa
                 <Text numberOfLines={1} style={{ color: palette.faint, fontSize: 12.5, marginTop: 2 }}>{defaultAccount ? `Default · ${defaultAccount.bankName}` : 'Add an account for checkout links'}</Text>
               </View>
             </View>
-            {!showForm ? (
-              <Pressable onPress={openAddForm} style={({ pressed }) => ({ height: 44, marginTop: 18, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, backgroundColor: palette.lime, opacity: pressed ? 0.78 : 1 })}>
-                <Plus size={16} color="#202117" strokeWidth={2.5} />
-                <Text style={{ color: '#202117', fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: 14 }}>Add bank account</Text>
-              </Pressable>
-            ) : null}
           </View>
+
+          {!showForm ? (
+            <Pressable onPress={openAddForm} style={({ pressed }) => ({ height: 48, marginBottom: 24, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, backgroundColor: palette.lime, opacity: pressed ? 0.78 : 1 })}>
+              <Plus size={16} color="#202117" strokeWidth={2.5} />
+              <Text style={{ color: '#202117', fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: 14 }}>Add bank account</Text>
+            </Pressable>
+          ) : null}
 
           {feedback ? (
             <View accessibilityRole="alert" style={{ borderRadius: 16, marginBottom: 18, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: feedback.tone === 'error' ? palette.dangerWash : palette.limeWashStrong, borderWidth: 1, borderColor: feedback.tone === 'error' ? palette.dangerBorder : palette.limeBorder }}>
@@ -336,23 +351,23 @@ export default function PaymentAccountsScreen({ embeddedInSettings = false }: Pa
               <Text style={{ color: palette.faint, fontSize: innerSettingsFont(13, compactTypography), marginTop: 4, textAlign: 'center' }}>Complete the form above to add your first payment destination.</Text>
             </View>
           ) : (
-            <View style={{ gap: 12 }}>
-              {accounts.map((account) => (
-                <Pressable key={account.id} onPress={() => openEditForm(account)} style={({ pressed }) => ({ minHeight: 112, padding: 18, borderRadius: 24, borderWidth: 1, borderColor: account.isDefault ? palette.limeBorder : palette.edge, backgroundColor: palette.surface, flexDirection: 'row', alignItems: 'center', gap: 14, position: 'relative', overflow: 'visible', opacity: pressed ? 0.75 : 1, zIndex: openMenuAccountId === account.id ? 20 : 1 })}>
-                  <View style={{ width: 50, height: 50, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: account.isDefault ? palette.limeWashStrong : palette.input }}><Landmark size={21} color={account.isDefault ? palette.limeInk : palette.ink} strokeWidth={2} /></View>
+            <View style={[cardStyle, { overflow: 'visible' }]}>
+              {accounts.map((account, index) => (
+                <Pressable key={account.id} onPress={() => openEditForm(account)} style={({ pressed }) => ({ minHeight: 86, paddingHorizontal: 18, paddingVertical: 14, borderBottomWidth: index < accounts.length - 1 ? 1 : 0, borderBottomColor: palette.edge, flexDirection: 'row', alignItems: 'center', gap: 14, position: 'relative', overflow: 'visible', opacity: pressed ? 0.75 : 1, zIndex: openMenuAccountId === account.id ? 20 : 1 })}>
+                  <View style={{ width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.limeWashStrong }}><Landmark size={18} color={palette.limeInk} strokeWidth={2} /></View>
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <Text numberOfLines={1} style={{ flexShrink: 1, color: palette.ink, fontSize: innerSettingsFont(15.5, compactTypography), fontWeight: '600' }}>{account.bankName}</Text>
+                      <Text numberOfLines={1} style={{ flexShrink: 1, color: palette.ink, fontSize: 12, lineHeight: 17, fontWeight: '600' }}>{account.bankName}</Text>
                       {account.isDefault ? <View style={{ height: 23, paddingHorizontal: 8, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: palette.limeWashStrong }}><Check size={11} color={palette.limeInk} strokeWidth={3} /><Text style={{ color: palette.limeInk, fontSize: 9.5, fontWeight: '700', letterSpacing: 0.55, textTransform: 'uppercase' }}>Default</Text></View> : null}
                     </View>
-                    <Text numberOfLines={1} style={{ color: palette.muted, fontSize: innerSettingsFont(13.5, compactTypography), marginTop: 5 }}>{account.accountName}</Text>
-                    <Text style={{ color: palette.faint, fontSize: innerSettingsFont(13, compactTypography), fontWeight: '500', letterSpacing: 0.8, marginTop: 4 }}>{account.accountNumber}</Text>
+                    <Text numberOfLines={1} style={{ color: palette.muted, fontSize: 12, lineHeight: 16, marginTop: 2 }}>{account.accountName} · {account.accountNumber}</Text>
                   </View>
-                  <Pressable onPress={(event) => { event.stopPropagation(); setOpenMenuAccountId((current) => current === account.id ? null : account.id); }} accessibilityRole="button" accessibilityLabel={`Actions for ${account.bankName}`} hitSlop={5} style={({ pressed }) => ({ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.input, opacity: pressed ? 0.6 : 1 })}><MoreVertical size={18} color={palette.faint} strokeWidth={2.2} /></Pressable>
+                  <Pressable onPress={(event) => { event.stopPropagation(); setOpenMenuAccountId((current) => current === account.id ? null : account.id); }} accessibilityRole="button" accessibilityLabel={`Actions for ${account.bankName}`} hitSlop={5} style={({ pressed }) => ({ width: 32, height: 36, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.5 : 1 })}><MoreVertical size={17} color={palette.faint} strokeWidth={2.2} /></Pressable>
                   {openMenuAccountId === account.id ? (
                     <View style={{ position: 'absolute', right: 16, top: 66, width: 182, borderRadius: 18, overflow: 'hidden', backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.edgeStrong, shadowColor: '#000000', shadowOpacity: isDark ? 0.4 : 0.12, shadowRadius: 16, shadowOffset: { width: 0, height: 9 }, elevation: 10, zIndex: 30 }}>
-                      {!account.isDefault ? <Pressable onPress={(event) => { event.stopPropagation(); void handleSetDefault(account); }} style={({ pressed }) => ({ minHeight: 48, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: pressed ? palette.input : palette.surface })}><Star size={16} color={palette.limeInk} strokeWidth={2.2} /><Text style={{ color: palette.ink, fontSize: 14, fontWeight: '500' }}>Set as default</Text></Pressable> : null}
-                      <Pressable onPress={(event) => { event.stopPropagation(); handleDelete(account); }} style={({ pressed }) => ({ minHeight: 48, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 10, borderTopWidth: account.isDefault ? 0 : 1, borderTopColor: palette.edge, backgroundColor: pressed ? palette.dangerWash : palette.surface })}><Trash2 size={16} color={palette.danger} strokeWidth={2.2} /><Text style={{ color: palette.danger, fontSize: 14, fontWeight: '500' }}>Delete account</Text></Pressable>
+                      <Pressable onPress={(event) => { event.stopPropagation(); openEditForm(account); }} style={({ pressed }) => ({ minHeight: 48, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: pressed ? palette.input : palette.surface })}><Edit2 size={16} color={palette.faint} strokeWidth={2.2} /><Text style={{ color: palette.ink, fontSize: 14, fontWeight: '500' }}>Edit account</Text></Pressable>
+                      {!account.isDefault ? <Pressable onPress={(event) => { event.stopPropagation(); void handleSetDefault(account); }} style={({ pressed }) => ({ minHeight: 48, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 10, borderTopWidth: 1, borderTopColor: palette.edge, backgroundColor: pressed ? palette.input : palette.surface })}><Star size={16} color={palette.limeInk} strokeWidth={2.2} /><Text style={{ color: palette.ink, fontSize: 14, fontWeight: '500' }}>Set as default</Text></Pressable> : null}
+                      <Pressable onPress={(event) => { event.stopPropagation(); handleDelete(account); }} style={({ pressed }) => ({ minHeight: 48, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 10, borderTopWidth: 1, borderTopColor: palette.edge, backgroundColor: pressed ? palette.dangerWash : palette.surface })}><Trash2 size={16} color={palette.danger} strokeWidth={2.2} /><Text style={{ color: palette.danger, fontSize: 14, fontWeight: '500' }}>Delete account</Text></Pressable>
                     </View>
                   ) : null}
                 </Pressable>

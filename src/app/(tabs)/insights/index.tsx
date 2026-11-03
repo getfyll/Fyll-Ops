@@ -27,7 +27,12 @@ import {
   RotateCcw,
   Sparkles,
   XCircle,
+  ArrowUp,
+  ArrowDown,
+  Brain,
 } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import * as Haptics from 'expo-haptics';
 import useFyllStore, { formatCurrency } from '@/lib/state/fyll-store';
 import { SparklineChart } from '@/components/stats/SparklineChart';
 import { SalesBarChart } from '@/components/stats/SalesBarChart';
@@ -38,8 +43,12 @@ import { useAnalytics } from '@/hooks/useAnalytics';
 import { askFyllAssistant, type FyllAssistantResponse } from '@/lib/fyll-ai-assistant';
 import { TimeRange, TabKey } from '@/lib/analytics-utils';
 import { computeInventoryAnalytics, calculateNewDesignAnalytics, calculateDiscontinueCandidates, type DiscontinuePeriod } from '@/lib/inventory-analytics';
-import { useStatsColors, type StatsColors } from '@/lib/theme';
+import { type StatsColors } from '@/lib/theme';
+import { useInsightsColors } from '@/lib/insights-theme';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
+import { FigureText } from '@/components/stats/FigureText';
+import { customersSentence, ordersSentence, topItemSentence } from '@/lib/insights-sentences';
+import { FYLL_LIME, FYLL_LIME_INK, MoneyText, isHovered, usePaymentsPalette } from '@/components/payments/payments-ui';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { DESKTOP_PAGE_HEADER_MIN_HEIGHT, usePageHeadingStyle } from '@/lib/page-heading';
 import { getSettingsWebPanelStyles, isFromSettingsRoute } from '@/lib/settings-web-panel';
@@ -80,7 +89,7 @@ const kpiConfigByTab: Record<TabKey, KpiConfig[]> = {
     },
     {
       label: 'Avg Order Value',
-      getValue: (a) => formatCurrency(a.averageOrderValue),
+      getValue: (a) => formatCurrency(Math.round(a.averageOrderValue)),
     },
     {
       label: 'Refund Total',
@@ -107,7 +116,7 @@ const kpiConfigByTab: Record<TabKey, KpiConfig[]> = {
       getValue: (a) => {
         const orders = a.serviceMetrics?.ordersWithServices ?? 0;
         const revenue = a.serviceMetrics?.revenue ?? 0;
-        return orders > 0 ? formatCurrency(revenue / orders) : formatCurrency(0);
+        return orders > 0 ? formatCurrency(Math.round(revenue / orders)) : formatCurrency(0);
       },
     },
   ],
@@ -181,7 +190,7 @@ function KpiTile({
 
   return (
     <View
-      className="flex-1 rounded-2xl p-4"
+      className="flex-1 rounded-[26px] p-4"
       style={{
         backgroundColor: colors.bg.card,
         borderWidth: colors.card.borderWidth,
@@ -195,13 +204,9 @@ function KpiTile({
       >
         {label}
       </Text>
-      <Text
-        style={{ color: colors.text.primary }}
-        className="text-lg font-bold"
-        numberOfLines={1}
-      >
+      <MoneyText style={{ color: colors.text.primary, letterSpacing: -0.6 }} className="text-lg" numberOfLines={1}>
         {value}
-      </Text>
+      </MoneyText>
       {change !== undefined && (
         <View className="flex-row items-center mt-1">
           {isPositive && (
@@ -300,10 +305,229 @@ function KpiGrid({
   );
 }
 
+const RANGE_LABEL_LONG: Record<TimeRange, string> = { '7d': 'last 7 days', month: 'this month', '30d': 'last 30 days', year: 'this year' };
+const RANGE_LABEL_PREVIOUS: Record<TimeRange, string> = { '7d': 'previous 7 days', month: 'last month', '30d': 'previous 30 days', year: 'last year' };
+const WEEKDAY_LONG: Record<string, string> = { Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday', Fri: 'Friday', Sat: 'Saturday', Sun: 'Sunday' };
+
+// The Today card on phones: a short row with the figure on the left and the day's shape on the right.
+function InsightsTodayCompact({
+  activeTab,
+  analytics,
+  inventoryAnalytics,
+  onPress,
+}: {
+  activeTab: TabKey;
+  analytics: ReturnType<typeof useAnalytics>;
+  inventoryAnalytics: ReturnType<typeof computeInventoryAnalytics>;
+  onPress: () => void;
+}) {
+  const palette = usePaymentsPalette();
+  const figure = activeTab === 'sales' ? formatCurrency(analytics.todaySales)
+    : activeTab === 'orders' ? `${analytics.todayOrders} orders`
+      : activeTab === 'customers' ? `${analytics.todayCustomers} customers`
+        : activeTab === 'services' ? formatCurrency(analytics.todayServiceMetrics?.revenue ?? 0)
+          : `${inventoryAnalytics.overview.totalUnitsInStock.toLocaleString()} units`;
+  const subline = activeTab === 'sales' ? `${analytics.todayOrders} orders · ${analytics.todayUnits} items sold`
+    : activeTab === 'orders' ? `${analytics.todayCustomers} customers · ${analytics.todayUnits} items sold`
+      : activeTab === 'customers' ? `${analytics.todayOrders} orders today`
+        : activeTab === 'services' ? `${analytics.todayServiceMetrics?.ordersWithServices ?? 0} orders · ${analytics.todayServiceMetrics?.serviceItems ?? 0} services`
+          : `${inventoryAnalytics.overview.totalProducts} products · ${inventoryAnalytics.overview.lowStockItems} low`;
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      style={{ marginHorizontal: 20, marginTop: 12, borderRadius: 26, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, paddingVertical: 16, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}
+    >
+      <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Text style={{ color: palette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1.3, textTransform: 'uppercase' }}>Today so far</Text>
+          <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: FYLL_LIME }} />
+        </View>
+        <MoneyText style={{ color: palette.text, fontSize: 20, lineHeight: 24, letterSpacing: -0.6 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{figure}</MoneyText>
+        <Text style={{ color: palette.faint, fontSize: 12 }} numberOfLines={1}>{subline}</Text>
+      </View>
+      <SparklineChart data={analytics.hourlyTrend} width={110} height={46} strokeColor={FYLL_LIME} strokeWidth={2} />
+    </Pressable>
+  );
+}
+
+// The Today card on wide screens: the label and Live dot, the figure, the day's shape across the full width, then the
+// small numbers underneath in two columns.
+function InsightsTodayWide({
+  activeTab,
+  analytics,
+  inventoryAnalytics,
+  onPress,
+}: {
+  activeTab: TabKey;
+  analytics: ReturnType<typeof useAnalytics>;
+  inventoryAnalytics: ReturnType<typeof computeInventoryAnalytics>;
+  onPress: () => void;
+}) {
+  const palette = usePaymentsPalette();
+  const [chartWidth, setChartWidth] = useState(0);
+  const figure = activeTab === 'sales' ? formatCurrency(analytics.todaySales)
+    : activeTab === 'orders' ? `${analytics.todayOrders} orders`
+      : activeTab === 'customers' ? `${analytics.todayCustomers} customers`
+        : activeTab === 'services' ? formatCurrency(analytics.todayServiceMetrics?.revenue ?? 0)
+          : `${inventoryAnalytics.overview.totalUnitsInStock.toLocaleString()} units`;
+  const overview = inventoryAnalytics.overview;
+  const lines: string[] = activeTab === 'services'
+    ? [`${analytics.todayServiceMetrics?.ordersWithServices ?? 0} orders`, `${analytics.todayServiceMetrics?.serviceItems ?? 0} services`]
+    : activeTab === 'inventory'
+      ? [`${overview.totalProducts} products`, `${overview.totalVariants} variants`, `${overview.lowStockItems} low`, `${overview.outOfStockItems} out`]
+      : [`${analytics.todayOrders} orders`, `${analytics.todayCustomers} customers`, `${analytics.todayUnits} items sold`, `${analytics.todayRefunds} returns`];
+
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      style={{ flex: 1, borderRadius: 26, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, padding: 24, gap: 14 }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '600', letterSpacing: 1.3, textTransform: 'uppercase' }}>Today so far</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: FYLL_LIME }} />
+          <Text style={{ color: palette.limeOnSurface, fontSize: 13, fontWeight: '600' }}>Live</Text>
+        </View>
+      </View>
+      <MoneyText style={{ color: palette.text, fontSize: 40, lineHeight: 44, letterSpacing: -1.2 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{figure}</MoneyText>
+      <View style={{ flex: 1, minHeight: 90, justifyContent: 'center' }} onLayout={(event) => setChartWidth(Math.floor(event.nativeEvent.layout.width))}>
+        {chartWidth > 0 ? (
+          <SparklineChart data={analytics.hourlyTrend} width={chartWidth} height={70} strokeColor={FYLL_LIME} strokeWidth={2.5} />
+        ) : null}
+      </View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', rowGap: 8 }}>
+        {lines.map((line) => (
+          <Text key={line} style={{ width: '50%', color: palette.muted, fontSize: 14 }} numberOfLines={1}>{line}</Text>
+        ))}
+      </View>
+    </Pressable>
+  );
+}
+
+// The headline card at the top of Insights, on every screen size: the headline figure for the tab and the period, how it moved,
+// one plain sentence about it, and the other numbers that matter, in a row.
+function InsightsHeroCard({
+  activeTab,
+  analytics,
+  inventoryAnalytics,
+  timeRange,
+  compact = false,
+}: {
+  compact?: boolean;
+  activeTab: TabKey;
+  analytics: ReturnType<typeof useAnalytics>;
+  inventoryAnalytics: ReturnType<typeof computeInventoryAnalytics>;
+  timeRange: TimeRange;
+}) {
+  const palette = usePaymentsPalette();
+  const kpis = kpiConfigByTab[activeTab];
+
+  let label = 'Revenue';
+  let figure = formatCurrency(analytics.totalSales);
+  let change: number | undefined = analytics.salesChange;
+  let stats: { label: string; value: string; dim?: boolean }[] = [];
+  let sentence: { bold: string; rest: string } | null = null;
+
+  if (activeTab === 'sales') {
+    const best = analytics.salesByPeriod.reduce<{ label: string; value: number } | null>(
+      (top, point) => (point.value > (top?.value ?? 0) ? { label: point.label, value: point.value } : top),
+      null
+    );
+    const unit = timeRange === '7d' ? 'day' : timeRange === 'year' ? 'month' : 'week';
+    const bestName = timeRange === '7d' ? (WEEKDAY_LONG[best?.label ?? ''] ?? best?.label ?? '') : best?.label ?? '';
+    const refundText = analytics.refundsAmount > 0
+      ? ` ${formatCurrency(analytics.refundsAmount)} went back in refunds.`
+      : ' No refunds in this period, so all of it is net.';
+    sentence = best
+      ? { bold: `${bestName} was your best ${unit}`, rest: ` at ${formatCurrency(best.value)}.${refundText}` }
+      : null;
+    stats = [
+      { label: 'Orders', value: analytics.totalOrders.toString() },
+      { label: 'Avg order', value: formatCurrency(Math.round(analytics.averageOrderValue)) },
+      { label: 'New customers', value: analytics.newCustomers.toString() },
+      { label: 'Refunds', value: formatCurrency(analytics.refundsAmount), dim: analytics.refundsAmount === 0 },
+    ];
+  } else if (activeTab === 'inventory') {
+    const overview = inventoryAnalytics.overview;
+    label = 'Products';
+    figure = overview.totalProducts.toString();
+    change = undefined;
+    sentence = overview.lowStockItems > 0
+      ? { bold: `${overview.lowStockItems} item${overview.lowStockItems === 1 ? ' is' : 's are'} running low`, rest: ' on stock.' }
+      : { bold: 'Stock levels look healthy', rest: ' across your products.' };
+    stats = [
+      { label: 'Variants', value: overview.totalVariants.toString() },
+      { label: 'Inventory value', value: formatCurrency(overview.totalInventoryValue) },
+      { label: 'Units in stock', value: overview.totalUnitsInStock.toLocaleString() },
+      { label: 'Low stock', value: overview.lowStockItems.toString(), dim: overview.lowStockItems === 0 },
+    ];
+  } else {
+    label = kpis[0].label;
+    figure = kpis[0].getValue(analytics);
+    change = kpis[0].getChange?.(analytics);
+    sentence = activeTab === 'orders'
+      ? ordersSentence(analytics.totalOrders, analytics.completedOrders, analytics.processingOrders, analytics.refundsCount)
+      : activeTab === 'customers'
+        ? customersSentence(analytics.newCustomers, analytics.returningCustomers, analytics.returningVsNew.returningPercentage)
+        : topItemSentence(analytics.serviceBreakdown ?? [], 'service');
+    stats = kpis.slice(1).map((kpi) => ({ label: kpi.label, value: kpi.getValue(analytics) }));
+  }
+
+  const hasChange = change !== undefined && Number.isFinite(change);
+  const up = (change ?? 0) >= 0;
+  const chipInk = !hasChange ? palette.muted : up ? palette.limeOnSurface : palette.danger;
+  const chipBg = !hasChange ? palette.softFill : up ? palette.nudgeBg : palette.dangerBg;
+
+  return (
+    <View style={{ flex: 1, borderRadius: 26, overflow: 'hidden', borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card }}>
+      <LinearGradient
+        pointerEvents="none"
+        colors={palette.isDark ? ['rgba(213,224,87,0.13)', 'rgba(213,224,87,0)'] : ['rgba(213,224,87,0.24)', 'rgba(213,224,87,0)']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0.7, y: 0.8 }}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+      />
+      <View style={{ padding: compact ? 20 : 28, gap: compact ? 12 : 16, flex: compact ? undefined : 1, minHeight: compact ? 250 : 300 }}>
+        <Text style={{ color: palette.faint, fontSize: compact ? 12 : 10, fontWeight: '600', letterSpacing: 1.3, textTransform: 'uppercase' }}>
+          {label} · {RANGE_LABEL_LONG[timeRange]}
+        </Text>
+        <View style={{ flexDirection: compact ? 'column' : 'row', alignItems: compact ? 'flex-start' : 'flex-end', flexWrap: 'wrap', gap: compact ? 10 : 16 }}>
+          <MoneyText style={{ color: palette.text, fontSize: 40, lineHeight: 44, letterSpacing: -1.4 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{figure}</MoneyText>
+          {hasChange ? (
+            <View style={{ height: compact ? 30 : 28, paddingHorizontal: compact ? 14 : 12, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: chipBg, marginBottom: compact ? 0 : 10 }}>
+              {up ? <ArrowUp size={15} color={chipInk} strokeWidth={2.6} /> : <ArrowDown size={15} color={chipInk} strokeWidth={2.6} />}
+              <Text style={{ color: chipInk, fontSize: compact ? 12 : 10, fontWeight: '700' }}>{Math.abs(change ?? 0).toFixed(0)}% vs {RANGE_LABEL_PREVIOUS[timeRange]}</Text>
+            </View>
+          ) : null}
+        </View>
+        {sentence ? (
+          <Text style={{ color: palette.muted, fontSize: compact ? 12 : 14, lineHeight: compact ? 18 : 21 }}>
+            <Text style={{ color: palette.text, fontWeight: '700' }}>{sentence.bold}</Text>
+            {sentence.rest}
+          </Text>
+        ) : null}
+        {compact ? null : <View style={{ flex: 1 }} />}
+        <View style={{ height: 1, backgroundColor: palette.hairline }} />
+        <View style={{ flexDirection: 'row', flexWrap: compact ? 'wrap' : 'nowrap', rowGap: compact ? 16 : 0 }}>
+          {stats.map((stat, index) => (
+            <View key={stat.label} style={compact ? { width: '50%', gap: 4 } : { flex: 1, gap: 6, paddingLeft: index === 0 ? 0 : 20, borderLeftWidth: index === 0 ? 0 : 1, borderLeftColor: palette.hairline }}>
+              <Text style={{ color: palette.muted, fontSize: compact ? 12 : 10 }} numberOfLines={1}>{stat.label}</Text>
+              <MoneyText style={{ color: stat.dim ? palette.faint : palette.text, fontSize: compact ? 16 : 20, letterSpacing: -0.4 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{stat.value}</MoneyText>
+            </View>
+          ))}
+        </View>
+      </View>
+    </View>
+  );
+}
+
 export default function InsightsScreen() {
   const router = useRouter();
   const { from } = useLocalSearchParams<{ from?: string | string[] }>();
-  const colors = useStatsColors();
+  const colors = useInsightsColors();
+  const insightsPalette = usePaymentsPalette();
   const tabBarHeight = useTabBarHeight();
   const { isDesktop, isMobile } = useBreakpoint();
   const pageHeadingStyle = usePageHeadingStyle(isMobile);
@@ -395,10 +619,10 @@ export default function InsightsScreen() {
 
   const timeRangeOptions = useMemo<{ key: TimeRange; label: string }[]>(
     () => [
-      { key: '7d', label: 'Last 7 days' },
-      { key: 'month', label: 'This Month' },
-      { key: '30d', label: 'Last 30 days' },
-      { key: 'year', label: 'This Year' },
+      { key: '7d', label: '7 days' },
+      { key: 'month', label: 'Month' },
+      { key: '30d', label: '30 days' },
+      { key: 'year', label: 'Year' },
     ],
     []
   );
@@ -733,8 +957,8 @@ export default function InsightsScreen() {
       <SafeAreaView className="flex-1" edges={['top']}>
         {/* Header */}
         <View style={isWebDesktop ? { paddingHorizontal: webDesktopGutterPad } : undefined}>
-          {isWebDesktop && selectedInsight ? (
-            <View style={{ borderBottomWidth: 1, borderBottomColor: colors.border, marginHorizontal: -webDesktopGutterPad, paddingHorizontal: webDesktopGutterPad }}>
+          {isWebDesktop && selectedInsight && selectedInsight !== '/insights/partner-jobs' ? (
+            <View style={{ marginHorizontal: -webDesktopGutterPad, paddingHorizontal: webDesktopGutterPad }}>
               <View
                 className="px-5 pt-5 pb-4 flex-row items-center gap-3"
                 style={{
@@ -778,103 +1002,67 @@ export default function InsightsScreen() {
             </View>
           ) : (
             <View>
-              <View style={isWebDesktop ? { borderBottomWidth: 1, borderBottomColor: colors.border, marginHorizontal: -webDesktopGutterPad, paddingHorizontal: webDesktopGutterPad } : undefined}>
+              <View style={isWebDesktop ? { marginHorizontal: -webDesktopGutterPad, paddingHorizontal: webDesktopGutterPad } : undefined}>
                 <View
-                  className={isWebDesktop ? 'px-5 pt-5 pb-4' : 'px-5 pt-6 pb-2'}
+                  className={isWebDesktop ? 'px-5 pt-5 pb-4' : undefined}
                   style={isWebDesktop ? {
                     maxWidth: 1440,
                     width: '100%',
                     alignSelf: 'flex-start',
-                    minHeight: desktopHeaderMinHeight,
+                    minHeight: 92,
                     justifyContent: 'center',
-                  } : undefined}
+                  } : { paddingHorizontal: 20, paddingTop: 14, paddingBottom: 0 }}
                 >
-                  <View
-                    className={isWebDesktop ? 'flex-row items-center justify-between' : undefined}
-                    style={isWebDesktop ? undefined : { gap: 4 }}
-                  >
-                    <Text
-                      style={{ color: colors.text.primary, ...pageHeadingStyle }}
-                    >
-                      Insights
-                    </Text>
-                    <Text
-                      style={{
-                        color: colors.text.tertiary,
-                        fontSize: 12,
-                        lineHeight: 18,
-                        marginTop: isWebDesktop ? 4 : 0,
-                      }}
-                      numberOfLines={isWebDesktop ? 1 : 2}
-                    >
-                      Review revenue, orders, inventory, customers, and operations trends.
-                    </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={{ color: colors.text.primary, ...pageHeadingStyle }}>Insights</Text>
+                      {isWebDesktop ? (
+                        <Text style={{ color: colors.text.tertiary }} className="text-sm mt-1" numberOfLines={1}>
+                          Review revenue, orders, inventory, customers, and operations trends.
+                        </Text>
+                      ) : null}
+                    </View>
                   </View>
                 </View>
               </View>
 
               {/* Tabs */}
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={[
-                  { flexGrow: 0 },
-                  isWebDesktop ? { maxWidth: 1440, width: '100%', alignSelf: 'flex-start' } : undefined,
-                ]}
-                contentContainerStyle={isWebDesktop ? { marginTop: 12, paddingHorizontal: 20 } : { marginTop: 16, paddingHorizontal: 20 }}
-              >
-                {tabs.map((tab) => (
-                  <Pressable
-                    key={tab.key}
-                    onPress={() => { setActiveTab(tab.key); setSelectedInsight(null); }}
-                    className="mr-6 pb-3"
-                    style={{
-                      borderBottomWidth: 2,
-                      borderBottomColor:
-                        !selectedInsight && activeTab === tab.key
-                          ? colors.text.primary
-                          : 'transparent',
-                      outlineStyle: 'none',
-                    } as any}
+              {(() => {
+                const tabItems = [
+                  ...tabs.map((tab) => ({ key: tab.key as string, label: tab.label, active: !selectedInsight && activeTab === tab.key, onPress: () => { setActiveTab(tab.key); setSelectedInsight(null); } })),
+                  { key: 'partners', label: 'Partners', active: selectedInsight === '/insights/partner-jobs', onPress: () => setSelectedInsight('/insights/partner-jobs') },
+                ];
+                return (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={[{ flexGrow: 0 }, isWebDesktop ? { maxWidth: 1440, width: '100%', alignSelf: 'flex-start' } : undefined]}
+                    contentContainerStyle={{ marginTop: isWebDesktop ? 12 : 14, paddingHorizontal: 20, paddingVertical: 4, paddingBottom: isWebDesktop ? 20 : 8, gap: 8 }}
                   >
-                    <Text
-                      style={{
-                        color:
-                          !selectedInsight && activeTab === tab.key
-                            ? colors.text.primary
-                            : colors.text.tertiary,
-                      }}
-                      className="text-base font-semibold"
-                    >
-                      {tab.label}
-                    </Text>
-                  </Pressable>
-                ))}
-                <Pressable
-                  onPress={() => setSelectedInsight('/insights/partner-jobs')}
-                  className="mr-6 pb-3"
-                  style={{
-                    borderBottomWidth: 2,
-                    borderBottomColor:
-                      selectedInsight === '/insights/partner-jobs'
-                        ? colors.text.primary
-                        : 'transparent',
-                    outlineStyle: 'none',
-                  } as any}
-                >
-                  <Text
-                    style={{
-                      color:
-                        selectedInsight === '/insights/partner-jobs'
-                          ? colors.text.primary
-                          : colors.text.tertiary,
-                    }}
-                    className="text-base font-semibold"
-                  >
-                    Partners
-                  </Text>
-                </Pressable>
-              </ScrollView>
+                    {tabItems.map((tab) => (
+                      <Pressable
+                        key={tab.key}
+                        onPress={tab.onPress}
+                        accessibilityRole="tab"
+                        accessibilityState={{ selected: tab.active }}
+                        style={(state) => ({
+                          height: 36,
+                          paddingHorizontal: 16,
+                          borderRadius: 999,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          backgroundColor: tab.active ? FYLL_LIME : isHovered(state) ? insightsPalette.softFill : insightsPalette.segmentBg,
+                          borderWidth: tab.active ? 0 : 1,
+                          borderColor: insightsPalette.border,
+                          ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null),
+                        })}
+                      >
+                        <Text style={{ color: tab.active ? FYLL_LIME_INK : insightsPalette.muted, fontSize: 12, fontWeight: '600' }}>{tab.label}</Text>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                );
+              })()}
             </View>
           )}
         </View>
@@ -908,9 +1096,11 @@ export default function InsightsScreen() {
                 contentContainerStyle={{ paddingBottom: Math.max(40, tabBarHeight + 16) }}
               >
                 <>
-                  {/* Today Summary Card - Shared across tabs */}
+                  {(() => {
+                    const todayCard = (
                   <Pressable
-                    className="px-5 pt-4"
+                    className={isWebDesktop ? undefined : 'px-5 pt-4'}
+                    style={isWebDesktop ? { flex: 1 } : undefined}
                     onPress={() => {
                       if (activeTab === 'inventory') {
                         handleOpenInsight('/insights/inventory-today');
@@ -920,8 +1110,9 @@ export default function InsightsScreen() {
                     }}
                   >
                     <View
-                      className="rounded-2xl p-5"
+                      className="rounded-[26px] p-5"
                       style={{
+                        flex: isWebDesktop ? 1 : undefined,
                         backgroundColor: colors.bg.card,
                         borderWidth: colors.card.borderWidth,
                         borderColor: colors.card.borderColor,
@@ -949,10 +1140,7 @@ export default function InsightsScreen() {
                       <View className="flex-row items-start justify-between">
                         {/* Main stat based on tab */}
                         <View className="flex-1">
-                          <Text
-                            style={{ color: colors.text.primary }}
-                            className="text-3xl font-bold"
-                          >
+                          <FigureText desktop={30} mobile={20} style={{ color: colors.text.primary }}>
                             {activeTab === 'sales' && formatCurrency(analytics.todaySales)}
                             {activeTab === 'orders' && `${analytics.todayOrders} orders`}
                             {activeTab === 'customers' &&
@@ -961,7 +1149,7 @@ export default function InsightsScreen() {
                               formatCurrency(analytics.todayServiceMetrics?.revenue ?? 0)}
                             {activeTab === 'inventory' &&
                               `${inventoryAnalytics.overview.totalUnitsInStock.toLocaleString()} units`}
-                          </Text>
+                          </FigureText>
 
                           {/* Mini metrics row */}
                           {activeTab === 'services' ? (
@@ -1132,40 +1320,74 @@ export default function InsightsScreen() {
                       </View>
                     </View>
                   </Pressable>
-
-                  {/* Time range selector - Shared */}
+                    );
+                    const rangeSelector = (
+                      <>
                   <View className="px-5 pt-4">
-                    <View className="flex-row">
-                      {timeRangeOptions.map((option) => (
-                        <Pressable
-                          key={option.key}
-                          onPress={() => setTimeRange(option.key)}
-                          className="mr-2 px-3 py-1.5 rounded-full"
-                          style={{
-                            backgroundColor:
-                              timeRange === option.key
-                                ? colors.bar
-                                : colors.bg.input,
-                          }}
-                        >
-                          <Text
-                            style={{
-                              color:
-                                timeRange === option.key
-                                  ? colors.bg.screen
-                                  : colors.text.tertiary,
-                            }}
-                            className="text-xs font-semibold"
+                    <View
+                      accessibilityRole="tablist"
+                      style={{ flexDirection: 'row', padding: 4, borderRadius: 999, backgroundColor: insightsPalette.segmentBg, borderWidth: 1, borderColor: insightsPalette.border, maxWidth: isWebDesktop ? 520 : undefined }}
+                    >
+                      {timeRangeOptions.map((option) => {
+                        const selected = timeRange === option.key;
+                        return (
+                          <Pressable
+                            key={option.key}
+                            accessibilityRole="tab"
+                            accessibilityState={{ selected }}
+                            onPress={() => setTimeRange(option.key)}
+                            style={(state) => ({ flex: 1, height: 34, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: selected ? FYLL_LIME : isHovered(state) ? insightsPalette.softFill : 'transparent' })}
                           >
-                            {option.label}
-                          </Text>
-                        </Pressable>
-                      ))}
+                            <Text style={{ color: selected ? FYLL_LIME_INK : insightsPalette.muted, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>{option.label}</Text>
+                          </Pressable>
+                        );
+                      })}
                     </View>
                   </View>
-
-                  {/* KPI Grid - 2x2 layout, always 4 cards */}
+                      </>
+                    );
+                    const kpiGrid = (
+                      <>
                   <KpiGrid analytics={analytics} activeTab={activeTab} inventoryAnalytics={inventoryAnalytics} colors={colors} />
+                      </>
+                    );
+                    // Wide screens: the range first, then the headline card (70%) beside the Today card (30%).
+                    if (isWebDesktop) {
+                      return (
+                        <>
+                          {rangeSelector}
+                          <View style={{ flexDirection: 'row', alignItems: 'stretch', gap: 16, paddingHorizontal: 20, paddingTop: 16 }}>
+                            <View style={{ flex: 7, minWidth: 0 }}>
+                              <InsightsHeroCard activeTab={activeTab} analytics={analytics} inventoryAnalytics={inventoryAnalytics} timeRange={timeRange} />
+                            </View>
+                            <View style={{ flex: 3, minWidth: 0 }}>
+                              <InsightsTodayWide
+                                activeTab={activeTab}
+                                analytics={analytics}
+                                inventoryAnalytics={inventoryAnalytics}
+                                onPress={() => handleOpenInsight(activeTab === 'inventory' ? '/insights/inventory-today' : '/insights/today')}
+                              />
+                            </View>
+                          </View>
+                        </>
+                      );
+                    }
+                    // Phones: the range, the headline card, then a short Today row.
+                    return (
+                      <>
+                        {rangeSelector}
+                        <View style={{ paddingHorizontal: 20, paddingTop: 16 }}>
+                          <InsightsHeroCard compact activeTab={activeTab} analytics={analytics} inventoryAnalytics={inventoryAnalytics} timeRange={timeRange} />
+                        </View>
+                        <InsightsTodayCompact
+                          activeTab={activeTab}
+                          analytics={analytics}
+                          inventoryAnalytics={inventoryAnalytics}
+                          onPress={() => handleOpenInsight(activeTab === 'inventory' ? '/insights/inventory-today' : '/insights/today')}
+                        />
+                      </>
+                    );
+                  })()}
 
                   {/* ===================== SALES TAB CONTENT ===================== */}
                   {activeTab === 'sales' && (
@@ -1176,7 +1398,7 @@ export default function InsightsScreen() {
                         onPress={() => handleOpenInsight('/insights/sales')}
                       >
                         <View
-                          className="rounded-2xl p-5"
+                          className="rounded-[26px] p-5"
                           style={colors.getCardStyle()}
                         >
                           <View className="flex-row items-center justify-between mb-2">
@@ -1192,12 +1414,9 @@ export default function InsightsScreen() {
                               strokeWidth={2}
                             />
                           </View>
-                          <Text
-                            style={{ color: colors.text.primary }}
-                            className="text-2xl font-bold"
-                          >
+                          <FigureText desktop={24} mobile={20} style={{ color: colors.text.primary }}>
                             {formatCurrency(analytics.totalSales)}
-                          </Text>
+                          </FigureText>
                           <View className="flex-row items-center mt-1 mb-4">
                             {analytics.salesChange >= 0 ? (
                               <TrendingUp
@@ -1242,7 +1461,7 @@ export default function InsightsScreen() {
                           onPress={() => handleOpenInsight('/insights/addons')}
                         >
                           <View
-                            className="rounded-2xl p-5"
+                            className="rounded-[26px] p-5"
                             style={colors.getCardStyle()}
                           >
                             <View className="flex-row items-center justify-between mb-4">
@@ -1308,7 +1527,7 @@ export default function InsightsScreen() {
                           onPress={() => handleOpenInsight('/insights/addons')}
                         >
                           <View
-                            className="rounded-2xl p-5"
+                            className="rounded-[26px] p-5"
                             style={colors.getCardStyle()}
                           >
                             <View className="flex-row items-center justify-between mb-2">
@@ -1324,12 +1543,9 @@ export default function InsightsScreen() {
                                 strokeWidth={2}
                               />
                             </View>
-                            <Text
-                              style={{ color: colors.text.primary }}
-                              className="text-2xl font-bold"
-                            >
+                            <FigureText desktop={24} mobile={20} style={{ color: colors.text.primary }}>
                               {formatCurrency(analytics.addOnMetrics?.revenue ?? 0)}
-                            </Text>
+                            </FigureText>
                             <View className="flex-row items-center mt-1 mb-4">
                               {addOnRevenueChange >= 0 ? (
                                 <TrendingUp
@@ -1413,7 +1629,7 @@ export default function InsightsScreen() {
                           onPress={() => handleOpenInsight('/insights/addons')}
                         >
                           <View
-                            className="rounded-2xl p-5"
+                            className="rounded-[26px] p-5"
                             style={colors.getCardStyle()}
                           >
                             <View className="flex-row items-center justify-between mb-4">
@@ -1481,7 +1697,7 @@ export default function InsightsScreen() {
                           onPress={() => handleOpenInsight('/insights/platforms')}
                         >
                           <View
-                            className="rounded-2xl p-5"
+                            className="rounded-[26px] p-5"
                             style={colors.getCardStyle()}
                           >
                             <View className="flex-row items-center justify-between mb-4">
@@ -1527,7 +1743,7 @@ export default function InsightsScreen() {
                           onPress={() => handleOpenInsight('/insights/services')}
                         >
                           <View
-                            className="rounded-2xl p-5"
+                            className="rounded-[26px] p-5"
                             style={colors.getCardStyle()}
                           >
                             <View className="flex-row items-center justify-between mb-2">
@@ -1543,12 +1759,9 @@ export default function InsightsScreen() {
                                 strokeWidth={2}
                               />
                             </View>
-                            <Text
-                              style={{ color: colors.text.primary }}
-                              className="text-2xl font-bold"
-                            >
+                            <FigureText desktop={24} mobile={20} style={{ color: colors.text.primary }}>
                               {formatCurrency(analytics.serviceMetrics?.revenue ?? 0)}
-                            </Text>
+                            </FigureText>
                             <View className="flex-row items-center mt-1 mb-4">
                               {serviceRevenueChange >= 0 ? (
                                 <TrendingUp
@@ -1590,7 +1803,7 @@ export default function InsightsScreen() {
                           onPress={() => handleOpenInsight('/insights/services')}
                         >
                           <View
-                            className="rounded-2xl p-5"
+                            className="rounded-[26px] p-5"
                             style={colors.getCardStyle()}
                           >
                             <View className="flex-row items-center justify-between mb-4">
@@ -1631,7 +1844,7 @@ export default function InsightsScreen() {
                           onPress={() => handleOpenInsight('/insights/services')}
                         >
                           <View
-                            className="rounded-2xl p-5"
+                            className="rounded-[26px] p-5"
                             style={colors.getCardStyle()}
                           >
                             <View className="flex-row items-center justify-between mb-4">
@@ -1704,7 +1917,7 @@ export default function InsightsScreen() {
                         onPress={() => handleOpenInsight('/insights/orders')}
                       >
                         <View
-                          className="rounded-2xl p-5"
+                          className="rounded-[26px] p-5"
                           style={colors.getCardStyle()}
                         >
                           <View className="flex-row items-center justify-between mb-2">
@@ -1720,12 +1933,9 @@ export default function InsightsScreen() {
                               strokeWidth={2}
                             />
                           </View>
-                          <Text
-                            style={{ color: colors.text.primary }}
-                            className="text-2xl font-bold"
-                          >
+                          <FigureText desktop={24} mobile={20} style={{ color: colors.text.primary }}>
                             {analytics.totalOrders} orders
-                          </Text>
+                          </FigureText>
                           <View className="flex-row items-center mt-1 mb-4">
                             {analytics.kpiMetrics.orders.change >= 0 ? (
                               <TrendingUp
@@ -1771,7 +1981,7 @@ export default function InsightsScreen() {
                           onPress={() => handleOpenInsight('/insights/orders')}
                         >
                           <View
-                            className="rounded-2xl p-5"
+                            className="rounded-[26px] p-5"
                             style={colors.getCardStyle()}
                           >
                             <View className="flex-row items-center justify-between mb-4">
@@ -1843,7 +2053,7 @@ export default function InsightsScreen() {
                           onPress={() => handleOpenInsight('/insights/logistics')}
                         >
                           <View
-                            className="rounded-2xl p-5"
+                            className="rounded-[26px] p-5"
                             style={colors.getCardStyle()}
                           >
                             <View className="flex-row items-center justify-between mb-4">
@@ -1927,7 +2137,7 @@ export default function InsightsScreen() {
                         onPress={() => handleOpenInsight('/insights/customers')}
                       >
                         <View
-                          className="rounded-2xl p-5"
+                          className="rounded-[26px] p-5"
                           style={colors.getCardStyle()}
                         >
                           <View className="flex-row items-center justify-between mb-4">
@@ -1955,12 +2165,9 @@ export default function InsightsScreen() {
                                   strokeWidth={2}
                                 />
                               </View>
-                              <Text
-                                style={{ color: colors.text.primary }}
-                                className="text-2xl font-bold"
-                              >
+                              <FigureText desktop={24} mobile={20} style={{ color: colors.text.primary }}>
                                 {analytics.returningVsNew.new}
-                              </Text>
+                              </FigureText>
                               <Text
                                 style={{ color: colors.text.tertiary }}
                                 className="text-xs"
@@ -1983,12 +2190,9 @@ export default function InsightsScreen() {
                                   strokeWidth={2}
                                 />
                               </View>
-                              <Text
-                                style={{ color: colors.text.primary }}
-                                className="text-2xl font-bold"
-                              >
+                              <FigureText desktop={24} mobile={20} style={{ color: colors.text.primary }}>
                                 {analytics.returningVsNew.returning}
-                              </Text>
+                              </FigureText>
                               <Text
                                 style={{ color: colors.text.tertiary }}
                                 className="text-xs"
@@ -2007,7 +2211,7 @@ export default function InsightsScreen() {
                           onPress={() => handleOpenInsight('/insights/customers')}
                         >
                           <View
-                            className="rounded-2xl p-5"
+                            className="rounded-[26px] p-5"
                             style={colors.getCardStyle()}
                           >
                             <View className="flex-row items-center justify-between mb-4">
@@ -2074,7 +2278,7 @@ export default function InsightsScreen() {
                           onPress={() => handleOpenInsight('/insights/locations')}
                         >
                           <View
-                            className="rounded-2xl p-5"
+                            className="rounded-[26px] p-5"
                             style={colors.getCardStyle()}
                           >
                             <View className="flex-row items-center justify-between mb-4">
@@ -2116,7 +2320,7 @@ export default function InsightsScreen() {
                           onPress={() => handleOpenInsight('/insights/platforms')}
                         >
                           <View
-                            className="rounded-2xl p-5"
+                            className="rounded-[26px] p-5"
                             style={colors.getCardStyle()}
                           >
                             <View className="flex-row items-center justify-between mb-4">
@@ -2159,7 +2363,7 @@ export default function InsightsScreen() {
                       {/* Restocks Chart */}
                       <View className="px-5 pt-4">
                         <View
-                          className="rounded-2xl p-5"
+                          className="rounded-[26px] p-5"
                           style={colors.getCardStyle()}
                         >
                           <View className="flex-row items-center justify-between mb-2">
@@ -2177,12 +2381,9 @@ export default function InsightsScreen() {
                               </Text>
                             </View>
                           </View>
-                          <Text
-                            style={{ color: colors.text.primary }}
-                            className="text-2xl font-bold"
-                          >
+                          <FigureText desktop={24} mobile={20} style={{ color: colors.text.primary }}>
                             {inventoryAnalytics.restockInsights.totalUnitsRestocked.toLocaleString()} units
-                          </Text>
+                          </FigureText>
                           <View className="flex-row items-center mt-1 mb-4">
                             {inventoryAnalytics.kpiMetrics.unitsRestocked.change >= 0 ? (
                               <TrendingUp
@@ -2227,7 +2428,7 @@ export default function InsightsScreen() {
                           onPress={() => handleOpenInsight('/insights/low-stock')}
                         >
                           <View
-                            className="rounded-2xl p-5"
+                            className="rounded-[26px] p-5"
                             style={colors.getCardStyle()}
                           >
                             <View className="flex-row items-center justify-between mb-4">
@@ -2313,7 +2514,7 @@ export default function InsightsScreen() {
                           onPress={() => handleOpenInsight('/insights/out-of-stock')}
                         >
                           <View
-                            className="rounded-2xl p-5"
+                            className="rounded-[26px] p-5"
                             style={colors.getCardStyle()}
                           >
                             <View className="flex-row items-center justify-between mb-4">
@@ -2388,7 +2589,7 @@ export default function InsightsScreen() {
                       {inventoryAnalytics.bestSellingProducts.length > 0 && (
                         <View className="px-5 pt-4">
                           <View
-                            className="rounded-2xl p-5"
+                            className="rounded-[26px] p-5"
                             style={colors.getCardStyle()}
                           >
                             <View className="flex-row items-center justify-between mb-4">
@@ -2466,7 +2667,7 @@ export default function InsightsScreen() {
                       {inventoryAnalytics.topProductsByRevenue.length > 0 && (
                         <View className="px-5 pt-4">
                           <View
-                            className="rounded-2xl p-5"
+                            className="rounded-[26px] p-5"
                             style={colors.getCardStyle()}
                           >
                             <View className="flex-row items-center justify-between mb-4">
@@ -2533,7 +2734,7 @@ export default function InsightsScreen() {
                       {inventoryAnalytics.restockInsights.mostRestockedProducts.length > 0 && (
                         <View className="px-5 pt-4">
                           <View
-                            className="rounded-2xl p-5"
+                            className="rounded-[26px] p-5"
                             style={colors.getCardStyle()}
                           >
                             <View className="flex-row items-center justify-between mb-4">
@@ -2592,7 +2793,7 @@ export default function InsightsScreen() {
                       {inventoryAnalytics.slowMovers.length > 0 && (
                         <View className="px-5 pt-4 pb-6">
                           <View
-                            className="rounded-2xl p-5"
+                            className="rounded-[26px] p-5"
                             style={colors.getCardStyle()}
                           >
                             <View className="flex-row items-center justify-between mb-4">
@@ -2660,7 +2861,7 @@ export default function InsightsScreen() {
                       {/* New Designs Section */}
                       <View className="px-5 pt-4 pb-6">
                         <View
-                          className="rounded-2xl p-5"
+                          className="rounded-[26px] p-5"
                           style={colors.getCardStyle()}
                         >
                           {/* Header with Year Selector */}
@@ -2798,7 +2999,7 @@ export default function InsightsScreen() {
                       {/* Discontinue Candidates Section */}
                       <View className="px-5 pt-4 pb-6">
                         <View
-                          className="rounded-2xl p-5"
+                          className="rounded-[26px] p-5"
                           style={colors.getCardStyle()}
                         >
                           {/* Header with Period Selector */}
@@ -2954,6 +3155,38 @@ export default function InsightsScreen() {
             )}
           </View>
         )}
+
+        {/* Fyll AI Insights chat: a flat lime button with a brain, so it is not confused with the receipt-upload Fyll AI on Finance */}
+        {!showInsightsAiPanel ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Ask Fyll AI about your insights"
+            onPress={() => {
+              if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setShowInsightsAiPanel(true);
+            }}
+            style={(state) => [
+              {
+                position: 'absolute',
+                right: isWebDesktop ? 32 : 20,
+                bottom: isWebDesktop ? 32 : Math.max(96, tabBarHeight - 48),
+                width: 56,
+                height: 56,
+                borderRadius: 28,
+                overflow: 'hidden',
+                transform: [{ scale: state.pressed ? 0.94 : 1 }],
+                zIndex: 40,
+              },
+              Platform.OS === 'web'
+                ? ({ boxShadow: '0 10px 28px rgba(0,0,0,0.35)' } as object)
+                : { shadowColor: '#000000', shadowOpacity: 0.3, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
+            ]}
+          >
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: FYLL_LIME }}>
+              <Brain size={26} color={FYLL_LIME_INK} strokeWidth={1.8} />
+            </View>
+          </Pressable>
+        ) : null}
 
         <FyllAiAssistantDrawer
           visible={showInsightsAiPanel}

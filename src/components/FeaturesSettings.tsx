@@ -3,6 +3,7 @@ import { ActivityIndicator, Modal, Pressable, Text, View, useWindowDimensions } 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Banknote, ClipboardList, FileText, Info, Megaphone, Printer, RotateCcw, Truck } from 'lucide-react-native';
 import { useFonts, BricolageGrotesque_700Bold } from '@expo-google-fonts/bricolage-grotesque';
+import { LinearGradient } from 'expo-linear-gradient';
 import { FYLL_LIME, FYLL_LIME_INK, MoneyText, usePaymentsPalette } from '@/components/payments/payments-ui';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
 import { supabase } from '@/lib/supabase';
@@ -121,8 +122,16 @@ export function FeaturesSettings({ onConfigure }: { onConfigure: (feature: Featu
 
   return (
     <View style={{ gap: wide ? 18 : 16 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingHorizontal: wide ? 0 : 2 }}>
-        <Text style={{ flex: 1, color: palette.faint, fontSize: wide ? 14 : 12.5, lineHeight: wide ? 20 : 18 }}>Turn tools on or off for your team, and see how each one is set up.</Text>
+      <View style={{ position: 'relative', overflow: 'hidden', minHeight: wide ? 138 : 150, borderRadius: 26, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.inset, padding: wide ? 24 : 20, justifyContent: 'center' }}>
+        <LinearGradient pointerEvents="none" colors={[palette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -48, right: -34, width: 220, height: 220, borderRadius: 110 }} />
+        <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
+        <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Workspace tools</Text>
+        <MoneyText style={{ color: palette.text, fontSize: wide ? 28 : 24, lineHeight: wide ? 34 : 29, marginTop: 2 }}>Features</MoneyText>
+        <Text style={{ color: palette.faint, fontSize: 12.5, lineHeight: 18, marginTop: 4 }}>Turn tools on or off for your team, and see how each one is set up.</Text>
+      </View>
+
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingHorizontal: 2 }}>
+        <Text style={{ color: palette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Available features</Text>
         <View style={{ height: 28, paddingHorizontal: 11, borderRadius: 999, backgroundColor: palette.nudgeBg, justifyContent: 'center', flexShrink: 0 }}>
           <Text style={{ color: palette.limeOnSurface, fontSize: 11, fontWeight: '700' }}>{onCount} of {rows.length} on</Text>
         </View>
@@ -140,35 +149,35 @@ export function FeaturesSettings({ onConfigure }: { onConfigure: (feature: Featu
         </View>
       ) : null}
 
-      <View style={{ borderRadius: 26, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, paddingHorizontal: wide ? 22 : 16, overflow: 'hidden' }}>
+      <View style={{ borderRadius: 26, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, overflow: 'hidden' }}>
         {rows.map((row, index) => {
           const Icon = row.Icon;
           const canFlip = isAdmin && row.platformOn;
           return (
             <View
               key={row.key}
-              style={{ paddingVertical: wide ? 16 : 18, borderTopWidth: index === 0 ? 0 : 1, borderTopColor: palette.hairline, opacity: row.platformOn ? (row.on ? 1 : 0.75) : 0.55 }}
+              style={{ paddingHorizontal: wide ? 22 : 16, paddingVertical: wide ? 14 : 16, borderBottomWidth: index < rows.length - 1 ? 1 : 0, borderBottomColor: palette.hairline, opacity: row.platformOn ? (row.on ? 1 : 0.75) : 0.55 }}
             >
               <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: wide ? 16 : 12 }}>
-                <View style={{ width: wide ? 40 : 44, height: wide ? 40 : 44, borderRadius: wide ? 12 : 14, backgroundColor: palette.softFill, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <Icon size={wide ? 19 : 20} color={palette.textSoft} strokeWidth={1.9} />
+                <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: palette.nudgeBg, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Icon size={18} color={palette.limeOnSurface} strokeWidth={1.9} />
                 </View>
                 <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
-                  <Text style={{ color: palette.text, fontSize: wide ? 15 : 14, fontWeight: '600' }}>{row.name}</Text>
-                  <Text style={{ color: palette.faint, fontSize: wide ? 13 : 12, lineHeight: wide ? 17 : 16 }}>{row.what}</Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: wide ? 7 : 10 }}>
+                  <Text style={{ color: palette.text, fontSize: 12, lineHeight: 17, fontWeight: '600' }}>{row.name}</Text>
+                  <Text style={{ color: palette.faint, fontSize: 12, lineHeight: 16 }}>{row.what}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 7 }}>
                     <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: row.on ? palette.tones.verified.dot : palette.outline, flexShrink: 0 }} />
-                    <Text style={{ color: row.on ? palette.textSoft : palette.faint, fontSize: wide ? 13 : 12, lineHeight: 17, flex: 1 }} numberOfLines={2}>{row.status}</Text>
+                    <Text style={{ color: row.on ? palette.textSoft : palette.faint, fontSize: 12, lineHeight: 17, fontWeight: '500', flex: 1 }} numberOfLines={2}>{row.status}</Text>
                   </View>
                 </View>
-                <View style={{ width: wide ? 112 : 104, alignItems: 'flex-end', gap: 12, flexShrink: 0 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: wide ? 10 : 8, flexShrink: 0 }}>
                   {savingKey === row.key ? (
                     <View style={{ width: 50, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: row.on ? FYLL_LIME : palette.softFill }}><ActivityIndicator size="small" color={row.on ? FYLL_LIME_INK : palette.text} /></View>
                   ) : (
                     <LimeToggle compact value={row.on} onValueChange={() => flip(row)} disabled={!canFlip || savingKey !== null} accessibilityLabel={`${row.name} ${row.on ? 'on' : 'off'}`} activeColor={FYLL_LIME} inactiveColor={palette.softFill} inactiveBorderColor={palette.outline} />
                   )}
-                  <Pressable onPress={() => onConfigure(row.key)} disabled={!row.on} style={({ pressed }) => ({ width: '100%', height: 38, borderRadius: 999, borderWidth: 1, borderColor: palette.outline, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? palette.softFill : 'transparent', opacity: row.on ? 1 : 0.4 })}>
-                    <Text style={{ color: palette.text, fontFamily: 'BricolageGrotesque_700Bold', fontSize: wide ? 13 : 12, fontWeight: '400' }}>Configure</Text>
+                  <Pressable onPress={() => onConfigure(row.key)} disabled={!row.on} style={({ pressed }) => ({ minWidth: wide ? 92 : 78, height: 34, paddingHorizontal: wide ? 14 : 10, borderRadius: 999, borderWidth: 1, borderColor: palette.outline, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? palette.softFill : 'transparent', opacity: row.on ? 1 : 0.4 })}>
+                    <Text style={{ color: palette.text, fontFamily: 'BricolageGrotesque_700Bold', fontSize: wide ? 13 : 11, fontWeight: '400' }}>Configure</Text>
                   </Pressable>
                 </View>
               </View>

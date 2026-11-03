@@ -17,6 +17,8 @@ import { useSettingsBack } from '@/lib/useSettingsBack';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
 import { FYLL_LIME, FYLL_LIME_INK, MoneyText, usePaymentsPalette } from '@/components/payments/payments-ui';
+import { InternalSettingsHeader } from '@/components/settings/InternalSettingsHeader';
+import { InventorySettingsHero } from '@/components/settings/InventorySettingsScaffold';
 
 type ImportSummary = {
   totalRows: number;
@@ -632,50 +634,27 @@ export default function ImportOrdersScreen() {
     <View style={panelStyles.outer}>
       <View style={panelStyles.inner}>
         <SafeAreaView className="flex-1" style={{ backgroundColor: settingsPalette.page }} edges={['top']}>
-          <LinearGradient
-            pointerEvents="none"
-            colors={resolvedThemeMode === 'dark' ? ['rgba(111,125,18,0.55)', 'rgba(20,20,20,0)'] : ['rgba(213,224,87,0.42)', 'rgba(244,243,235,0)']}
-            style={{ position: 'absolute', left: 0, right: 0, top: 0, height: openedFromSettings ? 390 : 300 }}
-          />
-          <View
-            className="flex-row items-center"
-            style={{ minHeight: isMobile ? 66 : openedFromSettings ? 58 : 56, paddingHorizontal: openedFromSettings ? 20 : 10, paddingTop: isMobile ? 12 : 4, paddingBottom: 4 }}
-          >
-            <Pressable
-              onPress={goBack}
-              className="w-10 h-10 items-center justify-center mr-3 active:opacity-50"
-              style={{ borderRadius: 20, backgroundColor: settingsPalette.softFill }}
-            >
-              <ArrowLeft size={18} color={settingsPalette.text} strokeWidth={2.2} />
-            </Pressable>
-            <View className="flex-1">
-              <Text style={{ color: settingsPalette.faint, fontSize: 9.5, lineHeight: 12, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Settings</Text>
-              <Text style={{ color: settingsPalette.text, fontSize: 17, lineHeight: 21, fontWeight: '600' }}>Import Orders</Text>
-            </View>
-          </View>
+          {!isDesktop ? (
+            <LinearGradient
+              pointerEvents="none"
+              colors={resolvedThemeMode === 'dark' ? ['rgba(111,125,18,0.55)', 'rgba(20,20,20,0)'] : ['rgba(213,224,87,0.42)', 'rgba(244,243,235,0)']}
+              style={{ position: 'absolute', left: 0, right: 0, top: 0, height: openedFromSettings ? 390 : 300 }}
+            />
+          ) : null}
+          <InternalSettingsHeader title="Import Orders" description="Upload, validate, and import order records from a CSV file." isDesktop={isDesktop} onBack={goBack} />
 
           <ScrollView
             className="flex-1"
             contentContainerStyle={{ paddingHorizontal: 16, paddingTop: openedFromSettings ? 22 : 12, paddingBottom: isDesktop ? 64 : tabBarHeight + 48 }}
             showsVerticalScrollIndicator={false}
           >
-            <View style={{ width: '100%', maxWidth: openedFromSettings ? 720 : 520, alignSelf: 'center' }}>
-            <View style={{ position: 'relative', overflow: 'hidden', minHeight: 156, marginBottom: 28, padding: 20, borderRadius: 28, borderWidth: 1, borderColor: settingsPalette.border, backgroundColor: settingsPalette.card, shadowColor: '#000000', shadowOpacity: resolvedThemeMode === 'dark' ? 0.24 : 0.07, shadowRadius: 24, shadowOffset: { width: 0, height: 10 } }}>
-              <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -44, right: -36, width: 210, height: 210, borderRadius: 105 }} />
-              <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, borderBottomLeftRadius: 3, borderBottomRightRadius: 3, backgroundColor: FYLL_LIME }} />
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 15 }}>
-                <LinearGradient colors={[FYLL_LIME, '#879400']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 66, height: 66, borderRadius: 22, alignItems: 'center', justifyContent: 'center' }}>
-                  <Upload size={28} color={FYLL_LIME_INK} strokeWidth={2.1} />
-                </LinearGradient>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ color: settingsPalette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Order data</Text>
-                  <MoneyText style={{ color: settingsPalette.text, fontSize: 26, lineHeight: 31, letterSpacing: -0.7 }}>CSV import</MoneyText>
-                  <Text style={{ color: settingsPalette.faint, fontSize: 12.5, marginTop: 3 }}>
-                    {summary ? `${summary.totalRows} rows processed` : preparedOrders.length ? `${preparedOrders.length} orders ready` : 'Upload, preview, then import'}
-                  </Text>
-                </View>
-              </View>
-            </View>
+            <View style={isDesktop ? { width: '100%', maxWidth: 1440, alignSelf: 'flex-start' } : { width: '100%', maxWidth: 520, alignSelf: 'center' }}>
+            <InventorySettingsHero
+              eyebrow="Order data"
+              title="CSV import"
+              description={summary ? `${summary.totalRows} rows processed` : preparedOrders.length ? `${preparedOrders.length} orders ready` : 'Upload, preview, then import'}
+              isDesktop={isDesktop}
+            />
             {!preparedOrders.length && !summary && (
               <View className="p-5 mb-6" style={{ borderRadius: 26, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
                 <View className="flex-row items-start mb-3">
@@ -790,7 +769,7 @@ export default function ImportOrdersScreen() {
                     <View className="flex-row items-start" style={{ gap: 11 }}>
                       <View className="items-center justify-center" style={{ width: 38, height: 38, borderRadius: 13, backgroundColor: settingsPalette.nudgeBg }}><FileText size={17} color={settingsPalette.limeOnSurface} strokeWidth={2} /></View>
                       <View style={{ flex: 1 }}>
-                        <Text style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '600' }}>{row.orderNumber} · {row.customerName}</Text>
+                        <Text style={{ color: settingsPalette.text, fontSize: 12, fontWeight: '500' }}>{row.orderNumber} · {row.customerName}</Text>
                         <Text style={{ color: settingsPalette.faint, fontSize: 12, marginTop: 3 }}>{row.productName} · {row.itemReference} · Qty {row.quantity}</Text>
                       </View>
                     </View>

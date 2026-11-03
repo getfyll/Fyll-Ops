@@ -1,3 +1,4 @@
+import { getLabelFlags, getRowHeightsMm, getStateInfo, getWeightText } from '@/lib/shipping-label-options';
 import { generateQrMatrix } from '@/lib/qrcode';
 import type { OrderLabelData } from '@/components/labels/OrderLabel80x90';
 
@@ -55,7 +56,7 @@ const limitText = (value: string, maxLength: number) => (
 
 type PdfWriter = {
   lines: string[];
-  drawText: (x: number, y: number, size: number, text: string, color?: 'black' | 'white') => void;
+  drawText: (x: number, y: number, size: number, text: string, color?: 'black' | 'white', font?: 'F1' | 'F2' | 'F3') => void;
   drawLine: (x1: number, y1: number, x2: number, y2: number) => void;
   drawRect: (x: number, y: number, w: number, h: number) => void;
   drawRoundedRect: (x: number, y: number, w: number, h: number, radius: number) => void;
@@ -66,9 +67,9 @@ type PdfWriter = {
 const createWriter = (): PdfWriter => {
   const lines: string[] = ['0.75 w\n'];
 
-  const drawText: PdfWriter['drawText'] = (x, y, size, text, color = 'black') => {
+  const drawText: PdfWriter['drawText'] = (x, y, size, text, color = 'black', font = 'F1') => {
     const rg = color === 'white' ? '1 1 1 rg' : '0 0 0 rg';
-    lines.push(`${rg}\nBT /F1 ${size} Tf ${x.toFixed(2)} ${y.toFixed(2)} Td (${escapePdfText(text)}) Tj ET\n0 0 0 rg\n`);
+    lines.push(`${rg}\nBT /${font} ${size} Tf ${x.toFixed(2)} ${y.toFixed(2)} Td (${escapePdfText(text)}) Tj ET\n0 0 0 rg\n`);
   };
   const drawLine: PdfWriter['drawLine'] = (x1, y1, x2, y2) => {
     lines.push(`${x1.toFixed(2)} ${y1.toFixed(2)} m ${x2.toFixed(2)} ${y2.toFixed(2)} l S\n`);
@@ -118,22 +119,22 @@ const createWriter = (): PdfWriter => {
   return { lines, drawText, drawLine, drawRect, drawRoundedRect, fillRect, drawQr };
 };
 
-const ROW_FRACTIONS = [7.5, 13.5, 7.5, 22.5, 9.5, 18, 4];
-const ROW_TOTAL = ROW_FRACTIONS.reduce((sum, value) => sum + value, 0);
+// Helvetica is the only face available in a hand-built PDF, so weights come from Helvetica-Bold (F2) and the order number
+// uses Courier-Bold (F3). Text widths are estimated from the point size.
+const textWidth = (text: string, size: number, factor = 0.58) => text.length * size * factor;
 
 const renderShippingLabelPage = (writer: PdfWriter, data: OrderLabelData, widthMm: number, heightMm: number) => {
+  const flags = getLabelFlags(data);
+  const rows = getRowHeightsMm(heightMm, flags);
   const width = mm(widthMm);
   const height = mm(heightMm);
   const hasWebsiteOrder = !!data.websiteOrderRef;
   const primaryOrderNumber = hasWebsiteOrder ? data.websiteOrderRef! : data.orderNumber;
-  const addressParts = data.deliveryAddress.split(',').map((part) => part.trim()).filter(Boolean);
-  const state = addressParts[addressParts.length - 1] || 'NG';
-  const stateCode = state.slice(0, 3).toUpperCase();
+  const { name: stateName, code: stateCode } = getStateInfo(data.deliveryAddress);
   const provider = data.logisticsProvider || 'Delivery Partner';
   const returnAddress = data.returnAddress || 'Return address not set';
-  const printDate = new Date().toLocaleDateString('en-GB', {
-    day: '2-digit', month: 'short', year: 'numeric',
-  }).toUpperCase();
+  const printDate = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+  const parcelText = flags.parcelText.replace(' OF ', '/');
 
   const left = mm(2.5);
   const right = width - mm(2.5);
@@ -141,112 +142,106 @@ const renderShippingLabelPage = (writer: PdfWriter, data: OrderLabelData, widthM
   const outerTop = height - mm(2);
   const outerBottom = mm(2);
   const usableHeight = outerTop - outerBottom;
-  const rowHeights = ROW_FRACTIONS.map((f) => (f / ROW_TOTAL) * usableHeight);
+  // The rows were sized for the page height minus its margins; scale them to the label rectangle drawn here.
+  const rowTotal = rows.header + rows.recipient + rows.order + rows.ret + rows.footer;
+  const scale = usableHeight / mm(rowTotal);
+  const hHeader = mm(rows.header) * scale;
+  const hRecipient = mm(rows.recipient) * scale;
+  const hOrder = mm(rows.order) * scale;
+  const hReturn = mm(rows.ret) * scale;
 
-  writer.drawRoundedRect(left, outerBottom, contentWidth, usableHeight, mm(2.8));
+  writer.drawRoundedRect(left, outerBottom, contentWidth, usableHeight, mm(2.5));
 
-  // Row boundaries, top to bottom.
-  let y = outerTop;
-  const bounds: number[] = [y];
-  rowHeights.forEach((h) => {
-    y -= h;
-    bounds.push(y);
-  });
-  const [carrierTop, metaTop, routeTop, recipientTop, orderTop, returnTop, footerTop] = bounds;
-  [metaTop, routeTop, recipientTop, orderTop, returnTop, footerTop].forEach((lineY) => {
+  const headerTop = outerTop;
+  const recipientTop = headerTop - hHeader;
+  const orderTop = recipientTop - hRecipient;
+  const returnTop = orderTop - hOrder;
+  const footerTop = returnTop - hReturn;
+  [recipientTop, orderTop, returnTop, footerTop].forEach((lineY, index) => {
+    if (index === 2 && !flags.ret) return; // no return block, no line for it
     writer.drawLine(left, lineY, right, lineY);
   });
 
-  // Carrier row
-  writer.drawText(left + mm(2), carrierTop - mm(4.5), 7, 'DELIVERED BY');
-  writer.drawText(right - mm(30), carrierTop - mm(4.2), 12, limitText(provider, 22));
+  // ---- Header: zone block | carrier | parcel ----
+  const zoneW = mm(30);
+  const parcelW = mm(18.5);
+  writer.fillRect(left, recipientTop, zoneW, hHeader);
+  const zoneMid = headerTop - hHeader / 2;
+  writer.drawText(left + zoneW / 2 - textWidth(stateCode, 28, 0.62) / 2, zoneMid - mm(1.5), 28, stateCode, 'white', 'F2');
+  const zoneLabel = limitText(`ZONE - ${stateName.toUpperCase()}`, 18);
+  writer.drawText(left + zoneW / 2 - textWidth(zoneLabel, 6.3, 0.6) / 2, zoneMid - mm(8.5), 6.3, zoneLabel, 'white', 'F2');
 
-  // Meta row: FROM | DATE/WEIGHT | PARCEL
-  const metaCol1 = left + contentWidth * 0.48;
-  const metaCol2 = left + contentWidth * 0.77;
-  writer.drawLine(metaCol1, metaTop, metaCol1, routeTop);
-  writer.drawLine(metaCol2, metaTop, metaCol2, routeTop);
-  writer.drawText(left + mm(1.8), metaTop - mm(4), 7, 'FROM');
-  writer.drawText(left + mm(1.8), metaTop - mm(7.5), 9.5, limitText(data.businessName, 22));
-  wrapText(returnAddress, 26).slice(0, 2).forEach((line, i) => {
-    writer.drawText(left + mm(1.8), metaTop - mm(11) - i * mm(3), 7, line);
+  const carrierX = left + zoneW + mm(3.5);
+  writer.drawText(carrierX, zoneMid + mm(7), 5.6, 'DELIVERED BY', 'black', 'F2');
+  writer.drawText(carrierX, zoneMid + mm(1.2), 12.6, limitText(provider, 22), 'black', 'F2');
+  writer.drawText(carrierX, zoneMid - mm(4), 7.8, limitText(`Dispatch Nigeria - ${printDate}`, 34));
+
+  const parcelX = right - parcelW;
+  writer.drawLine(parcelX, headerTop, parcelX, recipientTop);
+  const parcelMid = parcelX + parcelW / 2;
+  writer.drawText(parcelMid - textWidth('PARCEL', 5.6, 0.62) / 2, zoneMid + mm(7), 5.6, 'PARCEL', 'black', 'F2');
+  writer.drawText(parcelMid - textWidth(parcelText, 15.5, 0.6) / 2, zoneMid - mm(1.5), 15.5, parcelText, 'black', 'F2');
+  const weightText = getWeightText(data);
+  writer.drawText(parcelMid - textWidth(weightText, 6.3, 0.6) / 2, zoneMid - mm(5.5), 6.3, weightText, 'black', 'F2');
+
+  // ---- Recipient: ship to + delivery QR ----
+  const textX = left + mm(4);
+  const qrColumn = flags.qr ? mm(30) : 0;
+  const textWidthPt = contentWidth - mm(4) - mm(4) - qrColumn;
+  let cursor = recipientTop - mm(7);
+  writer.drawText(textX, cursor, 5.6, 'SHIP TO', 'black', 'F2');
+  cursor -= mm(6.5);
+  wrapText(data.customerName, Math.max(8, Math.floor(textWidthPt / (18 * 0.6)))).slice(0, 2).forEach((line) => {
+    writer.drawText(textX, cursor, 18, line, 'black', 'F2');
+    cursor -= mm(6.6);
   });
-  writer.drawText(metaCol1 + mm(1.8), metaTop - mm(4), 7, 'DATE');
-  writer.drawText(metaCol1 + mm(1.8), metaTop - mm(7.5), 8, printDate);
-  writer.drawText(metaCol1 + mm(1.8), metaTop - mm(11), 7, 'WEIGHT');
-  writer.drawText(metaCol1 + mm(1.8), metaTop - mm(14.2), 8, '< 2 KG');
-  const parcelBoxW = mm(15);
-  const parcelBoxH = mm(10.5);
-  const parcelBoxX = metaCol2 + (contentWidth * 0.23 - parcelBoxW) / 2;
-  const parcelBoxY = (metaTop + routeTop) / 2 - parcelBoxH / 2;
-  writer.drawRect(parcelBoxX, parcelBoxY, parcelBoxW, parcelBoxH);
-  writer.fillRect(parcelBoxX, parcelBoxY + parcelBoxH - mm(3.8), parcelBoxW, mm(3.8));
-  writer.drawText(parcelBoxX + mm(2), parcelBoxY + parcelBoxH - mm(2.9), 6.5, 'PARCEL', 'white');
-  writer.drawText(parcelBoxX + mm(3), parcelBoxY + mm(2.5), 9, '1 OF 1');
-
-  // Route row: state code + name
-  const stateBoxW = mm(15);
-  const stateBoxH = mm(6.5);
-  writer.fillRect(left, (routeTop + recipientTop) / 2 - stateBoxH / 2, stateBoxW, stateBoxH);
-  writer.drawText(left + mm(2), (routeTop + recipientTop) / 2 - mm(1.5), 15, stateCode || 'FYL', 'white');
-  writer.drawText(left + stateBoxW + mm(2), (routeTop + recipientTop) / 2 + mm(1), 10.5, limitText(state.toUpperCase(), 22));
-  writer.drawText(left + stateBoxW + mm(2), (routeTop + recipientTop) / 2 - mm(2.5), 8, 'NG');
-
-  // Recipient row: ship-to + QR
-  const qrSize = mm(19);
-  const qrX = right - qrSize - mm(2);
-  const qrY = (recipientTop + orderTop) / 2 - qrSize / 2 + mm(2);
-  writer.drawRect(qrX, qrY, qrSize, qrSize);
-  writer.drawQr(data.trackingUrl || primaryOrderNumber || data.orderNumber, qrX + mm(1), qrY + mm(1), qrSize - mm(2));
-  wrapText('SCAN TO CONFIRM DELIVERY', 16).forEach((line, i) => {
-    writer.drawText(qrX, qrY - mm(4) - i * mm(3), 6, line);
+  if (flags.phone && data.customerPhone) {
+    cursor -= mm(0.5);
+    writer.drawText(textX, cursor, 12, limitText(data.customerPhone, 24), 'black', 'F2');
+    cursor -= mm(5.5);
+  }
+  cursor -= mm(0.5);
+  wrapText(data.deliveryAddress, Math.max(14, Math.floor(textWidthPt / (9.9 * 0.5)))).slice(0, 4).forEach((line) => {
+    writer.drawText(textX, cursor, 9.9, line);
+    cursor -= mm(4.6);
   });
+  if (flags.qr) {
+    const qrSize = mm(24);
+    const qrX = right - mm(4) - qrSize - mm(1);
+    const qrY = (recipientTop + orderTop) / 2 - qrSize / 2 + mm(2);
+    writer.drawQr(data.trackingUrl || primaryOrderNumber || data.orderNumber, qrX, qrY, qrSize);
+    ['SCAN TO CONFIRM', 'DELIVERY'].forEach((line, i) => {
+      writer.drawText(qrX + qrSize / 2 - textWidth(line, 5.6, 0.6) / 2, qrY - mm(3.5) - i * mm(2.6), 5.6, line, 'black', 'F2');
+    });
+  }
 
-  writer.drawText(left + mm(1.8), recipientTop - mm(4), 7, 'TO');
-  writer.drawText(left + mm(1.8), recipientTop - mm(9), 14, limitText(data.customerName, 22));
-  writer.drawText(left + mm(1.8), recipientTop - mm(13.5), 9, limitText(data.customerPhone, 22));
-  wrapText(data.deliveryAddress, 34).slice(0, 3).forEach((line, i) => {
-    writer.drawText(left + mm(1.8), recipientTop - mm(18) - i * mm(4.2), 8.5, line);
-  });
-
-  // Order details row (this row is only ~16.8mm tall — every offset below must fit inside
-  // that or it bleeds into the RETURN TO row underneath it, which is what was happening).
-  writer.drawText(left + contentWidth / 2 - mm(14), orderTop - mm(3.5), 7, 'ORDER DETAILS');
-  const orderMid = left + contentWidth / 2;
-  writer.drawLine(orderMid, orderTop - mm(5.5), orderMid, returnTop + mm(1.5));
-  writer.drawText(left + mm(1.8), orderTop - mm(7.5), 7, 'ORDER NUMBER');
-  writer.drawText(left + mm(1.8), orderTop - mm(11), 11, limitText(primaryOrderNumber, 18));
+  // ---- Order number + items ----
+  writer.drawText(textX, orderTop - mm(5.2), 5.6, 'ORDER', 'black', 'F2');
+  writer.drawText(textX, orderTop - mm(10.8), 15.5, limitText(primaryOrderNumber, 16), 'black', 'F3');
   if (hasWebsiteOrder) {
-    writer.drawText(left + mm(1.8), orderTop - mm(14.5), 6, `REF: ${limitText(data.orderNumber, 20)}`);
+    writer.drawText(textX, orderTop - mm(13.2), 5.6, `REF: ${limitText(data.orderNumber, 24)}`);
   }
-  writer.drawText(orderMid + mm(4), orderTop - mm(7.5), 7, 'TYPE');
-  writer.drawText(orderMid + mm(4), orderTop - mm(11), 9, 'DISPATCH NIGERIA');
-
-  // Return row
-  const returnSplit = left + contentWidth * 0.57;
-  writer.drawLine(returnSplit, returnTop, returnSplit, footerTop);
-  writer.drawText(left + mm(1.8), returnTop - mm(4), 7, 'RETURN TO');
-  writer.drawText(left + mm(1.8), returnTop - mm(7.5), 9, limitText(data.businessName, 24));
-  wrapText(returnAddress, 30).slice(0, 2).forEach((line, i) => {
-    writer.drawText(left + mm(1.8), returnTop - mm(11) - i * mm(3), 7, line);
-  });
-  if (data.businessPhone) {
-    writer.drawText(left + mm(1.8), returnTop - mm(17), 7, data.businessPhone);
+  if (typeof data.itemCount === 'number') {
+    const itemsText = String(data.itemCount);
+    writer.drawText(right - mm(4) - textWidth('ITEMS', 5.6, 0.62), orderTop - mm(5.2), 5.6, 'ITEMS', 'black', 'F2');
+    writer.drawText(right - mm(4) - textWidth(itemsText, 10.5, 0.6), orderTop - mm(10.2), 10.5, itemsText, 'black', 'F2');
   }
-  // The undelivered column is only ~43% of content width — "If undelivered, please return
-  // to sender." at 7pt is far too long for a single line there, so it was overflowing clean
-  // off the right edge of the label. Wrap it like every other text block.
-  const undeliveredColWidth = right - (returnSplit + mm(2));
-  const undeliveredMaxChars = Math.max(10, Math.floor(undeliveredColWidth / mm(1.5)));
-  wrapText('If undelivered, please return to sender.', undeliveredMaxChars).slice(0, 2).forEach((line, i) => {
-    writer.drawText(returnSplit + mm(2), returnTop - mm(4) - i * mm(3), 7, line);
-  });
-  writer.drawText(returnSplit + mm(2), returnTop - mm(12), 8, limitText(`${state}, Nigeria`, 24));
-  writer.drawText(returnSplit + mm(2), returnTop - mm(15), 7, '100001');
 
-  // Footer
-  writer.drawText(left + mm(1.8), footerTop - mm(5), 6, limitText(`THANK YOU FOR SHOPPING WITH ${data.businessName.toUpperCase()}`, 44));
-  writer.drawText(right - mm(28), footerTop - mm(5), 6, 'POWERED BY FYLL');
+  // ---- From / return to ----
+  if (flags.ret) {
+    writer.drawText(textX, returnTop - mm(5), 5.6, 'FROM / RETURN TO', 'black', 'F2');
+    writer.drawText(textX, returnTop - mm(9.2), 8.4, limitText(`${data.businessName}${data.businessPhone ? ` - ${data.businessPhone}` : ''}`, 54), 'black', 'F2');
+    const returnWidthPt = contentWidth - mm(8);
+    wrapText(`${returnAddress}. If undelivered, please return to sender.`, Math.max(20, Math.floor(returnWidthPt / (7.4 * 0.5)))).slice(0, 3).forEach((line, i) => {
+      writer.drawText(textX, returnTop - mm(13) - i * mm(3.2), 7.4, line);
+    });
+  }
+
+  // ---- Footer ----
+  if (flags.thanks) {
+    writer.drawText(textX, footerTop - mm(4.8), 6.3, limitText(`THANK YOU FOR SHOPPING WITH ${data.businessName.toUpperCase()}`, 44), 'black', 'F2');
+  }
+  writer.drawText(right - mm(4) - textWidth('POWERED BY FYLL', 6.3, 0.6), footerTop - mm(4.8), 6.3, 'POWERED BY FYLL', 'black', 'F2');
 };
 
 const buildPdfBytes = (
@@ -263,6 +258,8 @@ const buildPdfBytes = (
   };
 
   const fontObjectId = 3;
+  const boldFontId = addObject('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>');
+  const monoFontId = addObject('<< /Type /Font /Subtype /Type1 /BaseFont /Courier-Bold >>');
   const pageObjectIds: number[] = [];
 
   items.forEach((item) => {
@@ -270,7 +267,7 @@ const buildPdfBytes = (
     renderShippingLabelPage(writer, item, widthMm, heightMm);
     const stream = writer.lines.join('');
     const contentId = addObject(`<< /Length ${stream.length} >>\nstream\n${stream}endstream`);
-    const pageId = addObject(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /Font << /F1 ${fontObjectId} 0 R >> >> /Contents ${contentId} 0 R >>`);
+    const pageId = addObject(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /Font << /F1 ${fontObjectId} 0 R /F2 ${boldFontId} 0 R /F3 ${monoFontId} 0 R >> >> /Contents ${contentId} 0 R >>`);
     pageObjectIds.push(pageId);
   });
 

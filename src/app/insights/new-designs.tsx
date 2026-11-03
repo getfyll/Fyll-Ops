@@ -6,10 +6,12 @@ import { ChevronRight } from 'lucide-react-native';
 import useFyllStore from '@/lib/state/fyll-store';
 import { calculateNewDesignAnalytics } from '@/lib/inventory-analytics';
 import { DetailHeader } from '@/components/stats/DetailHeader';
-import { useStatsColors } from '@/lib/theme';
+import { FigureText } from '@/components/stats/FigureText';
+import { useInsightsBottomPad, useInsightsColors } from '@/lib/insights-theme';
 
 export default function NewDesignsScreen() {
-  const colors = useStatsColors();
+  const bottomPad = useInsightsBottomPad();
+  const colors = useInsightsColors();
   const router = useRouter();
   const params = useLocalSearchParams<{ year?: string }>();
   const initialYear = params.year ? parseInt(params.year, 10) : new Date().getFullYear();
@@ -54,7 +56,7 @@ export default function NewDesignsScreen() {
         <ScrollView
           className="flex-1"
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
+          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: bottomPad }}
         >
           {/* Year Selector */}
           <View className="flex-row mt-4">
@@ -85,17 +87,17 @@ export default function NewDesignsScreen() {
               <Text style={{ color: colors.text.tertiary }} className="text-xs">
                 Total New Designs
               </Text>
-              <Text style={{ color: colors.text.primary }} className="text-2xl font-bold">
+              <FigureText desktop={24} mobile={24} style={{ color: colors.text.primary }} >
                 {analytics.totalNewDesigns}
-              </Text>
+              </FigureText>
             </View>
             <View className="flex-1 p-4 rounded-xl" style={colors.getCardStyle()}>
               <Text style={{ color: colors.text.tertiary }} className="text-xs">
                 Restocked
               </Text>
-              <Text style={{ color: colors.text.primary }} className="text-2xl font-bold">
+              <FigureText desktop={24} mobile={24} style={{ color: colors.text.primary }} >
                 {analytics.newDesignsRestocked}
-              </Text>
+              </FigureText>
             </View>
           </View>
 
@@ -104,17 +106,17 @@ export default function NewDesignsScreen() {
               <Text style={{ color: colors.text.tertiary }} className="text-xs">
                 Total Restocks
               </Text>
-              <Text style={{ color: colors.text.primary }} className="text-2xl font-bold">
+              <FigureText desktop={24} mobile={24} style={{ color: colors.text.primary }} >
                 {analytics.totalRestocksForNewDesigns}
-              </Text>
+              </FigureText>
             </View>
             <View className="flex-1 p-4 rounded-xl" style={colors.getCardStyle()}>
               <Text style={{ color: colors.text.tertiary }} className="text-xs">
                 Units Restocked
               </Text>
-              <Text style={{ color: colors.text.primary }} className="text-2xl font-bold">
+              <FigureText desktop={24} mobile={24} style={{ color: colors.text.primary }} >
                 {analytics.totalUnitsRestockedForNewDesigns}
-              </Text>
+              </FigureText>
             </View>
           </View>
 

@@ -763,12 +763,12 @@ export default function CustomersScreen() {
                     <Text style={{ color: palette.avatarText, fontSize: 13, fontWeight: '700' }}>{getCustomerInitials(customer.fullName)}</Text>
                   </View>
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={{ color: palette.text, fontSize: 15, fontWeight: '500' }} numberOfLines={1}>{customer.fullName}</Text>
-                    <Text style={{ color: palette.faint, fontSize: 12.5, marginTop: 3 }} numberOfLines={1}>{customer.email || customer.phone || 'No contact details'}</Text>
-                    <Text style={{ color: palette.muted, fontSize: 12, marginTop: 2 }} numberOfLines={1}>{customer.defaultState || 'No state'} · {ordersCount} {ordersCount === 1 ? 'order' : 'orders'}</Text>
+                    <Text style={{ color: palette.text, fontSize: 14, fontWeight: '500' }} numberOfLines={1}>{customer.fullName}</Text>
+                    <Text style={{ color: palette.faint, fontSize: 10, marginTop: 3 }} numberOfLines={1}>{customer.email || customer.phone || 'No contact details'}</Text>
+                    <Text style={{ color: palette.muted, fontSize: 10, marginTop: 2 }} numberOfLines={1}>{customer.defaultState || 'No state'} · {ordersCount} {ordersCount === 1 ? 'order' : 'orders'}</Text>
                   </View>
                   <View style={{ alignItems: 'flex-end', gap: 5 }}>
-                    {isFullyRefunded ? <Text style={{ color: palette.danger, fontSize: 12, fontWeight: '600' }}>Refunded</Text> : totalSpent > 0 ? <MoneyText style={{ color: palette.text, fontSize: 13 }} numberOfLines={1}>{formatCurrency(totalSpent)}</MoneyText> : <Text style={{ color: palette.faint, fontSize: 12 }}>No spend</Text>}
+                    {isFullyRefunded ? <Text style={{ color: palette.danger, fontSize: 14, fontWeight: '600' }}>Refunded</Text> : totalSpent > 0 ? <MoneyText style={{ color: palette.text, fontSize: 14 }} numberOfLines={1}>{formatCurrency(totalSpent)}</MoneyText> : <Text style={{ color: palette.faint, fontSize: 14 }}>No spend</Text>}
                     <ChevronRight size={16} color={palette.faint} strokeWidth={2} />
                   </View>
                 </Pressable>

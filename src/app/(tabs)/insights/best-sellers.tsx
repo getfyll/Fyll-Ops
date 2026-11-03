@@ -7,12 +7,12 @@ import useFyllStore, { formatCurrency } from '@/lib/state/fyll-store';
 import { calculateBestSellingProducts, calculateStockCoverDays } from '@/lib/inventory-analytics';
 import { getDateRange, type TimeRange } from '@/lib/analytics-utils';
 import { DetailHeader } from '@/components/stats/DetailHeader';
-import { useStatsColors } from '@/lib/theme';
+import { useInsightsColors } from '@/lib/insights-theme';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 
 export default function BestSellersScreen() {
   const router = useRouter();
-  const colors = useStatsColors();
+  const colors = useInsightsColors();
   const { isDesktop } = useBreakpoint();
   const isWebDesktop = Platform.OS === 'web' && isDesktop;
   const [timeRange, setTimeRange] = useState<TimeRange>('7d');

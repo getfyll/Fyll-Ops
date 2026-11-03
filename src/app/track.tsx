@@ -1260,7 +1260,38 @@ function BusinessPicker({ onPick }: { onPick: (match: PublicTrackingBusinessMatc
   );
 }
 
-function TrackLanding({
+export type TrackLandingCopy = {
+  tag: string;
+  domain: string;
+  headline: string;
+  headlineWide: string;
+  sub: (businessName: string | null) => string;
+  steps: string[];
+  formTitle: string;
+  formSub: (hasBusiness: boolean) => string;
+  submit: string;
+  submitting: string;
+  hint: string;
+};
+
+const TRACK_LANDING_COPY: TrackLandingCopy = {
+  tag: 'Track',
+  domain: 'track.fyll.app',
+  headline: "Where's my order?",
+  headlineWide: "Where's my\norder?",
+  sub: (businessName) => (businessName
+    ? `Track anything you bought from ${businessName}, from payment to your door.`
+    : 'Track anything you bought from a business on Fyll, from payment to your door.'),
+  steps: ['Payment verified', 'Order prepared', 'Delivered'],
+  formTitle: 'Track an order',
+  formSub: (hasBusiness) => (hasBusiness ? 'All three details help us find the right one.' : 'Pick the business, then your order details.'),
+  submit: 'Track order',
+  submitting: 'Finding your order…',
+  hint: 'Your order or payment number is in your confirmation email and in the DM from the business.',
+};
+
+// The public landing page. track.fyll.app uses it as is; confirm.fyll.app reuses it with its own wording (`copy`).
+export function TrackLanding({
   business,
   onChangeBusiness,
   onPickBusiness,
@@ -1272,6 +1303,10 @@ function TrackLanding({
   pending,
   openingDeepLink,
   feedback,
+  copy = TRACK_LANDING_COPY,
+  sheet = false,
+  lockBusiness = false,
+  split = false,
 }: {
   business: { name: string; logo: string | null } | null;
   onChangeBusiness: () => void;
@@ -1284,10 +1319,19 @@ function TrackLanding({
   pending: boolean;
   openingDeepLink: boolean;
   feedback: string | null;
+  copy?: TrackLandingCopy;
+  // Phones: the form is a frosted sheet fixed to the bottom, edge to edge, under a taller hero.
+  sheet?: boolean;
+  // The business came from the page's own link, so the visitor can not switch to another one.
+  lockBusiness?: boolean;
+  // Wide screens: two full-height columns, the Field with the heading on the left and the form on a frosted column on the right.
+  split?: boolean;
 }) {
   const { width: viewportWidth } = useWindowDimensions();
   const wide = viewportWidth >= 1000;
   const compact = viewportWidth < 720;
+  const sheetMode = sheet && !wide;
+  const splitMode = split && wide;
   const displayFont = compact ? trackingDisplayFontCompact : trackingDisplayFont;
   const displayWeight = (compact ? '700' : '800') as '700' | '800';
   const [focused, setFocused] = useState<string | null>(null);
@@ -1325,14 +1369,20 @@ function TrackLanding({
           paddingHorizontal: compact ? 16 : 30,
           gap: compact ? 16 : 18,
         },
-        Platform.OS === 'web' ? ({ backdropFilter: 'blur(22px) saturate(140%)', WebkitBackdropFilter: 'blur(22px) saturate(140%)' } as object) : null,
+        splitMode
+          ? { width: '100%', maxWidth: 480, borderRadius: 0, borderWidth: 0, backgroundColor: 'transparent', paddingVertical: 0, paddingHorizontal: 0 }
+          : null,
+        sheetMode
+          ? { borderRadius: 0, borderTopLeftRadius: 30, borderTopRightRadius: 30, borderWidth: 0, borderTopWidth: 1, backgroundColor: 'rgba(34,36,26,0.78)', paddingHorizontal: 20, paddingTop: 30, paddingBottom: 38 }
+          : null,
+        Platform.OS === 'web' && !splitMode ? ({ backdropFilter: 'blur(22px) saturate(140%)', WebkitBackdropFilter: 'blur(22px) saturate(140%)' } as object) : null,
       ]}
     >
       {!compact ? (
         <View style={{ gap: 4, paddingBottom: 2 }}>
-          <Text style={{ fontFamily: displayFont, fontWeight: displayWeight, fontSize: 28, letterSpacing: -0.8, color: '#FFFFFF' }}>Track an order</Text>
+          <Text style={{ fontFamily: displayFont, fontWeight: displayWeight, fontSize: 28, letterSpacing: -0.8, color: '#FFFFFF' }}>{copy.formTitle}</Text>
           <Text style={{ fontFamily: trackingBodyFont, fontSize: compact ? 12 : 14, color: 'rgba(244,244,239,0.75)' }}>
-            {business ? 'All three details help us find the right one.' : 'Pick the business, then your order details.'}
+            {copy.formSub(Boolean(business))}
           </Text>
         </View>
       ) : null}
@@ -1342,8 +1392,9 @@ function TrackLanding({
           {label('Business')}
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={`Business: ${business.name}. Change business`}
-            onPress={onChangeBusiness}
+            accessibilityLabel={lockBusiness ? `Business: ${business.name}` : `Business: ${business.name}. Change business`}
+            onPress={lockBusiness ? undefined : onChangeBusiness}
+            disabled={lockBusiness}
             style={{ height: 54, borderRadius: 16, backgroundColor: '#FFFFFF', flexDirection: 'row', alignItems: 'center', gap: 12, paddingLeft: 10, paddingRight: 16 }}
           >
             <View style={{ width: 34, height: 34, borderRadius: 17, overflow: 'hidden', backgroundColor: '#EFEFE9', alignItems: 'center', justifyContent: 'center' }}>
@@ -1354,7 +1405,7 @@ function TrackLanding({
               )}
             </View>
             <Text style={{ flex: 1, fontFamily: 'DMSans_600SemiBold', fontSize: 16, color: '#1E1E1E' }} numberOfLines={1}>{business.name}</Text>
-            <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? 12 : 13.5, color: '#5F6A00' }}>Change</Text>
+            {lockBusiness ? null : <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? 12 : 13.5, color: '#5F6A00' }}>Change</Text>}
           </Pressable>
         </View>
       ) : (
@@ -1417,8 +1468,8 @@ function TrackLanding({
         })}
       >
         {pending ? <ActivityIndicator color="#1E1E1E" /> : null}
-        <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? 12 : 17, color: canSubmit || pending ? '#1E1E1E' : 'rgba(244,244,239,0.55)' }}>
-          {pending ? (openingDeepLink ? 'Opening your order…' : 'Finding your order…') : 'Track order'}
+        <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? (sheet ? 16 : 12) : 17, color: canSubmit || pending ? '#1E1E1E' : 'rgba(244,244,239,0.55)' }}>
+          {pending ? (openingDeepLink ? 'Opening your order…' : copy.submitting) : copy.submit}
         </Text>
         {!pending ? <ArrowRight size={18} color={canSubmit ? '#1E1E1E' : 'rgba(244,244,239,0.55)'} strokeWidth={2.4} /> : null}
       </Pressable>
@@ -1429,12 +1480,77 @@ function TrackLanding({
         </View>
       ) : null}
       <Text style={{ fontFamily: trackingBodyFont, fontSize: compact ? 11 : 13, lineHeight: 19.5, color: 'rgba(244,244,239,0.72)', textAlign: 'center' }}>
-        Your order or payment number is in your confirmation email and in the DM from the business.
+        {copy.hint}
       </Text>
+      {sheetMode ? (
+        <Text style={{ fontFamily: trackingBodyFont, fontSize: 10, color: 'rgba(244,244,239,0.6)', textAlign: 'center' }}>
+          Fyll never asks for your bank PIN or password.
+        </Text>
+      ) : null}
     </View>
   );
 
-  const steps = ['Payment verified', 'Order prepared', 'Delivered'];
+  const steps = copy.steps;
+  const headingBlock = (
+  <View style={{ flex: wide && !splitMode ? 1 : undefined, gap: compact ? 14 : 22, paddingTop: wide && !splitMode ? 30 : 0, paddingHorizontal: sheetMode ? 20 : 0, ...(sheetMode ? { flexGrow: 1, justifyContent: 'center' as const } : null) }}>
+    {wide ? (
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={[{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#D5E057' }, Platform.OS === 'web' ? ({ boxShadow: '0 0 10px #D5E057' } as object) : null]} />
+        <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? 12 : 14, color: '#EEF2C4' }}>{copy.domain}</Text>
+      </View>
+    ) : null}
+    <Text style={{ fontFamily: displayFont, fontWeight: displayWeight, fontSize: wide ? 84 : 52, lineHeight: wide ? 80 : 50, letterSpacing: wide ? -3.4 : -2, color: '#FFFFFF' }}>
+      {wide ? copy.headlineWide : copy.headline}
+    </Text>
+    <Text style={{ fontFamily: trackingBodyFont, fontSize: wide ? 18 : 15.5, lineHeight: wide ? 28 : 23, color: 'rgba(244,244,239,0.88)', maxWidth: 460 }}>
+      {copy.sub(business ? business.name : null)}
+    </Text>
+    {wide ? (
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingTop: 14 }}>
+        {steps.map((step, index) => (
+          <View key={step} style={{ height: 38, paddingHorizontal: 14, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(20,20,20,0.3)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)' }}>
+            <Text style={{ fontFamily: 'DMSans_700Bold', fontSize: compact ? 12 : 13.5, color: '#D5E057' }}>{index + 1}</Text>
+            <Text style={{ fontFamily: trackingBodyFont, fontSize: compact ? 12 : 13.5, color: '#F4F4EF' }}>{step}</Text>
+          </View>
+        ))}
+      </View>
+    ) : null}
+  </View>
+  );
+
+  if (splitMode) {
+    return (
+      <ImageBackground source={fyllFieldDesktop} resizeMode="cover" style={{ flex: 1, backgroundColor: '#3F4A08' }}>
+        <LinearGradient
+          pointerEvents="none"
+          colors={['rgba(20,20,20,0.3)', 'rgba(20,20,20,0.05)', 'rgba(20,20,20,0.55)']}
+          locations={[0, 0.45, 1]}
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+        />
+        <SafeAreaView style={{ flex: 1, flexDirection: 'row' }} edges={['top', 'bottom']}>
+          <View style={{ flex: 1, paddingHorizontal: 56, paddingTop: 40, paddingBottom: 56 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <Image source={fyllWordmarkPng} accessibilityLabel="Fyll" resizeMode="contain" style={{ width: 28 * (344 / 195), height: 28, tintColor: '#FFFFFF' }} />
+              <View style={{ width: 1, height: 20, backgroundColor: 'rgba(255,255,255,0.3)' }} />
+              <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: 15, color: '#F4F4EF' }}>{copy.tag}</Text>
+            </View>
+            <View style={{ flex: 1, justifyContent: 'flex-end' }}>{headingBlock}</View>
+          </View>
+          <View
+            style={[
+              { flex: 1, borderLeftWidth: 1, borderLeftColor: 'rgba(255,255,255,0.14)', backgroundColor: 'rgba(20,20,20,0.42)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 72, paddingVertical: 40 },
+              Platform.OS === 'web' ? ({ backdropFilter: 'blur(22px) saturate(140%)', WebkitBackdropFilter: 'blur(22px) saturate(140%)' } as object) : null,
+            ]}
+          >
+            <KeyboardAvoidingView style={{ width: '100%', alignItems: 'center' }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>{form}</KeyboardAvoidingView>
+            <Text style={{ position: 'absolute', bottom: 32, textAlign: 'center', fontFamily: trackingBodyFont, fontSize: 13, color: 'rgba(244,244,239,0.65)' }}>
+              Fyll never asks for your bank PIN or password.
+            </Text>
+          </View>
+        </SafeAreaView>
+      </ImageBackground>
+    );
+  }
 
   return (
     <ImageBackground source={wide ? fyllFieldDesktop : fyllFieldPhone} resizeMode="cover" style={{ flex: 1, backgroundColor: '#3F4A08' }}>
@@ -1446,14 +1562,14 @@ function TrackLanding({
         end={wide ? { x: 1, y: 0.7 } : { x: 0.5, y: 1 }}
         style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
       />
-      <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom']}>
+      <SafeAreaView style={{ flex: 1 }} edges={sheetMode ? ['top'] : ['top', 'bottom']}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-            <View style={{ width: '100%', maxWidth: 1200 + (compact ? 40 : 64), alignSelf: 'center', paddingHorizontal: compact ? 20 : 32, paddingTop: compact ? 22 : 30, flexGrow: 1 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: compact ? 10 : 12 }}>
+            <View style={{ width: '100%', maxWidth: 1200 + (compact ? 40 : 64), alignSelf: 'center', paddingHorizontal: sheetMode ? 0 : compact ? 20 : 32, paddingTop: compact ? 22 : 30, flexGrow: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: compact ? 10 : 12, paddingHorizontal: sheetMode ? 20 : 0 }}>
                 <Image source={fyllWordmarkPng} accessibilityLabel="Fyll" resizeMode="contain" style={{ width: (compact ? 24 : 28) * (344 / 195), height: compact ? 24 : 28, tintColor: '#FFFFFF' }} />
                 <View style={{ width: 1, height: compact ? 18 : 20, backgroundColor: 'rgba(255,255,255,0.3)' }} />
-                <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? 12 : 15, color: '#F4F4EF' }}>Track</Text>
+                <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? 12 : 15, color: '#F4F4EF' }}>{copy.tag}</Text>
               </View>
 
               <View
@@ -1462,43 +1578,21 @@ function TrackLanding({
                   alignItems: wide ? 'flex-start' : 'stretch',
                   justifyContent: 'space-between',
                   gap: wide ? 80 : 28,
-                  paddingTop: wide ? 96 : 44,
+                  paddingTop: wide ? 96 : sheetMode ? 36 : 44,
+                  ...(sheetMode ? { flexGrow: 1, justifyContent: 'space-between' as const, gap: 24 } : null),
                 }}
               >
-                <View style={{ flex: wide ? 1 : undefined, gap: compact ? 14 : 22, paddingTop: wide ? 30 : 0 }}>
-                  {wide ? (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <View style={[{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#D5E057' }, Platform.OS === 'web' ? ({ boxShadow: '0 0 10px #D5E057' } as object) : null]} />
-                      <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? 12 : 14, color: '#EEF2C4' }}>track.fyll.app</Text>
-                    </View>
-                  ) : null}
-                  <Text style={{ fontFamily: displayFont, fontWeight: displayWeight, fontSize: wide ? 84 : 52, lineHeight: wide ? 80 : 50, letterSpacing: wide ? -3.4 : -2, color: '#FFFFFF' }}>
-                    {wide ? "Where's my\norder?" : "Where's my order?"}
-                  </Text>
-                  <Text style={{ fontFamily: trackingBodyFont, fontSize: wide ? 18 : 15.5, lineHeight: wide ? 28 : 23, color: 'rgba(244,244,239,0.88)', maxWidth: 460 }}>
-                    {business
-                      ? `Track anything you bought from ${business.name}, from payment to your door.`
-                      : 'Track anything you bought from a business on Fyll, from payment to your door.'}
-                  </Text>
-                  {wide ? (
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingTop: 14 }}>
-                      {steps.map((step, index) => (
-                        <View key={step} style={{ height: 38, paddingHorizontal: 14, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(20,20,20,0.3)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)' }}>
-                          <Text style={{ fontFamily: 'DMSans_700Bold', fontSize: compact ? 12 : 13.5, color: '#D5E057' }}>{index + 1}</Text>
-                          <Text style={{ fontFamily: trackingBodyFont, fontSize: compact ? 12 : 13.5, color: '#F4F4EF' }}>{step}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  ) : null}
-                </View>
+                {headingBlock}
                 {form}
               </View>
 
-              <View style={{ marginTop: 'auto', paddingTop: 36, paddingBottom: compact ? 22 : 26, alignItems: 'center' }}>
-                <Text style={{ fontFamily: trackingBodyFont, fontSize: compact ? 10 : 13, color: 'rgba(244,244,239,0.65)', textAlign: 'center' }}>
-                  Fyll never asks for your bank PIN or password.
-                </Text>
-              </View>
+              {sheetMode ? null : (
+                <View style={{ marginTop: 'auto', paddingTop: 36, paddingBottom: compact ? 22 : 26, alignItems: 'center' }}>
+                  <Text style={{ fontFamily: trackingBodyFont, fontSize: compact ? 10 : 13, color: 'rgba(244,244,239,0.65)', textAlign: 'center' }}>
+                    Fyll never asks for your bank PIN or password.
+                  </Text>
+                </View>
+              )}
             </View>
           </ScrollView>
         </KeyboardAvoidingView>

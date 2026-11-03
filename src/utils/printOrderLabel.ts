@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import * as Print from 'expo-print';
 import * as Haptics from 'expo-haptics';
 import { generateOrderLabelHTML, OrderLabelData } from '@/components/labels/OrderLabel80x90';
+import { expandParcels, getShippingLabelFileBase } from '@/lib/shipping-label-options';
 import { buildDeliveryConfirmationHostUrl } from '@/lib/tracking-url';
 import { downloadShippingLabelPdf } from '@/lib/shipping-label-pdf';
 import { printHtmlOnWeb } from '@/lib/print-html-web';
@@ -36,7 +37,7 @@ export async function printOrderLabel(
       // Desktop browsers' print dialog renders this correctly via a hidden iframe — keep
       // that path since it gives desktop users the native "print or save as PDF" dialog
       // directly, which is a nicer flow than forcing a silent file download.
-      await printHtmlOnWeb(html);
+      await printHtmlOnWeb(html, getShippingLabelFileBase(data));
       return true;
     }
 
@@ -46,7 +47,7 @@ export async function printOrderLabel(
       // top-level app screen instead of the isolated label, on both iOS Safari and Android
       // Chrome. Downloading the PDF directly sidesteps browser print dialogs entirely.
       const dateStamp = new Date().toISOString().slice(0, 10);
-      downloadShippingLabelPdf([data], labelSize.widthMm, labelSize.heightMm, `fyll-shipping-label-${data.orderNumber}-${dateStamp}.pdf`);
+      downloadShippingLabelPdf(expandParcels(data), labelSize.widthMm, labelSize.heightMm, `${getShippingLabelFileBase(data)}.pdf`);
       return true;
     }
 
@@ -86,6 +87,8 @@ export function prepareOrderLabelData(
     customerPhone?: string;
     deliveryAddress?: string;
     deliveryState?: string;
+    // Total quantity of items, shown as "Items" on the label.
+    itemCount?: number;
     logistics?: {
       carrierName?: string;
     };
@@ -122,5 +125,6 @@ export function prepareOrderLabelData(
     customerPhone: order.customerPhone || '',
     deliveryAddress: fullAddress,
     logisticsProvider: order.logistics?.carrierName,
+    itemCount: order.itemCount,
   };
 }

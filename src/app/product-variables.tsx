@@ -16,6 +16,8 @@ import { cn } from '@/lib/cn';
 import { EmptyState } from '@/components/EmptyState';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
 import { FYLL_LIME, FYLL_LIME_INK, MoneyText, usePaymentsPalette } from '@/components/payments/payments-ui';
+import { InternalSettingsHeader } from '@/components/settings/InternalSettingsHeader';
+import { InventorySettingsContent, InventorySettingsHero } from '@/components/settings/InventorySettingsScaffold';
 
 export default function ProductVariablesScreen() {
   const colors = useThemeColors();
@@ -208,37 +210,21 @@ export default function ProductVariablesScreen() {
     <View style={panelStyles.outer}>
       <View style={panelStyles.inner}>
       <SafeAreaView className="flex-1" edges={['top']} style={{ backgroundColor: settingsPalette.page }}>
-        <LinearGradient pointerEvents="none" colors={resolvedThemeMode === 'dark' ? ['rgba(111,125,18,0.55)', 'rgba(20,20,20,0)'] : ['rgba(213,224,87,0.42)', 'rgba(244,243,235,0)']} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 360 }} />
+        {!isDesktop ? <LinearGradient pointerEvents="none" colors={resolvedThemeMode === 'dark' ? ['rgba(111,125,18,0.55)', 'rgba(20,20,20,0)'] : ['rgba(213,224,87,0.42)', 'rgba(244,243,235,0)']} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 360 }} /> : null}
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           className="flex-1"
         >
-          {/* Header */}
-          <View className="flex-row items-center" style={{ minHeight: isMobile ? 66 : 58, paddingHorizontal: 10, paddingTop: isMobile ? 12 : 4, paddingBottom: 4 }}>
-            <Pressable
-              onPress={goBack}
-              className="w-10 h-10 rounded-full items-center justify-center active:opacity-50 mr-3"
-              style={{ backgroundColor: settingsPalette.softFill }}
-            >
-              <ArrowLeft size={20} color={colors.text.primary} strokeWidth={2} />
-            </Pressable>
-            <View><Text style={{ color: settingsPalette.faint, fontSize: 9.5, lineHeight: 12, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Settings</Text><Text style={{ color: settingsPalette.text, fontSize: 17, lineHeight: 21, fontWeight: '600' }}>Product Variables</Text></View>
-          </View>
+          <InternalSettingsHeader title="Product Variables" description="Manage reusable attributes and values used across products." isDesktop={isDesktop} onBack={goBack} />
 
           <ScrollView className="flex-1" contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 18, paddingBottom: isDesktop ? 64 : tabBarHeight + 40 }} showsVerticalScrollIndicator={false}>
-            <View style={{ width: '100%', maxWidth: 720, alignSelf: 'center' }}>
-            <View style={{ position: 'relative', overflow: 'hidden', minHeight: 156, marginBottom: 20, padding: 20, justifyContent: 'center', borderRadius: 28, borderWidth: 1, borderColor: settingsPalette.border, backgroundColor: settingsPalette.card, shadowColor: '#000', shadowOpacity: resolvedThemeMode === 'dark' ? 0.24 : 0.07, shadowRadius: 24, shadowOffset: { width: 0, height: 10 } }}>
-              <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -44, right: -36, width: 210, height: 210, borderRadius: 105 }} />
-              <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
-              <View className="flex-row items-center" style={{ gap: 15 }}>
-                <LinearGradient colors={[FYLL_LIME, '#879400']} style={{ width: 66, height: 66, borderRadius: 22, alignItems: 'center', justifyContent: 'center' }}><Palette size={28} color={FYLL_LIME_INK} strokeWidth={2.1} /></LinearGradient>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: settingsPalette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Variant structure</Text>
-                  <MoneyText style={{ color: settingsPalette.text, fontSize: 26, lineHeight: 31 }}>{productVariables.length} {productVariables.length === 1 ? 'variable' : 'variables'}</MoneyText>
-                  <Text style={{ color: settingsPalette.faint, fontSize: 12.5, marginTop: 3 }}>Reusable stock and pricing options</Text>
-                </View>
-              </View>
-            </View>
+            <InventorySettingsContent isDesktop={isDesktop}>
+            <InventorySettingsHero
+              eyebrow="Variant structure"
+              title={`${productVariables.length} ${productVariables.length === 1 ? 'variable' : 'variables'}`}
+              description="Reusable stock and pricing options"
+              isDesktop={isDesktop}
+            />
 
             {/* Add New Product Variable Button */}
             <View>
@@ -269,10 +255,8 @@ export default function ProductVariablesScreen() {
               productVariables.map((variable, index) => {
                 const isExpanded = expandedVariableIds.has(variable.id);
                 return (
-                <View
-                  key={variable.id}                  className="mt-4"
-                >
-                  <View className="rounded-3xl p-4" style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
+                <View key={variable.id}>
+                  <View className="p-4" style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderTopWidth: index === 0 ? 1 : 0, borderColor: settingsPalette.border, borderTopLeftRadius: index === 0 ? 26 : 0, borderTopRightRadius: index === 0 ? 26 : 0, borderBottomLeftRadius: index === productVariables.length - 1 ? 26 : 0, borderBottomRightRadius: index === productVariables.length - 1 ? 26 : 0, overflow: 'hidden' }}>
                     {/* Variable Header */}
                     <Pressable
                       onPress={() => toggleVariableExpanded(variable.id)}
@@ -286,7 +270,7 @@ export default function ProductVariablesScreen() {
                           {getVariableIcon(variable.name)}
                         </View>
                         <View style={{ flex: 1, minWidth: 0 }}>
-                          <Text style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '700' }} numberOfLines={1}>{variable.name}</Text>
+                          <Text style={{ color: settingsPalette.text, fontSize: 12, fontWeight: '500' }} numberOfLines={1}>{variable.name}</Text>
                           <Text style={{ color: colors.text.muted }} className="text-xs">
                             {variable.values.length} value{variable.values.length !== 1 ? 's' : ''} · reusable
                           </Text>
@@ -358,7 +342,7 @@ export default function ProductVariablesScreen() {
                                   className="flex-row items-center justify-between rounded-xl px-4"
                                   style={{ backgroundColor: settingsPalette.inset, borderWidth: 1, borderColor: settingsPalette.border, height: 48 }}
                                 >
-                                  <Text style={{ color: colors.text.primary }} className="text-sm font-medium">{value}</Text>
+                                  <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '500' }}>{value}</Text>
                                   <View className="flex-row items-center gap-1">
                                     <Pressable
                                       onPress={() => startEditingValue(variable.id, value)}
@@ -384,8 +368,18 @@ export default function ProductVariablesScreen() {
                     {/* Add Value */}
                     {addingValueToId === variable.id ? (
                       <View
-                        className="flex-row items-center rounded-xl px-3"
-                        style={{ backgroundColor: colors.bg.secondary, height: 48 }}
+                        className="flex-row items-center px-4"
+                        style={{
+                          height: 56,
+                          borderRadius: 16,
+                          backgroundColor: settingsPalette.inset,
+                          borderWidth: 2,
+                          borderColor: FYLL_LIME,
+                          shadowColor: FYLL_LIME,
+                          shadowOpacity: 0.14,
+                          shadowRadius: 10,
+                          shadowOffset: { width: 0, height: 0 },
+                        }}
                       >
                         <TextInput
                           placeholder="Enter new value..."
@@ -393,8 +387,8 @@ export default function ProductVariablesScreen() {
                           value={newValueText}
                           onChangeText={setNewValueText}
                           autoFocus
-                          style={{ flex: 1, color: colors.text.primary, fontSize: 14 }}
-                          selectionColor={colors.text.primary}
+                          style={{ flex: 1, color: colors.text.primary, fontSize: 16, fontWeight: '500' }}
+                          selectionColor={FYLL_LIME}
                           onSubmitEditing={() => handleAddValue(variable.id)}
                         />
                         <Pressable
@@ -402,21 +396,20 @@ export default function ProductVariablesScreen() {
                             setAddingValueToId(null);
                             setNewValueText('');
                           }}
-                          className="w-8 h-8 rounded-lg items-center justify-center ml-2"
-                          style={{ backgroundColor: colors.border.light }}
+                          className="w-9 h-9 items-center justify-center ml-2 active:opacity-60"
                         >
                           <X size={16} color={colors.text.muted} strokeWidth={2} />
                         </Pressable>
                         <Pressable
                           onPress={() => handleAddValue(variable.id)}
                           disabled={!newValueText.trim()}
-                          className="w-8 h-8 rounded-lg items-center justify-center ml-1"
+                          className="w-9 h-9 rounded-full items-center justify-center ml-1 active:opacity-80"
                           style={{
-                            backgroundColor: 'rgba(34, 197, 94, 0.15)',
-                            opacity: newValueText.trim() ? 1 : 0.5
+                            backgroundColor: FYLL_LIME,
+                            opacity: newValueText.trim() ? 1 : 0.4,
                           }}
                         >
-                          <Check size={16} color="#22C55E" strokeWidth={2} />
+                          <Check size={16} color={FYLL_LIME_INK} strokeWidth={2.4} />
                         </Pressable>
                       </View>
                     ) : (
@@ -441,7 +434,7 @@ export default function ProductVariablesScreen() {
             )}
 
             <View className="h-24" />
-            </View>
+            </InventorySettingsContent>
           </ScrollView>
         </KeyboardAvoidingView>
 

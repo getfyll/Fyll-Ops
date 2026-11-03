@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, Pressable, TextInput, ActivityIndicator, Switch, Platform } from 'react-native';
+import { View, Text, Pressable, TextInput, ActivityIndicator, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Check, Eye, EyeOff, Globe, KeyRound, Link2, ShoppingCart, RefreshCcw } from 'lucide-react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 
 import useAuthStore from '@/lib/state/auth-store';
@@ -13,7 +14,7 @@ import useFyllStore, {
   type OrderItem,
 } from '@/lib/state/fyll-store';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
-import { useThemeColors } from '@/lib/theme';
+import { useResolvedThemeMode, useThemeColors } from '@/lib/theme';
 import { fetchWooCommerceOrders, fetchWooCommerceProducts, testWooCommerceConnection } from '@/lib/woocommerce';
 import {
   ensureWooCatalogProductsExist,
@@ -25,6 +26,10 @@ import {
 import { getSettingsWebPanelStyles, isFromSettingsRoute } from '@/lib/settings-web-panel';
 import { useSettingsBack } from '@/lib/useSettingsBack';
 import { matchWooOrdersForReferenceRepair } from '@/lib/woocommerce-reference-repair';
+import { FYLL_LIME, FYLL_LIME_INK, MoneyText, usePaymentsPalette } from '@/components/payments/payments-ui';
+import { LimeToggle } from '@/components/settings/LimeToggle';
+import { InternalSettingsHeader } from '@/components/settings/InternalSettingsHeader';
+import { useBreakpoint } from '@/lib/useBreakpoint';
 
 type ToastState = {
   type: 'success' | 'error';
@@ -69,36 +74,39 @@ function SettingRow({
   value: boolean;
   onValueChange: (value: boolean) => void;
 }) {
-  const colors = useThemeColors();
+  const palette = usePaymentsPalette();
 
   return (
     <View
       className="flex-row items-start rounded-2xl p-4"
       style={{
-        backgroundColor: colors.bg.primary,
+        backgroundColor: palette.inset,
         borderWidth: 1,
-        borderColor: colors.border.light,
+        borderColor: palette.border,
       }}
     >
       <View
         className="mr-3 h-10 w-10 items-center justify-center rounded-xl"
-        style={{ backgroundColor: colors.bg.secondary }}
+        style={{ backgroundColor: palette.nudgeBg }}
       >
         {icon}
       </View>
       <View className="flex-1 pr-3">
-        <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">
+        <Text style={{ color: palette.text, fontSize: 12, fontWeight: '500' }}>
           {label}
         </Text>
-        <Text style={{ color: colors.text.secondary }} className="mt-1 text-xs leading-5">
+        <Text style={{ color: palette.faint }} className="mt-1 text-xs leading-5">
           {description}
         </Text>
       </View>
-      <Switch
+      <LimeToggle
+        compact
         value={value}
         onValueChange={onValueChange}
-        trackColor={{ false: '#D1D5DB', true: '#111111' }}
-        thumbColor="#FFFFFF"
+        activeColor={FYLL_LIME}
+        inactiveColor={palette.softFill}
+        inactiveBorderColor={palette.outline}
+        accessibilityLabel={label}
       />
     </View>
   );
@@ -108,6 +116,10 @@ export default function WooCommerceSettingsScreen() {
   const { from } = useLocalSearchParams<{ from?: string | string[] }>();
   const goBack = useSettingsBack();
   const colors = useThemeColors();
+  const palette = usePaymentsPalette();
+  const resolvedThemeMode = useResolvedThemeMode();
+  const { isDesktop, isMobile } = useBreakpoint();
+  const isWebDesktop = Platform.OS === 'web' && isDesktop;
   const openedFromSettings = isFromSettingsRoute(from);
   const panelStyles = getSettingsWebPanelStyles(
     openedFromSettings,
@@ -148,6 +160,7 @@ export default function WooCommerceSettingsScreen() {
   const [toast, setToast] = useState<ToastState>(null);
   const [syncSummary, setSyncSummary] = useState<SyncSummary | null>(null);
   const [productPullSummary, setProductPullSummary] = useState<ProductPullSummary | null>(null);
+  const [focusedField, setFocusedField] = useState<'url' | 'key' | 'secret' | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -539,19 +552,23 @@ export default function WooCommerceSettingsScreen() {
     }
   };
 
-  const primaryPillButtonStyle = {
-    backgroundColor: colors.text.primary,
-    borderRadius: 999,
-  } as const;
-  const primaryPillTextStyle = {
-    color: colors.bg.primary,
-  } as const;
+  const isBusy = isTesting || isSyncing || isPullingProducts || isSaving;
+  const actionDisabled = !canAttemptConnection || isBusy;
+  const fieldStyle = (field: 'url' | 'key' | 'secret') => ({
+    minHeight: 56,
+    backgroundColor: palette.inset,
+    borderWidth: 1,
+    borderColor: focusedField === field ? FYLL_LIME : palette.outline,
+    shadowColor: FYLL_LIME,
+    shadowOpacity: focusedField === field ? 0.12 : 0,
+    shadowRadius: 8,
+  } as const);
 
   if (isLoading) {
     return (
       <View style={panelStyles.outer}>
         <View className="flex-1 items-center justify-center" style={panelStyles.inner}>
-          <ActivityIndicator size="large" color={colors.text.primary} />
+          <ActivityIndicator size="large" color={palette.limeOnSurface} />
         </View>
       </View>
     );
@@ -560,7 +577,16 @@ export default function WooCommerceSettingsScreen() {
   return (
     <View style={panelStyles.outer}>
       <View style={panelStyles.inner}>
-        <SafeAreaView className="flex-1" edges={['top']}>
+        <SafeAreaView className="flex-1" edges={['top']} style={{ backgroundColor: palette.page }}>
+          {!isWebDesktop ? (
+            <LinearGradient
+              pointerEvents="none"
+              colors={resolvedThemeMode === 'dark'
+                ? ['rgba(111,125,18,0.55)', 'rgba(20,20,20,0)']
+                : ['rgba(213,224,87,0.42)', 'rgba(244,243,235,0)']}
+              style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 360 }}
+            />
+          ) : null}
           {toast ? (
             <View
               pointerEvents="none"
@@ -577,48 +603,48 @@ export default function WooCommerceSettingsScreen() {
               <View
                 style={{
                   maxWidth: 420,
-                  borderRadius: 999,
-                  backgroundColor: toast.type === 'success' ? '#111111' : '#EF4444',
+                  borderRadius: 16,
+                  backgroundColor: toast.type === 'success' ? palette.card : palette.dangerBg,
+                  borderWidth: 1,
+                  borderColor: toast.type === 'success' ? palette.nudgeBorder : palette.dangerBorder,
                   paddingHorizontal: 16,
                   paddingVertical: 12,
                 }}
               >
-                <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '600', textAlign: 'center' }}>
+                <Text style={{ color: toast.type === 'success' ? palette.text : palette.danger, fontSize: 12, fontWeight: '600', textAlign: 'center' }}>
                   {toast.message}
                 </Text>
               </View>
             </View>
           ) : null}
 
-          <View
-            className="flex-row items-center justify-between px-5 pb-3 pt-4"
-            style={{ borderBottomWidth: 1, borderBottomColor: colors.border.light }}
-          >
+          {isWebDesktop ? (
+            <InternalSettingsHeader
+              title="WooCommerce"
+              description="Connect your store and control how products and orders stay in sync."
+              isDesktop
+              onBack={goBack}
+              rightElement={hasChanges ? (
+                <Pressable onPress={handleSave} disabled={isSaving} className="h-10 items-center justify-center rounded-full px-4 active:opacity-80" style={{ backgroundColor: FYLL_LIME, opacity: isSaving ? 0.7 : 1 }}>
+                  {isSaving ? <ActivityIndicator size="small" color={FYLL_LIME_INK} /> : <View className="flex-row items-center"><Check size={16} color={FYLL_LIME_INK} strokeWidth={2} /><MoneyText style={{ color: FYLL_LIME_INK, fontSize: 14, marginLeft: 5 }}>Save</MoneyText></View>}
+                </Pressable>
+              ) : null}
+            />
+          ) : <View style={{ minHeight: 66, paddingHorizontal: 10, paddingTop: 12, paddingBottom: 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <View className="flex-row items-center" style={{ flex: 1, minWidth: 0, paddingRight: hasChanges ? 12 : 0 }}>
               <Pressable
                 onPress={() => {
                   void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   goBack();
                 }}
-                className="mr-3 h-10 w-10 items-center justify-center rounded-xl active:opacity-50"
-                style={{ backgroundColor: 'transparent' }}
+                className="mr-3 h-10 w-10 items-center justify-center rounded-full active:opacity-50"
+                style={{ backgroundColor: palette.softFill }}
               >
-                <ArrowLeft size={20} color={colors.text.primary} strokeWidth={2} />
+                <ArrowLeft size={20} color={palette.text} strokeWidth={2} />
               </Pressable>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text
-                  style={{
-                    color: colors.text.primary,
-                    fontSize: Platform.OS === 'web' ? 14 : 20,
-                    lineHeight: Platform.OS === 'web' ? 18 : 24,
-                    fontWeight: '600',
-                  }}
-                >
-                  WooCommerce
-                </Text>
-                <Text style={{ color: colors.text.secondary, lineHeight: 16 }} className="text-xs" numberOfLines={2}>
-                  Test the store, pull orders, and link existing FYLL orders by Website Order Ref.
-                </Text>
+                <Text style={{ color: palette.faint, fontSize: 9.5, lineHeight: 12, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Settings</Text>
+                <Text style={{ color: palette.text, fontSize: 17, lineHeight: 21, fontWeight: '600' }}>WooCommerce</Text>
               </View>
             </View>
 
@@ -627,80 +653,60 @@ export default function WooCommerceSettingsScreen() {
                 onPress={handleSave}
                 disabled={isSaving}
                 className="h-10 items-center justify-center rounded-full px-4 active:opacity-80"
-                style={[primaryPillButtonStyle, { opacity: isSaving ? 0.7 : 1 }]}
+                style={{ backgroundColor: FYLL_LIME, opacity: isSaving ? 0.7 : 1 }}
               >
                 {isSaving ? (
-                  <ActivityIndicator size="small" color={colors.bg.primary} />
+                  <ActivityIndicator size="small" color={FYLL_LIME_INK} />
                 ) : (
                   <View className="flex-row items-center">
-                    <Check size={16} color={colors.bg.primary} strokeWidth={2} />
-                    <Text style={primaryPillTextStyle} className="ml-1 text-sm font-semibold">
-                      Save
-                    </Text>
+                    <Check size={16} color={FYLL_LIME_INK} strokeWidth={2} />
+                    <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 14, marginLeft: 5 }}>Save</MoneyText>
                   </View>
                 )}
               </Pressable>
             ) : null}
-          </View>
+          </View>}
 
           <KeyboardAwareScrollView
-            className="flex-1 px-5 pt-4"
+            className="flex-1"
             showsVerticalScrollIndicator={false}
             enableOnAndroid
             extraScrollHeight={100}
+            contentContainerStyle={{ paddingHorizontal: isWebDesktop ? 24 : 16, paddingTop: 18, paddingBottom: 64 }}
           >
+            <View style={{ width: '100%', maxWidth: 1440, alignSelf: Platform.OS === 'web' ? 'flex-start' : 'center' }}>
             <View
-              className="mb-4 rounded-2xl p-4"
-              style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+              style={{ position: 'relative', overflow: 'hidden', minHeight: isWebDesktop ? 142 : 156, marginBottom: 24, padding: isWebDesktop ? 24 : 20, justifyContent: 'center', borderRadius: 28, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card }}
             >
-              <View className="flex-row items-center justify-between">
-                <View className="flex-row items-center">
-                  <View
-                    className="mr-3 h-11 w-11 items-center justify-center rounded-2xl"
-                    style={{ backgroundColor: colors.bg.secondary }}
-                  >
-                    <ShoppingCart size={20} color={colors.text.primary} strokeWidth={2} />
-                  </View>
-                  <View>
-                    <Text style={{ color: colors.text.primary }} className="text-base font-semibold">
-                      Connection Status
-                    </Text>
-                    <Text style={{ color: colors.text.secondary }} className="mt-1 text-xs">
-                      {hasWooCommerceConnection ? 'Configured' : 'Not configured'}
-                    </Text>
-                  </View>
+              {!isWebDesktop ? <LinearGradient pointerEvents="none" colors={[palette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.15, y: 1 }} style={{ position: 'absolute', top: -54, right: -32, width: 230, height: 230, borderRadius: 115 }} /> : null}
+              <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
+              <View className="flex-row items-center justify-between" style={{ gap: 16 }}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Commerce connection</Text>
+                  <MoneyText style={{ color: palette.text, fontSize: isMobile ? 24 : 28, lineHeight: isMobile ? 29 : 34 }}>WooCommerce</MoneyText>
+                  <Text style={{ color: palette.faint, fontSize: 12.5, marginTop: 3 }}>{hasWooCommerceConnection ? 'Configured and ready to sync' : 'Connect your store to get started'}</Text>
                 </View>
-
                 <View
                   className="rounded-full px-3 py-1.5"
-                  style={{
-                    backgroundColor: hasWooCommerceConnection ? '#ECFDF3' : colors.bg.secondary,
-                  }}
+                  style={{ backgroundColor: hasWooCommerceConnection ? palette.nudgeBg : palette.softFill, borderWidth: 1, borderColor: hasWooCommerceConnection ? palette.nudgeBorder : palette.border }}
                 >
-                  <Text
-                    className="text-xs font-semibold"
-                    style={{ color: hasWooCommerceConnection ? '#16A34A' : colors.text.secondary }}
-                  >
+                  <Text style={{ color: hasWooCommerceConnection ? palette.limeOnSurface : palette.faint, fontSize: 11, fontWeight: '600' }}>
                     {hasWooCommerceConnection ? 'Ready' : 'Setup'}
                   </Text>
                 </View>
               </View>
-
-              <Text style={{ color: colors.text.secondary }} className="mt-4 text-sm leading-6">
-                FYLL will test the WooCommerce API, pull recent orders, and only link them to existing FYLL orders using Website Order Ref.
-              </Text>
             </View>
 
-            <Text style={{ color: colors.text.tertiary }} className="mb-3 text-xs font-semibold uppercase tracking-wider">
+            <Text style={{ color: palette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>
               Connection
             </Text>
 
             <View
-              className="mb-6 rounded-2xl p-4"
-              style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+              className="mb-6 p-4"
+              style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, borderRadius: 26 }}
             >
               <SettingRow
-                icon={<Link2 size={18} color={colors.text.primary} strokeWidth={2} />}
+                icon={<Link2 size={18} color={palette.limeOnSurface} strokeWidth={2} />}
                 label="Enable WooCommerce"
                 description="Turn on WooCommerce linking for this business."
                 value={enabled}
@@ -711,110 +717,101 @@ export default function WooCommerceSettingsScreen() {
               />
 
               <View className="mt-4">
-                <Text style={{ color: colors.text.tertiary }} className="mb-2 text-xs font-semibold uppercase tracking-wider">
+                <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '500', marginBottom: 8 }}>
                   Store URL
                 </Text>
                 <View
                   className="flex-row items-center rounded-2xl px-4"
-                  style={{
-                    minHeight: 60,
-                    backgroundColor: colors.bg.primary,
-                    borderWidth: 1,
-                    borderColor: colors.border.light,
-                  }}
+                  style={fieldStyle('url')}
                 >
-                  <Globe size={18} color={colors.text.secondary} strokeWidth={2} />
+                  <Globe size={18} color={palette.faint} strokeWidth={2} />
                   <TextInput
                     value={storeUrl}
                     onChangeText={setStoreUrl}
                     placeholder="https://store.example.com"
-                    placeholderTextColor={colors.text.tertiary}
+                    placeholderTextColor={palette.faint}
+                    onFocus={() => setFocusedField('url')}
+                    onBlur={() => setFocusedField(null)}
                     autoCapitalize="none"
                     autoCorrect={false}
                     keyboardType="url"
-                    className="ml-3 flex-1 py-4 text-base"
-                    style={{ color: colors.text.primary }}
+                    className="ml-3 flex-1 py-4"
+                    style={{ color: palette.text, fontSize: 15 }}
                   />
                 </View>
               </View>
 
               <View className="mt-4">
-                <Text style={{ color: colors.text.tertiary }} className="mb-2 text-xs font-semibold uppercase tracking-wider">
+                <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '500', marginBottom: 8 }}>
                   Consumer Key
                 </Text>
                 <View
                   className="flex-row items-center rounded-2xl px-4"
-                  style={{
-                    minHeight: 60,
-                    backgroundColor: colors.bg.primary,
-                    borderWidth: 1,
-                    borderColor: colors.border.light,
-                  }}
+                  style={fieldStyle('key')}
                 >
-                  <KeyRound size={18} color={colors.text.secondary} strokeWidth={2} />
+                  <KeyRound size={18} color={palette.faint} strokeWidth={2} />
                   <TextInput
                     value={consumerKey}
                     onChangeText={setConsumerKey}
                     placeholder="ck_..."
-                    placeholderTextColor={colors.text.tertiary}
+                    placeholderTextColor={palette.faint}
+                    onFocus={() => setFocusedField('key')}
+                    onBlur={() => setFocusedField(null)}
                     autoCapitalize="none"
                     autoCorrect={false}
-                    className="ml-3 flex-1 py-4 text-base"
-                    style={{ color: colors.text.primary }}
+                    className="ml-3 flex-1 py-4"
+                    style={{ color: palette.text, fontSize: 15 }}
                   />
                 </View>
               </View>
 
               <View className="mt-4">
-                <Text style={{ color: colors.text.tertiary }} className="mb-2 text-xs font-semibold uppercase tracking-wider">
+                <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '500', marginBottom: 8 }}>
                   Consumer Secret
                 </Text>
                 <View
                   className="flex-row items-center rounded-2xl px-4"
-                  style={{
-                    minHeight: 60,
-                    backgroundColor: colors.bg.primary,
-                    borderWidth: 1,
-                    borderColor: colors.border.light,
-                  }}
+                  style={fieldStyle('secret')}
                 >
-                  <KeyRound size={18} color={colors.text.secondary} strokeWidth={2} />
+                  <KeyRound size={18} color={palette.faint} strokeWidth={2} />
                   <TextInput
                     value={consumerSecret}
                     onChangeText={setConsumerSecret}
                     placeholder="cs_..."
-                    placeholderTextColor={colors.text.tertiary}
+                    placeholderTextColor={palette.faint}
+                    onFocus={() => setFocusedField('secret')}
+                    onBlur={() => setFocusedField(null)}
                     autoCapitalize="none"
                     autoCorrect={false}
                     secureTextEntry={!showSecret}
-                    className="ml-3 flex-1 py-4 text-base"
-                    style={{ color: colors.text.primary }}
+                    className="ml-3 flex-1 py-4"
+                    style={{ color: palette.text, fontSize: 15 }}
                   />
                   <Pressable
                     onPress={() => setShowSecret((current) => !current)}
                     className="ml-3 h-10 w-10 items-center justify-center rounded-xl active:opacity-60"
-                    style={{ backgroundColor: colors.bg.secondary }}
+                    style={{ backgroundColor: palette.softFill }}
                   >
                     {showSecret ? (
-                      <EyeOff size={18} color={colors.text.secondary} strokeWidth={2} />
+                      <EyeOff size={18} color={palette.faint} strokeWidth={2} />
                     ) : (
-                      <Eye size={18} color={colors.text.secondary} strokeWidth={2} />
+                      <Eye size={18} color={palette.faint} strokeWidth={2} />
                     )}
                   </Pressable>
                 </View>
               </View>
             </View>
 
-            <Text style={{ color: colors.text.tertiary }} className="mb-3 text-xs font-semibold uppercase tracking-wider">
+            <Text style={{ color: palette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>
               Order Linking
             </Text>
 
             <View
-              className="mb-6 rounded-2xl p-4"
-              style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+              className="mb-6 p-4"
+              style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, borderRadius: 26 }}
             >
               <SettingRow
-                icon={<ShoppingCart size={18} color={colors.text.primary} strokeWidth={2} />}
+                icon={<ShoppingCart size={18} color={palette.limeOnSurface} strokeWidth={2} />}
                 label="Auto-link by Website Order Ref"
                 description="Match WooCommerce orders to existing FYLL orders using Website Order Ref. Unmatched Woo orders are skipped."
                 value={autoLinkOrders}
@@ -825,108 +822,103 @@ export default function WooCommerceSettingsScreen() {
               />
             </View>
 
-            <Text style={{ color: colors.text.tertiary }} className="mb-3 text-xs font-semibold uppercase tracking-wider">
+            <Text style={{ color: palette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>
               Actions
             </Text>
 
             <View
-              className="mb-6 rounded-2xl p-4"
-              style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+              className="mb-6 p-4"
+              style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, borderRadius: 26 }}
             >
               <View className="flex-row flex-wrap gap-3">
                 <Pressable
                   onPress={handleTestConnection}
-                  disabled={!canAttemptConnection || isTesting || isSyncing || isPullingProducts || isSaving}
-                  className="flex-row items-center justify-center rounded-full px-4 py-3 active:opacity-80"
+                  disabled={actionDisabled}
+                  className="flex-row items-center justify-center rounded-full px-4 active:opacity-80"
                   style={{
-                    backgroundColor: colors.bg.primary,
+                    minHeight: 46,
+                    backgroundColor: palette.inset,
                     borderWidth: 1,
-                    borderColor: colors.border.light,
+                    borderColor: palette.outline,
                     flexBasis: 150,
                     flexGrow: 1,
                     flexShrink: 1,
                     minWidth: 150,
-                    opacity: !canAttemptConnection || isTesting || isSyncing || isPullingProducts || isSaving ? 0.6 : 1,
+                    opacity: actionDisabled ? 0.5 : 1,
                   }}
                 >
                   {isTesting ? (
-                    <ActivityIndicator size="small" color={colors.text.primary} />
+                    <ActivityIndicator size="small" color={palette.text} />
                   ) : (
                     <>
-                      <Check size={16} color={colors.text.primary} strokeWidth={2} />
-                      <Text style={{ color: colors.text.primary }} className="ml-2 text-sm font-semibold">
-                        Test Connection
-                      </Text>
+                      <Check size={16} color={palette.text} strokeWidth={2} />
+                      <MoneyText style={{ color: palette.text, fontSize: 14, marginLeft: 8 }}>Test Connection</MoneyText>
                     </>
                   )}
                 </Pressable>
 
                 <Pressable
                   onPress={handlePullProducts}
-                  disabled={!canAttemptConnection || isTesting || isSyncing || isPullingProducts || isSaving}
-                  className="flex-row items-center justify-center rounded-full px-4 py-3 active:opacity-80"
+                  disabled={actionDisabled}
+                  className="flex-row items-center justify-center rounded-full px-4 active:opacity-80"
                   style={{
-                    backgroundColor: colors.bg.primary,
+                    minHeight: 46,
+                    backgroundColor: palette.inset,
                     borderWidth: 1,
-                    borderColor: colors.border.light,
+                    borderColor: palette.outline,
                     flexBasis: 150,
                     flexGrow: 1,
                     flexShrink: 1,
                     minWidth: 150,
-                    opacity: !canAttemptConnection || isTesting || isSyncing || isPullingProducts || isSaving ? 0.6 : 1,
+                    opacity: actionDisabled ? 0.5 : 1,
                   }}
                 >
                   {isPullingProducts ? (
-                    <ActivityIndicator size="small" color={colors.text.primary} />
+                    <ActivityIndicator size="small" color={palette.text} />
                   ) : (
                     <>
-                      <ShoppingCart size={16} color={colors.text.primary} strokeWidth={2} />
-                      <Text style={{ color: colors.text.primary }} className="ml-2 text-sm font-semibold">
-                        Pull Products
-                      </Text>
+                      <ShoppingCart size={16} color={palette.text} strokeWidth={2} />
+                      <MoneyText style={{ color: palette.text, fontSize: 14, marginLeft: 8 }}>Pull Products</MoneyText>
                     </>
                   )}
                 </Pressable>
 
                 <Pressable
                   onPress={handleSyncOrders}
-                  disabled={!canAttemptConnection || isTesting || isSyncing || isPullingProducts || isSaving}
-                  className="flex-row items-center justify-center rounded-full px-4 py-3 active:opacity-80"
-                  style={[
-                    primaryPillButtonStyle,
-                    {
+                  disabled={actionDisabled}
+                  className="flex-row items-center justify-center rounded-full px-4 active:opacity-80"
+                  style={{
+                      minHeight: 46,
+                      backgroundColor: FYLL_LIME,
                       flexBasis: 150,
                       flexGrow: 1,
                       flexShrink: 1,
                       minWidth: 150,
-                      opacity: !canAttemptConnection || isTesting || isSyncing || isPullingProducts || isSaving ? 0.6 : 1,
-                    },
-                  ]}
+                      opacity: actionDisabled ? 0.5 : 1,
+                  }}
                 >
                   {isSyncing ? (
-                    <ActivityIndicator size="small" color={colors.bg.primary} />
+                    <ActivityIndicator size="small" color={FYLL_LIME_INK} />
                   ) : (
                     <>
-                      <RefreshCcw size={16} color={colors.bg.primary} strokeWidth={2} />
-                      <Text style={primaryPillTextStyle} className="ml-2 text-sm font-semibold">
-                        Link 50 Orders
-                      </Text>
+                      <RefreshCcw size={16} color={FYLL_LIME_INK} strokeWidth={2} />
+                      <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 14, marginLeft: 8 }}>Link 50 Orders</MoneyText>
                     </>
                   )}
                 </Pressable>
               </View>
 
-              <Text style={{ color: colors.text.secondary }} className="mt-4 text-xs leading-5">
+              <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '500' }} className="mt-4 leading-5">
                 Pull Products imports up to 100 WooCommerce catalog products into FYLL inventory. Link 50 Orders pulls recent WooCommerce orders and links matching FYLL orders only.
               </Text>
             </View>
 
             {productPullSummary ? (
               <View
-                className="mb-6 rounded-2xl p-4"
-                style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+                className="mb-6 p-4"
+                style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, borderRadius: 26 }}
               >
-                <Text style={{ color: colors.text.primary }} className="text-base font-semibold">
+                <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>
                   Last Product Pull
                 </Text>
                 <View className="mt-4 flex-row flex-wrap">
@@ -936,12 +928,12 @@ export default function WooCommerceSettingsScreen() {
                     ['Updated', productPullSummary.productsUpdated],
                   ].map(([label, value]) => (
                     <View key={String(label)} className="mb-3 w-1/3 pr-2">
-                      <Text style={{ color: colors.text.tertiary }} className="text-xs uppercase tracking-wider">
+                      <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.8 }}>
                         {label}
                       </Text>
-                      <Text style={{ color: colors.text.primary }} className="mt-1 text-lg font-semibold">
+                      <MoneyText style={{ color: palette.text, fontSize: 18, marginTop: 4 }}>
                         {value}
-                      </Text>
+                      </MoneyText>
                     </View>
                   ))}
                 </View>
@@ -950,10 +942,10 @@ export default function WooCommerceSettingsScreen() {
 
             {syncSummary ? (
               <View
-                className="mb-6 rounded-2xl p-4"
-                style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+                className="mb-6 p-4"
+                style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, borderRadius: 26 }}
               >
-                <Text style={{ color: colors.text.primary }} className="text-base font-semibold">
+                <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>
                   Last Sync Summary
                 </Text>
                 <View className="mt-4 flex-row flex-wrap">
@@ -968,12 +960,12 @@ export default function WooCommerceSettingsScreen() {
                     ['Variants', syncSummary.productsUpdated],
                   ].map(([label, value]) => (
                     <View key={String(label)} className="mb-3 w-1/2 pr-2">
-                      <Text style={{ color: colors.text.tertiary }} className="text-xs uppercase tracking-wider">
+                      <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.8 }}>
                         {label}
                       </Text>
-                      <Text style={{ color: colors.text.primary }} className="mt-1 text-lg font-semibold">
+                      <MoneyText style={{ color: palette.text, fontSize: 18, marginTop: 4 }}>
                         {value}
-                      </Text>
+                      </MoneyText>
                     </View>
                   ))}
                 </View>
@@ -983,15 +975,16 @@ export default function WooCommerceSettingsScreen() {
             {error ? (
               <View
                 className="mb-8 rounded-2xl px-4 py-3"
-                style={{ backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA' }}
+                style={{ backgroundColor: palette.dangerBg, borderWidth: 1, borderColor: palette.dangerBorder }}
               >
-                <Text style={{ color: '#DC2626' }} className="text-sm font-medium">
+                <Text style={{ color: palette.danger, fontSize: 12, fontWeight: '500' }}>
                   {error}
                 </Text>
               </View>
             ) : (
               <View className="h-8" />
             )}
+            </View>
           </KeyboardAwareScrollView>
         </SafeAreaView>
       </View>

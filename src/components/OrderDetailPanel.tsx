@@ -46,7 +46,7 @@ import { supabaseData } from '@/lib/supabase/data';
 import { createWooCommerceOrderFromFyll, fetchWooCommerceOrder } from '@/lib/woocommerce';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
 import { useWooCommerceAvailable } from '@/hooks/useWooCommerceAvailable';
-import { FYLL_LIME } from '@/components/payments/payments-ui';
+import { FYLL_LIME, FYLL_LIME_INK } from '@/components/payments/payments-ui';
 
 const STAMP_DUTY_THRESHOLD = 10000;
 
@@ -2794,6 +2794,14 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
             })}
           </View>
         ) : null}
+        <Pressable
+          onPress={handlePrintLabel}
+          accessibilityRole="button"
+          style={{ marginTop: 12, minHeight: 48, borderRadius: 999, backgroundColor: FYLL_LIME, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+        >
+          <Printer size={17} color={FYLL_LIME_INK} strokeWidth={2.2} />
+          <Text style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '700' }}>Print Shipping Label</Text>
+        </Pressable>
       </DetailSection>
 
       {/* Actions */}
@@ -2830,22 +2838,6 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
         <Button onPress={handleSaveAll} disabled={!hasUnsavedChanges}>
           Save Changes
         </Button>
-        <Pressable
-          onPress={handlePrintLabel}
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'center',
-            height: 48,
-            borderRadius: 999,
-            backgroundColor: isDark ? '#FFFFFF' : '#111111',
-          }}
-        >
-          <Printer size={18} color={isDark ? '#111111' : '#FFFFFF'} strokeWidth={2} />
-          <Text style={{ color: isDark ? '#111111' : '#FFFFFF', fontSize: 15, fontWeight: '600', marginLeft: 8 }}>
-            Print Shipping Label
-          </Text>
-        </Pressable>
       </View>
 
       <Modal

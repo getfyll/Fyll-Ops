@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Building2, Camera, Check, Globe, MapPin, MessageCircle, ShieldCheck, X } from 'lucide-react-native';
+import { Building2, Camera, Check, Globe, MapPin, MessageCircle, ShieldCheck, X } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFonts, BricolageGrotesque_700Bold, BricolageGrotesque_800ExtraBold } from '@expo-google-fonts/bricolage-grotesque';
 import { DMSans_400Regular, DMSans_500Medium, DMSans_600SemiBold, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
@@ -27,6 +27,7 @@ import { useResolvedThemeMode } from '@/lib/theme';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import useAuthStore from '@/lib/state/auth-store';
 import { uploadBusinessPublicAsset } from '@/lib/storage-attachments';
+import { InternalSettingsHeader } from '@/components/settings/InternalSettingsHeader';
 
 const MAX_LOGO_PICK_SIZE_BYTES = 400 * 1024;
 const MAX_LOGO_DATA_URL_BYTES = 400 * 1024;
@@ -114,6 +115,8 @@ type BusinessFieldProps = {
   badgeColor?: string;
   help?: string;
   multiline?: boolean;
+  grouped?: boolean;
+  showDivider?: boolean;
 };
 
 function BusinessField({
@@ -130,7 +133,54 @@ function BusinessField({
   badgeColor,
   help,
   multiline = false,
+  grouped = false,
+  showDivider = false,
 }: BusinessFieldProps) {
+  if (grouped) {
+    return (
+      <View style={{ minHeight: multiline ? 142 : 92, paddingHorizontal: 18, paddingVertical: 14, flexDirection: 'row', alignItems: multiline ? 'flex-start' : 'center', gap: 14, borderBottomWidth: showDivider ? 1 : 0, borderBottomColor: palette.edge }}>
+        <View style={{ width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.limeWashStrong }}>
+          <Icon size={18} color={palette.limeInk} strokeWidth={2} />
+        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+            <Text style={{ color: palette.ink, fontFamily: 'DMSans_600SemiBold', fontSize: 12, lineHeight: 17 }}>{label}</Text>
+            {badge ? <Text style={{ color: badgeColor ?? palette.faint, fontFamily: 'DMSans_700Bold', fontSize: 9.5, textTransform: 'uppercase', letterSpacing: 0.55 }}>{badge}</Text> : null}
+          </View>
+          <TextInput
+            value={value}
+            onChangeText={onChangeText}
+            placeholder={placeholder}
+            placeholderTextColor={palette.faint}
+            keyboardType={keyboardType}
+            autoComplete={autoComplete}
+            autoCapitalize={keyboardType === 'url' ? 'none' : 'sentences'}
+            autoCorrect={keyboardType !== 'url'}
+            editable={editable}
+            selectTextOnFocus={editable}
+            multiline={multiline}
+            numberOfLines={multiline ? 4 : 1}
+            selectionColor={palette.limeDeep}
+            style={[
+              {
+                minHeight: multiline ? 76 : 30,
+                color: editable ? palette.ink : palette.muted,
+                fontFamily: 'DMSans_400Regular',
+                fontSize: 14,
+                lineHeight: multiline ? 20 : 18,
+                paddingHorizontal: 0,
+                paddingVertical: multiline ? 6 : 2,
+                textAlignVertical: multiline ? 'top' : 'center',
+              },
+              webOutlineStyle,
+            ]}
+          />
+          {help ? <Text style={{ color: palette.faint, fontFamily: 'DMSans_400Regular', fontSize: 11, lineHeight: 16, marginTop: 2 }}>{help}</Text> : null}
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={{ gap: 7 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
@@ -177,7 +227,7 @@ export default function BusinessSettingsScreen({ embeddedInSettings = false }: B
   const resolvedThemeMode = useResolvedThemeMode();
   const isDark = resolvedThemeMode === 'dark';
   const palette = isDark ? DARK_PALETTE : LIGHT_PALETTE;
-  const { isMobile } = useBreakpoint();
+  const { isDesktop, isMobile } = useBreakpoint();
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
   const openedFromSettings = isFromSettingsRoute(from);
   const isEmbeddedWeb = Platform.OS === 'web' && (openedFromSettings || embeddedInSettings) && !isMobile;
@@ -358,25 +408,18 @@ export default function BusinessSettingsScreen({ embeddedInSettings = false }: B
             </View>
           ) : null}
 
-          <View style={{ minHeight: isMobile ? 66 : isEmbeddedWeb ? 78 : 56, paddingHorizontal: isEmbeddedWeb ? 20 : 10, paddingTop: isMobile ? 12 : isEmbeddedWeb ? 20 : 4, paddingBottom: isEmbeddedWeb ? 10 : 4, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <Pressable
-              onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); goBack(); }}
-              accessibilityRole="button"
-              accessibilityLabel="Back"
-              hitSlop={4}
-              style={({ pressed }) => ({ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.navButton, opacity: pressed ? 0.62 : 1 })}
-            >
-              <ArrowLeft size={18} color={palette.ink} strokeWidth={2.2} />
-            </Pressable>
-            <View style={{ flex: 1, gap: 1 }}>
-              <Text style={{ color: palette.faint, fontFamily: 'DMSans_700Bold', fontSize: 9.5, lineHeight: 12, letterSpacing: 1.2, textTransform: 'uppercase' }}>Settings</Text>
-              <Text style={{ color: palette.ink, fontSize: 17, lineHeight: 21, fontWeight: '600' }}>Business Settings</Text>
-            </View>
-            <View style={{ height: 28, paddingHorizontal: 10, borderRadius: 14, flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: palette.limeWashStrong, borderWidth: 1, borderColor: palette.limeBorder }}>
-              <Building2 size={13} color={palette.limeInk} strokeWidth={2.2} />
-              <Text style={{ color: palette.limeInk, fontFamily: 'DMSans_700Bold', fontSize: 11 }}>Business</Text>
-            </View>
-          </View>
+          <InternalSettingsHeader
+            title="Business Details"
+            description="Manage your business identity, customer contact, and return information."
+            isDesktop={isDesktop}
+            onBack={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); goBack(); }}
+            rightElement={isDesktop ? (
+              <View style={{ height: 30, paddingHorizontal: 11, borderRadius: 15, flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: palette.limeWashStrong, borderWidth: 1, borderColor: palette.limeBorder }}>
+                <Building2 size={13} color={palette.limeInk} strokeWidth={2.2} />
+                <Text style={{ color: palette.limeInk, fontFamily: 'DMSans_700Bold', fontSize: 11 }}>Business</Text>
+              </View>
+            ) : undefined}
+          />
 
           <KeyboardAwareScrollView
             style={{ flex: 1 }}
@@ -386,13 +429,13 @@ export default function BusinessSettingsScreen({ embeddedInSettings = false }: B
             extraScrollHeight={110}
             keyboardShouldPersistTaps="handled"
           >
-            <View style={{ position: 'relative', overflow: 'hidden', minHeight: isEmbeddedWeb ? 116 : 144, marginBottom: isEmbeddedWeb ? 22 : 30, padding: isEmbeddedWeb ? 18 : 20, borderRadius: 28, borderWidth: 1, borderColor: palette.edge, backgroundColor: palette.surface, shadowColor: '#000000', shadowOpacity: isDark ? 0.24 : 0.07, shadowRadius: 24, shadowOffset: { width: 0, height: 10 } }}>
-              <LinearGradient pointerEvents="none" colors={[palette.limeWashStrong, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.25, y: 1 }} style={{ position: 'absolute', top: -45, right: -36, width: 190, height: 190, borderRadius: 95 }} />
+            <View style={{ position: 'relative', overflow: 'hidden', minHeight: isDesktop ? 138 : 156, marginBottom: 20, padding: isDesktop ? 24 : 20, borderRadius: 28, borderWidth: 1, borderColor: palette.edge, backgroundColor: palette.surface, justifyContent: 'center' }}>
+              {!isDesktop ? <LinearGradient pointerEvents="none" colors={[palette.limeWashStrong, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.25, y: 1 }} style={{ position: 'absolute', top: -45, right: -36, width: 190, height: 190, borderRadius: 95 }} /> : null}
               <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, borderBottomLeftRadius: 3, borderBottomRightRadius: 3, backgroundColor: palette.lime }} />
               <View style={{ flex: 1, justifyContent: 'center' }}>
                 <View style={{ minWidth: 0 }}>
                   <Text style={{ color: palette.faint, fontFamily: 'DMSans_700Bold', fontSize: 10, letterSpacing: 1.15, textTransform: 'uppercase', marginBottom: 4 }}>Business identity</Text>
-                  <Text numberOfLines={1} style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_800ExtraBold', fontSize: 24, lineHeight: 29, letterSpacing: -0.55 }}>{displayName.trim() || 'Your business'}</Text>
+                  <Text numberOfLines={1} style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_800ExtraBold', fontSize: 29, lineHeight: 34, letterSpacing: -0.8 }}>{displayName.trim() || 'Your business'}</Text>
                   <Text numberOfLines={1} style={{ color: palette.faint, fontFamily: 'DMSans_400Regular', fontSize: innerSettingsFont(13), lineHeight: 18, marginTop: 2 }}>{company.trim() || 'Company details'}</Text>
                   <View style={{ alignSelf: 'flex-start', maxWidth: '100%', minHeight: 27, marginTop: 10, paddingHorizontal: 10, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: palette.limeWashStrong }}>
                     <ShieldCheck size={12} color={palette.limeInk} strokeWidth={2.2} />
@@ -409,63 +452,50 @@ export default function BusinessSettingsScreen({ embeddedInSettings = false }: B
               </View>
             ) : null}
 
-            <View>
-            <View>
             <SectionLabel palette={palette}>Brand</SectionLabel>
-            <View style={[cardStyle, { padding: 18, gap: 12, marginBottom: 26 }]}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 13 }}>
-                <View style={{ width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.limeWash }}><Camera size={19} color={palette.limeInk} strokeWidth={2} /></View>
+            <View style={[cardStyle, { marginBottom: 26 }]}>
+              <View style={{ minHeight: 82, paddingHorizontal: 18, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+                <View style={{ width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.limeWashStrong }}><Camera size={18} color={palette.limeInk} strokeWidth={2} /></View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ color: palette.ink, fontFamily: 'DMSans_600SemiBold', fontSize: innerSettingsFont(15) }}>Business logo</Text>
-                  <Text style={{ color: palette.faint, fontFamily: 'DMSans_400Regular', fontSize: 12.5, lineHeight: 17 }}>Square PNG or JPG · maximum 400 KB</Text>
+                  <Text style={{ color: palette.ink, fontFamily: 'DMSans_600SemiBold', fontSize: 12, lineHeight: 17 }}>Business logo</Text>
+                  <Text numberOfLines={1} style={{ color: palette.faint, fontFamily: 'DMSans_400Regular', fontSize: 12, lineHeight: 16, marginTop: 2 }}>Square PNG or JPG · maximum 400 KB</Text>
                 </View>
-                <Pressable onPress={handlePickImage} style={({ pressed }) => ({ height: 38, paddingHorizontal: 14, borderRadius: 999, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: palette.edgeStrong, backgroundColor: palette.input, opacity: pressed ? 0.72 : 1 })}>
-                  <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: innerSettingsFont(13) }}>{logo ? 'Change' : 'Upload'}</Text>
+                <Pressable onPress={handlePickImage} style={({ pressed }) => ({ minWidth: 76, height: 36, paddingHorizontal: 13, borderRadius: 999, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: palette.edgeStrong, opacity: pressed ? 0.72 : 1 })}>
+                  <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: 12 }}>{logo ? 'Change' : 'Upload'}</Text>
                 </Pressable>
                 {logo ? (
-                  <Pressable onPress={handleRemoveLogo} style={({ pressed }) => ({ height: 38, paddingHorizontal: 12, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.dangerWash, opacity: pressed ? 0.72 : 1 })}>
-                    <Text style={{ color: palette.danger, fontFamily: 'DMSans_600SemiBold', fontSize: innerSettingsFont(12) }}>Remove</Text>
+                  <Pressable onPress={handleRemoveLogo} accessibilityLabel="Remove business logo" style={({ pressed }) => ({ width: 32, height: 36, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}>
+                    <X size={15} color={palette.danger} strokeWidth={2.2} />
                   </Pressable>
                 ) : null}
               </View>
             </View>
-            </View>
 
-            <View>
             <SectionLabel palette={palette}>Business information</SectionLabel>
-            <View style={[cardStyle, { padding: 18, gap: 17, marginBottom: 26 }]}>
-              <BusinessField palette={palette} label="Company name" value={company} placeholder="Registered company name" icon={Building2} editable={false} badge="Fixed" help="Your legal or registered company name cannot be changed here." />
-              <BusinessField palette={palette} label="Business name" value={displayName} placeholder="Customer-facing business name" icon={Building2} editable={false} badge="Locked" help="Used on customer links and as the tracking-page fallback when no logo is set." />
-              {trackingSlugLabel ? <Text style={{ color: palette.faint, fontFamily: 'DMSans_400Regular', fontSize: 12, marginTop: -9 }}>Tracking slug: /{trackingSlugLabel}/order-tracking</Text> : null}
-              <Pressable onPress={() => setShowBusinessNameRequest(true)} hitSlop={6} style={({ pressed }) => ({ alignSelf: 'flex-start', minHeight: 34, justifyContent: 'center', opacity: pressed ? 0.65 : 1 })}>
-                <Text style={{ color: palette.limeInk, fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: innerSettingsFont(13), textDecorationLine: 'underline' }}>Request a business-name change</Text>
+            <View style={[cardStyle, { marginBottom: 26 }]}>
+              <BusinessField grouped showDivider palette={palette} label="Company name" value={company} placeholder="Registered company name" icon={Building2} editable={false} badge="Fixed" help="Your legal or registered company name cannot be changed here." />
+              <BusinessField grouped showDivider palette={palette} label="Business name" value={displayName} placeholder="Customer-facing business name" icon={Building2} editable={false} badge="Locked" help={trackingSlugLabel ? `Customer-facing identity · /${trackingSlugLabel}/order-tracking` : 'Used on customer links and the tracking page.'} />
+              <Pressable onPress={() => setShowBusinessNameRequest(true)} style={({ pressed }) => ({ minHeight: 66, paddingHorizontal: 18, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 14, borderBottomWidth: 1, borderBottomColor: palette.edge, opacity: pressed ? 0.65 : 1 })}>
+                <View style={{ width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.limeWashStrong }}><ShieldCheck size={18} color={palette.limeInk} strokeWidth={2} /></View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ color: palette.ink, fontFamily: 'DMSans_600SemiBold', fontSize: 12 }}>Request a business-name change</Text>
+                  <Text style={{ color: palette.faint, fontFamily: 'DMSans_400Regular', fontSize: 11, lineHeight: 16, marginTop: 2 }}>Submit a request to update the locked customer-facing name.</Text>
+                </View>
               </Pressable>
-              <BusinessField palette={palette} label="Website" value={website} onChangeText={(value) => { setWebsite(value); clearError(); }} placeholder="e.g. www.yourbusiness.com" icon={Globe} keyboardType="url" />
-            </View>
-            </View>
+              <BusinessField grouped palette={palette} label="Website" value={website} onChangeText={(value) => { setWebsite(value); clearError(); }} placeholder="e.g. www.yourbusiness.com" icon={Globe} keyboardType="url" />
             </View>
 
-            <View>
-            <View>
-            <SectionLabel palette={palette}>Customer contact</SectionLabel>
-            <View style={[cardStyle, { padding: 18, marginBottom: 26 }]}>
-              <BusinessField palette={palette} label="WhatsApp number" value={phone} onChangeText={(value) => { setPhone(value); clearError(); }} placeholder="e.g. +234 800 123 4567" icon={MessageCircle} keyboardType="phone-pad" autoComplete="tel" badge="Required" badgeColor="#25A95B" help="Customers use this from payment and tracking pages. Include the country code." />
-            </View>
-            </View>
-
-            <View>
-            <SectionLabel palette={palette}>Return address</SectionLabel>
-            <View style={[cardStyle, { padding: 18 }]}>
-              <BusinessField palette={palette} label="Address for shipping labels" value={address} onChangeText={(value) => { setAddress(value); clearError(); }} placeholder={'Enter your business return address\ne.g. 123 Main Street\nLagos, Nigeria'} icon={MapPin} multiline help="This address appears on shipping labels." />
-            </View>
-            </View>
+            <SectionLabel palette={palette}>Customer details</SectionLabel>
+            <View style={cardStyle}>
+              <BusinessField grouped showDivider palette={palette} label="WhatsApp number" value={phone} onChangeText={(value) => { setPhone(value); clearError(); }} placeholder="e.g. +234 800 123 4567" icon={MessageCircle} keyboardType="phone-pad" autoComplete="tel" badge="Required" badgeColor="#25A95B" help="Used from payment and tracking pages. Include the country code." />
+              <BusinessField grouped palette={palette} label="Return address" value={address} onChangeText={(value) => { setAddress(value); clearError(); }} placeholder={'Enter your business return address\ne.g. 123 Main Street\nLagos, Nigeria'} icon={MapPin} multiline help="This address appears on shipping labels." />
             </View>
           </KeyboardAwareScrollView>
 
           {hasChanges ? (
             <LinearGradient colors={[palette.topGlowEnd, palette.ground, palette.ground]} locations={[0, 0.35, 1]} pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, paddingTop: 28, paddingHorizontal: 16, paddingBottom: 18 }}>
               <Pressable onPress={handleSave} disabled={isSaving} style={({ pressed }) => ({ width: '100%', maxWidth: contentMaxWidth - 32, alignSelf: 'center', height: 56, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.lime, shadowColor: palette.lime, shadowOpacity: 0.28, shadowRadius: 24, shadowOffset: { width: 0, height: 8 }, opacity: isSaving ? 0.62 : pressed ? 0.78 : 1 })}>
-                {isSaving ? <ActivityIndicator color="#202117" /> : <Text style={{ color: '#202117', fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: 17 }}>Save changes</Text>}
+                {isSaving ? <ActivityIndicator color="#202117" /> : <Text style={{ color: '#202117', fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: 14 }}>Save changes</Text>}
               </Pressable>
             </LinearGradient>
           ) : null}

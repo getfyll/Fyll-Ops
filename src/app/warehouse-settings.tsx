@@ -11,7 +11,10 @@ import { useResolvedThemeMode, useThemeColors } from '@/lib/theme';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
 import { useSettingsBack } from '@/lib/useSettingsBack';
 import { useBreakpoint } from '@/lib/useBreakpoint';
+import { getSettingsWebPanelStyles, isFromSettingsRoute } from '@/lib/settings-web-panel';
 import { FYLL_LIME, FYLL_LIME_INK, MoneyText, usePaymentsPalette } from '@/components/payments/payments-ui';
+import { InternalSettingsHeader } from '@/components/settings/InternalSettingsHeader';
+import { InventorySettingsContent, InventorySettingsHero } from '@/components/settings/InventorySettingsScaffold';
 
 export default function WarehouseSettingsScreen() {
   const router = useRouter();
@@ -22,6 +25,11 @@ export default function WarehouseSettingsScreen() {
   const settingsPalette = usePaymentsPalette();
   const { isDesktop, isMobile } = useBreakpoint();
   const tabBarHeight = useTabBarHeight();
+  const panelStyles = getSettingsWebPanelStyles(
+    isFromSettingsRoute(from),
+    settingsPalette.page,
+    settingsPalette.border
+  );
 
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
   const warehouseCategories = useFyllStore((s) => s.warehouseCategories);
@@ -68,66 +76,36 @@ export default function WarehouseSettingsScreen() {
   };
 
   return (
+    <View style={panelStyles.outer}>
+      <View style={panelStyles.inner}>
     <SafeAreaView style={{ flex: 1, backgroundColor: settingsPalette.page }}>
-      <LinearGradient pointerEvents="none" colors={resolvedThemeMode === 'dark' ? ['rgba(111,125,18,0.55)', 'rgba(20,20,20,0)'] : ['rgba(213,224,87,0.42)', 'rgba(244,243,235,0)']} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 360 }} />
-      <View
-        style={{
-          paddingHorizontal: 10,
-          paddingTop: isMobile ? 12 : 4,
-          paddingBottom: 4,
-          minHeight: isMobile ? 66 : 58,
-          flexDirection: 'row',
-          alignItems: 'center',
+      {!isDesktop ? <LinearGradient pointerEvents="none" colors={resolvedThemeMode === 'dark' ? ['rgba(111,125,18,0.55)', 'rgba(20,20,20,0)'] : ['rgba(213,224,87,0.42)', 'rgba(244,243,235,0)']} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 360 }} /> : null}
+      <InternalSettingsHeader
+        title="Warehouse Settings"
+        description="Configure the categories and units used to structure inventory."
+        isDesktop={isDesktop}
+        onBack={() => {
+          if ((Array.isArray(from) ? from[0] : from) === 'settings') {
+            if (Platform.OS === 'web') router.replace({ pathname: '/settings', params: { menu: 'inventory' } } as never);
+            else goBack();
+            return;
+          }
+          router.back();
         }}
-      >
-        <Pressable
-          onPress={() => {
-            if ((Array.isArray(from) ? from[0] : from) === 'settings') {
-              if (Platform.OS === 'web') {
-                router.replace({ pathname: '/settings', params: { menu: 'inventory' } } as never);
-              } else {
-                goBack();
-              }
-              return;
-            }
-            router.back();
-          }}
-          style={{
-            width: 38,
-            height: 38,
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginRight: 12,
-            borderRadius: 19,
-            backgroundColor: settingsPalette.softFill,
-          }}
-        >
-          <ArrowLeft size={18} color={colors.text.primary} strokeWidth={2.4} />
-        </Pressable>
-        <View>
-          <Text style={{ color: settingsPalette.faint, fontSize: 9.5, lineHeight: 12, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Settings</Text>
-          <Text style={{ color: settingsPalette.text, fontSize: 17, lineHeight: 21, fontWeight: '600' }}>Warehouse Settings</Text>
-        </View>
-      </View>
+      />
 
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 18, paddingBottom: isDesktop ? 64 : tabBarHeight + 32 }}
         showsVerticalScrollIndicator={false}
       >
-        <View style={{ width: '100%', maxWidth: 720, alignSelf: 'center' }}>
-        <View style={{ position: 'relative', overflow: 'hidden', minHeight: 156, marginBottom: 22, padding: 20, borderRadius: 28, borderWidth: 1, borderColor: settingsPalette.border, backgroundColor: settingsPalette.card, shadowColor: '#000000', shadowOpacity: resolvedThemeMode === 'dark' ? 0.24 : 0.07, shadowRadius: 24, shadowOffset: { width: 0, height: 10 } }}>
-          <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -44, right: -36, width: 210, height: 210, borderRadius: 105 }} />
-          <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 15 }}>
-            <LinearGradient colors={[FYLL_LIME, '#879400']} style={{ width: 66, height: 66, borderRadius: 22, alignItems: 'center', justifyContent: 'center' }}><Boxes size={28} color={FYLL_LIME_INK} strokeWidth={2.1} /></LinearGradient>
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: settingsPalette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Inventory structure</Text>
-              <MoneyText style={{ color: settingsPalette.text, fontSize: 26, lineHeight: 31, letterSpacing: -0.7 }}>Warehouse setup</MoneyText>
-              <Text style={{ color: settingsPalette.faint, fontSize: 12.5, marginTop: 3 }}>{warehouseCategories.length} categories · {warehouseUnits.length} units</Text>
-            </View>
-          </View>
-        </View>
+        <InventorySettingsContent isDesktop={isDesktop}>
+        <InventorySettingsHero
+          eyebrow="Inventory structure"
+          title="Warehouse setup"
+          description={`${warehouseCategories.length} categories · ${warehouseUnits.length} units`}
+          isDesktop={isDesktop}
+        />
 
         <View style={{ borderWidth: 1, borderColor: settingsPalette.border, borderRadius: 26, backgroundColor: settingsPalette.card, padding: 16 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: showCategoryForm ? 14 : 10 }}>
@@ -142,13 +120,13 @@ export default function WarehouseSettingsScreen() {
             </Pressable>
           </View>
           {showCategoryForm ? <View style={{ gap: 10, marginBottom: 14 }}>
-            <View style={{ flex: 1, borderWidth: 1, borderColor: settingsPalette.outline, borderRadius: 16, paddingHorizontal: 14, height: 48, justifyContent: 'center', backgroundColor: settingsPalette.inset }}>
+            <View style={{ borderWidth: 1, borderColor: settingsPalette.outline, borderRadius: 16, paddingHorizontal: 16, height: 56, justifyContent: 'center', backgroundColor: settingsPalette.inset }}>
               <TextInput
                 value={categoryInput}
                 onChangeText={setCategoryInput}
                 placeholder="Add category"
                 placeholderTextColor={colors.input.placeholder}
-                style={{ color: settingsPalette.text, fontSize: 14 }}
+                style={{ color: settingsPalette.text, fontSize: 16 }}
                 autoFocus
                 onSubmitEditing={handleAddCategory}
               />
@@ -170,7 +148,7 @@ export default function WarehouseSettingsScreen() {
             </Pressable>
           </View> : null}
 
-          {categoriesExpanded ? <View style={{ gap: 8 }}>
+          {categoriesExpanded ? <View style={{ overflow: 'hidden', borderRadius: 20, borderWidth: 1, borderColor: settingsPalette.border, backgroundColor: settingsPalette.inset }}>
             {warehouseCategories.length === 0 ? <View style={{ paddingVertical: 18, alignItems: 'center' }}><Text style={{ color: settingsPalette.faint, fontSize: 12 }}>No warehouse categories yet.</Text></View> : null}
             {warehouseCategories.map((option, index) => (
               <View
@@ -182,9 +160,8 @@ export default function WarehouseSettingsScreen() {
                   minHeight: 58,
                   paddingHorizontal: 12,
                   paddingVertical: 10,
-                  borderWidth: 1,
-                  borderColor: settingsPalette.border,
-                  borderRadius: 18,
+                  borderBottomWidth: index < warehouseCategories.length - 1 ? 1 : 0,
+                  borderBottomColor: settingsPalette.hairline,
                   backgroundColor: settingsPalette.inset,
                 }}
               >
@@ -225,7 +202,7 @@ export default function WarehouseSettingsScreen() {
                   </>
                 ) : (
                   <>
-                    <Text style={{ color: settingsPalette.text, fontSize: 14, flex: 1, fontWeight: '600' }}>{option.name}</Text>
+                    <Text style={{ color: settingsPalette.text, fontSize: 12, flex: 1, fontWeight: '500' }}>{option.name}</Text>
                     <Pressable
                       onPress={() => {
                         triggerLightHaptic();
@@ -265,13 +242,13 @@ export default function WarehouseSettingsScreen() {
             </Pressable>
           </View>
           {showUnitForm ? <View style={{ gap: 10, marginBottom: 14 }}>
-            <View style={{ flex: 1, borderWidth: 1, borderColor: settingsPalette.outline, borderRadius: 16, paddingHorizontal: 14, height: 48, justifyContent: 'center', backgroundColor: settingsPalette.inset }}>
+            <View style={{ borderWidth: 1, borderColor: settingsPalette.outline, borderRadius: 16, paddingHorizontal: 16, height: 56, justifyContent: 'center', backgroundColor: settingsPalette.inset }}>
               <TextInput
                 value={unitInput}
                 onChangeText={setUnitInput}
                 placeholder="Add unit"
                 placeholderTextColor={colors.input.placeholder}
-                style={{ color: settingsPalette.text, fontSize: 14 }}
+                style={{ color: settingsPalette.text, fontSize: 16 }}
                 autoFocus
                 onSubmitEditing={handleAddUnit}
               />
@@ -293,7 +270,7 @@ export default function WarehouseSettingsScreen() {
             </Pressable>
           </View> : null}
 
-          {unitsExpanded ? <View style={{ gap: 8 }}>
+          {unitsExpanded ? <View style={{ overflow: 'hidden', borderRadius: 20, borderWidth: 1, borderColor: settingsPalette.border, backgroundColor: settingsPalette.inset }}>
             {warehouseUnits.length === 0 ? <View style={{ paddingVertical: 18, alignItems: 'center' }}><Text style={{ color: settingsPalette.faint, fontSize: 12 }}>No warehouse units yet.</Text></View> : null}
             {warehouseUnits.map((option, index) => (
               <View
@@ -305,13 +282,12 @@ export default function WarehouseSettingsScreen() {
                   minHeight: 58,
                   paddingHorizontal: 12,
                   paddingVertical: 10,
-                  borderWidth: 1,
-                  borderColor: settingsPalette.border,
-                  borderRadius: 18,
+                  borderBottomWidth: index < warehouseUnits.length - 1 ? 1 : 0,
+                  borderBottomColor: settingsPalette.hairline,
                   backgroundColor: settingsPalette.inset,
                 }}
               >
-                <Text style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '600' }}>{option.name}</Text>
+                <Text style={{ color: settingsPalette.text, fontSize: 12, fontWeight: '500' }}>{option.name}</Text>
                 <Pressable
                   onPress={() => {
                     triggerLightHaptic();
@@ -325,8 +301,10 @@ export default function WarehouseSettingsScreen() {
             ))}
           </View> : null}
         </View>
-        </View>
+        </InventorySettingsContent>
       </ScrollView>
     </SafeAreaView>
+      </View>
+    </View>
   );
 }

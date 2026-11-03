@@ -15,8 +15,8 @@ export function useTabBarHeight(): number {
 
   // Keep in sync with `src/app/(tabs)/_layout.tsx` tab bar sizing.
   const mobileNavHeight = Platform.OS === 'ios' ? 82 : 76;
-  const mobileNavBottomMargin = Platform.OS === 'ios' ? 52 : 48;
-  const mobileButtonClearance = 48;
+  const mobileNavBottomMargin = Platform.OS === 'ios' ? 68 : 42;
+  const mobileButtonClearance = 64;
   const mobileHeight = mobileNavHeight + mobileNavBottomMargin + mobileButtonClearance;
   const height = isMobile ? mobileHeight : Platform.OS === 'web' ? 80 : Platform.OS === 'ios' ? 88 : 70;
 

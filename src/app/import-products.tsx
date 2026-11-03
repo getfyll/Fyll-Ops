@@ -16,6 +16,8 @@ import { getSettingsWebPanelStyles, isFromSettingsRoute } from '@/lib/settings-w
 import { useSettingsBack } from '@/lib/useSettingsBack';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
 import { FYLL_LIME, FYLL_LIME_INK, MoneyText, usePaymentsPalette } from '@/components/payments/payments-ui';
+import { InternalSettingsHeader } from '@/components/settings/InternalSettingsHeader';
+import { InventorySettingsContent, InventorySettingsHero } from '@/components/settings/InventorySettingsScaffold';
 
 type ImportRow = {
   name: string;
@@ -232,25 +234,17 @@ export default function ImportProductsScreen() {
     <View style={panelStyles.outer}>
       <View style={panelStyles.inner}>
     <SafeAreaView style={{ flex: 1, backgroundColor: settingsPalette.page }}>
-      <LinearGradient pointerEvents="none" colors={resolvedThemeMode === 'dark' ? ['rgba(111,125,18,0.55)', 'rgba(20,20,20,0)'] : ['rgba(213,224,87,0.42)', 'rgba(244,243,235,0)']} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 360 }} />
-      <View className="flex-row items-center" style={{ minHeight: isMobile ? 66 : 58, paddingHorizontal: 10, paddingTop: isMobile ? 12 : 4, paddingBottom: 4 }}>
-            <Pressable
-              onPress={goBack}
-              className="w-10 h-10 rounded-full items-center justify-center mr-3 active:opacity-50"
-              style={{ backgroundColor: settingsPalette.softFill }}
-            >
-              <ArrowLeft size={18} color={settingsPalette.text} strokeWidth={2.2} />
-            </Pressable>
-            <View><Text style={{ color: settingsPalette.faint, fontSize: 9.5, lineHeight: 12, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Settings</Text><Text style={{ color: settingsPalette.text, fontSize: 17, lineHeight: 21, fontWeight: '600' }}>Import Products</Text></View>
-      </View>
+      {!isDesktop ? <LinearGradient pointerEvents="none" colors={resolvedThemeMode === 'dark' ? ['rgba(111,125,18,0.55)', 'rgba(20,20,20,0)'] : ['rgba(213,224,87,0.42)', 'rgba(244,243,235,0)']} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 360 }} /> : null}
+      <InternalSettingsHeader title="Import Products" description="Upload, preview, and import product records from a CSV file." isDesktop={isDesktop} onBack={goBack} />
 
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 18, paddingBottom: isDesktop ? 64 : tabBarHeight + 40 }} showsVerticalScrollIndicator={false}>
-        <View style={{ width: '100%', maxWidth: 720, alignSelf: 'center' }}>
-          <View style={{ position: 'relative', overflow: 'hidden', minHeight: 156, marginBottom: 22, padding: 20, justifyContent: 'center', borderRadius: 28, borderWidth: 1, borderColor: settingsPalette.border, backgroundColor: settingsPalette.card, shadowColor: '#000', shadowOpacity: resolvedThemeMode === 'dark' ? 0.24 : 0.07, shadowRadius: 24, shadowOffset: { width: 0, height: 10 } }}>
-            <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -44, right: -36, width: 210, height: 210, borderRadius: 105 }} />
-            <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
-            <View className="flex-row items-center" style={{ gap: 15 }}><LinearGradient colors={[FYLL_LIME, '#879400']} style={{ width: 66, height: 66, borderRadius: 22, alignItems: 'center', justifyContent: 'center' }}><Package size={28} color={FYLL_LIME_INK} strokeWidth={2.1} /></LinearGradient><View style={{ flex: 1 }}><Text style={{ color: settingsPalette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Product data</Text><MoneyText style={{ color: settingsPalette.text, fontSize: 26, lineHeight: 31 }}>CSV import</MoneyText><Text style={{ color: settingsPalette.faint, fontSize: 12.5, marginTop: 3 }}>{summary ? `${summary.totalRows} rows processed` : rows.length ? `${rows.length} rows ready` : 'Upload, preview, then import'}</Text></View></View>
-          </View>
+        <InventorySettingsContent isDesktop={isDesktop}>
+          <InventorySettingsHero
+            eyebrow="Product data"
+            title="CSV import"
+            description={summary ? `${summary.totalRows} rows processed` : rows.length ? `${rows.length} rows ready` : 'Upload, preview, then import'}
+            isDesktop={isDesktop}
+          />
 
           {!rows.length && !summary ? <View className="rounded-3xl p-5 mb-6" style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}><Text style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '700', marginBottom: 7 }}>CSV format</Text><Text style={{ color: settingsPalette.muted, fontSize: 12.5, lineHeight: 19 }}>Include product_name and color columns. Category is optional. Rows with the same product name become colour variants of one product.</Text></View> : null}
 
@@ -271,7 +265,7 @@ export default function ImportProductsScreen() {
               <Text style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '700', padding: 16, borderBottomWidth: 1, borderBottomColor: settingsPalette.hairline }}>Preview</Text>
               {preview.map((row, index) => (
                 <View key={`${row.name}-${row.color}-${index}`} className="px-4 py-3" style={{ borderBottomWidth: 1, borderBottomColor: settingsPalette.hairline }}>
-                  <Text style={{ color: settingsPalette.textSoft, fontSize: 13 }}>
+                  <Text style={{ color: settingsPalette.textSoft, fontSize: 12, fontWeight: '500' }}>
                     {row.name} • {row.color}{row.category ? ` • ${row.category}` : ''}
                   </Text>
                 </View>
@@ -313,7 +307,7 @@ export default function ImportProductsScreen() {
               )}
             </View>
           )}
-        </View>
+        </InventorySettingsContent>
       </ScrollView>
     </SafeAreaView>
       </View>

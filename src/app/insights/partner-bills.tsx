@@ -9,7 +9,8 @@ import { HorizontalBarChart } from '@/components/stats/HorizontalBarChart';
 import { SalesBarChart } from '@/components/stats/SalesBarChart';
 import useFyllStore, { formatCurrency } from '@/lib/state/fyll-store';
 import { getDateRange, type TimeRange } from '@/lib/analytics-utils';
-import { useStatsColors } from '@/lib/theme';
+import { InsightsRangeTabs } from '@/components/stats/InsightsRangeTabs';
+import { useInsightsColors } from '@/lib/insights-theme';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 
 const OVERDUE_WINDOW_MS = 5 * 24 * 60 * 60 * 1000;
@@ -17,7 +18,7 @@ const OVERDUE_WINDOW_MS = 5 * 24 * 60 * 60 * 1000;
 const statusLabel = (status: string) => status.charAt(0).toUpperCase() + status.slice(1);
 
 export default function PartnerBillsInsightScreen({ inline }: { inline?: boolean }) {
-  const colors = useStatsColors();
+  const colors = useInsightsColors();
   const insets = useSafeAreaInsets();
   const { isDesktop } = useBreakpoint();
   const [timeRange, setTimeRange] = useState<TimeRange>('month');
@@ -136,23 +137,7 @@ export default function PartnerBillsInsightScreen({ inline }: { inline?: boolean
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: isDesktop ? 40 : insets.bottom + 140 }}
         >
-          <View className="flex-row mt-4">
-            {timeRangeOptions.map((option) => (
-              <Pressable
-                key={option.key}
-                onPress={() => setTimeRange(option.key)}
-                className="mr-2 px-4 py-2 rounded-full"
-                style={{ backgroundColor: timeRange === option.key ? colors.bar : colors.bg.input }}
-              >
-                <Text
-                  style={{ color: timeRange === option.key ? colors.bg.screen : colors.text.tertiary, fontSize: 10 }}
-                  className="font-semibold"
-                >
-                  {option.label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
+          <InsightsRangeTabs options={timeRangeOptions} value={timeRange} onChange={setTimeRange} />
 
           <View className="flex-row flex-wrap mt-4" style={{ gap: 12 }}>
             {[
