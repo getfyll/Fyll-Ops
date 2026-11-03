@@ -1,6 +1,43 @@
 {
   "releases": [
     {
+      "version": "2.9.0",
+      "date": "2026-11-03T18:00:00Z",
+      "features": [
+        {
+          "icon": "package",
+          "title": "Fyll Print, redesigned",
+          "body": "A new print queue with a swipeable preview of every label, copies and parcels, and a shipping label with weight and switches. Saved files are named after the customer and order."
+        },
+        {
+          "icon": "zap",
+          "title": "Smarter bottom navigation",
+          "body": "Print, Cases and Fulfillment now give you a clean page with a round Home button. Finance, Insights and Customers share their own small nav, with the page you are on highlighted."
+        },
+        {
+          "icon": "sparkles",
+          "title": "Insights, redesigned",
+          "body": "A new headline card for each tab with a plain sentence about your numbers, a Today card beside it on the web, simpler date filters, and the new Fyll fonts and colors on every Insights page."
+        },
+        {
+          "icon": "share",
+          "title": "A new delivery confirmation page",
+          "body": "Customers who scan the QR on a shipping label open a page with their order already filled in and confirm in one tap. It carries your business logo and name, and they can also track the order or message you on WhatsApp."
+        },
+        {
+          "icon": "home",
+          "title": "Faster ways to add things in Finance",
+          "body": "The plus button on Finance now offers a new expense, refund or procurement, and Upload receipt to have Fyll AI draft an expense or purchase order from a photo."
+        }
+      ],
+      "fixes": [
+        "Average order values no longer show decimals on Insights.",
+        "The scan sheet is taller, with bigger buttons and a quantity picker when adding stock.",
+        "Editing an order now uses the same screen as creating one.",
+        "Customer names and amounts on the Customers list are easier to read on a phone."
+      ]
+    },
+    {
       "version": "2.8.0",
       "date": "2026-11-01T20:00:00Z",
       "features": [
