@@ -523,6 +523,9 @@ function InsightsHeroCard({
   );
 }
 
+// The Fyll AI Insights chat is built but hidden for now. Set this to true to show its button again.
+const SHOW_INSIGHTS_AI = false;
+
 export default function InsightsScreen() {
   const router = useRouter();
   const { from } = useLocalSearchParams<{ from?: string | string[] }>();
@@ -3157,7 +3160,7 @@ export default function InsightsScreen() {
         )}
 
         {/* Fyll AI Insights chat: a flat lime button with a brain, so it is not confused with the receipt-upload Fyll AI on Finance */}
-        {!showInsightsAiPanel ? (
+        {SHOW_INSIGHTS_AI && !showInsightsAiPanel ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Ask Fyll AI about your insights"
