@@ -14,7 +14,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
 import * as Application from 'expo-application';
-import Constants from 'expo-constants';
+import { CURRENT_RELEASE } from '@/lib/release-notes';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { canShowFinanceNavigation, getDefaultFinanceSectionForRole } from '@/lib/finance-access';
@@ -32,6 +32,7 @@ import { isBusinessFeatureEnabled } from '@/lib/feature-access';
 import AccountSettingsScreen from '@/app/account-settings';
 import BusinessSettingsScreen from '@/app/business-settings';
 import StorefrontSettingsScreen from '@/app/storefront-settings';
+import PickupSettingsScreen from '@/app/pickup-settings';
 import PaymentAccountsScreen from '@/app/payment-accounts';
 import TeamManagementScreen from '@/app/team';
 import InvitationsScreen from '@/app/invitations';
@@ -94,6 +95,7 @@ type WebInlineSettingsPanel =
   | 'account-settings'
   | 'business-settings'
   | 'storefront-settings'
+  | 'pickup-settings'
   | 'payment-accounts'
   | 'team'
   | 'invitations'
@@ -115,6 +117,7 @@ const WEB_INLINE_SETTINGS_PANELS: WebInlineSettingsPanel[] = [
   'account-settings',
   'business-settings',
   'storefront-settings',
+  'pickup-settings',
   'payment-accounts',
   'team',
   'invitations',
@@ -165,6 +168,7 @@ const PANEL_NAV_KEY: Record<WebInlineSettingsPanel, WebSettingsMenuKey> = {
   'account-settings': 'profile',
   'business-settings': 'business-details',
   'storefront-settings': 'integrations',
+  'pickup-settings': 'orders',
   'payment-accounts': 'payments',
   team: 'team',
   invitations: 'team',
@@ -599,10 +603,12 @@ function SettingsRow({
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const appVersion = Application.nativeApplicationVersion ?? Constants.expoConfig?.version ?? '1.0.0';
+  // The release number comes from src/data/release-notes.json, the same one "What's new" uses,
+  // so this label always matches what's actually shipped.
+  const appVersion = CURRENT_RELEASE.version;
   const appBuild = Application.nativeBuildVersion;
   const appVersionLabel = appBuild ? `Version ${appVersion} · Build ${appBuild}` : `Version ${appVersion}`;
-  const { businessName, businessSlug, featureAccess } = useBusinessSettings();
+  const { businessName, businessSlug, featureAccess, pickupSettings } = useBusinessSettings();
   const { section: sectionParam, menu: menuParam, panel: panelParam } = useLocalSearchParams<{ section?: SettingsSection; menu?: WebSettingsMenuKey; panel?: string }>();
   const normalizedSectionParam = normalizeSettingsSectionParam(sectionParam);
   const normalizedMenuParam = normalizeWebSettingsMenuParam(menuParam);
@@ -3145,8 +3151,7 @@ export default function SettingsScreen() {
         case 'recycle-bin':
           return (
             <View className="pt-1">
-              <View className="p-5 mb-5" style={{ position: 'relative', overflow: 'hidden', minHeight: isWebDesktop ? 138 : 150, justifyContent: 'center', borderRadius: 28, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
-                <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -44, right: -36, width: 210, height: 210, borderRadius: 105 }} />
+              <View className="p-5 mb-5" style={{ position: 'relative', overflow: 'hidden', minHeight: isWebDesktop ? 138 : undefined, justifyContent: 'center', borderRadius: 28, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
                 <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
                 <View style={{ flex: 1, minWidth: 0, justifyContent: 'center' }}>
                   <Text style={{ color: settingsPalette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Recovery centre</Text>
@@ -3331,8 +3336,7 @@ export default function SettingsScreen() {
       case 'order-statuses':
         return (
           <View className="pt-1">
-            <View className="p-5 mb-4" style={{ position: 'relative', overflow: 'hidden', borderRadius: 28, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border, ...(!isWebDesktop ? { shadowColor: '#000000', shadowOpacity: resolvedThemeMode === 'dark' ? 0.24 : 0.07, shadowRadius: 24, shadowOffset: { width: 0, height: 10 } } : {}) }}>
-              {!isWebDesktop ? <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -44, right: -36, width: 210, height: 210, borderRadius: 105 }} /> : null}
+            <View className="p-5 mb-4" style={{ position: 'relative', overflow: 'hidden', borderRadius: 28, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
               <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, borderBottomLeftRadius: 3, borderBottomRightRadius: 3, backgroundColor: FYLL_LIME }} />
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <View style={{ flex: 1, minWidth: 0 }}>
@@ -3544,7 +3548,6 @@ export default function SettingsScreen() {
         return (
           <View className="pt-1">
             <View className="p-5 mb-4" style={{ position: 'relative', overflow: 'hidden', borderRadius: 28, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
-              <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -44, right: -36, width: 210, height: 210, borderRadius: 105 }} />
               <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, borderBottomLeftRadius: 3, borderBottomRightRadius: 3, backgroundColor: FYLL_LIME }} />
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <View style={{ flex: 1, minWidth: 0 }}>
@@ -3625,8 +3628,7 @@ export default function SettingsScreen() {
       case 'case-statuses':
         return (
           <View className="pt-1">
-            <View className="rounded-3xl overflow-hidden mb-4" style={{ position: 'relative', minHeight: isWebDesktop ? 138 : 150, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
-              <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -48, right: -34, width: 220, height: 220, borderRadius: 110 }} />
+            <View className="rounded-3xl overflow-hidden mb-4" style={{ position: 'relative', minHeight: isWebDesktop ? 138 : undefined, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
               <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
               <View style={{ flex: 1, justifyContent: 'center', padding: isWebDesktop ? 24 : 20 }}>
                 <View className="flex-row items-center">
@@ -3717,8 +3719,7 @@ export default function SettingsScreen() {
       case 'sale-sources':
         return (
           <View className="pt-1">
-            <View className="rounded-3xl overflow-hidden mb-4" style={{ position: 'relative', minHeight: isWebDesktop ? 138 : 150, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
-              <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -48, right: -34, width: 220, height: 220, borderRadius: 110 }} />
+            <View className="rounded-3xl overflow-hidden mb-4" style={{ position: 'relative', minHeight: isWebDesktop ? 138 : undefined, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
               <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
               <View style={{ flex: 1, justifyContent: 'center', padding: isWebDesktop ? 24 : 20 }}>
                 <View className="flex-row items-center">
@@ -4120,7 +4121,7 @@ export default function SettingsScreen() {
                   >
                     <View className="flex-row items-start justify-between" style={{ gap: 12 }}>
                       <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '700' }} numberOfLines={1}>
+                        <Text style={{ color: settingsPalette.text, fontSize: 12, fontWeight: '500' }} numberOfLines={1}>
                           {row.name}
                         </Text>
                         <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '400', lineHeight: 17, marginTop: 8 }}>
@@ -4296,19 +4297,10 @@ export default function SettingsScreen() {
       case 'payment-methods':
         return (
           <View className="pt-1">
-            <View className="rounded-3xl overflow-hidden mb-4" style={{ position: 'relative', minHeight: isWebDesktop ? 138 : 150, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
-              <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -48, right: -34, width: 220, height: 220, borderRadius: 110 }} />
+            <View className="rounded-3xl overflow-hidden mb-4" style={{ position: 'relative', minHeight: isWebDesktop ? 138 : undefined, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
               <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
               <View style={{ flex: 1, justifyContent: 'center', padding: isWebDesktop ? 24 : 20 }}>
-                <View className="flex-row items-center" style={{ gap: 14 }}>
-                  {!isWebDesktop ? (
-                    <LinearGradient
-                      colors={resolvedThemeMode === 'dark' ? ['#E5EF50', '#A9B700'] : ['#E8F15A', '#C4D12B']}
-                      style={{ width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }}
-                    >
-                      <CreditCard size={22} color={FYLL_LIME_INK} strokeWidth={2.2} />
-                    </LinearGradient>
-                  ) : null}
+                <View className="flex-row items-center">
                   <View style={{ flex: 1 }}>
                     <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Checkout options</Text>
                     <MoneyText style={{ color: settingsPalette.text, fontSize: isWebDesktop ? 28 : 24, lineHeight: isWebDesktop ? 34 : 29, fontWeight: '700', marginTop: 2 }}>
@@ -4316,7 +4308,7 @@ export default function SettingsScreen() {
                     </MoneyText>
                   </View>
                 </View>
-                <Text style={{ color: settingsPalette.faint, fontSize: 12.5, lineHeight: 18, marginTop: 4 }}>
+                <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 18, marginTop: 4 }}>
                   Manage the payment choices available when orders are recorded and checked out.
                 </Text>
               </View>
@@ -4335,8 +4327,8 @@ export default function SettingsScreen() {
 
             {showAddPaymentMethodForm ? (
               <View className="rounded-3xl p-4 mb-5" style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
-                <Text style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '700', marginBottom: 12 }}>Add payment method</Text>
-                <View className="rounded-2xl px-4 mb-3" style={{ backgroundColor: settingsPalette.inset, borderWidth: 1, borderColor: settingsPalette.outline, height: 50, justifyContent: 'center' }}>
+                <Text style={{ color: settingsPalette.text, fontSize: 14, lineHeight: 20, fontWeight: '600', marginBottom: 12 }}>Add payment method</Text>
+                <View className="rounded-2xl px-4 mb-3" style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.outline, height: 50, justifyContent: 'center' }}>
                   <TextInput
                     autoFocus
                     placeholder="e.g. Bank transfer or POS"
@@ -4359,7 +4351,7 @@ export default function SettingsScreen() {
             <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
               {paymentMethods.length === 0 ? (
                 <View style={{ padding: 20 }}>
-                  <Text style={{ color: settingsPalette.text, fontSize: 12, fontWeight: '600' }}>No payment methods</Text>
+                  <Text style={{ color: settingsPalette.text, fontSize: 14, lineHeight: 20, fontWeight: '600' }}>No payment methods</Text>
                   <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 17, marginTop: 3 }}>Add the first payment choice available when recording an order.</Text>
                 </View>
               ) : paymentMethods.map((method, index) => (
@@ -4387,7 +4379,7 @@ export default function SettingsScreen() {
               <View className="rounded-3xl p-4 mt-4" style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.nudgeBorder }}>
                 <View className="flex-row items-center" style={{ gap: 9 }}>
                   <AlertTriangle size={17} color={settingsPalette.limeOnSurface} strokeWidth={2.2} />
-                  <Text style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '700' }}>Payment labels to clean up</Text>
+                  <Text style={{ color: settingsPalette.text, fontSize: 14, lineHeight: 20, fontWeight: '600' }}>Payment labels to clean up</Text>
                 </View>
                 <Text style={{ color: settingsPalette.muted, fontSize: 12, lineHeight: 18, marginTop: 6, marginBottom: 10 }}>
                   These labels exist on saved orders but not in your current payment methods. Merge them into the correct method.
@@ -4401,7 +4393,7 @@ export default function SettingsScreen() {
                   >
                     <View className="flex-row items-center justify-between" style={{ gap: 12 }}>
                       <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text style={{ color: settingsPalette.text, fontSize: 13, fontWeight: '700' }} numberOfLines={1}>
+                        <Text style={{ color: settingsPalette.text, fontSize: 14, lineHeight: 20, fontWeight: '600' }} numberOfLines={1}>
                           {legacyMethod.name}
                         </Text>
                         <Text style={{ color: colors.text.tertiary }} className="text-xs mt-0.5">
@@ -4415,7 +4407,7 @@ export default function SettingsScreen() {
                           key={`${legacyMethod.name}-${method.id}`}
                           onPress={() => handleMergeOrderPaymentMethod(legacyMethod.name, method.name)}
                           className="rounded-full px-3 items-center justify-center active:opacity-80"
-                          style={{ minHeight: 36, borderWidth: 1, borderColor: settingsPalette.outline, backgroundColor: settingsPalette.inset }}
+                          style={{ minHeight: 36, borderWidth: 1, borderColor: settingsPalette.outline, backgroundColor: settingsPalette.card }}
                         >
                           <Text style={{ color: settingsPalette.text, fontSize: 12, fontWeight: '600' }}>
                             Merge into {method.name}
@@ -4433,8 +4425,7 @@ export default function SettingsScreen() {
       case 'logistics-carriers':
         return (
           <View className="pt-1">
-            <View className="rounded-3xl overflow-hidden mb-4" style={{ position: 'relative', minHeight: isWebDesktop ? 138 : 150, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
-              <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -48, right: -34, width: 220, height: 220, borderRadius: 110 }} />
+            <View className="rounded-3xl overflow-hidden mb-4" style={{ position: 'relative', minHeight: isWebDesktop ? 138 : undefined, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
               <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
               <View style={{ flex: 1, justifyContent: 'center', padding: isWebDesktop ? 24 : 20 }}>
                 <View className="flex-row items-center">
@@ -4664,6 +4655,7 @@ export default function SettingsScreen() {
       { id: 'resolution-types', title: 'Resolution Types', description: 'How cases are resolved', icon: <Check size={18} color="#10B981" strokeWidth={2} />, rightText: `${resolutionTypes.length}`, onPress: () => openSettingsSection('resolution-types') },
     ] : []),
     { id: 'logistics-carriers', title: 'Logistics Carriers', description: 'Delivery partners', icon: <Truck size={18} color="#F59E0B" strokeWidth={2} />, rightText: `${logisticsCarriers.length}`, onPress: () => openSettingsSection('logistics-carriers') },
+    { id: 'pickup-settings', title: 'Pickup', description: pickupSettings.enabled ? 'On · customers can collect orders' : 'Let customers collect their orders', icon: <Store size={18} color="#10B981" strokeWidth={2} />, onPress: () => openSettingsPanel('pickup-settings', '/pickup-settings?from=settings&menu=orders') },
     { id: 'low-stock-alert', title: 'Low Stock Alert', description: useGlobalLowStockThreshold ? `On · ${globalLowStockThreshold} units` : 'Off · Tap to configure', icon: <AlertTriangle size={18} color="#F59E0B" strokeWidth={2} />, onPress: () => { setTempThreshold(globalLowStockThreshold.toString()); setShowLowStockModal(true); } },
     { id: 'warehouse-settings', title: 'Warehouse Settings', description: 'Manage warehouse categories and units', icon: <Boxes size={18} color="#6366F1" strokeWidth={2} />, onPress: () => openSettingsPanel('warehouse-settings', '/warehouse-settings?from=settings&menu=inventory') },
     { id: 'categories', title: 'Categories', description: 'Product groups', icon: <Tag size={18} color="#3B82F6" strokeWidth={2} />, rightText: `${categories.length}`, onPress: () => openSettingsPanel('category-manager', '/category-manager?from=settings&menu=inventory') },
@@ -4816,7 +4808,6 @@ export default function SettingsScreen() {
   const renderWebAppearanceContent = () => (
     <View>
       <View style={{ position: 'relative', overflow: 'hidden', minHeight: 138, borderRadius: 26, borderWidth: 1, borderColor: settingsPalette.border, backgroundColor: settingsPalette.inset, padding: 24, justifyContent: 'center', marginBottom: 24 }}>
-        <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -48, right: -34, width: 220, height: 220, borderRadius: 110 }} />
         <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
         <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Workspace display</Text>
         <MoneyText style={{ color: settingsPalette.text, fontSize: 28, lineHeight: 34, marginTop: 2 }}>Appearance</MoneyText>
@@ -4870,14 +4861,13 @@ export default function SettingsScreen() {
     return (
       <View>
         <View style={{ position: 'relative', overflow: 'hidden', minHeight: 138, borderRadius: 26, borderWidth: 1, borderColor: settingsPalette.border, backgroundColor: settingsPalette.inset, padding: 24, justifyContent: 'center', marginBottom: 24 }}>
-          <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -48, right: -34, width: 220, height: 220, borderRadius: 110 }} />
           <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
           <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Customer communication</Text>
           <MoneyText style={{ color: settingsPalette.text, fontSize: 28, lineHeight: 34, marginTop: 2 }}>Notifications</MoneyText>
           <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 18, marginTop: 4 }}>Choose how you receive activity alerts and how customers receive order updates.</Text>
         </View>
 
-        <Text style={{ color: settingsPalette.muted, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Notification channels</Text>
+        <Text style={{ color: settingsPalette.muted, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: 0.75, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Notification channels</Text>
         <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
           <View style={{ minHeight: 74, paddingHorizontal: 18, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 14, borderBottomWidth: hasWhatsApp || hasEmail ? 1 : 0, borderBottomColor: settingsPalette.hairline }}>
             <View style={{ width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: settingsPalette.nudgeBg }}>
@@ -4940,14 +4930,13 @@ export default function SettingsScreen() {
     return (
       <View>
         <View style={{ position: 'relative', overflow: 'hidden', minHeight: 138, borderRadius: 26, borderWidth: 1, borderColor: settingsPalette.border, backgroundColor: settingsPalette.inset, padding: 24, justifyContent: 'center', marginBottom: 24 }}>
-          <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -48, right: -34, width: 220, height: 220, borderRadius: 110 }} />
           <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
           <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Account access</Text>
           <MoneyText style={{ color: settingsPalette.text, fontSize: 28, lineHeight: 34, marginTop: 2 }}>Profile</MoneyText>
           <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 18, marginTop: 4 }}>Manage your account, password, and the businesses available to you.</Text>
         </View>
 
-        <Text style={{ color: settingsPalette.muted, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Profile settings</Text>
+        <Text style={{ color: settingsPalette.muted, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: 0.75, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Profile settings</Text>
         <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
           {profileItems.map((item, index) => (
             <Pressable
@@ -4984,14 +4973,13 @@ export default function SettingsScreen() {
     return (
       <View>
         <View style={{ position: 'relative', overflow: 'hidden', minHeight: 138, borderRadius: 26, borderWidth: 1, borderColor: settingsPalette.border, backgroundColor: settingsPalette.inset, padding: 24, justifyContent: 'center', marginBottom: 24 }}>
-          <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -48, right: -34, width: 220, height: 220, borderRadius: 110 }} />
           <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
-          <Text style={{ color: settingsPalette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Customer access</Text>
+          <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Customer access</Text>
           <MoneyText style={{ color: settingsPalette.text, fontSize: 28, lineHeight: 34, marginTop: 2 }}>Business Links</MoneyText>
           <Text style={{ color: settingsPalette.faint, fontSize: 12.5, lineHeight: 18, marginTop: 4 }}>Copy the public addresses customers use for tracking, returns, and delivery confirmation.</Text>
         </View>
 
-        <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Available links</Text>
+        <Text style={{ color: settingsPalette.muted, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: 0.75, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Available links</Text>
         <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
           {linkRows.map((link, index) => (
             <Pressable
@@ -5006,7 +4994,7 @@ export default function SettingsScreen() {
                   : <Link2 size={18} color={settingsPalette.limeOnSurface} strokeWidth={2} />}
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ color: settingsPalette.text, fontSize: 12, lineHeight: 17, fontWeight: '600' }} numberOfLines={1}>{link.title}</Text>
+                <Text style={{ color: settingsPalette.text, fontSize: 14, lineHeight: 18, fontWeight: '600' }} numberOfLines={1}>{link.title}</Text>
                 <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 16, marginTop: 2 }} numberOfLines={1}>{link.description}</Text>
               </View>
               <Copy size={16} color={settingsPalette.faint} strokeWidth={2} />
@@ -5023,14 +5011,13 @@ export default function SettingsScreen() {
     return (
       <View>
         <View style={{ position: 'relative', overflow: 'hidden', minHeight: 138, borderRadius: 26, borderWidth: 1, borderColor: settingsPalette.border, backgroundColor: settingsPalette.inset, padding: 24, justifyContent: 'center', marginBottom: 24 }}>
-          <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -48, right: -34, width: 220, height: 220, borderRadius: 110 }} />
           <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
-          <Text style={{ color: settingsPalette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Catalog structure</Text>
+          <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Catalog structure</Text>
           <MoneyText style={{ color: settingsPalette.text, fontSize: 28, lineHeight: 34, marginTop: 2 }}>Inventory</MoneyText>
           <Text style={{ color: settingsPalette.faint, fontSize: 12.5, lineHeight: 18, marginTop: 4 }}>Organise stock, warehouse rules, product structure, and the services your team sells.</Text>
         </View>
 
-        <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Inventory settings</Text>
+        <Text style={{ color: settingsPalette.muted, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: 0.75, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Inventory settings</Text>
         <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
           {inventoryItems.map((item, index) => (
             <Pressable
@@ -5045,7 +5032,7 @@ export default function SettingsScreen() {
                   : item.icon}
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ color: settingsPalette.text, fontSize: 12, lineHeight: 17, fontWeight: '500' }} numberOfLines={1}>{item.title}</Text>
+                <Text style={{ color: settingsPalette.text, fontSize: 14, lineHeight: 18, fontWeight: '600' }} numberOfLines={1}>{item.title}</Text>
                 {item.description ? <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 16, marginTop: 2 }} numberOfLines={1}>{item.description}</Text> : null}
               </View>
               {item.rightText ? <Text style={{ color: settingsPalette.faint, fontSize: 12, fontWeight: '500' }}>{item.rightText}</Text> : null}
@@ -5058,19 +5045,18 @@ export default function SettingsScreen() {
   };
 
   const renderWebOrdersContent = () => {
-    const orderItems = getSettingsItems(['order-statuses', 'quality-control-checks', 'order-timelines', 'sale-sources', 'addons', 'logistics-carriers', 'order-automation']);
+    const orderItems = getSettingsItems(['order-statuses', 'quality-control-checks', 'order-timelines', 'sale-sources', 'addons', 'logistics-carriers', 'pickup-settings', 'order-automation']);
 
     return (
       <View>
         <View style={{ position: 'relative', overflow: 'hidden', minHeight: 138, borderRadius: 26, borderWidth: 1, borderColor: settingsPalette.border, backgroundColor: settingsPalette.inset, padding: 24, justifyContent: 'center', marginBottom: 24 }}>
-          <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -48, right: -34, width: 220, height: 220, borderRadius: 110 }} />
           <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
-          <Text style={{ color: settingsPalette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Order operations</Text>
+          <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Order operations</Text>
           <MoneyText style={{ color: settingsPalette.text, fontSize: 28, lineHeight: 34, marginTop: 2 }}>Orders</MoneyText>
           <Text style={{ color: settingsPalette.faint, fontSize: 12.5, lineHeight: 18, marginTop: 4 }}>Shape the workflow from a new order through quality checks, fulfillment, delivery, and automation.</Text>
         </View>
 
-        <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Order settings</Text>
+        <Text style={{ color: settingsPalette.muted, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: 0.75, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Order settings</Text>
         <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
           {orderItems.map((item, index) => (
             <Pressable
@@ -5085,7 +5071,7 @@ export default function SettingsScreen() {
                   : item.icon}
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ color: settingsPalette.text, fontSize: 12, lineHeight: 17, fontWeight: '500' }} numberOfLines={1}>{item.title}</Text>
+                <Text style={{ color: settingsPalette.text, fontSize: 14, lineHeight: 18, fontWeight: '600' }} numberOfLines={1}>{item.title}</Text>
                 {item.description ? <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 16, marginTop: 2 }} numberOfLines={1}>{item.description}</Text> : null}
               </View>
               {item.rightText ? <Text style={{ color: settingsPalette.faint, fontSize: 12, fontWeight: '500' }}>{item.rightText}</Text> : null}
@@ -5103,14 +5089,13 @@ export default function SettingsScreen() {
     return (
       <View>
         <View style={{ position: 'relative', overflow: 'hidden', minHeight: 138, borderRadius: 26, borderWidth: 1, borderColor: settingsPalette.border, backgroundColor: settingsPalette.inset, padding: 24, justifyContent: 'center', marginBottom: 24 }}>
-          <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -48, right: -34, width: 220, height: 220, borderRadius: 110 }} />
           <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
-          <Text style={{ color: settingsPalette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Money collection</Text>
+          <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Money collection</Text>
           <MoneyText style={{ color: settingsPalette.text, fontSize: 28, lineHeight: 34, marginTop: 2 }}>Payments</MoneyText>
           <Text style={{ color: settingsPalette.faint, fontSize: 12.5, lineHeight: 18, marginTop: 4 }}>Manage bank accounts shown on payment links and the payment methods recorded on orders.</Text>
         </View>
 
-        <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Payment settings</Text>
+        <Text style={{ color: settingsPalette.muted, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: 0.75, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Payment settings</Text>
         <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
           {paymentItems.map((item, index) => (
             <Pressable
@@ -5125,7 +5110,7 @@ export default function SettingsScreen() {
                   : item.icon}
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ color: settingsPalette.text, fontSize: 12, lineHeight: 17, fontWeight: '600' }} numberOfLines={1}>{item.title}</Text>
+                <Text style={{ color: settingsPalette.text, fontSize: 14, lineHeight: 18, fontWeight: '600' }} numberOfLines={1}>{item.title}</Text>
                 {item.description ? <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 16, marginTop: 2 }} numberOfLines={1}>{item.description}</Text> : null}
               </View>
               {item.rightText ? <Text style={{ color: settingsPalette.faint, fontSize: 12, fontWeight: '500' }}>{item.rightText}</Text> : null}
@@ -5143,14 +5128,13 @@ export default function SettingsScreen() {
     return (
       <View>
         <View style={{ position: 'relative', overflow: 'hidden', minHeight: 138, borderRadius: 26, borderWidth: 1, borderColor: settingsPalette.border, backgroundColor: settingsPalette.inset, padding: 24, justifyContent: 'center', marginBottom: 24 }}>
-          <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -48, right: -34, width: 220, height: 220, borderRadius: 110 }} />
           <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
-          <Text style={{ color: settingsPalette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Workspace access</Text>
+          <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Workspace access</Text>
           <MoneyText style={{ color: settingsPalette.text, fontSize: 28, lineHeight: 34, marginTop: 2 }}>Team & roles</MoneyText>
           <Text style={{ color: settingsPalette.faint, fontSize: 12.5, lineHeight: 18, marginTop: 4 }}>Manage who can use Fyll, what they can access, and the invitations you have shared.</Text>
         </View>
 
-        <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Access management</Text>
+        <Text style={{ color: settingsPalette.muted, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: 0.75, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Access management</Text>
         <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
           {teamItems.map((item, index) => (
             <Pressable
@@ -5165,7 +5149,7 @@ export default function SettingsScreen() {
                   : item.icon}
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ color: settingsPalette.text, fontSize: 12, lineHeight: 17, fontWeight: '600' }} numberOfLines={1}>{item.title}</Text>
+                <Text style={{ color: settingsPalette.text, fontSize: 14, lineHeight: 18, fontWeight: '600' }} numberOfLines={1}>{item.title}</Text>
                 {item.description ? <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 16, marginTop: 2 }} numberOfLines={1}>{item.description}</Text> : null}
               </View>
               {item.rightText ? <Text style={{ color: settingsPalette.faint, fontSize: 12, fontWeight: '500' }}>{item.rightText}</Text> : null}
@@ -5183,14 +5167,13 @@ export default function SettingsScreen() {
     return (
       <View>
         <View style={{ position: 'relative', overflow: 'hidden', minHeight: 138, borderRadius: 26, borderWidth: 1, borderColor: settingsPalette.border, backgroundColor: settingsPalette.inset, padding: 24, justifyContent: 'center', marginBottom: 24 }}>
-          <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -48, right: -34, width: 220, height: 220, borderRadius: 110 }} />
           <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
-          <Text style={{ color: settingsPalette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Data movement</Text>
+          <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Data movement</Text>
           <MoneyText style={{ color: settingsPalette.text, fontSize: 28, lineHeight: 34, marginTop: 2 }}>Import & export</MoneyText>
-          <Text style={{ color: settingsPalette.faint, fontSize: 12.5, lineHeight: 18, marginTop: 4 }}>Bring structured business data into Fyll and manage every import from one place.</Text>
+          <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 18, marginTop: 4 }}>Bring structured business data into Fyll and manage every import from one place.</Text>
         </View>
 
-        <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Import tools</Text>
+        <Text style={{ color: settingsPalette.muted, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: 0.75, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Import tools</Text>
         <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
           {importItems.map((item, index) => (
             <Pressable
@@ -5205,7 +5188,7 @@ export default function SettingsScreen() {
                   : item.icon}
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ color: settingsPalette.text, fontSize: 12, lineHeight: 17, fontWeight: '500' }} numberOfLines={1}>{item.title}</Text>
+                <Text style={{ color: settingsPalette.text, fontSize: 14, lineHeight: 18, fontWeight: '600' }} numberOfLines={1}>{item.title}</Text>
                 {item.description ? <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 16, marginTop: 2 }} numberOfLines={1}>{item.description}</Text> : null}
               </View>
               <ChevronRight size={17} color={settingsPalette.faint} strokeWidth={2} />
@@ -5222,14 +5205,13 @@ export default function SettingsScreen() {
     return (
       <View>
         <View style={{ position: 'relative', overflow: 'hidden', minHeight: 138, borderRadius: 26, borderWidth: 1, borderColor: settingsPalette.border, backgroundColor: settingsPalette.inset, padding: 24, justifyContent: 'center', marginBottom: 24 }}>
-          <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -48, right: -34, width: 220, height: 220, borderRadius: 110 }} />
           <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
-          <Text style={{ color: settingsPalette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Customer care</Text>
+          <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Customer care</Text>
           <MoneyText style={{ color: settingsPalette.text, fontSize: 28, lineHeight: 34, marginTop: 2 }}>Cases</MoneyText>
           <Text style={{ color: settingsPalette.faint, fontSize: 12.5, lineHeight: 18, marginTop: 4 }}>Manage customer issues, workflow stages, and the outcomes your team records.</Text>
         </View>
 
-        <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Case management</Text>
+        <Text style={{ color: settingsPalette.muted, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: 0.75, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Case management</Text>
         <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
           {caseItems.map((item, index) => (
             <Pressable
@@ -5244,7 +5226,7 @@ export default function SettingsScreen() {
                   : item.icon}
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ color: settingsPalette.text, fontSize: 12, lineHeight: 17, fontWeight: '500' }} numberOfLines={1}>{item.title}</Text>
+                <Text style={{ color: settingsPalette.text, fontSize: 14, lineHeight: 18, fontWeight: '600' }} numberOfLines={1}>{item.title}</Text>
                 {item.description ? <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 16, marginTop: 2 }} numberOfLines={1}>{item.description}</Text> : null}
               </View>
               {item.rightText ? <Text style={{ color: settingsPalette.faint, fontSize: 12, fontWeight: '500' }}>{item.rightText}</Text> : null}
@@ -5262,7 +5244,6 @@ export default function SettingsScreen() {
     return (
       <View>
         <View style={{ position: 'relative', overflow: 'hidden', minHeight: 138, borderRadius: 26, borderWidth: 1, borderColor: settingsPalette.border, backgroundColor: settingsPalette.inset, padding: 24, justifyContent: 'center', marginBottom: 24 }}>
-          <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -48, right: -34, width: 220, height: 220, borderRadius: 110 }} />
           <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
           <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Commerce connections</Text>
           <MoneyText style={{ color: settingsPalette.text, fontSize: 28, lineHeight: 34, marginTop: 2 }}>Connections</MoneyText>
@@ -5326,7 +5307,7 @@ export default function SettingsScreen() {
               : item.icon}
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ color: isLogout ? settingsPalette.danger : settingsPalette.text, fontSize: 12, lineHeight: 17, fontWeight: '500' }} numberOfLines={1}>{item.title}</Text>
+            <Text style={{ color: isLogout ? settingsPalette.danger : settingsPalette.text, fontSize: 14, lineHeight: 18, fontWeight: '600' }} numberOfLines={1}>{item.title}</Text>
             {item.description ? <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 16, marginTop: 2 }} numberOfLines={1}>{item.description}</Text> : null}
           </View>
           {item.rightText ? <Text style={{ color: settingsPalette.faint, fontSize: 12, fontWeight: '500' }}>{item.rightText}</Text> : null}
@@ -5338,14 +5319,13 @@ export default function SettingsScreen() {
     return (
       <View>
         <View style={{ position: 'relative', overflow: 'hidden', minHeight: 138, borderRadius: 26, borderWidth: 1, borderColor: settingsPalette.border, backgroundColor: settingsPalette.inset, padding: 24, justifyContent: 'center', marginBottom: 24 }}>
-          <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -48, right: -34, width: 220, height: 220, borderRadius: 110 }} />
           <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
-          <Text style={{ color: settingsPalette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Workspace controls</Text>
+          <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Workspace controls</Text>
           <MoneyText style={{ color: settingsPalette.text, fontSize: 28, lineHeight: 34, marginTop: 2 }}>System</MoneyText>
           <Text style={{ color: settingsPalette.faint, fontSize: 12.5, lineHeight: 18, marginTop: 4 }}>Recovery, data tools, refresh controls, and account access.</Text>
         </View>
 
-        <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>System tools</Text>
+        <Text style={{ color: settingsPalette.muted, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: 0.75, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>System tools</Text>
         <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
           {systemItems.map((item) => renderSystemRow(item, true))}
           <Pressable
@@ -5357,7 +5337,7 @@ export default function SettingsScreen() {
               <RotateCcw size={18} color={settingsPalette.limeOnSurface} strokeWidth={2} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ color: settingsPalette.text, fontSize: 12, lineHeight: 17, fontWeight: '500' }}>Refresh app</Text>
+              <Text style={{ color: settingsPalette.text, fontSize: 14, lineHeight: 18, fontWeight: '600' }}>Refresh app</Text>
               <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 16, marginTop: 2 }}>Reload app data</Text>
             </View>
             <ChevronRight size={17} color={settingsPalette.faint} strokeWidth={2} />
@@ -5365,13 +5345,13 @@ export default function SettingsScreen() {
           {logoutItem ? renderSystemRow(logoutItem, false) : null}
         </View>
 
-        <Text style={{ color: settingsPalette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginTop: 24, marginBottom: 10, marginLeft: 2 }}>About</Text>
+        <Text style={{ color: settingsPalette.muted, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: 0.75, textTransform: 'uppercase', marginTop: 24, marginBottom: 10, marginLeft: 2 }}>About</Text>
         <View style={{ minHeight: 74, borderRadius: 26, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border, paddingHorizontal: 18, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
           <View style={{ width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: settingsPalette.nudgeBg }}>
             <Info size={18} color={settingsPalette.limeOnSurface} strokeWidth={2} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: settingsPalette.text, fontSize: 12, lineHeight: 17, fontWeight: '500' }}>Fyll ERP</Text>
+            <Text style={{ color: settingsPalette.text, fontSize: 14, lineHeight: 18, fontWeight: '600' }}>Fyll ERP</Text>
             <Text style={{ color: settingsPalette.faint, fontSize: 12, lineHeight: 16, marginTop: 2 }}>{appVersionLabel}</Text>
           </View>
         </View>
@@ -5383,6 +5363,7 @@ export default function SettingsScreen() {
     'account-settings': 'My Account',
     'business-settings': 'Business Settings',
     'storefront-settings': 'Storefront',
+    'pickup-settings': 'Pickup',
     'payment-accounts': 'Bank Accounts',
     team: 'Team Members',
     invitations: 'Invitations',
@@ -5409,6 +5390,8 @@ export default function SettingsScreen() {
         return <BusinessSettingsScreen embeddedInSettings />;
       case 'storefront-settings':
         return <StorefrontSettingsScreen embeddedInSettings />;
+      case 'pickup-settings':
+        return <PickupSettingsScreen embeddedInSettings />;
       case 'payment-accounts':
         return <PaymentAccountsScreen embeddedInSettings />;
       case 'team':
@@ -5475,7 +5458,7 @@ export default function SettingsScreen() {
   const SEARCH_ITEM_GROUP: Record<string, string> = {
     'my-account': 'Account', 'switch-business': 'Account',
     'business-settings': 'Business', 'team-members': 'Business', invitations: 'Business', 'payment-accounts': 'Business', 'payment-methods': 'Business',
-    'order-statuses': 'Features', 'quality-control-checks': 'Features', 'order-timelines': 'Features', 'sale-sources': 'Features', 'logistics-carriers': 'Features', 'order-automation': 'Features',
+    'order-statuses': 'Features', 'quality-control-checks': 'Features', 'order-timelines': 'Features', 'sale-sources': 'Features', 'logistics-carriers': 'Features', 'pickup-settings': 'Features', 'order-automation': 'Features',
     'low-stock-alert': 'Features', 'warehouse-settings': 'Features', categories: 'Features', 'product-variables': 'Features', 'product-options': 'Features', 'service-catalog': 'Features', addons: 'Features',
     'all-cases': 'Features', 'case-statuses': 'Features', 'resolution-types': 'Features',
     'import-orders': 'Data', 'import-products': 'Data', 'import-customers': 'Data', 'import-ai': 'Data', 'storefront-settings': 'Data', 'woocommerce-settings': 'Data', 'recycle-bin': 'Data',
@@ -5488,6 +5471,7 @@ export default function SettingsScreen() {
     invitations: ['invite', 'vip', 'access'],
     'low-stock-alert': ['stock', 'threshold', 'warning'],
     'storefront-settings': ['shop', 'website', 'store link'],
+    'pickup-settings': ['pickup', 'pick up', 'collect', 'collection', 'collected', 'ready for pickup', 'store pickup'],
     'recycle-bin': ['deleted', 'restore'],
   };
   const settingsSearchEntries = useMemo<SettingsSearchEntry[]>(() => [
@@ -5581,11 +5565,7 @@ export default function SettingsScreen() {
       case 'inventory':
         return renderWebInventoryContent();
       case 'import-export':
-        return (
-          <View style={{ backgroundColor: settingsPalette.page, borderWidth: 1, borderColor: settingsPalette.border, borderRadius: 26, padding: 28 }}>
-            {renderWebImportExportContent()}
-          </View>
-        );
+        return renderWebImportExportContent();
       case 'cases':
         return renderWebCasesContent();
       case 'appearance':
@@ -5740,18 +5720,6 @@ export default function SettingsScreen() {
     return (
       <View className="flex-1" style={{ backgroundColor: colors.bg.primary }}>
         <SafeAreaView className="flex-1" edges={isWebDesktop ? [] : ['top']}>
-          {activeSection === 'all-features' || activeSection === 'order-statuses' || activeSection === 'quality-control-checks' || activeSection === 'order-timelines' || activeSection === 'sale-sources' || activeSection === 'payment-methods' || activeSection === 'logistics-carriers' || activeSection === 'custom-services' || activeSection === 'case-statuses' || activeSection === 'resolution-types' || activeSection === 'recycle-bin' ? (
-            <LinearGradient
-              pointerEvents="none"
-              colors={resolvedThemeMode === 'dark'
-                ? ['rgba(111,125,18,0.55)', 'rgba(17,17,17,0)']
-                : ['rgba(213,224,87,0.42)', 'rgba(244,243,235,0)']}
-              locations={[0, 1]}
-              start={{ x: 0.5, y: 0 }}
-              end={{ x: 0.5, y: 1 }}
-              style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 360 }}
-            />
-          ) : null}
           <View>
             <View style={settingsSectionHeaderWrapStyle}>
               <View
@@ -6155,6 +6123,12 @@ export default function SettingsScreen() {
               onPress={() => router.push('/returns' as never)}
             />
           ) : null}
+          <SettingsRow
+            title="Partners"
+            description="Dispatch jobs to external partners and vendors"
+            icon={<Building2 size={18} color={colors.text.primary} strokeWidth={2} />}
+            onPress={() => router.push('/partners?partnerSection=jobs' as never)}
+          />
           {canUseAnnouncements ? (
             <SettingsRow
               title="Announcements"
@@ -6166,7 +6140,7 @@ export default function SettingsScreen() {
             </View>
           </View>
 
-          <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Connections</Text>
+          <Text style={{ color: settingsPalette.faint, fontSize: 10, lineHeight: 14, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Connections</Text>
           <View style={mobileSettingsCardStyle}>
             {/* The last row's divider tucks under the card border so the bottom edge stays one line thick. */}
             <View style={{ marginBottom: -1 }}>
@@ -6189,7 +6163,7 @@ export default function SettingsScreen() {
             </View>
           </View>
 
-          <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Links</Text>
+          <Text style={{ color: settingsPalette.faint, fontSize: 10, lineHeight: 14, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Links</Text>
           <View style={mobileSettingsCardStyle}>
             {/* The last row's divider tucks under the card border so the bottom edge stays one line thick. */}
             <View style={{ marginBottom: -1 }}>
@@ -6216,7 +6190,7 @@ export default function SettingsScreen() {
 
           {currentUser?.role === 'admin' && businessId ? (
             <>
-              <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Business Identity</Text>
+              <Text style={{ color: settingsPalette.faint, fontSize: 10, lineHeight: 14, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Business Identity</Text>
               <View style={mobileSettingsCardStyle}>
                 {/* The last row's divider tucks under the card border so the bottom edge stays one line thick. */}
                 <View style={{ marginBottom: -1 }}>
@@ -6242,7 +6216,7 @@ export default function SettingsScreen() {
 
           {currentUser?.role === 'admin' && canUseTeamMembers && (
             <>
-              <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Team</Text>
+              <Text style={{ color: settingsPalette.faint, fontSize: 10, lineHeight: 14, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Team</Text>
               <View style={mobileSettingsCardStyle}>
                 {/* The last row's divider tucks under the card border so the bottom edge stays one line thick. */}
                 <View style={{ marginBottom: -1 }}>
@@ -6264,7 +6238,7 @@ export default function SettingsScreen() {
             </>
           )}
 
-          <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Import customers</Text>
+          <Text style={{ color: settingsPalette.faint, fontSize: 10, lineHeight: 14, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Import customers</Text>
           <View style={mobileSettingsCardStyle}>
             {/* The last row's divider tucks under the card border so the bottom edge stays one line thick. */}
             <View style={{ marginBottom: -1 }}>
@@ -6277,7 +6251,7 @@ export default function SettingsScreen() {
             </View>
           </View>
 
-          <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Features</Text>
+          <Text style={{ color: settingsPalette.faint, fontSize: 10, lineHeight: 14, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Features</Text>
           <View style={mobileSettingsCardStyle}>
             {/* The last row's divider tucks under the card border so the bottom edge stays one line thick. */}
             <View style={{ marginBottom: -1 }}>
@@ -6290,7 +6264,7 @@ export default function SettingsScreen() {
             </View>
           </View>
 
-          <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Orders & Sales</Text>
+          <Text style={{ color: settingsPalette.faint, fontSize: 10, lineHeight: 14, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Orders & Sales</Text>
           <View style={mobileSettingsCardStyle}>
             {/* The last row's divider tucks under the card border so the bottom edge stays one line thick. */}
             <View style={{ marginBottom: -1 }}>
@@ -6343,6 +6317,12 @@ export default function SettingsScreen() {
               rightText={`${logisticsCarriers.length}`}
               onPress={() => openSettingsSection('logistics-carriers')}
             />
+            <SettingsRow
+              title="Pickup"
+              description={pickupSettings.enabled ? 'On · customers can collect orders' : 'Let customers collect their orders'}
+              icon={<Store size={18} color="#10B981" strokeWidth={2} />}
+              onPress={() => openSettingsPanel('pickup-settings', '/pickup-settings?from=settings&menu=orders')}
+            />
             {canUseOrderAutomation ? (
               <SettingsRow
                 title="Order Automation"
@@ -6360,7 +6340,7 @@ export default function SettingsScreen() {
             </View>
           </View>
 
-          <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Services</Text>
+          <Text style={{ color: settingsPalette.faint, fontSize: 10, lineHeight: 14, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Services</Text>
           <View style={mobileSettingsCardStyle}>
             {/* The last row's divider tucks under the card border so the bottom edge stays one line thick. */}
             <View style={{ marginBottom: -1 }}>
@@ -6375,7 +6355,7 @@ export default function SettingsScreen() {
 
           {canUseCases ? (
             <>
-              <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Cases</Text>
+              <Text style={{ color: settingsPalette.faint, fontSize: 10, lineHeight: 14, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Cases</Text>
               <View style={mobileSettingsCardStyle}>
                 {/* The last row's divider tucks under the card border so the bottom edge stays one line thick. */}
                 <View style={{ marginBottom: -1 }}>
@@ -6404,7 +6384,7 @@ export default function SettingsScreen() {
             </>
           ) : null}
 
-          <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Inventory</Text>
+          <Text style={{ color: settingsPalette.faint, fontSize: 10, lineHeight: 14, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Inventory</Text>
           <View style={mobileSettingsCardStyle}>
             {/* The last row's divider tucks under the card border so the bottom edge stays one line thick. */}
             <View style={{ marginBottom: -1 }}>
@@ -6455,7 +6435,7 @@ export default function SettingsScreen() {
             </View>
           </View>
 
-          <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Appearance</Text>
+          <Text style={{ color: settingsPalette.faint, fontSize: 10, lineHeight: 14, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Appearance</Text>
           <View
             style={{
               padding: 16,
@@ -6466,7 +6446,7 @@ export default function SettingsScreen() {
             }}
           >
             <View style={{ marginBottom: 14 }}>
-              <Text style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '700' }}>
+              <Text style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '500' }}>
                 Workspace theme
               </Text>
               <Text style={{ color: settingsPalette.faint, fontSize: 12, marginTop: 3 }}>
@@ -6507,7 +6487,7 @@ export default function SettingsScreen() {
 
           {((Platform.OS === 'web' && notifPermission !== null) || currentUser?.role === 'admin' || canUseOrderAutomation) && (
           <>
-          <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Notifications</Text>
+          <Text style={{ color: settingsPalette.faint, fontSize: 10, lineHeight: 14, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>Notifications</Text>
           <View style={mobileSettingsCardStyle}>
             {/* The last row's divider tucks under the card border so the bottom edge stays one line thick. */}
             <View style={{ marginBottom: -1 }}>
@@ -6585,7 +6565,7 @@ export default function SettingsScreen() {
           </>
           )}
 
-          <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>System</Text>
+          <Text style={{ color: settingsPalette.faint, fontSize: 10, lineHeight: 14, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>System</Text>
           <View style={mobileSettingsCardStyle}>
             {/* The last row's divider tucks under the card border so the bottom edge stays one line thick. */}
             <View style={{ marginBottom: -1 }}>
@@ -6640,7 +6620,7 @@ export default function SettingsScreen() {
             </Text>
           )}
 
-          <Text style={{ color: settingsPalette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>About</Text>
+          <Text style={{ color: settingsPalette.faint, fontSize: 10, lineHeight: 14, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginTop: 22, marginBottom: 10, marginLeft: 8 }}>About</Text>
           <View style={mobileSettingsCardStyle}>
             {/* The last row's divider tucks under the card border so the bottom edge stays one line thick. */}
             <View style={{ marginBottom: -1 }}>

@@ -7,3 +7,9 @@ export const capitalizeDisplayLabel = (value: string) => value
 export const formatPersonName = (value?: string | null) => (value ?? '')
   .trim()
   .replace(/(^|[\s\-'’])(\p{Ll})/gu, (_match, lead: string, letter: string) => `${lead}${letter.toUpperCase()}`);
+
+// Raises only the first character for display ("small" -> "Small"). Display-only: stored values are never changed.
+export const capitalizeFirstLetter = (value?: string | null) => {
+  const text = (value ?? '').trim();
+  return text ? `${text.charAt(0).toUpperCase()}${text.slice(1)}` : '';
+};

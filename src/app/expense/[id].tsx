@@ -9,6 +9,8 @@ import useAuthStore from '@/lib/state/auth-store';
 import { useStatsColors } from '@/lib/theme';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { openAttachmentPath } from '@/lib/storage-attachments';
+import { MoneyText, usePaymentsPalette } from '@/components/payments/payments-ui';
+import { findExpenseRequest, getExpenseActivity, getExpenseSubmitter } from '@/lib/expense-activity';
 
 // ── helpers (duplicated from finance.tsx to keep this file self-contained) ──
 
@@ -149,6 +151,7 @@ const capitalizeDisplayValue = (value: string): string => {
 export default function ExpenseDetailScreen() {
   const router = useRouter();
   const colors = useStatsColors();
+  const palette = usePaymentsPalette();
   const insets = useSafeAreaInsets();
   const { isDesktop } = useBreakpoint();
   const isWebDesktop = Platform.OS === 'web' && isDesktop;
@@ -160,7 +163,13 @@ export default function ExpenseDetailScreen() {
   const deleteExpense = useFyllStore((s) => s.deleteExpense);
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
 
+  const expenseRequests = useFyllStore((s) => s.expenseRequests);
+
   const expense = useMemo(() => expenses.find((e) => e.id === id) ?? null, [expenses, id]);
+  // The request this expense came from (if a team member asked for it), for "Submitted by" and the Activity list.
+  const expenseRequest = useMemo(() => (expense ? findExpenseRequest(expense, expenseRequests ?? []) : null), [expense, expenseRequests]);
+  const submittedBy = useMemo(() => (expense ? getExpenseSubmitter(expense, expenseRequest) : ''), [expense, expenseRequest]);
+  const activity = useMemo(() => (expense ? getExpenseActivity(expense, expenseRequest) : []), [expense, expenseRequest]);
 
   const expenseType = useMemo(() => expense ? inferExpenseType(expense) : 'one-time', [expense]);
   const merchant = useMemo(() => extractMetadataValue(expense?.description, 'merchant') ?? '', [expense]);
@@ -251,10 +260,10 @@ export default function ExpenseDetailScreen() {
 
   if (!expense) {
     return (
-      <View className="flex-1 items-center justify-center" style={{ backgroundColor: colors.bg.screen }}>
-        <Text style={{ color: colors.text.muted }} className="text-base">Expense not found</Text>
-        <Pressable onPress={() => router.back()} className="mt-4 rounded-xl px-6 py-3" style={{ backgroundColor: colors.bg.input }}>
-          <Text style={{ color: colors.text.primary }} className="font-semibold">Go Back</Text>
+      <View className="flex-1 items-center justify-center" style={{ backgroundColor: palette.page }}>
+        <Text style={{ color: palette.faint }} className="text-base">Expense not found</Text>
+        <Pressable onPress={() => router.back()} className="mt-4 rounded-xl px-6 py-3" style={{ backgroundColor: palette.softFill }}>
+          <Text style={{ color: palette.text }} className="font-semibold">Go Back</Text>
         </Pressable>
       </View>
     );
@@ -271,45 +280,45 @@ export default function ExpenseDetailScreen() {
         ? { label: 'Paid', bg: 'rgba(16,185,129,0.12)', text: '#10B981' }
         : null;
   const expenseHeroCard = (
-    <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, overflow: 'hidden' }}>
-      <View style={{ padding: isWebDesktop ? 24 : 20, borderBottomWidth: 1, borderBottomColor: colors.divider }}>
+    <View style={{ borderRadius: 26, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, overflow: 'hidden' }}>
+      <View style={{ padding: isWebDesktop ? 24 : 20, borderBottomWidth: 1, borderBottomColor: palette.hairline }}>
         <View className="flex-row items-start justify-between" style={{ gap: 12 }}>
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase tracking-wider mb-1">Expense</Text>
-            <Text style={{ color: colors.text.primary, fontSize: isWebDesktop ? 22 : 20, lineHeight: isWebDesktop ? 28 : 26 }} className="font-semibold" numberOfLines={2}>
+            <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1, marginBottom: 4 }}>Expense</Text>
+            <MoneyText style={{ color: palette.text, fontSize: 18, lineHeight: 24 }} numberOfLines={2}>
               {capitalizeDisplayValue(name || expense.category || 'Expense')}
-            </Text>
-            <Text style={{ color: colors.text.secondary, fontSize: isWebDesktop ? 14 : 13, marginTop: 4 }} numberOfLines={1}>
+            </MoneyText>
+            <Text style={{ color: palette.faint, fontSize: 12, marginTop: 4 }} numberOfLines={1}>
               {capitalizeDisplayValue(merchant || expense.category || 'General')}
             </Text>
           </View>
           <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: typeBadgeColors.bg }}>
-            <Text style={{ color: typeBadgeColors.text, fontSize: 11, fontWeight: '600' }}>{formatExpenseTypeLabel(expenseType)}</Text>
+            <Text style={{ color: typeBadgeColors.text, fontSize: 10, fontWeight: '700', letterSpacing: 0.55, textTransform: 'uppercase' }}>{formatExpenseTypeLabel(expenseType)}</Text>
           </View>
         </View>
-        <Text style={{ color: colors.text.primary, fontSize: isWebDesktop ? 42 : 44, lineHeight: isWebDesktop ? 48 : 48, marginTop: 14 }} className="font-medium">
+        <MoneyText style={{ color: palette.text, fontSize: isWebDesktop ? 40 : 32, lineHeight: isWebDesktop ? 46 : 38, marginTop: 14 }}>
           {formatCurrency(expense.amount)}
-        </Text>
+        </MoneyText>
         <View className="flex-row items-center flex-wrap" style={{ gap: 8, marginTop: 8 }}>
-          <Text style={{ color: colors.text.secondary, fontSize: isWebDesktop ? 13 : 12 }}>Paid on {date}</Text>
+          <Text style={{ color: palette.faint, fontSize: 12 }}>Paid on {date}</Text>
           {statusBadge ? (
             <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: statusBadge.bg }}>
-              <Text style={{ color: statusBadge.text, fontSize: 11, fontWeight: '600' }}>{statusBadge.label}</Text>
+              <Text style={{ color: statusBadge.text, fontSize: 10, fontWeight: '700', letterSpacing: 0.55, textTransform: 'uppercase' }}>{statusBadge.label}</Text>
             </View>
           ) : null}
         </View>
       </View>
       <View style={{ flexDirection: 'row' }}>
         <View style={{ flex: 1, paddingHorizontal: isWebDesktop ? 24 : 16, paddingVertical: isWebDesktop ? 16 : 14 }}>
-          <Text style={{ color: colors.text.tertiary }} className="text-xs uppercase font-semibold">Merchant</Text>
-          <Text style={{ color: colors.text.primary, fontSize: isWebDesktop ? 16 : 14, fontWeight: '600', marginTop: 4 }} numberOfLines={1}>
+          <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1 }}>Merchant</Text>
+          <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600', marginTop: 4 }} numberOfLines={1}>
             {capitalizeDisplayValue(merchant || 'Not set')}
           </Text>
         </View>
-        <View style={{ width: 1, backgroundColor: colors.divider }} />
+        <View style={{ width: 1, backgroundColor: palette.hairline }} />
         <View style={{ flex: 1, paddingHorizontal: isWebDesktop ? 24 : 16, paddingVertical: isWebDesktop ? 16 : 14 }}>
-          <Text style={{ color: colors.text.tertiary }} className="text-xs uppercase font-semibold">Category</Text>
-          <Text style={{ color: colors.text.primary, fontSize: isWebDesktop ? 16 : 14, fontWeight: '600', marginTop: 4 }} numberOfLines={1}>
+          <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1 }}>Category</Text>
+          <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600', marginTop: 4 }} numberOfLines={1}>
             {capitalizeDisplayValue(expense.category || 'General')}
           </Text>
         </View>
@@ -317,9 +326,9 @@ export default function ExpenseDetailScreen() {
     </View>
   );
   const paymentBreakdownCard = (
-    <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, overflow: 'hidden' }}>
+    <View style={{ borderRadius: 26, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, overflow: 'hidden' }}>
       <View style={{ paddingHorizontal: isWebDesktop ? 24 : 16, paddingTop: isWebDesktop ? 16 : 16, paddingBottom: isWebDesktop ? 16 : 14 }}>
-        <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase tracking-wider">Payment Breakdown</Text>
+        <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1 }}>Payment Breakdown</Text>
       </View>
       <View style={{ paddingHorizontal: isWebDesktop ? 24 : 16, paddingBottom: isWebDesktop ? 16 : 16 }}>
         {lineItems.map((line, i) => (
@@ -329,41 +338,68 @@ export default function ExpenseDetailScreen() {
             style={{
               paddingVertical: isWebDesktop ? 10 : 8,
               borderBottomWidth: i === lineItems.length - 1 ? 0 : 1,
-              borderBottomColor: colors.divider,
+              borderBottomColor: palette.hairline,
             }}
           >
             <View style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
-              <Text numberOfLines={1} style={{ color: i === 0 ? colors.text.primary : colors.text.secondary }} className="text-sm font-medium">{line.label}</Text>
-              <Text numberOfLines={1} style={{ color: colors.text.muted, fontSize: 12, marginTop: 2 }}>{capitalizeDisplayValue(line.category)}</Text>
+              <Text numberOfLines={1} style={{ color: i === 0 ? palette.text : palette.muted, fontSize: 12, fontWeight: '500' }}>{line.label}</Text>
+              <Text numberOfLines={1} style={{ color: palette.faint, fontSize: 10, marginTop: 2 }}>{capitalizeDisplayValue(line.category)}</Text>
             </View>
-            <Text style={{ color: colors.text.primary, fontSize: isWebDesktop ? 15 : 14 }} className="font-semibold">{formatCurrency(line.amount)}</Text>
+            <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }}>{formatCurrency(line.amount)}</Text>
           </View>
         ))}
-        <View className="flex-row items-center justify-between mt-3 pt-3" style={{ borderTopWidth: isWebDesktop ? 2 : 1, borderTopColor: colors.divider }}>
-          <Text style={{ color: colors.text.primary }} className="text-base font-bold">Total Logged</Text>
-          <Text style={{ color: colors.text.primary, fontSize: isWebDesktop ? 18 : 16 }} className="font-medium">{formatCurrency(expense.amount)}</Text>
+        <View className="flex-row items-center justify-between mt-3 pt-3" style={{ borderTopWidth: 1, borderTopColor: palette.hairline }}>
+          <Text style={{ color: palette.text, fontSize: 14, fontWeight: '700' }}>Total Logged</Text>
+          <MoneyText style={{ color: palette.text, fontSize: 16 }}>{formatCurrency(expense.amount)}</MoneyText>
         </View>
       </View>
     </View>
   );
 
+  const activityCard = activity.length > 0 ? (
+    <View style={{ borderRadius: 26, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 16 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1 }}>Activity</Text>
+        <Text style={{ color: palette.faint, fontSize: 12 }}>{activity.length} {activity.length === 1 ? 'event' : 'events'}</Text>
+      </View>
+      <View style={{ gap: 14 }}>
+        {activity.map((entry, index) => (
+          <View key={`${entry.label}-${entry.at}-${index}`} style={{ flexDirection: 'row', gap: 12 }}>
+            <View style={{ alignItems: 'center' }}>
+              <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: index === 0 ? palette.limeOnSurface : palette.outline, marginTop: 4 }} />
+              {index < activity.length - 1 ? (
+                <View style={{ width: 1, flex: 1, backgroundColor: palette.hairline, marginTop: 6, minHeight: 28 }} />
+              ) : null}
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={{ color: palette.text, fontSize: 10, lineHeight: 15, fontWeight: '600' }}>{entry.label}</Text>
+              <Text style={{ color: palette.faint, fontSize: 10, marginTop: 2 }}>
+                {entry.actorName} · {new Date(entry.at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+              </Text>
+            </View>
+          </View>
+        ))}
+      </View>
+    </View>
+  ) : null;
+
   return (
-    <View className="flex-1" style={{ backgroundColor: colors.bg.screen }}>
+    <View className="flex-1" style={{ backgroundColor: palette.page }}>
       {/* Delete confirmation modal */}
       <Modal visible={showDeleteConfirm} transparent animationType="fade" onRequestClose={() => setShowDeleteConfirm(false)}>
         <Pressable className="flex-1 items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }} onPress={() => setShowDeleteConfirm(false)}>
-          <Pressable onPress={(e) => e.stopPropagation()} style={{ width: 300, borderRadius: 20, backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.divider, padding: 24, alignItems: 'center' }}>
+          <Pressable onPress={(e) => e.stopPropagation()} style={{ width: 300, borderRadius: 28, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, padding: 24, alignItems: 'center' }}>
             <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: 'rgba(239,68,68,0.12)', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
               <Trash2 size={22} color="#EF4444" strokeWidth={2} />
             </View>
-            <Text style={{ color: colors.text.primary, fontSize: 17, fontWeight: '700', marginBottom: 6 }}>Delete Expense?</Text>
-            <Text style={{ color: colors.text.muted, fontSize: 14, textAlign: 'center', marginBottom: 22 }}>This action cannot be undone.</Text>
+            <MoneyText style={{ color: palette.text, fontSize: 18, marginBottom: 6 }}>Delete Expense?</MoneyText>
+            <Text style={{ color: palette.faint, fontSize: 12, textAlign: 'center', marginBottom: 22 }}>This action cannot be undone.</Text>
             <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
-              <Pressable onPress={() => setShowDeleteConfirm(false)} style={{ flex: 1, height: 44, borderRadius: 22, borderWidth: 1, borderColor: colors.divider, alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ color: colors.text.secondary, fontWeight: '600' }}>Cancel</Text>
+              <Pressable onPress={() => setShowDeleteConfirm(false)} style={{ flex: 1, height: 46, borderRadius: 23, borderWidth: 1, borderColor: palette.outline, alignItems: 'center', justifyContent: 'center' }}>
+                <MoneyText style={{ color: palette.text, fontSize: 14 }}>Cancel</MoneyText>
               </Pressable>
-              <Pressable onPress={handleDelete} style={{ flex: 1, height: 44, borderRadius: 22, backgroundColor: '#EF4444', alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ color: '#FFFFFF', fontWeight: '700' }}>Delete</Text>
+              <Pressable onPress={handleDelete} style={{ flex: 1, height: 46, borderRadius: 23, backgroundColor: palette.danger, alignItems: 'center', justifyContent: 'center' }}>
+                <MoneyText style={{ color: '#FFFFFF', fontSize: 14 }}>Delete</MoneyText>
               </Pressable>
             </View>
           </Pressable>
@@ -378,27 +414,27 @@ export default function ExpenseDetailScreen() {
             paddingTop: isWebDesktop ? 14 : 24,
             paddingBottom: isWebDesktop ? 14 : 16,
             borderBottomWidth: 1,
-            borderBottomColor: colors.divider,
+            borderBottomColor: palette.hairline,
           }}
         >
           <Pressable onPress={() => router.back()} className="flex-row items-center" style={{ gap: 10 }}>
-            <ArrowLeft size={22} color={colors.text.primary} strokeWidth={2} />
-            <Text style={{ color: colors.text.primary }} className="text-lg font-bold">Expense Details</Text>
+            <ArrowLeft size={22} color={palette.text} strokeWidth={2} />
+            <MoneyText style={{ color: palette.text, fontSize: 20, lineHeight: 26 }}>Expense Details</MoneyText>
           </Pressable>
           <View className="flex-row items-center" style={{ gap: 8 }}>
             <Pressable
               onPress={handleEdit}
               className="rounded-full flex-row items-center px-4"
-              style={{ height: 38, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, gap: 6 }}
+              style={{ height: 40, borderWidth: 1, borderColor: palette.outline, backgroundColor: palette.card, gap: 6 }}
             >
-              <Pencil size={14} color={colors.text.secondary} strokeWidth={2} />
-              <Text style={{ color: colors.text.secondary }} className="font-semibold text-sm">Edit</Text>
+              <Pencil size={14} color={palette.muted} strokeWidth={2} />
+              <MoneyText style={{ color: palette.text, fontSize: 14 }}>Edit</MoneyText>
             </Pressable>
             <Pressable
               onPress={() => setShowDeleteConfirm(true)}
-              style={{ width: 38, height: 38, borderRadius: 19, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, alignItems: 'center', justifyContent: 'center' }}
+              style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: palette.softFill, alignItems: 'center', justifyContent: 'center' }}
             >
-              <MoreVertical size={18} color={colors.text.secondary} strokeWidth={2} />
+              <MoreVertical size={18} color={palette.muted} strokeWidth={2} />
             </Pressable>
           </View>
         </View>
@@ -425,20 +461,20 @@ export default function ExpenseDetailScreen() {
 
                 {/* Receipts */}
                 {receipts.length > 0 ? (
-                  <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, overflow: 'hidden', marginTop: 16 }}>
+                  <View style={{ borderRadius: 26, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, overflow: 'hidden', marginTop: 16 }}>
                     <View className="px-6 pt-4 pb-3">
-                      <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase tracking-wider">Receipts & Evidence</Text>
+                      <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1 }}>Receipts & Evidence</Text>
                     </View>
                     {receipts.map((r) => (
-                      <Pressable key={r.id} onPress={() => { void handleOpenReceipt(r.storagePath); }} className="flex-row items-center px-6 py-3" style={{ borderTopWidth: 1, borderTopColor: colors.divider }}>
-                        <View className="rounded-xl items-center justify-center" style={{ width: 48, height: 48, backgroundColor: colors.bg.input, borderWidth: 1, borderColor: colors.divider }}>
-                          <FileText size={20} color={colors.text.tertiary} strokeWidth={2} />
+                      <Pressable key={r.id} onPress={() => { void handleOpenReceipt(r.storagePath); }} className="flex-row items-center px-6 py-3" style={{ borderTopWidth: 1, borderTopColor: palette.hairline }}>
+                        <View className="items-center justify-center" style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: palette.nudgeBg }}>
+                          <FileText size={20} color={palette.faint} strokeWidth={2} />
                         </View>
                         <View style={{ flex: 1, minWidth: 0, marginLeft: 12 }}>
-                          <Text style={{ color: colors.text.primary }} className="text-sm font-semibold" numberOfLines={1}>{r.fileName}</Text>
-                          <Text style={{ color: colors.text.muted }} className="text-xs mt-0.5">Click to view receipt</Text>
+                          <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>{r.fileName}</Text>
+                          <Text style={{ color: palette.faint, fontSize: 10, marginTop: 2 }}>Click to view receipt</Text>
                         </View>
-                        <Download size={18} color={colors.text.tertiary} strokeWidth={2} />
+                        <Download size={18} color={palette.faint} strokeWidth={2} />
                       </Pressable>
                     ))}
                   </View>
@@ -447,14 +483,15 @@ export default function ExpenseDetailScreen() {
 
               {/* Right Column (metadata) */}
               <View style={{ flex: 1 }}>
-                <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, padding: 20 }}>
+                <View style={{ borderRadius: 26, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, padding: 20 }}>
                   <View className="mb-1">
-                    <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase tracking-wider">Details</Text>
+                    <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1 }}>Details</Text>
                   </View>
                   {[
                     { label: 'Supplier / Merchant', value: merchant || '-' },
                     { label: 'Primary Category', value: expense.category || 'General' },
                     { label: 'Expense Type', value: formatExpenseTypeLabel(expenseType) },
+                    { label: 'Submitted by', value: submittedBy || '-' },
                     { label: 'Date', value: date || '-' },
                     { label: 'Created', value: createdAt || '-' },
                   ].map((row, index) => (
@@ -467,12 +504,12 @@ export default function ExpenseDetailScreen() {
                         paddingTop: index === 0 ? 0 : 14,
                         marginTop: index === 0 ? 0 : 14,
                         borderTopWidth: index === 0 ? 0 : 1,
-                        borderTopColor: colors.divider,
+                        borderTopColor: palette.hairline,
                       }}
                     >
-                      <Text style={{ color: colors.text.secondary, fontSize: 14 }}>{row.label}</Text>
+                      <Text style={{ color: palette.faint, fontSize: 12 }}>{row.label}</Text>
                       <Text
-                        style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600', flex: 1, textAlign: 'right', marginLeft: 20 }}
+                        style={{ color: palette.text, fontSize: 12, fontWeight: '600', flex: 1, textAlign: 'right', marginLeft: 20 }}
                       >
                         {row.value}
                       </Text>
@@ -481,14 +518,16 @@ export default function ExpenseDetailScreen() {
                 </View>
 
                 {/* Notes */}
-                <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, overflow: 'hidden', marginTop: 16 }}>
+                <View style={{ borderRadius: 26, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, overflow: 'hidden', marginTop: 16 }}>
                   <View className="px-5 pt-4 pb-3">
-                    <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase tracking-wider">Notes</Text>
+                    <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1 }}>Notes</Text>
                   </View>
                   <View className="px-5 pb-4">
-                    <Text style={{ color: colors.text.primary, lineHeight: 22 }} className="text-sm">{note || 'No notes added.'}</Text>
+                    <Text style={{ color: note ? palette.text : palette.faint, fontSize: 12, lineHeight: 18 }}>{note || 'No notes added.'}</Text>
                   </View>
                 </View>
+
+                {activityCard ? <View style={{ marginTop: 16 }}>{activityCard}</View> : null}
               </View>
             </View>
           ) : (
@@ -498,14 +537,15 @@ export default function ExpenseDetailScreen() {
               {paymentBreakdownCard}
 
               {/* Metadata */}
-              <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, padding: 16 }}>
-                <Text style={{ color: colors.text.tertiary }} className="text-xs uppercase font-semibold mb-3">Details</Text>
+              <View style={{ borderRadius: 26, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, padding: 16 }}>
+                <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1, marginBottom: 12 }}>Details</Text>
                 {[
-                  { label: 'Supplier / Merchant', value: merchant || '-', icon: <User size={13} color={colors.text.tertiary} strokeWidth={2} /> },
-                  { label: 'Primary Category', value: expense.category || 'General', icon: <Tag size={13} color={colors.text.tertiary} strokeWidth={2} /> },
-                  { label: 'Expense Type', value: formatExpenseTypeLabel(expenseType), icon: <Receipt size={13} color={colors.text.tertiary} strokeWidth={2} /> },
-                  { label: 'Date', value: date || '-', icon: <Calendar size={13} color={colors.text.tertiary} strokeWidth={2} /> },
-                  { label: 'Created', value: createdAt || '-', icon: <Clock size={13} color={colors.text.tertiary} strokeWidth={2} /> },
+                  { label: 'Supplier / Merchant', value: merchant || '-', icon: <User size={13} color={palette.faint} strokeWidth={2} /> },
+                  { label: 'Primary Category', value: expense.category || 'General', icon: <Tag size={13} color={palette.faint} strokeWidth={2} /> },
+                  { label: 'Expense Type', value: formatExpenseTypeLabel(expenseType), icon: <Receipt size={13} color={palette.faint} strokeWidth={2} /> },
+                  { label: 'Submitted by', value: submittedBy || '-', icon: <User size={13} color={palette.faint} strokeWidth={2} /> },
+                  { label: 'Date', value: date || '-', icon: <Calendar size={13} color={palette.faint} strokeWidth={2} /> },
+                  { label: 'Created', value: createdAt || '-', icon: <Clock size={13} color={palette.faint} strokeWidth={2} /> },
                 ].map((row, index) => (
                   <View
                     key={row.label}
@@ -519,10 +559,10 @@ export default function ExpenseDetailScreen() {
                   >
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                       {row.icon}
-                      <Text style={{ color: colors.text.secondary, fontSize: 12 }}>{row.label}</Text>
+                      <Text style={{ color: palette.faint, fontSize: 12 }}>{row.label}</Text>
                     </View>
                     <Text
-                      style={{ color: colors.text.primary, fontSize: 12, fontWeight: '600', flex: 1, textAlign: 'right', marginLeft: 16 }}
+                      style={{ color: palette.text, fontSize: 12, fontWeight: '600', flex: 1, textAlign: 'right', marginLeft: 16 }}
                     >
                       {capitalizeDisplayValue(row.value)}
                     </Text>
@@ -532,9 +572,9 @@ export default function ExpenseDetailScreen() {
 
               {/* Notes */}
               {note ? (
-                <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, padding: 16 }}>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs uppercase font-semibold mb-1">Notes</Text>
-                  <Text style={{ color: colors.text.primary }} className="text-sm">{note}</Text>
+                <View style={{ borderRadius: 26, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, padding: 16 }}>
+                  <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1, marginBottom: 4 }}>Notes</Text>
+                  <Text style={{ color: palette.text, fontSize: 12, lineHeight: 18 }}>{note}</Text>
                 </View>
               ) : null}
 
@@ -542,18 +582,20 @@ export default function ExpenseDetailScreen() {
               {receipts.length > 0 ? (
                 <View style={{ gap: 10 }}>
                   {receipts.map((r) => (
-                    <Pressable key={r.id} onPress={() => { void handleOpenReceipt(r.storagePath); }} style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', alignItems: 'center' }}>
-                      <View className="rounded-xl items-center justify-center" style={{ width: 42, height: 42, backgroundColor: colors.bg.input, borderWidth: 1, borderColor: colors.divider }}>
-                        <Receipt size={18} color={colors.text.tertiary} strokeWidth={2} />
+                    <Pressable key={r.id} onPress={() => { void handleOpenReceipt(r.storagePath); }} style={{ borderRadius: 26, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', alignItems: 'center' }}>
+                      <View className="items-center justify-center" style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: palette.nudgeBg }}>
+                        <Receipt size={18} color={palette.faint} strokeWidth={2} />
                       </View>
                       <View style={{ flex: 1, minWidth: 0, marginLeft: 10 }}>
-                        <Text style={{ color: colors.text.primary }} className="text-base font-semibold" numberOfLines={1}>{r.fileName}</Text>
-                        <Text style={{ color: colors.text.secondary }} className="text-sm" numberOfLines={1}>Tap to view receipt</Text>
+                        <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>{r.fileName}</Text>
+                        <Text style={{ color: palette.faint, fontSize: 10, marginTop: 2 }} numberOfLines={1}>Tap to view receipt</Text>
                       </View>
                     </Pressable>
                   ))}
                 </View>
               ) : null}
+
+              {activityCard}
             </View>
           )}
         </ScrollView>

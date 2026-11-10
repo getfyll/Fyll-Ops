@@ -79,13 +79,13 @@ export const getInitials = (name: string) => {
   return parts.slice(0, 2).map((part) => part.charAt(0).toUpperCase()).join('');
 };
 
-export function StatusDot({ tone, label, palette }: { tone: StatusTone; label: string; palette: PaymentsPalette }) {
+export function StatusDot({ tone, label, palette, fontSize }: { tone: StatusTone; label: string; palette: PaymentsPalette; fontSize?: number }) {
   const { ink, dot } = palette.tones[tone];
   const fs = useMobileFont();
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, flexShrink: 0 }}>
       <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: dot }} />
-      <Text style={{ color: ink, fontSize: fs(12.5), fontWeight: '600' }} numberOfLines={1}>{label}</Text>
+      <Text style={{ color: ink, fontSize: fontSize ?? fs(12.5), fontWeight: '600' }} numberOfLines={1}>{label}</Text>
     </View>
   );
 }

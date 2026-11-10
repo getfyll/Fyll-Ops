@@ -1,3 +1,4 @@
+import { capitalizeFirstLetter } from '@/lib/display-format';
 import React, { useState } from 'react';
 import { View, Text, ScrollView, Pressable, TextInput, Alert, KeyboardAvoidingView, Platform, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -210,7 +211,6 @@ export default function ProductOptionsScreen() {
     <View style={panelStyles.outer}>
       <View style={panelStyles.inner}>
       <SafeAreaView className="flex-1" edges={['top']} style={{ backgroundColor: settingsPalette.page }}>
-        {!isDesktop ? <LinearGradient pointerEvents="none" colors={resolvedThemeMode === 'dark' ? ['rgba(111,125,18,0.55)', 'rgba(20,20,20,0)'] : ['rgba(213,224,87,0.42)', 'rgba(244,243,235,0)']} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 360 }} /> : null}
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           className="flex-1"
@@ -270,7 +270,7 @@ export default function ProductOptionsScreen() {
                           {getOptionIcon(option.name)}
                         </View>
                         <View style={{ flex: 1, minWidth: 0 }}>
-                          <Text style={{ color: settingsPalette.text, fontSize: 12, fontWeight: '500' }} numberOfLines={1}>{option.name}</Text>
+                          <Text style={{ color: settingsPalette.text, fontSize: 12, fontWeight: '500' }} numberOfLines={1}>{capitalizeFirstLetter(option.name)}</Text>
                           <Text style={{ color: colors.text.muted }} className="text-xs">
                             {option.values.length} value{option.values.length !== 1 ? 's' : ''} · reusable
                           </Text>
@@ -344,7 +344,7 @@ export default function ProductOptionsScreen() {
                                   className="flex-row items-center justify-between rounded-xl px-4"
                                   style={{ backgroundColor: settingsPalette.inset, borderWidth: 1, borderColor: settingsPalette.border, height: 48 }}
                                 >
-                                  <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '500' }}>{value}</Text>
+                                  <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '500' }}>{capitalizeFirstLetter(value)}</Text>
                                   <View className="flex-row items-center gap-1">
                                     <Pressable
                                       onPress={() => startEditingValue(option.id, value)}

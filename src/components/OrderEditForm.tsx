@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { isPickupOrder } from '@/lib/pickup';
 import { View, Text, ScrollView, Pressable, TextInput, KeyboardAvoidingView, Modal, Platform, Switch, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { X, Plus, Minus, Trash2, ChevronDown, Check, Search, Package, User as UserIcon, Users, Calendar, ChevronLeft, ChevronRight, Pencil, Clock3, ArrowLeft } from 'lucide-react-native';
@@ -338,11 +339,11 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
         orderTypeId,
         orderTypeName: order?.orderTypeName,
         deliveryState,
-        fulfillmentMethod: order?.fulfillmentMethod,
+        fulfillmentMethod: isPickupOrder(order) ? 'pickup' : order?.fulfillmentMethod,
       },
       orderTimelineSettings
     )
-  ), [deliveryState, order?.fulfillmentMethod, order?.orderTypeName, orderTimelineSettings, orderTypeId]);
+  ), [deliveryState, order?.fulfillmentMethod, order?.fulfillmentType, order?.shippingOptionId, order?.orderTypeName, orderTimelineSettings, orderTypeId]);
 
   const orderTimelinePreviewDate = useMemo(() => {
     const baseDate = orderDateType === 'today' ? new Date() : selectedDate;
@@ -826,7 +827,7 @@ export function OrderEditForm({ orderId, showHeader = true, onClose }: OrderEdit
           orderTypeId,
           orderTypeName: order.orderTypeName,
           deliveryState,
-          fulfillmentMethod: order.fulfillmentMethod,
+          fulfillmentMethod: isPickupOrder(order) ? 'pickup' : order.fulfillmentMethod,
         },
         orderTimelineSettings
       );

@@ -234,7 +234,6 @@ export default function ImportProductsScreen() {
     <View style={panelStyles.outer}>
       <View style={panelStyles.inner}>
     <SafeAreaView style={{ flex: 1, backgroundColor: settingsPalette.page }}>
-      {!isDesktop ? <LinearGradient pointerEvents="none" colors={resolvedThemeMode === 'dark' ? ['rgba(111,125,18,0.55)', 'rgba(20,20,20,0)'] : ['rgba(213,224,87,0.42)', 'rgba(244,243,235,0)']} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 360 }} /> : null}
       <InternalSettingsHeader title="Import Products" description="Upload, preview, and import product records from a CSV file." isDesktop={isDesktop} onBack={goBack} />
 
       <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 18, paddingBottom: isDesktop ? 64 : tabBarHeight + 40 }} showsVerticalScrollIndicator={false}>
@@ -246,7 +245,7 @@ export default function ImportProductsScreen() {
             isDesktop={isDesktop}
           />
 
-          {!rows.length && !summary ? <View className="rounded-3xl p-5 mb-6" style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}><Text style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '700', marginBottom: 7 }}>CSV format</Text><Text style={{ color: settingsPalette.muted, fontSize: 12.5, lineHeight: 19 }}>Include product_name and color columns. Category is optional. Rows with the same product name become colour variants of one product.</Text></View> : null}
+          {!rows.length && !summary ? <View className="rounded-3xl p-5 mb-6" style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}><Text style={{ color: settingsPalette.text, fontSize: 14, lineHeight: 20, fontWeight: '600', marginBottom: 7 }}>CSV format</Text><Text style={{ color: settingsPalette.muted, fontSize: 12, lineHeight: 18 }}>Include product_name and color columns. Category is optional. Rows with the same product name become colour variants of one product.</Text></View> : null}
 
           {!summary ? <Pressable
             onPress={handlePickFile}
@@ -262,7 +261,7 @@ export default function ImportProductsScreen() {
 
           {rows.length > 0 && (
             <View className="rounded-3xl overflow-hidden mb-5" style={{ backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}>
-              <Text style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '700', padding: 16, borderBottomWidth: 1, borderBottomColor: settingsPalette.hairline }}>Preview</Text>
+              <Text style={{ color: settingsPalette.text, fontSize: 14, lineHeight: 20, fontWeight: '600', padding: 16, borderBottomWidth: 1, borderBottomColor: settingsPalette.hairline }}>Preview</Text>
               {preview.map((row, index) => (
                 <View key={`${row.name}-${row.color}-${index}`} className="px-4 py-3" style={{ borderBottomWidth: 1, borderBottomColor: settingsPalette.hairline }}>
                   <Text style={{ color: settingsPalette.textSoft, fontSize: 12, fontWeight: '500' }}>

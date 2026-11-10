@@ -5,6 +5,9 @@ import { supabase } from "@/lib/supabase";
 import { storage } from "@/lib/storage";
 import { supabaseData } from "@/lib/supabase/data";
 import { supabaseSettings } from "@/lib/supabase/settings";
+import { isPickupOrder, type PickupSettings } from "@/lib/pickup";
+import { initialRefundActivityLog, nextRefundActivityLog, type RefundActivityEntry } from "@/lib/refund-activity";
+import { CURRENCIES, getActiveCurrency, type CurrencyCode, type CurrencySettings } from "@/lib/locale";
 import { capitalizeDisplayLabel } from "@/lib/display-format";
 import { findOrderTrackingStageByName, sanitizeOrderStatus, sanitizeOrderStatuses, type OrderTrackingStage } from "@/lib/order-status";
 import { buildCancelledOrderInventoryUpdate } from '@/lib/order-cancellation';
@@ -163,26 +166,16 @@ export interface Product {
   archivedAt?: string; // Auto-set when isArchived is first toggled ON
 }
 
-// Currency settings
-export type CurrencyCode = 'NGN' | 'USD' | 'EUR' | 'GBP';
+// Currency settings live in src/lib/locale.ts (chosen per business in Settings).
+export { CURRENCIES, type CurrencyCode, type CurrencySettings };
 
-export interface CurrencySettings {
-  code: CurrencyCode;
-  symbol: string;
-  name: string;
-}
-
-export const CURRENCIES: Record<CurrencyCode, CurrencySettings> = {
-  NGN: { code: 'NGN', symbol: '₦', name: 'Nigerian Naira' },
-  USD: { code: 'USD', symbol: '$', name: 'US Dollar' },
-  EUR: { code: 'EUR', symbol: '€', name: 'Euro' },
-  GBP: { code: 'GBP', symbol: '£', name: 'British Pound' },
-};
-
-export const formatCurrency = (amount: number | null | undefined, currencyCode: CurrencyCode = 'NGN'): string => {
-  const currency = CURRENCIES[currencyCode];
+export const formatCurrency = (amount: number | null | undefined, currencyCode?: CurrencyCode): string => {
+  const code = currencyCode ?? getActiveCurrency();
+  const currency = CURRENCIES[code];
   const safeAmount = typeof amount === 'number' && Number.isFinite(amount) ? amount : 0;
-  return `${currency.symbol}${safeAmount.toLocaleString()}`;
+  // Naira keeps the existing whole-number look; other currencies show cents.
+  if (code === 'NGN') return `${currency.symbol}${safeAmount.toLocaleString()}`;
+  return `${currency.symbol}${safeAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
 // Custom Service for orders
@@ -417,6 +410,12 @@ export interface Order {
   deliveryAddress: string;
   // 'pickup' = the customer collects the order (no delivery address or fee). Missing means delivery.
   fulfillmentMethod?: 'delivery' | 'pickup';
+  // The Fyll Store marks a pickup order with these two instead (and the Store's database trigger fills pickupDetails).
+  // Ops writes all three on a pickup order; read them through isPickupOrder() in src/lib/pickup.ts, never one by one.
+  fulfillmentType?: 'delivery' | 'pickup';
+  shippingOptionId?: string;
+  // Snapshot of the pickup settings when the order was placed: where, who to contact and when to collect.
+  pickupDetails?: PickupSettings;
   items: OrderItem[];
   services: OrderService[];
   additionalCharges: number;
@@ -743,6 +742,9 @@ export interface RefundRequest {
   attachments?: RefundRequestAttachment[];
   proofAttachments?: RefundRequestAttachment[];
   source?: 'order' | 'finance';
+  // The case this refund was raised from (set when a refund request is created from a case).
+  caseId?: string;
+  caseNumber?: string;
   submittedByUserId: string;
   submittedByName?: string;
   submittedAt?: string;
@@ -762,6 +764,9 @@ export interface RefundRequest {
   voidedByUserId?: string;
   voidedByName?: string;
   voidReason?: string;
+  // Who did what and when, recorded on every save (see src/lib/refund-activity.ts). Refunds made before this existed
+  // have no log; their activity is rebuilt from the dates above.
+  activityLog?: RefundActivityEntry[];
   createdAt: string;
   updatedAt?: string;
 }
@@ -773,6 +778,9 @@ export interface OrderStatus {
   order: number;
   trackingStage?: OrderTrackingStage;
   wooCommerceStatusSlug?: string;
+  // Missing means the status is for every order. 'pickup' / 'delivery' limit it to that kind of order in the status
+  // pickers (for example "Ready for pickup" is pickup only). An order already on a status always still shows it.
+  appliesTo?: 'delivery' | 'pickup';
 }
 
 export interface SaleSource {
@@ -1580,6 +1588,19 @@ const initialProductOptions: ProductOption[] = [];
 
 const initialExpenseRequests: ExpenseRequest[] = [];
 const initialRefundRequests: RefundRequest[] = [];
+
+// The name of whoever is signed in, for the refund Activity list. Read when needed (not imported at the top) so this
+// store never depends on the auth store being loaded first.
+const getCurrentActorName = (): string => {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const authModule = require('@/lib/state/auth-store') as { default: { getState: () => { currentUser?: { name?: string; email?: string } | null } } };
+    const user = authModule.default.getState().currentUser;
+    return user?.name?.trim() || user?.email?.trim() || 'Team Member';
+  } catch {
+    return 'Team Member';
+  }
+};
 
 const initialCategories: string[] = [];
 
@@ -3129,9 +3150,12 @@ const useFyllStore = create<FyllStore>()(
           const normalized = status?.trim().toLowerCase();
           return normalized === 'delivery confirmation';
         };
+        // Pickup orders are collected, so nothing is ever delivered to the customer to confirm.
+        const isPickupOrderUpdate = isPickupOrder({ ...(previousOrder ?? {}), ...updates });
         const shouldTryDeliveryConfirmationEmail = Boolean(
           businessId
           && previousOrder
+          && !isPickupOrderUpdate
           && nextStatus
           && nextStatus !== previousOrder.status
           && (
@@ -3143,6 +3167,7 @@ const useFyllStore = create<FyllStore>()(
         const shouldForceDeliveryConfirmationEmail = Boolean(
           businessId
           && previousOrder
+          && !isPickupOrderUpdate
           && updates.deliveryConfirmationRequestedAt
           && updates.deliveryConfirmationRequestedAt !== previousOrder.deliveryConfirmationRequestedAt
           && (
@@ -4011,8 +4036,12 @@ const useFyllStore = create<FyllStore>()(
           deletedExpenseRequestItem ? persistDeletedItemsToSupabase(businessId, [deletedExpenseRequestItem]) : Promise.resolve(),
         ]).catch((error) => console.warn('Supabase expense request delete failed:', error));
       },
-      addRefundRequest: async (request, businessId) => {
+      addRefundRequest: async (initialRequest, businessId) => {
         const previousRefundRequests = get().refundRequests;
+        const now = new Date().toISOString();
+        const request: RefundRequest = initialRequest.activityLog && initialRequest.activityLog.length > 0
+          ? initialRequest
+          : { ...initialRequest, activityLog: initialRefundActivityLog(initialRequest, getCurrentActorName(), now) };
         set({ refundRequests: [...previousRefundRequests, request] });
         if (!businessId) return;
         try {
@@ -4025,11 +4054,15 @@ const useFyllStore = create<FyllStore>()(
       },
       updateRefundRequest: async (id, updates, businessId) => {
         const previousRefundRequests = get().refundRequests;
-        const nextRefundRequests = previousRefundRequests.map((request) => (
-          request.id === id
-            ? { ...request, ...updates, updatedAt: updates.updatedAt ?? new Date().toISOString() }
-            : request
-        ));
+        const nextRefundRequests = previousRefundRequests.map((request) => {
+          if (request.id !== id) return request;
+          const now = new Date().toISOString();
+          const merged: RefundRequest = { ...request, ...updates, updatedAt: updates.updatedAt ?? now };
+          // Record what changed. A caller can still pass its own activityLog to replace this.
+          return updates.activityLog
+            ? merged
+            : { ...merged, activityLog: nextRefundActivityLog(request, merged, getCurrentActorName(), now, (amount) => formatCurrency(amount)) };
+        });
         set({ refundRequests: nextRefundRequests });
         if (!businessId) return;
         const updated = nextRefundRequests.find((request) => request.id === id);

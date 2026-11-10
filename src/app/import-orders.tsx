@@ -634,13 +634,6 @@ export default function ImportOrdersScreen() {
     <View style={panelStyles.outer}>
       <View style={panelStyles.inner}>
         <SafeAreaView className="flex-1" style={{ backgroundColor: settingsPalette.page }} edges={['top']}>
-          {!isDesktop ? (
-            <LinearGradient
-              pointerEvents="none"
-              colors={resolvedThemeMode === 'dark' ? ['rgba(111,125,18,0.55)', 'rgba(20,20,20,0)'] : ['rgba(213,224,87,0.42)', 'rgba(244,243,235,0)']}
-              style={{ position: 'absolute', left: 0, right: 0, top: 0, height: openedFromSettings ? 390 : 300 }}
-            />
-          ) : null}
           <InternalSettingsHeader title="Import Orders" description="Upload, validate, and import order records from a CSV file." isDesktop={isDesktop} onBack={goBack} />
 
           <ScrollView
@@ -662,13 +655,13 @@ export default function ImportOrdersScreen() {
                     <AlertCircle size={19} color={settingsPalette.limeOnSurface} strokeWidth={2} />
                   </View>
                   <View className="flex-1 ml-3">
-                    <Text style={{ color: settingsPalette.text, fontSize: isMobile ? 14 : 15, fontWeight: '600' }} className="mb-2">
+                    <Text style={{ color: settingsPalette.text, fontSize: 14, lineHeight: 20, fontWeight: '600' }} className="mb-2">
                       CSV format requirements
                     </Text>
-                    <Text style={{ color: settingsPalette.muted, fontSize: 12.5 }} className="leading-5 mb-2">
+                    <Text style={{ color: settingsPalette.muted, fontSize: 12 }} className="leading-5 mb-2">
                       Required columns: <Text className="font-bold">customer_name</Text>, <Text className="font-bold">delivery_state</Text>, <Text className="font-bold">delivery_address</Text>, <Text className="font-bold">product_name</Text>, <Text className="font-bold">quantity</Text>.
                     </Text>
-                    <Text style={{ color: settingsPalette.muted, fontSize: 12.5 }} className="leading-5 mb-2">
+                    <Text style={{ color: settingsPalette.muted, fontSize: 12 }} className="leading-5 mb-2">
                       FYLL maps rows by <Text className="font-bold">product_name</Text>. <Text className="font-bold">item_sku</Text> and <Text className="font-bold">item_barcode</Text> are optional for variant matching. <Text className="font-bold">order_number</Text> is optional and FYLL can generate it.
                     </Text>
                     <Text style={{ color: colors.text.tertiary }} className="text-xs mt-2">
@@ -676,10 +669,10 @@ export default function ImportOrdersScreen() {
                     </Text>
                     <Pressable
                       onPress={handleDownloadTemplate}
-                      className="mt-3 px-4 rounded-full self-start items-center justify-center active:opacity-80"
-                      style={{ height: 40, backgroundColor: settingsPalette.inset, borderWidth: 1, borderColor: settingsPalette.outline }}
+                      className="mt-4 px-5 rounded-full self-start items-center justify-center active:opacity-80"
+                      style={{ height: 44, backgroundColor: FYLL_LIME }}
                     >
-                      <MoneyText style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '700' }}>Download CSV template</MoneyText>
+                      <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '700' }}>Download CSV template</MoneyText>
                     </Pressable>
                     {templateNotice ? (
                       <Text style={{ color: colors.text.tertiary }} className="text-xs mt-2">
@@ -756,10 +749,10 @@ export default function ImportOrdersScreen() {
               <View className="mb-5">
                 <View className="flex-row items-center justify-between mb-3">
                   <View>
-                    <Text style={{ color: settingsPalette.text, fontSize: 15, fontWeight: '600' }}>Preview</Text>
+                    <Text style={{ color: settingsPalette.text, fontSize: 14, lineHeight: 20, fontWeight: '600' }}>Preview</Text>
                     <Text style={{ color: settingsPalette.faint, fontSize: 12, marginTop: 2 }}>{fileName} · {preparedOrders.length} orders</Text>
                   </View>
-                  <Pressable onPress={handlePickFile} className="px-4 rounded-full items-center justify-center active:opacity-70" style={{ minHeight: 40, backgroundColor: settingsPalette.inset, borderWidth: 1, borderColor: settingsPalette.outline }}>
+                  <Pressable onPress={handlePickFile} className="px-4 rounded-full items-center justify-center active:opacity-70" style={{ minHeight: 40, backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.outline }}>
                     <MoneyText style={{ color: settingsPalette.text, fontSize: 14, fontWeight: '700' }}>Change file</MoneyText>
                   </Pressable>
                 </View>
@@ -776,7 +769,7 @@ export default function ImportOrdersScreen() {
                   </View>
                 ))}
                 {previewRows.length > preview.length ? (
-                  <View className="p-4 items-center" style={{ backgroundColor: settingsPalette.inset }}><Text style={{ color: settingsPalette.faint, fontSize: 12 }}>+{previewRows.length - preview.length} more rows</Text></View>
+                  <View className="p-4 items-center"><Text style={{ color: settingsPalette.faint, fontSize: 12 }}>+{previewRows.length - preview.length} more rows</Text></View>
                 ) : null}
                 </View>
               </View>

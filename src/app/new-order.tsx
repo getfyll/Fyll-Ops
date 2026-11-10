@@ -33,6 +33,7 @@ import { buildWhatsAppUrl } from '@/lib/quotes';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { sendOrderNotification } from '@/hooks/useWebPushNotifications';
 import { addBusinessDays, getCustomerTrackingCode, isPickupTimeline, resolveOrderTimeline } from '@/lib/fulfillment';
+import { PICKUP_ORDER_MARKERS, buildPickupDetails, formatPickupHours, hasPickupContent, isPickupOrder } from '@/lib/pickup';
 import { useThemeColors } from '@/lib/theme';
 import { PrescriptionSection } from '@/components/PrescriptionSection';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
@@ -393,6 +394,7 @@ export default function NewOrderScreen({ editOrderId: editOrderIdProp }: { editO
     hasWooCommerceConnection,
     businessName,
     businessSlug,
+    pickupSettings,
   } = useBusinessSettings();
 
   const editOrderId = typeof editOrderIdProp === 'string' ? editOrderIdProp : '';
@@ -583,7 +585,7 @@ export default function NewOrderScreen({ editOrderId: editOrderIdProp }: { editO
     setCustomerPhone(editingOrder.customerPhone ?? '');
     setDeliveryState(normalizeDeliveryStateValue(editingOrder.deliveryState ?? ''));
     setDeliveryAddress(editingOrder.deliveryAddress ?? '');
-    setFulfillmentMethod(editingOrder.fulfillmentMethod === 'pickup' ? 'pickup' : 'delivery');
+    setFulfillmentMethod(isPickupOrder(editingOrder) ? 'pickup' : 'delivery');
     setOrderTypeId(editingOrder.orderTypeId ?? orderTimelineSettings.orderTypes[0]?.id ?? orderTimelineSettings.defaultOrderType.id);
     setSelectedCustomerId(editingOrder.customerId ?? null);
     setSource(editingOrder.source || saleSources[0]?.name || '');
@@ -955,6 +957,11 @@ export default function NewOrderScreen({ editOrderId: editOrderIdProp }: { editO
       setOrderTypeId((current) => (current === pickupOrderType.id ? previous : current));
     }
   }, [fulfillmentMethod, pickupOrderType]);
+  // A pickup order writes all three markers the Fyll Store recognises, plus a snapshot of the pickup settings (where, who
+  // to contact, when). An order that is not pickup clears them, so switching an order back to delivery really is delivery.
+  const pickupOrderFields = isPickup
+    ? { ...PICKUP_ORDER_MARKERS, pickupDetails: buildPickupDetails(pickupSettings) }
+    : { fulfillmentType: undefined, shippingOptionId: undefined, pickupDetails: undefined };
   const deliveryFeeNum = isServiceOrder || isPickup ? 0 : parseFloat(deliveryFee) || 0;
   const additionalChargesNum = parseFloat(additionalCharges) || 0;
   const discountAmountNum = parseFloat(discountAmount) || 0;
@@ -1462,6 +1469,7 @@ export default function NewOrderScreen({ editOrderId: editOrderIdProp }: { editO
           deliveryState: isServiceOrder || isPickup ? '' : deliveryState,
           deliveryAddress: isServiceOrder || isPickup ? '' : deliveryAddress.trim(),
           fulfillmentMethod: isServiceOrder ? undefined : fulfillmentMethod,
+          ...pickupOrderFields,
           orderTypeId: editTimeline.orderType.id,
           orderTypeName: editTimeline.orderType.name,
           items,
@@ -1513,6 +1521,7 @@ export default function NewOrderScreen({ editOrderId: editOrderIdProp }: { editO
         deliveryState: isServiceOrder || isPickup ? '' : deliveryState,
         deliveryAddress: isServiceOrder || isPickup ? '' : deliveryAddress.trim(),
         fulfillmentMethod: isServiceOrder ? undefined : fulfillmentMethod,
+        ...pickupOrderFields,
         orderTypeId: resolvedTimeline.orderType.id,
         orderTypeName: resolvedTimeline.orderType.name,
         items,
@@ -2441,7 +2450,11 @@ export default function NewOrderScreen({ editOrderId: editOrderIdProp }: { editO
                 })}
               </View>
               {isPickup ? (
-                <Text style={{ color: palette.faint, fontSize: 12, lineHeight: 17 }}>The customer collects this order. No delivery address or fee is needed.</Text>
+                <Text style={{ color: palette.faint, fontSize: 12, lineHeight: 17 }}>
+                  {hasPickupContent(pickupSettings)
+                    ? `The customer collects this order from ${pickupSettings.locationName || pickupSettings.areaName || 'your pickup point'}${formatPickupHours(pickupSettings) ? ` (${formatPickupHours(pickupSettings)})` : ''}. No delivery address or fee is needed.`
+                    : 'The customer collects this order. No delivery address or fee is needed. Add your pickup point in Settings → Pickup so customers get the address and hours.'}
+                </Text>
               ) : null}
             </View>
           );

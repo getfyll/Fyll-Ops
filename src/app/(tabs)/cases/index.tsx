@@ -434,7 +434,7 @@ export default function CasesScreen() {
                     >
                       <View style={{ minHeight: 58, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 22, paddingVertical: 9, gap: 16 }}>
                         <View style={{ width: 150, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                          <Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '500' }} numberOfLines={1}>{caseItem.caseNumber}</Text>
+                          <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>{caseItem.caseNumber}</Text>
                           {(threadCounts[caseItem.id] ?? 0) > 0 && (
                             <View style={{ backgroundColor: '#DC2626', minWidth: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 }}>
                               <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '700' }}>{threadCounts[caseItem.id]}</Text>

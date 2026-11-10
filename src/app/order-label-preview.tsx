@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { isPickupOrder } from '@/lib/pickup';
 import { View, Text, ScrollView, Pressable, ActivityIndicator, Platform, TextInput, useWindowDimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInUp, FadeOutUp } from 'react-native-reanimated';
@@ -106,7 +107,7 @@ export default function OrderLabelPreviewScreen() {
       orderId: order.id,
       orderNumber: order.orderNumber,
       customerName: order.customerName,
-      destination: order.fulfillmentMethod === 'pickup' ? 'Pick up' : order.deliveryState || order.deliveryAddress || '',
+      destination: isPickupOrder(order) ? 'Pick up' : order.deliveryState || order.deliveryAddress || '',
       carrierName: carrierNameOverride || order.logistics?.carrierName || 'Shipping',
       labelData: finalLabelData,
     });
@@ -145,7 +146,7 @@ export default function OrderLabelPreviewScreen() {
   );
 
   const courier = carrierNameOverride || order.logistics?.carrierName || 'Fyll Dispatch';
-  const isPickup = order.fulfillmentMethod === 'pickup';
+  const isPickup = isPickupOrder(order);
   const addressText = formatAddressValue([order.deliveryAddress, order.deliveryState].filter(Boolean).join(', '));
   const lineItems = (order.items ?? []).map((item) => {
     const product = products.find((entry) => entry.id === item.productId);

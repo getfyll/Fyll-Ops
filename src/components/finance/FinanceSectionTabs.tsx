@@ -28,22 +28,28 @@ export function FinanceSectionTabs({
   tabs,
   activeKey,
   onSelect,
+  inset = 16,
+  bleed = true,
 }: {
   tabs: SectionTab[];
   activeKey: string | null;
   onSelect: (key: string) => void;
+  // Side padding of the row. With `bleed` the row also pulls out by the same amount, so the line under the tabs runs
+  // edge to edge inside a page that already has that much padding. Turn `bleed` off on a page with no side padding.
+  inset?: number;
+  bleed?: boolean;
 }) {
   const palette = usePaymentsPalette();
   const { scrollRef, offsets, viewport } = useScrollActiveIntoView(activeKey);
 
   return (
-    <View style={{ marginHorizontal: -16, borderBottomWidth: 1, borderBottomColor: palette.hairline }}>
+    <View style={{ marginHorizontal: bleed ? -inset : 0, borderBottomWidth: 1, borderBottomColor: palette.hairline }}>
       <ScrollView
         ref={scrollRef}
         horizontal
         showsHorizontalScrollIndicator={false}
         onLayout={(event) => { viewport.current = event.nativeEvent.layout.width; }}
-        contentContainerStyle={{ paddingHorizontal: 16, gap: 22 }}
+        contentContainerStyle={{ paddingHorizontal: inset, gap: 22 }}
         accessibilityRole="tablist"
       >
         {tabs.map((tab) => {

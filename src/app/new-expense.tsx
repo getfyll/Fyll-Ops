@@ -12,6 +12,7 @@ export default function NewExpenseScreen() {
   const expenseCategories = useFyllStore((s) => s.expenseCategories);
   const addExpense = useFyllStore((s) => s.addExpense);
   const businessId = useAuthStore((s) => s.businessId);
+  const createdByName = useAuthStore((s) => s.currentUser?.name?.trim() || s.currentUser?.email?.split('@')[0] || 'Team Member');
 
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
@@ -28,6 +29,7 @@ export default function NewExpenseScreen() {
       amount: parseFloat(amount) || 0,
       date: new Date(date).toISOString(),
       createdAt: new Date().toISOString(),
+      createdBy: createdByName,
     }, businessId);
 
     router.back();

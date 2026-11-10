@@ -9,7 +9,6 @@ import * as Haptics from 'expo-haptics';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFonts, BricolageGrotesque_700Bold, BricolageGrotesque_800ExtraBold } from '@expo-google-fonts/bricolage-grotesque';
-import { DMSans_400Regular, DMSans_600SemiBold, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
 import useFyllStore, { formatCurrency, type Order } from '@/lib/state/fyll-store';
 import useAuthStore from '@/lib/state/auth-store';
 import { findOrderTrackingStageByName } from '@/lib/order-status';
@@ -243,9 +242,9 @@ const trackingDisplayFont = Platform.OS === 'web'
 const trackingDisplayFontCompact = Platform.OS === 'web'
   ? "BricolageGrotesque_700Bold, 'Arial Black', sans-serif"
   : 'BricolageGrotesque_700Bold';
-const trackingBodyFont = Platform.OS === 'web'
-  ? "DMSans_400Regular, system-ui, -apple-system, 'Segoe UI', sans-serif"
-  : 'DMSans_400Regular';
+const trackingBodyFont: string | undefined = Platform.OS === 'web'
+  ? "system-ui, -apple-system, 'Segoe UI', sans-serif"
+  : undefined;
 
 // Status changes are logged as "Updated status to <name>"; only these become
 // customer updates, mapped to wording that suits the buyer.
@@ -691,7 +690,7 @@ function PurchaseTrackingResult({
   const deliveryTo = recipientName || recipientAddress || recipientPhone;
   const recipientDetails = (
     <View style={{ gap: 2 }}>
-      {recipientName ? <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? 12 : 15, lineHeight: compact ? 17 : 21, color: '#1E1E1E' }}>{recipientName}</Text> : null}
+      {recipientName ? <Text style={{ fontWeight: '600', fontSize: compact ? 12 : 15, lineHeight: compact ? 17 : 21, color: '#1E1E1E' }}>{recipientName}</Text> : null}
       {recipientAddress ? <Text style={{ fontFamily: trackingBodyFont, fontSize: compact ? 12 : 15, lineHeight: compact ? 17 : 21, color: '#1E1E1E' }} selectable>{recipientAddress}</Text> : null}
       {recipientPhone ? <Text style={{ fontFamily: trackingBodyFont, fontSize: compact ? 12 : 14, lineHeight: 20, color: '#55564E' }} selectable>{recipientPhone}</Text> : null}
       {!deliveryTo ? <Text style={{ fontFamily: trackingBodyFont, fontSize: compact ? 12 : 15, lineHeight: compact ? 17 : 21, color: '#1E1E1E' }}>Delivery details from your checkout</Text> : null}
@@ -711,10 +710,10 @@ function PurchaseTrackingResult({
         <Image source={{ uri: item.image }} resizeMode="cover" accessibilityLabel={item.label} style={{ width: compact ? 52 : 64, height: compact ? 52 : 64, borderRadius: compact ? 14 : 16, backgroundColor: '#F1F1EC' }} />
       ) : null}
       <View style={{ flex: 1, gap: 3 }}>
-        <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? 12 : 16.5, color: '#1E1E1E' }}>{item.label}</Text>
+        <Text style={{ fontWeight: '600', fontSize: compact ? 12 : 16.5, color: '#1E1E1E' }}>{item.label}</Text>
         <Text style={{ fontFamily: trackingBodyFont, fontSize: compact ? 12 : 14, color: muted }}>{item.detail}</Text>
       </View>
-      {item.amount > 0 ? <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? 12 : 16.5, color: '#1E1E1E' }}>{formatCurrency(item.amount)}</Text> : null}
+      {item.amount > 0 ? <Text style={{ fontWeight: '600', fontSize: compact ? 12 : 16.5, color: '#1E1E1E' }}>{formatCurrency(item.amount)}</Text> : null}
     </View>
   ));
 
@@ -722,13 +721,13 @@ function PurchaseTrackingResult({
     <View style={{ ...card, gap: 20 }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
         <View style={{ flex: 1, gap: 6 }}>
-          <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? 11 : 13, letterSpacing: 0.8, textTransform: 'uppercase', color: muted }}>Arriving</Text>
+          <Text style={{ fontWeight: '600', fontSize: compact ? 11 : 13, letterSpacing: 0.8, textTransform: 'uppercase', color: muted }}>Arriving</Text>
           <Text style={{ fontFamily: displayFont, fontWeight: displayWeight, fontSize: compact ? 32 : 40, lineHeight: compact ? 34 : 42, letterSpacing: -1.4, color: '#1E1E1E' }}>{eta.longDate}</Text>
           <Text style={{ fontFamily: trackingBodyFont, fontSize: compact ? 12 : 15, color: muted }}>{eta.dayLabel}</Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, height: 34, paddingHorizontal: 14, borderRadius: 999, backgroundColor: eta.late ? 'rgba(220,38,38,0.1)' : 'rgba(213,224,87,0.3)' }}>
           <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: eta.late ? '#DC2626' : '#7D8A00' }} />
-          <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? 12 : 14, color: eta.late ? '#B91C1C' : '#3F4A08' }}>{eta.late ? 'Running late' : 'On track'}</Text>
+          <Text style={{ fontWeight: '600', fontSize: compact ? 12 : 14, color: eta.late ? '#B91C1C' : '#3F4A08' }}>{eta.late ? 'Running late' : 'On track'}</Text>
         </View>
       </View>
       <View style={{ gap: 10 }}>
@@ -737,7 +736,7 @@ function PurchaseTrackingResult({
         </View>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
           <Text style={{ fontFamily: trackingBodyFont, fontSize: compact ? 10 : 12.5, color: '#8C8D84' }}>{eta.startLabel}</Text>
-          <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? 10 : 12.5, color: '#1E1E1E' }}>Today</Text>
+          <Text style={{ fontWeight: '600', fontSize: compact ? 10 : 12.5, color: '#1E1E1E' }}>Today</Text>
           <Text style={{ fontFamily: trackingBodyFont, fontSize: compact ? 10 : 12.5, color: '#8C8D84' }}>{eta.shortDate}</Text>
         </View>
       </View>
@@ -745,13 +744,13 @@ function PurchaseTrackingResult({
       <View style={{ flexDirection: compact ? 'column' : 'row', gap: compact ? 16 : 20 }}>
         <View style={{ flex: compact ? undefined : 1, gap: 4 }}>
           <Text style={{ fontFamily: trackingBodyFont, fontSize: compact ? 11 : 13, color: muted }}>Order</Text>
-          <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? 12 : 17, letterSpacing: 0.2, color: '#1E1E1E' }}>{order.orderNumber}</Text>
+          <Text style={{ fontWeight: '600', fontSize: compact ? 12 : 17, letterSpacing: 0.2, color: '#1E1E1E' }}>{order.orderNumber}</Text>
         </View>
         {trackingCode ? (
           <View style={{ flex: compact ? undefined : 1, gap: 4 }}>
             <Text style={{ fontFamily: trackingBodyFont, fontSize: compact ? 11 : 13, color: muted }}>Tracking</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? 12 : 17, letterSpacing: 0.2, color: '#1E1E1E' }} selectable>{trackingCode}</Text>
+              <Text style={{ fontWeight: '600', fontSize: compact ? 12 : 17, letterSpacing: 0.2, color: '#1E1E1E' }} selectable>{trackingCode}</Text>
               <Pressable accessibilityRole="button" accessibilityLabel="Copy tracking code" onPress={() => { void copyTrackingCode(); }} style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: '#F3F3EE', alignItems: 'center', justifyContent: 'center' }}>
                 {codeCopied ? <Check size={14} color="#3F4A08" strokeWidth={2.6} /> : <Copy size={14} color="#55564E" strokeWidth={2.2} />}
               </Pressable>
@@ -816,7 +815,7 @@ function PurchaseTrackingResult({
           <Package size={22} color="#5F6A00" strokeWidth={2} />
         </View>
         <View style={{ flex: 1, gap: 3 }}>
-          <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: 17, color: '#1E1E1E' }}>{setupTitle}</Text>
+          <Text style={{ fontWeight: '600', fontSize: 17, color: '#1E1E1E' }}>{setupTitle}</Text>
           <Text style={{ fontFamily: trackingBodyFont, fontSize: compact ? 12 : 14, lineHeight: 20, color: muted }}>{setupSubtitle}</Text>
         </View>
       </View>
@@ -844,7 +843,7 @@ function PurchaseTrackingResult({
             {index < updates.length - 1 ? <View style={{ width: 2, flex: 1, marginVertical: 4, backgroundColor: 'rgba(95,106,0,0.22)' }} /> : null}
           </View>
           <View style={{ flex: 1, flexDirection: compact ? 'column' : 'row', justifyContent: 'space-between', gap: compact ? 2 : 16, paddingBottom: 18 }}>
-            <Text style={{ flex: compact ? undefined : 1, fontFamily: index === 0 ? 'DMSans_600SemiBold' : trackingBodyFont, fontSize: compact ? 12 : 15.5, color: '#1E1E1E' }}>{update.label}</Text>
+            <Text style={{ flex: compact ? undefined : 1, fontFamily: trackingBodyFont, fontWeight: index === 0 ? '600' : '400', fontSize: compact ? 12 : 15.5, color: '#1E1E1E' }}>{update.label}</Text>
             <Text style={{ fontFamily: trackingBodyFont, fontSize: compact ? 12 : 13.5, color: muted }}>{update.time}</Text>
           </View>
         </View>
@@ -873,7 +872,7 @@ function PurchaseTrackingResult({
     if (!confirmArmed) {
       return (
         <Pressable accessibilityRole="button" onPress={() => setConfirmArmed(true)} style={limeStyle}>
-          <Text style={{ fontFamily: 'DMSans_700Bold', fontSize: compact ? 12 : 16, color: '#1E1E1E' }}>Confirm delivery</Text>
+          <Text style={{ fontWeight: '700', fontSize: compact ? 12 : 16, color: '#1E1E1E' }}>Confirm delivery</Text>
         </Pressable>
       );
     }
@@ -885,7 +884,7 @@ function PurchaseTrackingResult({
           disabled={confirmingDelivery}
           style={{ height, paddingHorizontal: 16, borderRadius: 999, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: onDark ? 'rgba(255,255,255,0.28)' : 'rgba(30,30,30,0.16)' }}
         >
-          <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? 12 : 15, color: onDark ? '#F4F4EF' : '#1E1E1E' }}>Cancel</Text>
+          <Text style={{ fontWeight: '600', fontSize: compact ? 12 : 15, color: onDark ? '#F4F4EF' : '#1E1E1E' }}>Cancel</Text>
         </Pressable>
         <Pressable
           accessibilityRole="button"
@@ -897,14 +896,14 @@ function PurchaseTrackingResult({
           style={limeStyle}
         >
           {confirmingDelivery ? <ActivityIndicator size="small" color="#1E1E1E" /> : <Check size={16} color="#1E1E1E" strokeWidth={2.8} />}
-          <Text style={{ fontFamily: 'DMSans_700Bold', fontSize: compact ? 12 : 16, color: '#1E1E1E' }}>{confirmingDelivery ? 'Confirming…' : 'Yes, I received it'}</Text>
+          <Text style={{ fontWeight: '700', fontSize: compact ? 12 : 16, color: '#1E1E1E' }}>{confirmingDelivery ? 'Confirming…' : 'Yes, I received it'}</Text>
         </Pressable>
       </View>
     );
   };
   const deliveryCard = showDeliveryConfirmation ? (
     <View style={{ ...card, position: 'relative', gap: 12 }}>
-      <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? 12 : 16, color: '#1E1E1E' }}>
+      <Text style={{ fontWeight: '600', fontSize: compact ? 12 : 16, color: '#1E1E1E' }}>
         {deliveryConfirmed ? 'Delivery confirmed' : 'Have you received this order?'}
       </Text>
       <Text style={{ fontFamily: trackingBodyFont, fontSize: compact ? 12 : 14, lineHeight: 20, color: muted }}>
@@ -949,13 +948,13 @@ function PurchaseTrackingResult({
         <Text style={{ ...cardTitle, fontSize: compact ? 16 : cardTitle.fontSize }}>Payment</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, height: 28, paddingHorizontal: 11, borderRadius: 999, backgroundColor: paymentVerified ? 'rgba(213,224,87,0.3)' : '#F1F1EC' }}>
           {paymentVerified ? <Check size={12} color="#3F4A08" strokeWidth={3} /> : <Clock3 size={12} color="#55564E" strokeWidth={2.5} />}
-          <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? 10 : 12.5, color: paymentVerified ? '#3F4A08' : '#55564E' }}>{socialStatusLabel(payment.status)}</Text>
+          <Text style={{ fontWeight: '600', fontSize: compact ? 10 : 12.5, color: paymentVerified ? '#3F4A08' : '#55564E' }}>{socialStatusLabel(payment.status)}</Text>
         </View>
       </View>
       {receiptList}
       <View style={{ height: 1, backgroundColor: 'rgba(30,30,30,0.07)' }} />
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? 12 : 15.5, color: '#1E1E1E' }}>{paymentVerified ? 'Total paid' : 'Amount'}</Text>
+        <Text style={{ fontWeight: '600', fontSize: compact ? 12 : 15.5, color: '#1E1E1E' }}>{paymentVerified ? 'Total paid' : 'Amount'}</Text>
                       <Text style={{ fontFamily: displayFont, fontWeight: displayWeight, fontSize: compact ? 18 : 28, letterSpacing: compact ? -0.4 : -0.8, color: '#1E1E1E' }}>{formatCurrency(payment.amount)}</Text>
       </View>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
@@ -969,7 +968,7 @@ function PurchaseTrackingResult({
       {receiptList}
       {receiptList.length > 0 ? <View style={{ height: 1, backgroundColor: 'rgba(30,30,30,0.07)' }} /> : null}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? 12 : 15.5, color: '#1E1E1E' }}>Order total</Text>
+        <Text style={{ fontWeight: '600', fontSize: compact ? 12 : 15.5, color: '#1E1E1E' }}>Order total</Text>
         <Text style={{ fontFamily: displayFont, fontWeight: displayWeight, fontSize: 28, letterSpacing: -0.8, color: '#1E1E1E' }}>{formatCurrency(order.totalAmount ?? 0)}</Text>
       </View>
       <Text style={{ fontFamily: trackingBodyFont, fontSize: compact ? 11 : 13, color: muted }}>Ordered {formatShortStamp(order.orderDate || order.createdAt, false)}</Text>
@@ -986,7 +985,7 @@ function PurchaseTrackingResult({
           style={{ height: 54, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#1E1E1E' }}
         >
           <MessageCircle size={18} color="#FFFFFF" strokeWidth={2} />
-          <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? 14 : 15, color: '#FFFFFF' }} numberOfLines={1}>Message {businessName}</Text>
+          <Text style={{ fontWeight: '600', fontSize: compact ? 14 : 15, color: '#FFFFFF' }} numberOfLines={1}>Message {businessName}</Text>
         </Pressable>
       ) : null}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 14, paddingHorizontal: 16, borderRadius: 18, backgroundColor: '#EFEFE9' }}>
@@ -994,7 +993,7 @@ function PurchaseTrackingResult({
         <Text style={{ flex: 1, fontFamily: trackingBodyFont, fontSize: compact ? 12 : 13.5, lineHeight: 19, color: '#55564E' }}>Bookmark this page. Every update for this purchase shows up here.</Text>
       </View>
       <Pressable accessibilityRole="button" onPress={onReset} style={{ height: 48, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(30,30,30,0.14)', alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? 14 : 14.5, color: '#1E1E1E' }}>Track another order</Text>
+        <Text style={{ fontWeight: '600', fontSize: compact ? 14 : 14.5, color: '#1E1E1E' }}>Track another order</Text>
       </Pressable>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingTop: 6 }}>
         <Text style={{ fontFamily: trackingBodyFont, fontSize: compact ? 11 : 13, color: muted }}>Tracked by</Text>
@@ -1019,7 +1018,7 @@ function PurchaseTrackingResult({
                 <View style={{ gap: compact ? 10 : 14, maxWidth: 680, flexShrink: 1 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                     <View style={[{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#D5E057' }, Platform.OS === 'web' ? ({ boxShadow: '0 0 10px #D5E057' } as object) : null]} />
-                    <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? 12 : 14, color: '#EEF2C4' }}>{heroEyebrow}</Text>
+                    <Text style={{ fontWeight: '600', fontSize: compact ? 12 : 14, color: '#EEF2C4' }}>{heroEyebrow}</Text>
                   </View>
                   <Text style={{ fontFamily: displayFont, fontWeight: displayWeight, fontSize: compact ? 44 : 68, lineHeight: compact ? 44 : 66, letterSpacing: compact ? -1.8 : -2.6, color: '#FFFFFF' }}>{heroTitle}</Text>
                   <Text style={{ fontFamily: trackingBodyFont, fontSize: compact ? 15 : 17, lineHeight: compact ? 22 : 26, color: 'rgba(244,244,239,0.88)' }}>{heroSubtitle}</Text>
@@ -1027,7 +1026,7 @@ function PurchaseTrackingResult({
                 {reference ? (
                   <View style={{ alignItems: wide ? 'flex-end' : 'flex-start', gap: 4, paddingBottom: wide ? 6 : 0, flexDirection: wide ? 'column' : 'row' }}>
                     <Text style={{ fontFamily: trackingBodyFont, fontSize: compact ? 12 : 14, color: 'rgba(244,244,239,0.8)' }}>{reference.label}{wide ? '' : ' ·'}</Text>
-                    <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: wide ? 20 : 14, letterSpacing: 0.3, color: '#FFFFFF' }} selectable>{reference.value}</Text>
+                    <Text style={{ fontWeight: '600', fontSize: wide ? 20 : 14, letterSpacing: 0.3, color: '#FFFFFF' }} selectable>{reference.value}</Text>
                   </View>
                 ) : null}
               </View>
@@ -1077,7 +1076,7 @@ function PurchaseTrackingResult({
                           >
                             <Check size={15} color={complete ? '#1E1E1E' : active ? '#D5E057' : 'rgba(244,244,239,0.35)'} strokeWidth={3} />
                           </View>
-                          <Text style={{ flex: 1, marginLeft: 16, paddingTop: 6, fontFamily: reached ? 'DMSans_600SemiBold' : trackingBodyFont, fontSize: 13, color: reached ? '#FFFFFF' : 'rgba(244,244,239,0.5)' }} numberOfLines={1}>{label}</Text>
+                          <Text style={{ flex: 1, marginLeft: 16, paddingTop: 6, fontFamily: trackingBodyFont, fontWeight: reached ? '600' : '400', fontSize: 13, color: reached ? '#FFFFFF' : 'rgba(244,244,239,0.5)' }} numberOfLines={1}>{label}</Text>
                           <Text style={{ marginLeft: 12, paddingTop: 6, fontFamily: trackingBodyFont, fontSize: 11, color: reached ? 'rgba(244,244,239,0.68)' : 'rgba(244,244,239,0.48)' }} numberOfLines={1}>{stepWhen[index] || '—'}</Text>
                         </View>
                       );
@@ -1104,7 +1103,7 @@ function PurchaseTrackingResult({
                               <Check size={18} color={complete ? '#1E1E1E' : active ? '#D5E057' : 'rgba(244,244,239,0.3)'} strokeWidth={3} />
                             </View>
                             <View style={{ position: 'absolute', top: circle + 10, width: labelWidth, left: isFirst ? 0 : isLast ? undefined : (circle - labelWidth) / 2, right: isLast ? 0 : undefined, gap: 2 }}>
-                              <Text style={{ fontFamily: active ? 'DMSans_600SemiBold' : trackingBodyFont, fontSize: 14, lineHeight: 18, textAlign, color: index <= orderProgressIndex ? '#FFFFFF' : 'rgba(244,244,239,0.55)' }} numberOfLines={1}>{label}</Text>
+                              <Text style={{ fontFamily: trackingBodyFont, fontWeight: active ? '600' : '400', fontSize: 14, lineHeight: 18, textAlign, color: index <= orderProgressIndex ? '#FFFFFF' : 'rgba(244,244,239,0.55)' }} numberOfLines={1}>{label}</Text>
                               <Text style={{ fontFamily: trackingBodyFont, fontSize: 12, lineHeight: 16, color: 'rgba(244,244,239,0.6)', textAlign }} numberOfLines={1}>{stepWhen[index] || ' '}</Text>
                             </View>
                           </View>
@@ -1211,7 +1210,7 @@ function BusinessPicker({ onPick }: { onPick: (match: PublicTrackingBusinessMatc
             </Text>
           ) : (
             <>
-              <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: 12, color: '#8C8D84', paddingTop: 6, paddingHorizontal: 12, paddingBottom: 4 }}>
+              <Text style={{ fontWeight: '600', fontSize: 12, color: '#8C8D84', paddingTop: 6, paddingHorizontal: 12, paddingBottom: 4 }}>
                 {matches.length} {matches.length === 1 ? 'business' : 'businesses'} on Fyll
               </Text>
               {matches.map((match) => {
@@ -1236,12 +1235,12 @@ function BusinessPicker({ onPick }: { onPick: (match: PublicTrackingBusinessMatc
                       {match.logo ? (
                         <Image source={{ uri: match.logo }} resizeMode="cover" style={{ width: 38, height: 38 }} />
                       ) : (
-                        <Text style={{ fontFamily: 'DMSans_700Bold', fontSize: 13.5, color: '#55564E' }}>{match.name.split(/\s+/).slice(0, 2).map((part) => part.charAt(0).toUpperCase()).join('')}</Text>
+                        <Text style={{ fontWeight: '700', fontSize: 13.5, color: '#55564E' }}>{match.name.split(/\s+/).slice(0, 2).map((part) => part.charAt(0).toUpperCase()).join('')}</Text>
                       )}
                     </View>
                     <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
                       <Text style={{ fontFamily: trackingBodyFont, fontSize: 15, color: '#1E1E1E' }} numberOfLines={1}>
-                        {before}<Text style={{ fontFamily: 'DMSans_700Bold' }}>{hit}</Text>{after}
+                        {before}<Text style={{ fontWeight: '700' }}>{hit}</Text>{after}
                       </Text>
                       {meta ? <Text style={{ fontFamily: trackingBodyFont, fontSize: 12.5, color: '#6B6C63' }} numberOfLines={1}>{meta}</Text> : null}
                     </View>
@@ -1354,7 +1353,7 @@ export function TrackLanding({
       : { borderWidth: 2, borderColor: focused === key ? 'rgba(213,224,87,0.8)' : 'transparent' },
   ];
   const label = (text: string) => (
-    <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? 12 : 13.5, color: '#F4F4EF' }}>{text}</Text>
+    <Text style={{ fontWeight: '600', fontSize: compact ? 12 : 13.5, color: '#F4F4EF' }}>{text}</Text>
   );
 
   const form = (
@@ -1403,11 +1402,11 @@ export function TrackLanding({
               {business.logo ? (
                 <Image source={{ uri: business.logo }} resizeMode="cover" style={{ width: 34, height: 34 }} />
               ) : (
-                <Text style={{ fontFamily: 'DMSans_700Bold', fontSize: compact ? 10 : 12.5, color: '#1E1E1E' }}>{business.name.slice(0, 2).toUpperCase()}</Text>
+                <Text style={{ fontWeight: '700', fontSize: compact ? 10 : 12.5, color: '#1E1E1E' }}>{business.name.slice(0, 2).toUpperCase()}</Text>
               )}
             </View>
-            <Text style={{ flex: 1, fontFamily: 'DMSans_600SemiBold', fontSize: 16, color: '#1E1E1E' }} numberOfLines={1}>{business.name}</Text>
-            {lockBusiness ? null : <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? 12 : 13.5, color: '#5F6A00' }}>Change</Text>}
+            <Text style={{ flex: 1, fontWeight: '600', fontSize: 16, color: '#1E1E1E' }} numberOfLines={1}>{business.name}</Text>
+            {lockBusiness ? null : <Text style={{ fontWeight: '600', fontSize: compact ? 12 : 13.5, color: '#5F6A00' }}>Change</Text>}
           </Pressable>
         </View>
       ) : (
@@ -1470,7 +1469,7 @@ export function TrackLanding({
         })}
       >
         {pending ? <ActivityIndicator color="#1E1E1E" /> : null}
-        <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? (sheet ? 16 : 12) : 17, color: canSubmit || pending ? '#1E1E1E' : 'rgba(244,244,239,0.55)' }}>
+        <Text style={{ fontWeight: '600', fontSize: compact ? (sheet ? 16 : 12) : 17, color: canSubmit || pending ? '#1E1E1E' : 'rgba(244,244,239,0.55)' }}>
           {pending ? (openingDeepLink ? 'Opening your order…' : copy.submitting) : copy.submit}
         </Text>
         {!pending ? <ArrowRight size={18} color={canSubmit ? '#1E1E1E' : 'rgba(244,244,239,0.55)'} strokeWidth={2.4} /> : null}
@@ -1498,7 +1497,7 @@ export function TrackLanding({
     {wide ? (
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <View style={[{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#D5E057' }, Platform.OS === 'web' ? ({ boxShadow: '0 0 10px #D5E057' } as object) : null]} />
-        <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? 12 : 14, color: '#EEF2C4' }}>{copy.domain}</Text>
+        <Text style={{ fontWeight: '600', fontSize: compact ? 12 : 14, color: '#EEF2C4' }}>{copy.domain}</Text>
       </View>
     ) : null}
     <Text style={{ fontFamily: copy.headlineFont ?? displayFont, fontWeight: copy.headlineFont ? '400' : displayWeight, fontSize: wide ? 84 : 52, lineHeight: wide ? 80 : 50, letterSpacing: wide ? -3 : -1.8, color: '#FFFFFF' }}>
@@ -1511,7 +1510,7 @@ export function TrackLanding({
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingTop: 14 }}>
         {steps.map((step, index) => (
           <View key={step} style={{ height: 38, paddingHorizontal: 14, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(20,20,20,0.3)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)' }}>
-            <Text style={{ fontFamily: 'DMSans_700Bold', fontSize: compact ? 12 : 13.5, color: '#D5E057' }}>{index + 1}</Text>
+            <Text style={{ fontWeight: '700', fontSize: compact ? 12 : 13.5, color: '#D5E057' }}>{index + 1}</Text>
             <Text style={{ fontFamily: trackingBodyFont, fontSize: compact ? 12 : 13.5, color: '#F4F4EF' }}>{step}</Text>
           </View>
         ))}
@@ -1534,7 +1533,7 @@ export function TrackLanding({
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <Image source={fyllWordmarkPng} accessibilityLabel="Fyll" resizeMode="contain" style={{ width: 28 * (344 / 195), height: 28, tintColor: '#FFFFFF' }} />
               <View style={{ width: 1, height: 20, backgroundColor: 'rgba(255,255,255,0.3)' }} />
-              <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: 15, color: '#F4F4EF' }}>{copy.tag}</Text>
+              <Text style={{ fontWeight: '600', fontSize: 15, color: '#F4F4EF' }}>{copy.tag}</Text>
             </View>
             <View style={{ flex: 1, justifyContent: 'flex-end' }}>{headingBlock}</View>
           </View>
@@ -1571,7 +1570,7 @@ export function TrackLanding({
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: compact ? 10 : 12, paddingHorizontal: sheetMode ? 20 : 0 }}>
                 <Image source={fyllWordmarkPng} accessibilityLabel="Fyll" resizeMode="contain" style={{ width: (compact ? 24 : 28) * (344 / 195), height: compact ? 24 : 28, tintColor: '#FFFFFF' }} />
                 <View style={{ width: 1, height: compact ? 18 : 20, backgroundColor: 'rgba(255,255,255,0.3)' }} />
-                <Text style={{ fontFamily: 'DMSans_600SemiBold', fontSize: compact ? 12 : 15, color: '#F4F4EF' }}>{copy.tag}</Text>
+                <Text style={{ fontWeight: '600', fontSize: compact ? 12 : 15, color: '#F4F4EF' }}>{copy.tag}</Text>
               </View>
 
               <View
@@ -1604,7 +1603,7 @@ export function TrackLanding({
 }
 
 export default function TrackOrderScreen() {
-  useFonts({ BricolageGrotesque_700Bold, BricolageGrotesque_800ExtraBold, DMSans_400Regular, DMSans_600SemiBold, DMSans_700Bold });
+  useFonts({ BricolageGrotesque_700Bold, BricolageGrotesque_800ExtraBold });
   const router = useRouter();
   const isTrackingHost = Platform.OS === 'web'
     && typeof window !== 'undefined'

@@ -39,7 +39,7 @@ export function CaseListItem({ caseItem, onPress, index = 0, compact = false }: 
               {caseItem.customerName}
             </Text>
             <View className="flex-row items-center gap-3 mt-2">
-              <Text style={{ color: colors.text.muted }} className="text-xs font-semibold">
+              <Text style={{ color: colors.text.primary, fontWeight: '700' }} className="text-xs">
                 {caseItem.caseNumber}
               </Text>
               <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold">
@@ -77,7 +77,7 @@ export function CaseListItem({ caseItem, onPress, index = 0, compact = false }: 
               {caseItem.customerName}
             </Text>
             <View className="flex-row items-center gap-3 mt-2">
-              <Text style={{ color: colors.text.muted }} className="text-xs font-semibold">
+              <Text style={{ color: colors.text.primary, fontWeight: '700' }} className="text-xs">
                 {caseItem.caseNumber}
               </Text>
               <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold">

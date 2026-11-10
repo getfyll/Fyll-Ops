@@ -1,4 +1,5 @@
 import { formatPersonName } from '@/lib/display-format';
+import { isPickupOrder } from '@/lib/pickup';
 import { POLL_MS } from '@/lib/polling';
 import React, { useState, useMemo, useEffect } from 'react';
 import { View, Text, ScrollView, FlatList, Pressable, TextInput, Modal, Platform, ActivityIndicator } from 'react-native';
@@ -295,7 +296,7 @@ function OrderCard({ order, products, statusColor, onPress, isSelected, showSpli
               </View>
               <Text style={{ color: isCancelled ? colors.text.muted : colors.text.primary, fontSize: 12, fontWeight: '600', textDecorationLine: isCancelled ? 'line-through' : 'none' }}>{formatCurrency(order.totalAmount)}</Text>
             </View>
-            <Text style={{ color: colors.text.muted, fontSize: 10 }} numberOfLines={1}>{order.orderNumber} · {itemSummary}</Text>
+            <Text style={{ color: colors.text.muted, fontSize: 10 }} numberOfLines={1}>{isPickupOrder(order) ? 'Pickup · ' : ''}{order.orderNumber} · {itemSummary}</Text>
             <View className="flex-row items-center justify-between" style={{ gap: 8 }}>
               <View className="flex-row items-center" style={{ gap: 5, minWidth: 0 }}>
                 <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: chipTextColor }} />
@@ -361,6 +362,11 @@ function OrderRowWeb({
           <Text style={{ color: colors.text.primary, fontSize: 12 }} className="font-semibold" numberOfLines={1}>
             {order.orderNumber}
           </Text>
+          {isPickupOrder(order) ? (
+            <View style={{ height: 18, paddingHorizontal: 7, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: FYLL_LIME }}>
+              <Text style={{ color: FYLL_LIME_INK, fontSize: 9, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' }}>Pickup</Text>
+            </View>
+          ) : null}
           {order.flagNote && (
             <Flag size={12} color={colors.accent.warning} fill={colors.accent.warning} strokeWidth={2} />
           )}

@@ -50,6 +50,7 @@ import { FigureText } from '@/components/stats/FigureText';
 import { customersSentence, ordersSentence, topItemSentence } from '@/lib/insights-sentences';
 import { FYLL_LIME, FYLL_LIME_INK, MoneyText, isHovered, usePaymentsPalette } from '@/components/payments/payments-ui';
 import { useBreakpoint } from '@/lib/useBreakpoint';
+import { FinanceSectionTabs } from '@/components/finance/FinanceSectionTabs';
 import { DESKTOP_PAGE_HEADER_MIN_HEIGHT, usePageHeadingStyle } from '@/lib/page-heading';
 import { getSettingsWebPanelStyles, isFromSettingsRoute } from '@/lib/settings-web-panel';
 import SalesInsight from '@/app/insights/sales';
@@ -494,7 +495,7 @@ function InsightsHeroCard({
           {label} · {RANGE_LABEL_LONG[timeRange]}
         </Text>
         <View style={{ flexDirection: compact ? 'column' : 'row', alignItems: compact ? 'flex-start' : 'flex-end', flexWrap: 'wrap', gap: compact ? 10 : 16 }}>
-          <MoneyText style={{ color: palette.text, fontSize: 40, lineHeight: 44, letterSpacing: -1.4 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{figure}</MoneyText>
+          <MoneyText style={{ color: palette.text, fontSize: compact ? 32 : 40, lineHeight: compact ? 37 : 44, letterSpacing: -1.4 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{figure}</MoneyText>
           {hasChange ? (
             <View style={{ height: compact ? 30 : 28, paddingHorizontal: compact ? 14 : 12, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: chipBg, marginBottom: compact ? 0 : 10 }}>
               {up ? <ArrowUp size={15} color={chipInk} strokeWidth={2.6} /> : <ArrowDown size={15} color={chipInk} strokeWidth={2.6} />}
@@ -1036,34 +1037,15 @@ export default function InsightsScreen() {
                   { key: 'partners', label: 'Partners', active: selectedInsight === '/insights/partner-jobs', onPress: () => setSelectedInsight('/insights/partner-jobs') },
                 ];
                 return (
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    style={[{ flexGrow: 0 }, isWebDesktop ? { maxWidth: 1440, width: '100%', alignSelf: 'flex-start' } : undefined]}
-                    contentContainerStyle={{ marginTop: isWebDesktop ? 12 : 14, paddingHorizontal: 20, paddingVertical: 4, paddingBottom: isWebDesktop ? 20 : 8, gap: 8 }}
-                  >
-                    {tabItems.map((tab) => (
-                      <Pressable
-                        key={tab.key}
-                        onPress={tab.onPress}
-                        accessibilityRole="tab"
-                        accessibilityState={{ selected: tab.active }}
-                        style={(state) => ({
-                          height: 36,
-                          paddingHorizontal: 16,
-                          borderRadius: 999,
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          backgroundColor: tab.active ? FYLL_LIME : isHovered(state) ? insightsPalette.softFill : insightsPalette.segmentBg,
-                          borderWidth: tab.active ? 0 : 1,
-                          borderColor: insightsPalette.border,
-                          ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null),
-                        })}
-                      >
-                        <Text style={{ color: tab.active ? FYLL_LIME_INK : insightsPalette.muted, fontSize: 12, fontWeight: '600' }}>{tab.label}</Text>
-                      </Pressable>
-                    ))}
-                  </ScrollView>
+                  <View style={[{ marginTop: isWebDesktop ? 12 : 14, marginBottom: isWebDesktop ? 8 : 0 }, isWebDesktop ? { maxWidth: 1440, width: '100%', alignSelf: 'flex-start' } : undefined]}>
+                    <FinanceSectionTabs
+                      tabs={tabItems.map((tab) => ({ key: tab.key, label: tab.label }))}
+                      activeKey={tabItems.find((tab) => tab.active)?.key ?? null}
+                      onSelect={(key) => tabItems.find((tab) => tab.key === key)?.onPress()}
+                      inset={20}
+                      bleed={false}
+                    />
+                  </View>
                 );
               })()}
             </View>
@@ -1457,72 +1439,6 @@ export default function InsightsScreen() {
                         </View>
                       </Pressable>
 
-                      {/* Top Add-ons Revenue */}
-                      {analytics.topAddOns.length > 0 && (
-                        <Pressable
-                          className="px-5 pt-4"
-                          onPress={() => handleOpenInsight('/insights/addons')}
-                        >
-                          <View
-                            className="rounded-[26px] p-5"
-                            style={colors.getCardStyle()}
-                          >
-                            <View className="flex-row items-center justify-between mb-4">
-                              <View className="flex-row items-center">
-                                <DollarSign
-                                  size={18}
-                                  color={colors.text.tertiary}
-                                  strokeWidth={2}
-                                />
-                                <Text
-                                  style={{ color: colors.text.primary }}
-                                  className="text-base font-bold ml-2"
-                                >
-                                  Top Add-ons Revenue
-                                </Text>
-                              </View>
-                              <ChevronRight
-                                size={16}
-                                color={colors.text.tertiary}
-                                strokeWidth={2}
-                              />
-                            </View>
-                            {analytics.topAddOns.map((addon, index) => (
-                              <View
-                                key={addon.name}
-                                className="flex-row items-center justify-between py-3"
-                                style={{
-                                  borderBottomWidth:
-                                    index < analytics.topAddOns.length - 1 ? 1 : 0,
-                                  borderBottomColor: colors.divider,
-                                }}
-                              >
-                                <View>
-                                  <Text
-                                    style={{ color: colors.text.primary }}
-                                    className="text-sm font-medium"
-                                  >
-                                    {addon.name}
-                                  </Text>
-                                  <Text
-                                    style={{ color: colors.text.tertiary }}
-                                    className="text-xs"
-                                  >
-                                    {addon.count} orders
-                                  </Text>
-                                </View>
-                                <Text
-                                  style={{ color: colors.text.primary }}
-                                  className="text-sm font-bold"
-                                >
-                                  {formatCurrency(addon.revenue)}
-                                </Text>
-                              </View>
-                            ))}
-                          </View>
-                        </Pressable>
-                      )}
-
                       {/* Add-ons Revenue - Graph Card */}
                       {analytics.addOnMetrics?.revenue > 0 && (
                         <Pressable
@@ -1666,7 +1582,7 @@ export default function InsightsScreen() {
                                     borderBottomColor: colors.divider,
                                   }}
                                 >
-                                  <View>
+                                  <View style={{ flex: 1, minWidth: 0, marginRight: 12 }}>
                                     <Text
                                       style={{ color: colors.text.primary }}
                                       className="text-sm font-medium"
@@ -1681,7 +1597,7 @@ export default function InsightsScreen() {
                                     </Text>
                                   </View>
                                   <Text
-                                    style={{ color: colors.text.primary }}
+                                    style={{ color: colors.text.primary, flexShrink: 0 }}
                                     className="text-sm font-bold"
                                   >
                                     {formatCurrency(item.revenue)}

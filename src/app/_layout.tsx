@@ -2,7 +2,7 @@ import { BUSINESS_SWITCH_EVENT, isAnotherTabSwitching } from '@/lib/business-swi
 import { beginWorkspaceTransition } from '@/lib/workspace-transition';
 import { useBusinessSwitcherStore } from '@/lib/state/business-switcher-store';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack, usePathname, useRouter, useSegments } from 'expo-router';
+import { Stack, useGlobalSearchParams, usePathname, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useColorScheme } from '@/lib/useColorScheme';
@@ -42,6 +42,7 @@ import { useBreakpoint } from '@/lib/useBreakpoint';
 import { useThemeColors } from '@/lib/theme';
 import { FocusBottomNav } from '@/components/FocusBottomNav';
 import { useBusinessNavItems } from '@/lib/useBusinessNavItems';
+import { usePartnerNavItems, type PartnerNavKey } from '@/lib/usePartnerNavItems';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
 import { isBusinessFeatureEnabled, type BusinessFeatureKey } from '@/lib/feature-access';
 import { useBusinessDisabled } from '@/hooks/useBusinessDisabled';
@@ -103,12 +104,18 @@ const ROUTE_FEATURES: Record<string, BusinessFeatureKey> = {
 };
 
 // Pages that are a task of their own (Fyll Print) show a smaller nav: a round Home button, then the other main places.
-function RootMobileBottomNav({ visible, variant = 'full' }: { visible: boolean; variant?: 'full' | 'focus' | 'business' }) {
+function RootMobileBottomNav({ visible, variant = 'full' }: { visible: boolean; variant?: 'full' | 'focus' | 'business' | 'partners' }) {
   const router = useRouter();
   const pathname = usePathname();
+  const { partnerSection } = useGlobalSearchParams<{ partnerSection?: string | string[] }>();
   const colors = useThemeColors();
   const insets = useSafeAreaInsets();
   const businessNavItems = useBusinessNavItems('insights');
+  const rawPartnerSection = Array.isArray(partnerSection) ? partnerSection[0] : partnerSection;
+  const partnerNavKey: PartnerNavKey | null = pathname.startsWith('/insights/partner') ? 'reports'
+    : pathname.startsWith('/partner-bills') ? 'bills'
+    : rawPartnerSection === 'bills' ? 'bills' : rawPartnerSection === 'issues' ? 'issues' : rawPartnerSection === 'all' ? 'all' : 'jobs';
+  const partnerNavItems = usePartnerNavItems(partnerNavKey);
 
   if (!visible) return null;
 
@@ -168,6 +175,11 @@ function RootMobileBottomNav({ visible, variant = 'full' }: { visible: boolean; 
   const focusItems = items.filter((item) => item.key !== 'home');
 
   // Pages opened from Insights: the same small nav as Finance, Insights and Customers, with Insights highlighted.
+  // Partners and the pages inside it: Jobs, Bills, Issues, Partners and Reports, with Home as its own round button.
+  if (variant === 'partners') {
+    return <FocusBottomNav items={partnerNavItems} onHome={() => router.dismissTo('/(tabs)' as never)} />;
+  }
+
   if (variant === 'business') {
     return <FocusBottomNav items={businessNavItems} onHome={() => router.dismissTo('/(tabs)' as never)} />;
   }
@@ -762,6 +774,7 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
           <Stack.Screen name="insights/partner-bills" options={{ headerShown: false }} />
           <Stack.Screen name="switch-business" options={{ headerShown: false }} />
           <Stack.Screen name="business-settings" options={{ headerShown: false }} />
+          <Stack.Screen name="pickup-settings" options={{ headerShown: false }} />
           <Stack.Screen name="storefront-settings" options={{ headerShown: false }} />
           <Stack.Screen name="order-automation" options={{ headerShown: false }} />
           <Stack.Screen name="email-settings" options={{ headerShown: false }} />
@@ -776,7 +789,7 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
           <Stack.Screen name="debug-seed-fyll-checkout" options={{ headerShown: false }} />
           <Stack.Screen name="supabase-check" options={{ headerShown: false }} />
         </Stack>
-        <RootMobileBottomNav visible={showRootMobileBottomNav} variant={firstSegment === 'fyll-print' ? 'focus' : firstSegment === 'insights' ? 'business' : 'full'} />
+        <RootMobileBottomNav visible={showRootMobileBottomNav} variant={firstSegment === 'fyll-print' ? 'focus' : (firstSegment === 'partners' || firstSegment === 'partner-bills' || (firstSegment === 'insights' && secondSegment?.startsWith('partner'))) ? 'partners' : firstSegment === 'insights' ? 'business' : 'full'} />
         {showGlobalFloatingActions ? <GlobalFloatingActions /> : null}
         <WhatsNewModal state={whatsNew.state} onDismiss={whatsNew.dismiss} onUpdate={whatsNew.applyUpdate} />
       </RootErrorBoundary>

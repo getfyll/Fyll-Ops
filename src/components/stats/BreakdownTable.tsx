@@ -24,6 +24,8 @@ interface BreakdownTableProps {
   showIndex?: boolean;
   emptyMessage?: string;
   containerStyle?: StyleProp<ViewStyle>;
+  // Let long names wrap onto more lines instead of being cut off with "…".
+  wrapLabels?: boolean;
 }
 
 export function BreakdownTable({
@@ -37,6 +39,7 @@ export function BreakdownTable({
   showIndex = false,
   emptyMessage = 'No data available',
   containerStyle,
+  wrapLabels = false,
 }: BreakdownTableProps) {
   const colors = useInsightsColors();
   const { isMobile } = useBreakpoint();
@@ -129,7 +132,7 @@ export function BreakdownTable({
                 {index + 1}
               </Text>
             )}
-            <View className="flex-1 mr-3">
+            <View className="flex-1 mr-3" style={{ minWidth: 0 }}>
               <View className="flex-row items-center">
                 {row.color && (
                   <View
@@ -140,7 +143,7 @@ export function BreakdownTable({
                 <Text
                   style={{ color: colors.text.primary, fontSize: rowSize }}
                   className="font-medium"
-                  numberOfLines={1}
+                  numberOfLines={wrapLabels ? undefined : 1}
                 >
                   {row.label}
                 </Text>
@@ -156,7 +159,7 @@ export function BreakdownTable({
               )}
             </View>
             <Text
-              style={{ color: colors.text.primary, fontSize: rowSize }}
+              style={{ color: colors.text.primary, fontSize: rowSize, flexShrink: 0 }}
               className="font-semibold text-right"
             >
               {typeof row.value === 'number' ? row.value.toLocaleString() : row.value}

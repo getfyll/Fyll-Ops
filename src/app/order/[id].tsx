@@ -36,6 +36,7 @@ import { formatAddressValue, normalizeDeliveryStateValue } from '@/lib/format-ad
 import { SearchClearButton } from '@/components/SearchClearButton';
 import { createWooCommerceOrderFromFyll, fetchWooCommerceOrder } from '@/lib/woocommerce';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
+import { formatPickupHours, isPickupOrder, normalizePickupSettings, orderStatusAppliesToOrder } from '@/lib/pickup';
 import { FYLL_LIME, FYLL_LIME_INK, MoneyText, getInitials, usePaymentsPalette } from '@/components/payments/payments-ui';
 
 const STAMP_DUTY_THRESHOLD = 10000;
@@ -224,7 +225,7 @@ export default function OrderDetailScreen() {
   const teamMembers = useAuthStore((s) => s.teamMembers);
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
   const isOfflineMode = useAuthStore((s) => s.isOfflineMode);
-  const { woocommerceStoreUrl, woocommerceConsumerKey, woocommerceConsumerSecret, hasWooCommerceConnection } = useBusinessSettings();
+  const { woocommerceStoreUrl, woocommerceConsumerKey, woocommerceConsumerSecret, hasWooCommerceConnection, pickupSettings: businessPickupSettings } = useBusinessSettings();
 
   // Shared look for every card on this page (Fyll Field order-detail redesign).
   const sectionCardStyle = {
@@ -373,10 +374,11 @@ export default function OrderDetailScreen() {
   }, [activeStatus, orderStatuses]);
   const activeStatusDisplay = getSystemOrderStatusDisplay(activeStatus, selectedOrderStatus?.color ?? statusColor);
   const orderedOrderStatuses = useMemo(() => (
-    sortOrderStatusesForFulfillment(orderStatuses)
-  ), [orderStatuses]);
+    sortOrderStatusesForFulfillment(orderStatuses).filter((status) => orderStatusAppliesToOrder(status, isPickupOrder(order), activeStatus))
+  ), [activeStatus, order, orderStatuses]);
   const canSendDeliveryConfirmationEmail = Boolean(order?.customerEmail?.trim()) && !isOfflineMode;
-  const showDeliveryConfirmationTrigger = isDeliveryConfirmationStatus(activeStatus);
+  // Pickup orders are collected, so there is never a delivery to confirm.
+  const showDeliveryConfirmationTrigger = !isPickupOrder(order) && isDeliveryConfirmationStatus(activeStatus);
 
   useEffect(() => {
     if (!showDeliveryConfirmationTrigger) {
@@ -749,10 +751,14 @@ export default function OrderDetailScreen() {
   }
 
   const relatedPayment = relatedPaymentQuery.data ?? null;
-  const deliveryAddressText = formatAddressValue(order.deliveryAddress);
-  const deliveryStateText = normalizeDeliveryStateValue(order.deliveryState, order.deliveryAddress);
+  const isPickup = isPickupOrder(order);
+  // Where the customer collects it. The order keeps its own snapshot; an older Ops pickup order without one falls back to
+  // the current pickup settings. Ops is internal, so the full address is always shown.
+  const pickupInfo = isPickup ? normalizePickupSettings(order.pickupDetails ?? businessPickupSettings) : null;
+  const deliveryAddressText = isPickup ? '' : formatAddressValue(order.deliveryAddress);
+  const deliveryStateText = isPickup ? '' : normalizeDeliveryStateValue(order.deliveryState, order.deliveryAddress);
   const hasOrderServices = Boolean(order.services?.length);
-  const hasDeliveryFee = order.deliveryFee > 0;
+  const hasDeliveryFee = !isPickup && order.deliveryFee > 0;
   const hasDiscountAmount = Boolean(order.discountAmount && order.discountAmount > 0);
   const hasRefundAmount = Boolean(order.refund && order.refund.amount > 0);
   const shouldShowSubtotal = hasOrderServices || hasDeliveryFee || hasDiscountAmount || hasRefundAmount;
@@ -1777,6 +1783,37 @@ export default function OrderDetailScreen() {
         </View>
       ) : null}
 
+      {pickupInfo ? (
+        <View style={{ marginTop: 6, padding: 14, borderRadius: 16, borderWidth: 1, borderColor: palette.nudgeBorder, backgroundColor: palette.nudgeBg, gap: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <View style={{ height: 22, paddingHorizontal: 9, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: FYLL_LIME }}>
+              <Text style={{ color: FYLL_LIME_INK, fontSize: 10, fontWeight: '700', letterSpacing: 0.55, textTransform: 'uppercase' }}>Pickup</Text>
+            </View>
+            <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600', flex: 1 }} numberOfLines={1}>
+              {pickupInfo.locationName || pickupInfo.areaName || 'Customer collects this order'}
+            </Text>
+          </View>
+          {pickupInfo.fullAddress || pickupInfo.areaName ? (
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+              <MapPin size={15} color={palette.muted} strokeWidth={2} style={{ marginTop: 2 }} />
+              <Text style={{ color: palette.textSoft, fontSize: 12, lineHeight: 18, flex: 1 }} selectable>{pickupInfo.fullAddress || pickupInfo.areaName}</Text>
+            </View>
+          ) : null}
+          {pickupInfo.contactName || pickupInfo.contactPhone ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Phone size={15} color={palette.muted} strokeWidth={2} />
+              <Text style={{ color: palette.textSoft, fontSize: 12, lineHeight: 18, flex: 1 }} selectable>{[pickupInfo.contactName, pickupInfo.contactPhone].filter(Boolean).join(' · ')}</Text>
+            </View>
+          ) : null}
+          {formatPickupHours(pickupInfo) ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Calendar size={15} color={palette.muted} strokeWidth={2} />
+              <Text style={{ color: palette.textSoft, fontSize: 12, lineHeight: 18, flex: 1 }}>{formatPickupHours(pickupInfo)}</Text>
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+
       {deliveryAddressText ? (
         <View style={[customerRowStyle, { alignItems: 'flex-start' }]}>
           <MapPin size={16} color={palette.muted} strokeWidth={2} style={{ marginTop: 2 }} />
@@ -2538,7 +2575,7 @@ export default function OrderDetailScreen() {
         style={{ height: 48, width: '100%', borderRadius: 999, backgroundColor: FYLL_LIME, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 }}
       >
         <Printer size={16} color={FYLL_LIME_INK} strokeWidth={2.2} />
-        <Text style={{ color: FYLL_LIME_INK, fontSize: isWebDesktop ? 14 : 14, fontWeight: '700' }}>Print Shipping Label</Text>
+        <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 14 }}>Print Shipping Label</MoneyText>
       </Pressable>
     </View>
   );
@@ -2572,7 +2609,7 @@ export default function OrderDetailScreen() {
       >
         <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: activeStatusDisplay.color }} />
         <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
-          <Text style={{ color: palette.muted, fontSize: isWebDesktop ? 10 : 14, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>Current status</Text>
+          <Text style={{ color: palette.muted, fontSize: 10, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>Current status</Text>
           <Text style={{ color: activeStatusDisplay.color, fontSize: isWebDesktop ? 14 : 14, fontWeight: '600' }} numberOfLines={1}>
             {activeStatusDisplay.label}
           </Text>
@@ -2624,21 +2661,6 @@ export default function OrderDetailScreen() {
         </View>
       ) : null}
 
-      {nextStatusOption ? (
-        <Pressable
-          onPress={() => {
-            if (nextStatusBlocked) {
-              showToast('error', 'Add QC photos and verify QC before dispatching.');
-              return;
-            }
-            handleUpdateStatus(nextStatusOption.name);
-          }}
-          className="active:opacity-85"
-          style={{ height: 48, borderRadius: 999, backgroundColor: FYLL_LIME, alignItems: 'center', justifyContent: 'center', opacity: nextStatusBlocked ? 0.55 : 1 }}
-        >
-          <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 15, fontWeight: '600' }}>Move to {getSystemOrderStatusDisplay(nextStatusOption.name, nextStatusOption.color).label}</MoneyText>
-        </Pressable>
-      ) : null}
     </View>
   );
 
@@ -2959,7 +2981,7 @@ export default function OrderDetailScreen() {
                 {sourcePaymentSection}
                 {customerNoteSection}
                 {prescriptionSection}
-                {logisticsSection}
+                {isPickup ? null : logisticsSection}
                 {qcSection}
               </View>
               <View style={{ width: rightColumnWidth ?? 420 }}>
@@ -2983,7 +3005,7 @@ export default function OrderDetailScreen() {
               {customerNoteSection}
               {prescriptionSection}
               {partnerJobSection}
-              {logisticsSection}
+              {isPickup ? null : logisticsSection}
               {refundSection}
               {qcSection}
               {casesSection}
@@ -3432,6 +3454,8 @@ export default function OrderDetailScreen() {
                     </View>
                   </View>
 
+                  {!isPickup ? (
+                  <>
                   {/* Delivery State */}
                   <View className="mb-4">
                     <Text style={{ color: colors.text.primary }} className="text-sm font-medium mb-2">Delivery State</Text>
@@ -3483,6 +3507,9 @@ export default function OrderDetailScreen() {
                     </View>
                   </View>
 
+                  </>
+                  ) : null}
+
                   {/* Website Order Ref (WooCommerce) */}
                   <View className="mb-4">
                     <Text style={{ color: colors.text.primary }} className="text-sm font-medium mb-2">Website Order Ref (WooCommerce)</Text>
@@ -3498,6 +3525,8 @@ export default function OrderDetailScreen() {
                     </View>
                   </View>
 
+                  {!isPickup ? (
+                  <>
                   {/* Delivery Fee */}
                   <View className="mb-4">
                     <Text style={{ color: colors.text.primary }} className="text-sm font-medium mb-2">Delivery Fee</Text>
@@ -3514,6 +3543,9 @@ export default function OrderDetailScreen() {
                       />
                     </View>
                   </View>
+
+                  </>
+                  ) : null}
 
                   {/* Discount Code */}
                   <View className="mb-4">

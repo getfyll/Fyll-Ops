@@ -56,8 +56,8 @@ export default function TeamManagementScreen({ embeddedInSettings = false }: Tea
         edge: 'rgba(255,255,255,0.09)', edgeStrong: 'rgba(255,255,255,0.14)', input: 'rgba(255,255,255,0.055)', topGlow: 'rgba(111,125,18,0.55)', topGlowEnd: 'rgba(20,20,20,0)', navButton: 'rgba(255,255,255,0.08)', limeWash: 'rgba(213,224,87,0.14)', limeBorder: 'rgba(213,224,87,0.25)', dangerWash: 'rgba(239,68,68,0.12)',
       }
     : {
-        ground: '#F4F3EB', surface: '#FFFFFF', ink: '#202117', muted: '#5E6056', faint: '#85877C', lime: '#D5E057', limeInk: '#667000', limeDeep: '#879400',
-        edge: 'rgba(35,38,25,0.09)', edgeStrong: 'rgba(35,38,25,0.15)', input: '#F7F7F1', topGlow: 'rgba(213,224,87,0.42)', topGlowEnd: 'rgba(244,243,235,0)', navButton: 'rgba(32,33,23,0.07)', limeWash: 'rgba(135,148,0,0.13)', limeBorder: 'rgba(102,112,0,0.22)', dangerWash: 'rgba(239,68,68,0.08)',
+        ground: '#FFFFFF', surface: '#FFFFFF', ink: '#202117', muted: '#5E6056', faint: '#85877C', lime: '#D5E057', limeInk: '#667000', limeDeep: '#879400',
+        edge: 'rgba(35,38,25,0.09)', edgeStrong: 'rgba(35,38,25,0.15)', input: '#F7F7F1', topGlow: 'rgba(255,255,255,0)', topGlowEnd: 'rgba(255,255,255,0)', navButton: 'rgba(32,33,23,0.07)', limeWash: 'rgba(135,148,0,0.13)', limeBorder: 'rgba(102,112,0,0.22)', dangerWash: 'rgba(239,68,68,0.08)',
       };
   const { isDesktop, isMobile } = useBreakpoint();
   useFonts({ BricolageGrotesque_700Bold, BricolageGrotesque_800ExtraBold });
@@ -356,7 +356,6 @@ export default function TeamManagementScreen({ embeddedInSettings = false }: Tea
       <View className="flex-1" style={screenOuterStyle}>
         <View style={screenInnerStyle}>
         <SafeAreaView className="flex-1" edges={['top']} style={{ backgroundColor: palette.ground }}>
-          <LinearGradient pointerEvents="none" colors={[palette.topGlow, palette.topGlowEnd]} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 300 }} />
           <View style={desktopContentWrapStyle}>
             <View
               className="flex-row items-center"
@@ -400,7 +399,6 @@ export default function TeamManagementScreen({ embeddedInSettings = false }: Tea
     <View className="flex-1" style={screenOuterStyle}>
       <View style={screenInnerStyle}>
       <SafeAreaView className="flex-1" edges={['top']} style={{ backgroundColor: palette.ground }}>
-        {!showWebSettingsPanel ? <LinearGradient pointerEvents="none" colors={[palette.topGlow, palette.topGlowEnd]} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 300 }} /> : null}
         {/* Header */}
         <InternalSettingsHeader
           title="Team Members"
@@ -418,14 +416,13 @@ export default function TeamManagementScreen({ embeddedInSettings = false }: Tea
         <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
           <View style={desktopContentWrapStyle}>
             <View className={isWebDesktop ? 'pl-5 pr-7 pt-5' : 'px-5 pt-4'}>
-              <View style={{ position: 'relative', overflow: 'hidden', minHeight: isDesktop ? 138 : 156, marginBottom: 14, padding: isDesktop ? 24 : 20, borderRadius: 28, borderWidth: 1, borderColor: palette.edge, backgroundColor: palette.surface, justifyContent: 'center' }}>
-                {!isDesktop ? <LinearGradient pointerEvents="none" colors={[palette.limeWash, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -44, right: -36, width: 210, height: 210, borderRadius: 105 }} /> : null}
+              <View style={{ position: 'relative', overflow: 'hidden', minHeight: isDesktop ? 138 : undefined, marginBottom: 14, padding: isDesktop ? 24 : 20, borderRadius: 28, borderWidth: 1, borderColor: palette.edge, backgroundColor: palette.surface, justifyContent: 'center' }}>
                 <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, borderBottomLeftRadius: 3, borderBottomRightRadius: 3, backgroundColor: palette.lime }} />
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Workspace access</Text>
                     <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_800ExtraBold', fontSize: 29, lineHeight: 34, letterSpacing: -0.8, marginTop: 2 }}>{teamMembers.length} {teamMembers.length === 1 ? 'member' : 'members'}</Text>
-                    <Text style={{ color: palette.faint, fontSize: 12.5, marginTop: 2 }}>{pendingInvitesFiltered.length > 0 ? `${pendingInvitesFiltered.length} invitation${pendingInvitesFiltered.length === 1 ? '' : 's'} pending` : 'Roles and access are up to date'}</Text>
+                    <Text style={{ color: palette.faint, fontSize: 12, marginTop: 2 }}>{pendingInvitesFiltered.length > 0 ? `${pendingInvitesFiltered.length} invitation${pendingInvitesFiltered.length === 1 ? '' : 's'} pending` : 'Roles and access are up to date'}</Text>
                   </View>
                 </View>
               </View>
@@ -438,7 +435,7 @@ export default function TeamManagementScreen({ embeddedInSettings = false }: Tea
               {/* Pending Invites Section */}
               {pendingInvitesFiltered.length > 0 && (
                 <View className="mb-6">
-                  <Text style={{ color: palette.faint, marginLeft: 6, fontSize: 11, fontWeight: '700', letterSpacing: 1.4 }} className="uppercase mb-3">
+                  <Text style={{ color: palette.faint, marginLeft: 6, fontSize: 10, fontWeight: '700', letterSpacing: 1.1 }} className="uppercase mb-3">
                     Pending Invites ({pendingInvitesFiltered.length})
                   </Text>
                   <View style={{ overflow: 'hidden', borderRadius: 26, backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.edge }}>
@@ -451,7 +448,7 @@ export default function TeamManagementScreen({ embeddedInSettings = false }: Tea
                           <Mail size={18} color={palette.limeInk} strokeWidth={2} />
                         </View>
                         <View style={{ flex: 1, minWidth: 0 }}>
-                          <Text numberOfLines={1} style={{ color: palette.ink, fontSize: 12, fontWeight: '600' }}>{invite.email}</Text>
+                          <Text numberOfLines={1} style={{ color: palette.ink, fontSize: 14, lineHeight: 20, fontWeight: '600' }}>{invite.email}</Text>
                           <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
                             <View style={{ paddingHorizontal: 7, paddingVertical: 3, borderRadius: 999, backgroundColor: `${roleColors[invite.role]}15` }}>
                               <Text style={{ color: roleColors[invite.role], fontSize: 10, fontWeight: '600' }}>{roleLabels[invite.role]}</Text>
@@ -460,7 +457,7 @@ export default function TeamManagementScreen({ embeddedInSettings = false }: Tea
                               <Text style={{ color: palette.limeInk, fontSize: 10, fontWeight: '600' }}>Pending</Text>
                             </View>
                             <Clock size={11} color={palette.faint} strokeWidth={2} />
-                            <Text style={{ color: palette.faint, fontSize: 10 }}>{getTimeRemaining(invite.expiresAt)}</Text>
+                            <Text style={{ color: palette.faint, fontSize: 12 }}>{getTimeRemaining(invite.expiresAt)}</Text>
                           </View>
                         </View>
                         <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 10 }}>
@@ -481,7 +478,7 @@ export default function TeamManagementScreen({ embeddedInSettings = false }: Tea
               )}
 
               {/* Team Members Section */}
-              <Text style={{ color: palette.faint, marginLeft: 6, fontSize: 11, fontWeight: '700', letterSpacing: 1.4 }} className="uppercase mb-3">
+              <Text style={{ color: palette.faint, marginLeft: 6, fontSize: 10, fontWeight: '700', letterSpacing: 1.1 }} className="uppercase mb-3">
                 Team Members ({teamMembers.length})
               </Text>
               <View style={{ overflow: 'hidden', borderRadius: 26, backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.edge }}>
@@ -495,7 +492,7 @@ export default function TeamManagementScreen({ embeddedInSettings = false }: Tea
                     </View>
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
-                        <Text numberOfLines={1} style={{ color: palette.ink, fontSize: 12, fontWeight: '600' }}>{member.name}</Text>
+                        <Text numberOfLines={1} style={{ color: palette.ink, fontSize: 14, lineHeight: 20, fontWeight: '600' }}>{member.name}</Text>
                         {member.id === currentUser?.id ? (
                           <View style={{ paddingHorizontal: 7, paddingVertical: 3, borderRadius: 999, backgroundColor: palette.limeWash }}>
                             <Text style={{ color: palette.limeInk, fontSize: 10, fontWeight: '600' }}>You</Text>
@@ -506,7 +503,7 @@ export default function TeamManagementScreen({ embeddedInSettings = false }: Tea
                           <Text style={{ color: roleColors[member.role], fontSize: 10, fontWeight: '600', marginLeft: 4 }}>{roleLabels[member.role]}</Text>
                         </View>
                       </View>
-                      <Text numberOfLines={1} style={{ color: palette.faint, fontSize: 11, marginTop: 5 }}>{member.email} · Last login {formatDate(member.lastLogin)}</Text>
+                      <Text numberOfLines={1} style={{ color: palette.faint, fontSize: 12, marginTop: 4 }}>{member.email} · Last login {formatDate(member.lastLogin)}</Text>
                     </View>
                     <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 10 }}>
                       <Pressable onPress={() => openEditModal(member)} className="active:opacity-50" style={{ width: 30, height: 30, alignItems: 'center', justifyContent: 'center' }}>
@@ -617,7 +614,7 @@ export default function TeamManagementScreen({ embeddedInSettings = false }: Tea
                     <Text style={{ color: colors.text.secondary }} className="text-sm font-medium mb-2">Email Address</Text>
                     <View
                       className="rounded-xl px-4 flex-row items-center"
-                      style={{ backgroundColor: palette.input, borderWidth: 1, borderColor: palette.edgeStrong, height: 50 }}
+                      style={{ backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.edgeStrong, height: 50 }}
                     >
                       <Mail size={18} color={colors.text.tertiary} strokeWidth={1.5} />
                       <TextInput
@@ -737,7 +734,7 @@ export default function TeamManagementScreen({ embeddedInSettings = false }: Tea
                 <Text style={{ color: colors.text.secondary }} className="text-sm font-medium mb-2">Name</Text>
                 <View
                   className="rounded-xl px-4"
-                  style={{ backgroundColor: palette.input, borderWidth: 1, borderColor: palette.edgeStrong, height: 50, justifyContent: 'center' }}
+                  style={{ backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.edgeStrong, height: 50, justifyContent: 'center' }}
                 >
                   <TextInput
                     value={formName}
@@ -755,7 +752,7 @@ export default function TeamManagementScreen({ embeddedInSettings = false }: Tea
                 <Text style={{ color: colors.text.secondary }} className="text-sm font-medium mb-2">Email</Text>
                 <View
                   className="rounded-xl px-4"
-                  style={{ backgroundColor: palette.input, borderWidth: 1, borderColor: palette.edgeStrong, height: 50, justifyContent: 'center' }}
+                  style={{ backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.edgeStrong, height: 50, justifyContent: 'center' }}
                 >
                   <TextInput
                     value={formEmail}
@@ -775,7 +772,7 @@ export default function TeamManagementScreen({ embeddedInSettings = false }: Tea
                 <Text style={{ color: colors.text.secondary }} className="text-sm font-medium mb-2">New Password (optional)</Text>
                 <View
                   className="rounded-xl px-4"
-                  style={{ backgroundColor: palette.input, borderWidth: 1, borderColor: palette.edgeStrong, height: 50, flexDirection: 'row', alignItems: 'center' }}
+                  style={{ backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.edgeStrong, height: 50, flexDirection: 'row', alignItems: 'center' }}
                 >
                   <TextInput
                     value={formPassword}

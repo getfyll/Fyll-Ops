@@ -4,7 +4,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Check, Eye, EyeOff, Globe, KeyRound, Link2, ShoppingCart, RefreshCcw } from 'lucide-react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
-import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 
 import useAuthStore from '@/lib/state/auth-store';
@@ -14,7 +13,7 @@ import useFyllStore, {
   type OrderItem,
 } from '@/lib/state/fyll-store';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
-import { useResolvedThemeMode, useThemeColors } from '@/lib/theme';
+import { useThemeColors } from '@/lib/theme';
 import { fetchWooCommerceOrders, fetchWooCommerceProducts, testWooCommerceConnection } from '@/lib/woocommerce';
 import {
   ensureWooCatalogProductsExist,
@@ -67,19 +66,21 @@ function SettingRow({
   description,
   value,
   onValueChange,
+  flat = false,
 }: {
   icon: React.ReactNode;
   label: string;
   description: string;
   value: boolean;
   onValueChange: (value: boolean) => void;
+  flat?: boolean; // sits directly in its parent card, with no inner card of its own
 }) {
   const palette = usePaymentsPalette();
 
   return (
     <View
-      className="flex-row items-start rounded-2xl p-4"
-      style={{
+      className={flat ? 'flex-row items-start' : 'flex-row items-start rounded-2xl p-4'}
+      style={flat ? undefined : {
         backgroundColor: palette.inset,
         borderWidth: 1,
         borderColor: palette.border,
@@ -92,7 +93,7 @@ function SettingRow({
         {icon}
       </View>
       <View className="flex-1 pr-3">
-        <Text style={{ color: palette.text, fontSize: 12, fontWeight: '500' }}>
+        <Text style={{ color: palette.text, fontSize: 14, lineHeight: 20, fontWeight: '600' }}>
           {label}
         </Text>
         <Text style={{ color: palette.faint }} className="mt-1 text-xs leading-5">
@@ -117,7 +118,6 @@ export default function WooCommerceSettingsScreen() {
   const goBack = useSettingsBack();
   const colors = useThemeColors();
   const palette = usePaymentsPalette();
-  const resolvedThemeMode = useResolvedThemeMode();
   const { isDesktop, isMobile } = useBreakpoint();
   const isWebDesktop = Platform.OS === 'web' && isDesktop;
   const openedFromSettings = isFromSettingsRoute(from);
@@ -556,7 +556,7 @@ export default function WooCommerceSettingsScreen() {
   const actionDisabled = !canAttemptConnection || isBusy;
   const fieldStyle = (field: 'url' | 'key' | 'secret') => ({
     minHeight: 56,
-    backgroundColor: palette.inset,
+    backgroundColor: palette.card,
     borderWidth: 1,
     borderColor: focusedField === field ? FYLL_LIME : palette.outline,
     shadowColor: FYLL_LIME,
@@ -578,15 +578,6 @@ export default function WooCommerceSettingsScreen() {
     <View style={panelStyles.outer}>
       <View style={panelStyles.inner}>
         <SafeAreaView className="flex-1" edges={['top']} style={{ backgroundColor: palette.page }}>
-          {!isWebDesktop ? (
-            <LinearGradient
-              pointerEvents="none"
-              colors={resolvedThemeMode === 'dark'
-                ? ['rgba(111,125,18,0.55)', 'rgba(20,20,20,0)']
-                : ['rgba(213,224,87,0.42)', 'rgba(244,243,235,0)']}
-              style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 360 }}
-            />
-          ) : null}
           {toast ? (
             <View
               pointerEvents="none"
@@ -643,7 +634,7 @@ export default function WooCommerceSettingsScreen() {
                 <ArrowLeft size={20} color={palette.text} strokeWidth={2} />
               </Pressable>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ color: palette.faint, fontSize: 9.5, lineHeight: 12, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Settings</Text>
+                <Text style={{ color: palette.faint, fontSize: 10, lineHeight: 12, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Settings</Text>
                 <Text style={{ color: palette.text, fontSize: 17, lineHeight: 21, fontWeight: '600' }}>WooCommerce</Text>
               </View>
             </View>
@@ -676,21 +667,20 @@ export default function WooCommerceSettingsScreen() {
           >
             <View style={{ width: '100%', maxWidth: 1440, alignSelf: Platform.OS === 'web' ? 'flex-start' : 'center' }}>
             <View
-              style={{ position: 'relative', overflow: 'hidden', minHeight: isWebDesktop ? 142 : 156, marginBottom: 24, padding: isWebDesktop ? 24 : 20, justifyContent: 'center', borderRadius: 28, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card }}
+              style={{ position: 'relative', overflow: 'hidden', minHeight: isWebDesktop ? 142 : undefined, marginBottom: 24, padding: isWebDesktop ? 24 : 20, justifyContent: 'center', borderRadius: 28, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card }}
             >
-              {!isWebDesktop ? <LinearGradient pointerEvents="none" colors={[palette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.15, y: 1 }} style={{ position: 'absolute', top: -54, right: -32, width: 230, height: 230, borderRadius: 115 }} /> : null}
               <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
               <View className="flex-row items-center justify-between" style={{ gap: 16 }}>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Commerce connection</Text>
                   <MoneyText style={{ color: palette.text, fontSize: isMobile ? 24 : 28, lineHeight: isMobile ? 29 : 34 }}>WooCommerce</MoneyText>
-                  <Text style={{ color: palette.faint, fontSize: 12.5, marginTop: 3 }}>{hasWooCommerceConnection ? 'Configured and ready to sync' : 'Connect your store to get started'}</Text>
+                  <Text style={{ color: palette.faint, fontSize: 12, marginTop: 3 }}>{hasWooCommerceConnection ? 'Configured and ready to sync' : 'Connect your store to get started'}</Text>
                 </View>
                 <View
                   className="rounded-full px-3 py-1.5"
                   style={{ backgroundColor: hasWooCommerceConnection ? palette.nudgeBg : palette.softFill, borderWidth: 1, borderColor: hasWooCommerceConnection ? palette.nudgeBorder : palette.border }}
                 >
-                  <Text style={{ color: hasWooCommerceConnection ? palette.limeOnSurface : palette.faint, fontSize: 11, fontWeight: '600' }}>
+                  <Text style={{ color: hasWooCommerceConnection ? palette.limeOnSurface : palette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 0.55, textTransform: 'uppercase' }}>
                     {hasWooCommerceConnection ? 'Ready' : 'Setup'}
                   </Text>
                 </View>
@@ -706,6 +696,7 @@ export default function WooCommerceSettingsScreen() {
               style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, borderRadius: 26 }}
             >
               <SettingRow
+                flat
                 icon={<Link2 size={18} color={palette.limeOnSurface} strokeWidth={2} />}
                 label="Enable WooCommerce"
                 description="Turn on WooCommerce linking for this business."
@@ -811,6 +802,7 @@ export default function WooCommerceSettingsScreen() {
               style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, borderRadius: 26 }}
             >
               <SettingRow
+                flat
                 icon={<ShoppingCart size={18} color={palette.limeOnSurface} strokeWidth={2} />}
                 label="Auto-link by Website Order Ref"
                 description="Match WooCommerce orders to existing FYLL orders using Website Order Ref. Unmatched Woo orders are skipped."
@@ -837,7 +829,7 @@ export default function WooCommerceSettingsScreen() {
                   className="flex-row items-center justify-center rounded-full px-4 active:opacity-80"
                   style={{
                     minHeight: 46,
-                    backgroundColor: palette.inset,
+                    backgroundColor: palette.card,
                     borderWidth: 1,
                     borderColor: palette.outline,
                     flexBasis: 150,
@@ -863,7 +855,7 @@ export default function WooCommerceSettingsScreen() {
                   className="flex-row items-center justify-center rounded-full px-4 active:opacity-80"
                   style={{
                     minHeight: 46,
-                    backgroundColor: palette.inset,
+                    backgroundColor: palette.card,
                     borderWidth: 1,
                     borderColor: palette.outline,
                     flexBasis: 150,

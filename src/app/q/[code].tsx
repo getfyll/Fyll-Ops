@@ -9,7 +9,6 @@ import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
 import { Check, ChevronLeft, Lock, Upload, X } from 'lucide-react-native';
 import { useFonts, BricolageGrotesque_800ExtraBold } from '@expo-google-fonts/bricolage-grotesque';
-import { DMSans_400Regular, DMSans_500Medium, DMSans_600SemiBold, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
 import { formatCurrency } from '@/lib/state/fyll-store';
 import { getQuotePublic, respondToQuote, submitQuoteProof, type PublicQuote } from '@/lib/supabase/quote-public';
 import { uploadSocialCheckoutProof } from '@/lib/storage-attachments';
@@ -95,16 +94,16 @@ const ThemeContext = createContext<Theme>(LIGHT);
 const useC = () => useContext(ThemeContext);
 
 type Weight = 'regular' | 'medium' | 'semi' | 'bold';
-const FONT: Record<Weight, string> = {
-  regular: 'DMSans_400Regular',
-  medium: 'DMSans_500Medium',
-  semi: 'DMSans_600SemiBold',
-  bold: 'DMSans_700Bold',
+const FONT_WEIGHT: Record<Weight, '400' | '500' | '600' | '700'> = {
+  regular: '400',
+  medium: '500',
+  semi: '600',
+  bold: '700',
 };
 
 function T({ weight = 'regular', style, ...props }: TextProps & { weight?: Weight }) {
   const C = useC();
-  return <NativeText {...props} style={[{ fontFamily: FONT[weight], color: C.ink }, style]} />;
+  return <NativeText {...props} style={[{ fontWeight: FONT_WEIGHT[weight], color: C.ink }, style]} />;
 }
 
 const DECLINE_REASONS = ['Too expensive', 'Need it sooner', 'Found another option', 'Other'];
@@ -392,7 +391,7 @@ function QuotePublicInner() {
   const { code: codeParam } = useLocalSearchParams<{ code?: string | string[] }>();
   const code = (Array.isArray(codeParam) ? codeParam[0] : codeParam ?? '').trim().toUpperCase();
   const queryClient = useQueryClient();
-  const [fontsLoaded, fontError] = useFonts({ BricolageGrotesque_800ExtraBold, DMSans_400Regular, DMSans_500Medium, DMSans_600SemiBold, DMSans_700Bold });
+  const [fontsLoaded, fontError] = useFonts({ BricolageGrotesque_800ExtraBold });
   const fontsReady = fontsLoaded && !fontError;
 
   const [local, setLocal] = useState<Screen | null>(null);
@@ -539,7 +538,7 @@ function QuotePublicInner() {
                   numberOfLines={5}
                   placeholder="e.g. Can we make it 15 frames instead of 12?"
                   placeholderTextColor={C.placeholder}
-                  style={[{ minHeight: 120, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: C.fieldBorder, backgroundColor: C.field, color: C.ink, fontFamily: FONT.regular, fontSize: 15, lineHeight: 22, textAlignVertical: 'top' }, noOutline]}
+                  style={[{ minHeight: 120, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: C.fieldBorder, backgroundColor: C.field, color: C.ink, fontSize: 15, lineHeight: 22, textAlignVertical: 'top' }, noOutline]}
                 />
               </View>
               {actionError ? <T style={{ color: C.error, fontSize: 13.5 }}>{actionError}</T> : null}

@@ -14,10 +14,9 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Check, ChevronDown, Lock, LogOut, Mail, ShieldCheck, User as UserIcon, X } from 'lucide-react-native';
+import { Check, ChevronDown, Lock, LogOut, Mail, Pencil, ShieldCheck, User as UserIcon, X } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFonts, BricolageGrotesque_700Bold, BricolageGrotesque_800ExtraBold } from '@expo-google-fonts/bricolage-grotesque';
-import { DMSans_400Regular, DMSans_500Medium, DMSans_600SemiBold, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
 import * as Haptics from 'expo-haptics';
 import useAuthStore from '@/lib/state/auth-store';
 import { getSettingsWebPanelStyles, isFromSettingsRoute } from '@/lib/settings-web-panel';
@@ -27,6 +26,7 @@ import { PrimaryEmailCard } from '@/components/PrimaryEmailCard';
 import { PasswordEyeToggle } from '@/components/PasswordEyeToggle';
 import { useResolvedThemeMode } from '@/lib/theme';
 import { useBreakpoint } from '@/lib/useBreakpoint';
+import { EditFieldModal } from '@/components/settings/EditFieldModal';
 import { InternalSettingsHeader } from '@/components/settings/InternalSettingsHeader';
 
 type AccountSettingsScreenProps = { embeddedInSettings?: boolean };
@@ -68,10 +68,10 @@ const DARK_PALETTE: AccountPalette = {
 };
 
 const LIGHT_PALETTE: AccountPalette = {
-  ground: '#F4F3EB', surface: '#FFFFFF', ink: '#202117', muted: '#5E6056', faint: '#85877C',
+  ground: '#FFFFFF', surface: '#FFFFFF', ink: '#202117', muted: '#5E6056', faint: '#85877C',
   lime: '#D5E057', limeInk: '#667000', limeDeep: '#879400', danger: '#C9574D',
   edge: 'rgba(35,38,25,0.09)', edgeStrong: 'rgba(35,38,25,0.16)', divider: 'rgba(35,38,25,0.07)',
-  input: '#F7F7F1', topGlow: 'rgba(213,224,87,0.42)', topGlowEnd: 'rgba(244,243,235,0)',
+  input: '#F7F7F1', topGlow: 'rgba(255,255,255,0)', topGlowEnd: 'rgba(255,255,255,0)',
   navButton: 'rgba(32,33,23,0.07)', limeWash: 'rgba(135,148,0,0.10)', limeWashStrong: 'rgba(135,148,0,0.13)',
   limeBorder: 'rgba(102,112,0,0.22)', dangerWash: 'rgba(201,87,77,0.10)', dangerBorder: 'rgba(201,87,77,0.22)',
   secondaryButton: 'rgba(32,33,23,0.045)', overlay: 'rgba(24,25,18,0.46)',
@@ -86,7 +86,7 @@ const innerSettingsFont = (size: number) => Platform.OS === 'web'
 
 function SectionLabel({ children, palette }: { children: React.ReactNode; palette: AccountPalette }) {
   return (
-    <Text style={{ color: palette.faint, fontFamily: 'DMSans_700Bold', fontSize: 12, lineHeight: 16, letterSpacing: 0.75, textTransform: 'uppercase', marginLeft: 2, marginBottom: 10 }}>
+    <Text style={{ color: palette.faint, fontWeight: '700', fontSize: 10, lineHeight: 14, letterSpacing: 1.1, textTransform: 'uppercase', marginLeft: 6, marginBottom: 10 }}>
       {children}
     </Text>
   );
@@ -108,6 +108,7 @@ type FieldProps = {
 };
 
 function AccountField({ label, value, onChangeText, placeholder, icon: Icon, secureTextEntry, keyboardType = 'default', trailing, help, palette, grouped = false, showDivider = false }: FieldProps) {
+  const [editing, setEditing] = useState<boolean>(false);
   if (grouped) {
     return (
       <View style={{ minHeight: help ? 88 : 78, paddingHorizontal: 18, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 14, borderBottomWidth: showDivider ? 1 : 0, borderBottomColor: palette.edge }}>
@@ -115,34 +116,41 @@ function AccountField({ label, value, onChangeText, placeholder, icon: Icon, sec
           <Icon size={18} color={palette.limeInk} strokeWidth={2} />
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={{ color: palette.ink, fontFamily: 'DMSans_600SemiBold', fontSize: 12, lineHeight: 16, letterSpacing: 0 }}>{label}</Text>
-          <View style={{ minHeight: 28, marginTop: 2, flexDirection: 'row', alignItems: 'center' }}>
-            <TextInput
-              value={value}
-              onChangeText={onChangeText}
-              placeholder={placeholder}
-              placeholderTextColor={palette.faint}
-              secureTextEntry={secureTextEntry}
-              keyboardType={keyboardType}
-              autoCapitalize={keyboardType === 'email-address' ? 'none' : 'sentences'}
-              autoCorrect={keyboardType !== 'email-address'}
-              selectionColor={palette.limeDeep}
-              style={[{ flex: 1, minWidth: 0, color: palette.ink, fontFamily: 'DMSans_400Regular', fontSize: 14, lineHeight: 18, letterSpacing: 0, paddingHorizontal: 0, paddingVertical: 1 }, webOutlineStyle]}
-            />
-            {trailing}
-          </View>
-          {help ? <Text style={{ color: palette.faint, fontFamily: 'DMSans_400Regular', fontSize: 12, lineHeight: 16, letterSpacing: 0, marginTop: 2 }}>{help}</Text> : null}
+          <Text style={{ color: palette.ink, fontWeight: '600', fontSize: 14, lineHeight: 20, letterSpacing: 0 }}>{label}</Text>
+          <Text numberOfLines={1} selectable style={{ color: value ? palette.ink : palette.faint, fontSize: 12, lineHeight: 18, letterSpacing: 0, marginTop: 2 }}>{value || placeholder}</Text>
+          {help ? <Text style={{ color: palette.faint, fontSize: 10, lineHeight: 15, letterSpacing: 0, marginTop: 2 }}>{help}</Text> : null}
         </View>
+        <Pressable
+          onPress={() => setEditing(true)}
+          accessibilityRole="button"
+          accessibilityLabel={`Edit ${label}`}
+          hitSlop={8}
+          style={({ pressed }) => ({ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.navButton, opacity: pressed ? 0.6 : 1 })}
+        >
+          <Pencil size={14} color={palette.muted} strokeWidth={2.2} />
+        </Pressable>
+        <EditFieldModal
+          visible={editing}
+          title={label}
+          value={value}
+          placeholder={placeholder}
+          help={help}
+          keyboardType={keyboardType}
+          palette={palette}
+          onClose={() => setEditing(false)}
+          onSave={(next) => { onChangeText(next); setEditing(false); }}
+        />
       </View>
     );
   }
 
   return (
     <View style={{ gap: 7 }}>
-      <Text style={{ color: palette.muted, fontFamily: 'DMSans_500Medium', fontSize: innerSettingsFont(13) }}>{label}</Text>
-      <View style={{ minHeight: 52, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, borderRadius: 16, borderWidth: 1, borderColor: palette.edgeStrong, backgroundColor: palette.input, gap: 11 }}>
+      <Text style={{ color: palette.muted, fontWeight: '500', fontSize: 12 }}>{label}</Text>
+      <View style={{ minHeight: 52, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, borderRadius: 16, borderWidth: 1, borderColor: palette.edgeStrong, backgroundColor: palette.surface, gap: 11 }}>
         <Icon size={18} color={palette.faint} strokeWidth={1.8} />
         <TextInput
+          className="settings-field-input"
           value={value}
           onChangeText={onChangeText}
           placeholder={placeholder}
@@ -152,11 +160,11 @@ function AccountField({ label, value, onChangeText, placeholder, icon: Icon, sec
           autoCapitalize={keyboardType === 'email-address' ? 'none' : 'sentences'}
           autoCorrect={keyboardType !== 'email-address'}
           selectionColor={palette.limeDeep}
-          style={[{ flex: 1, minWidth: 0, color: palette.ink, fontFamily: 'DMSans_400Regular', fontSize: 15.5, paddingVertical: Platform.OS === 'web' ? 14 : 0 }, webOutlineStyle]}
+          style={[{ flex: 1, minWidth: 0, color: palette.ink, fontSize: 12, paddingVertical: Platform.OS === 'web' ? 14 : 0 }, webOutlineStyle]}
         />
         {trailing}
       </View>
-      {help ? <Text style={{ color: palette.faint, fontFamily: 'DMSans_400Regular', fontSize: 12, lineHeight: 17 }}>{help}</Text> : null}
+      {help ? <Text style={{ color: palette.faint, fontSize: 10, lineHeight: 15 }}>{help}</Text> : null}
     </View>
   );
 }
@@ -177,7 +185,7 @@ export default function AccountSettingsScreen({ embeddedInSettings = false }: Ac
   const logout = useAuthStore((s) => s.logout);
   const { businessName } = useBusinessSettings();
 
-  useFonts({ BricolageGrotesque_700Bold, BricolageGrotesque_800ExtraBold, DMSans_400Regular, DMSans_500Medium, DMSans_600SemiBold, DMSans_700Bold });
+  useFonts({ BricolageGrotesque_700Bold, BricolageGrotesque_800ExtraBold });
 
   const [name, setName] = useState<string>(currentUser?.name ?? '');
   const [email, setEmail] = useState<string>(currentUser?.email ?? '');
@@ -285,7 +293,6 @@ export default function AccountSettingsScreen({ embeddedInSettings = false }: Ac
     <View style={panelStyles.outer}>
       <View style={panelStyles.inner}>
         <SafeAreaView style={{ flex: 1, backgroundColor: palette.ground }} edges={['top']}>
-          {!isEmbeddedWeb ? <LinearGradient pointerEvents="none" colors={[palette.topGlow, palette.topGlowEnd]} locations={[0, 1]} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 300 }} /> : null}
 
           <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
             <InternalSettingsHeader
@@ -296,7 +303,7 @@ export default function AccountSettingsScreen({ embeddedInSettings = false }: Ac
               rightElement={isDesktop ? (
                 <View style={{ height: 30, paddingHorizontal: 11, borderRadius: 15, flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: palette.limeWashStrong, borderWidth: 1, borderColor: palette.limeBorder }}>
                   <ShieldCheck size={13} color={palette.limeInk} strokeWidth={2.2} />
-                  <Text style={{ color: palette.limeInk, fontFamily: 'DMSans_700Bold', fontSize: 11 }}>Secure</Text>
+                  <Text style={{ color: palette.limeInk, fontWeight: '700', fontSize: 11 }}>Secure</Text>
                 </View>
               ) : undefined}
             />
@@ -312,7 +319,7 @@ export default function AccountSettingsScreen({ embeddedInSettings = false }: Ac
                 style={{
                   position: 'relative',
                   overflow: 'hidden',
-                  minHeight: isDesktop ? 138 : 156,
+                  minHeight: isDesktop ? 138 : undefined,
                   marginBottom: 20,
                   padding: isDesktop ? 24 : 20,
                   borderRadius: 28,
@@ -322,26 +329,19 @@ export default function AccountSettingsScreen({ embeddedInSettings = false }: Ac
                   justifyContent: 'center',
                 }}
               >
-                <LinearGradient
-                  pointerEvents="none"
-                  colors={[palette.limeWashStrong, 'transparent']}
-                  start={{ x: 1, y: 0 }}
-                  end={{ x: 0.25, y: 1 }}
-                  style={{ position: 'absolute', top: -48, right: -34, width: 220, height: 220, borderRadius: 110 }}
-                />
                 <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, borderBottomLeftRadius: 3, borderBottomRightRadius: 3, backgroundColor: palette.lime }} />
 
                 <View style={{ flex: 1, minWidth: 0, justifyContent: 'center' }}>
-                  <Text style={{ color: palette.faint, fontFamily: 'DMSans_700Bold', fontSize: 10, letterSpacing: 1.15, textTransform: 'uppercase' }}>Account owner</Text>
+                  <Text style={{ color: palette.faint, fontWeight: '700', fontSize: 10, letterSpacing: 1.15, textTransform: 'uppercase' }}>Account owner</Text>
                   <Text numberOfLines={1} style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_800ExtraBold', fontSize: 28, lineHeight: 34, letterSpacing: -0.8, marginTop: 2 }}>Profile</Text>
-                  <Text numberOfLines={2} style={{ color: palette.faint, fontFamily: 'DMSans_400Regular', fontSize: 12.5, lineHeight: 18, marginTop: 4 }}>{name.trim() || 'Your name'} · {roleLabel} at {businessLabel}</Text>
+                  <Text numberOfLines={2} style={{ color: palette.faint, fontSize: 12, lineHeight: 18, marginTop: 4 }}>{name.trim() || 'Your name'} · {roleLabel} at {businessLabel}</Text>
                 </View>
               </View>
 
               {error || notice ? (
                 <View accessibilityRole="alert" style={{ borderRadius: 16, marginBottom: 18, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: error ? palette.dangerWash : palette.limeWashStrong, borderWidth: 1, borderColor: error ? palette.dangerBorder : palette.limeBorder }}>
                   {error ? <X size={17} color={palette.danger} /> : <Check size={17} color={palette.limeInk} />}
-                  <Text style={{ flex: 1, color: error ? palette.danger : palette.limeInk, fontFamily: 'DMSans_500Medium', fontSize: innerSettingsFont(13), lineHeight: 18 }}>{error || notice}</Text>
+                  <Text style={{ flex: 1, color: error ? palette.danger : palette.limeInk, fontWeight: '500', fontSize: 12, lineHeight: 18 }}>{error || notice}</Text>
                 </View>
               ) : null}
 
@@ -359,8 +359,8 @@ export default function AccountSettingsScreen({ embeddedInSettings = false }: Ac
                     <Lock size={18} color={palette.limeInk} strokeWidth={2} />
                   </View>
                   <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-                    <Text style={{ color: palette.ink, fontFamily: 'DMSans_600SemiBold', fontSize: 14, lineHeight: 18, letterSpacing: 0 }}>Password</Text>
-                    <Text style={{ color: palette.faint, fontFamily: 'DMSans_400Regular', fontSize: 12, lineHeight: 16, letterSpacing: 0 }}>Change the password you sign in with</Text>
+                    <Text style={{ color: palette.ink, fontWeight: '600', fontSize: 14, lineHeight: 18, letterSpacing: 0 }}>Password</Text>
+                    <Text style={{ color: palette.faint, fontSize: 10, lineHeight: 15, letterSpacing: 0 }}>Change the password you sign in with</Text>
                   </View>
                   <View style={{ transform: [{ rotate: passwordOpen ? '180deg' : '0deg' }] }}><ChevronDown size={18} color={palette.faint} strokeWidth={2.2} /></View>
                 </Pressable>
@@ -378,8 +378,8 @@ export default function AccountSettingsScreen({ embeddedInSettings = false }: Ac
                 <Pressable onPress={() => setShowSignOut(true)} accessibilityRole="button" style={({ pressed }) => ({ minHeight: 78, paddingHorizontal: 18, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 14, opacity: pressed ? 0.68 : 1, ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : {}) })}>
                   <View style={{ width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.dangerWash }}><LogOut size={18} color={palette.danger} strokeWidth={2} /></View>
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={{ color: palette.danger, fontFamily: 'DMSans_600SemiBold', fontSize: 14, lineHeight: 18, letterSpacing: 0 }}>Sign out</Text>
-                    <Text style={{ color: palette.faint, fontFamily: 'DMSans_400Regular', fontSize: 12, lineHeight: 16, letterSpacing: 0, marginTop: 2 }}>End this session on this device</Text>
+                    <Text style={{ color: palette.danger, fontWeight: '600', fontSize: 14, lineHeight: 18, letterSpacing: 0 }}>Sign out</Text>
+                    <Text style={{ color: palette.faint, fontSize: 10, lineHeight: 15, letterSpacing: 0, marginTop: 2 }}>End this session on this device</Text>
                   </View>
                 </Pressable>
               </View>
@@ -401,7 +401,7 @@ export default function AccountSettingsScreen({ embeddedInSettings = false }: Ac
               <Pressable onPress={(event) => event.stopPropagation()} style={{ width: '100%', maxWidth: 390, borderRadius: 26, padding: 22, backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.edge, gap: 18 }}>
                 <View style={{ gap: 6 }}>
                   <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_800ExtraBold', fontSize: 24, letterSpacing: -0.5 }}>Sign out of Fyll?</Text>
-                  <Text style={{ color: palette.muted, fontFamily: 'DMSans_400Regular', fontSize: 14, lineHeight: 20 }}>You’ll need to enter your details again to access {businessLabel}.</Text>
+                  <Text style={{ color: palette.muted, fontSize: 14, lineHeight: 20 }}>You’ll need to enter your details again to access {businessLabel}.</Text>
                 </View>
                 <View style={{ flexDirection: 'row', gap: 10 }}>
                   <Pressable onPress={() => setShowSignOut(false)} style={({ pressed }) => ({ flex: 1, height: 48, borderRadius: 999, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: palette.edgeStrong, opacity: pressed ? 0.7 : 1 })}><Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: 14 }}>Cancel</Text></Pressable>

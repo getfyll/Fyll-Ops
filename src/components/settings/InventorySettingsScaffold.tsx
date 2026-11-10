@@ -17,7 +17,7 @@ export function InventorySettingsHero({ eyebrow, title, description, isDesktop }
       style={{
         position: 'relative',
         overflow: 'hidden',
-        minHeight: isDesktop ? 138 : 150,
+        minHeight: isDesktop ? 138 : undefined,
         marginBottom: 20,
         padding: 20,
         justifyContent: 'center',

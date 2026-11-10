@@ -7,6 +7,8 @@ import { useBusinessSettings } from '@/hooks/useBusinessSettings';
 import useAuthStore from '@/lib/state/auth-store';
 import useFyllStore, { formatCurrency, type PartnerBillStatus, type PartnerJob } from '@/lib/state/fyll-store';
 import { useThemeColors } from '@/lib/theme';
+import { useTabBarHeight } from '@/lib/useTabBarHeight';
+import { FYLL_LIME, FYLL_LIME_INK, MoneyText, usePaymentsPalette } from '@/components/payments/payments-ui';
 
 const BILL_STATUS_META: Record<PartnerBillStatus, { label: string; bg: string; text: string }> = {
   pending: { label: 'Pending', bg: 'rgba(180, 83, 9, 0.1)', text: '#B45309' },
@@ -58,6 +60,8 @@ export function PartnerBillDetail({ billId, onClose, embedded = false }: {
   embedded?: boolean;
 }) {
   const colors = useThemeColors();
+  const palette = usePaymentsPalette();
+  const tabBarHeight = useTabBarHeight();
   const { businessName, companyName } = useBusinessSettings();
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
   const currentUserName = useAuthStore((s) => s.currentUser?.name ?? '');
@@ -239,17 +243,17 @@ export function PartnerBillDetail({ billId, onClose, embedded = false }: {
 
   if (!bill) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.bg.primary, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 24, justifyContent: 'center' }}>
-        <View style={{ borderRadius: 20, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card, padding: 20, alignItems: 'center' }}>
-          <Text style={{ color: colors.text.primary, fontSize: 16, fontWeight: '600' }}>Bill not found</Text>
-          <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 6, textAlign: 'center' }}>
+      <View style={{ flex: 1, backgroundColor: palette.page, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 24, justifyContent: 'center' }}>
+        <View style={{ borderRadius: 26, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, padding: 20, alignItems: 'center' }}>
+          <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>Bill not found</Text>
+          <Text style={{ color: palette.faint, fontSize: 12, marginTop: 6, textAlign: 'center' }}>
             This bill may have been removed or is no longer available in the current partner list.
           </Text>
           <Pressable
             onPress={onClose}
-            style={{ marginTop: 16, height: 44, borderRadius: 999, backgroundColor: colors.text.primary, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' }}
+            style={{ marginTop: 16, height: 46, borderRadius: 999, backgroundColor: FYLL_LIME, paddingHorizontal: 20, alignItems: 'center', justifyContent: 'center' }}
           >
-            <Text style={{ color: colors.bg.primary, fontSize: 12.5, fontWeight: '600' }}>{embedded ? 'Close' : 'Back to bills'}</Text>
+            <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 14 }}>{embedded ? 'Close' : 'Back to bills'}</MoneyText>
           </Pressable>
         </View>
       </View>
@@ -258,11 +262,11 @@ export function PartnerBillDetail({ billId, onClose, embedded = false }: {
 
   const renderPaidDateField = (hint: string) => (
         <View>
-          <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
+          <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1, marginBottom: 8 }}>
             Date paid
           </Text>
           {Platform.OS === 'web' ? (
-            <View style={{ height: 44, borderRadius: 10, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.secondary, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center' }}>
+            <View style={{ height: 48, borderRadius: 16, borderWidth: 1, borderColor: palette.outline, backgroundColor: palette.card, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center' }}>
               <input
                 type="date"
                 value={toLocalDateInput(paidDate)}
@@ -287,29 +291,29 @@ export function PartnerBillDetail({ billId, onClose, embedded = false }: {
           ) : (
             <Pressable
               onPress={() => setShowPaidDatePicker(true)}
-              style={{ height: 44, borderRadius: 10, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.secondary, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+              style={{ height: 48, borderRadius: 16, borderWidth: 1, borderColor: palette.outline, backgroundColor: palette.card, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
             >
-              <Text style={{ color: colors.text.primary, fontSize: 13.5 }}>
+              <Text style={{ color: palette.text, fontSize: 14 }}>
                 {paidDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
               </Text>
               <Calendar size={16} color={colors.text.tertiary} strokeWidth={2} />
             </Pressable>
           )}
-          <Text style={{ color: colors.text.tertiary, fontSize: 11, marginTop: 6 }}>
+          <Text style={{ color: palette.faint, fontSize: 12, marginTop: 6 }}>
             {hint}
           </Text>
         </View>
   );
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg.primary }}>
+    <View style={{ flex: 1, backgroundColor: palette.page }}>
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{
           width: '100%',
           paddingHorizontal: embedded ? 18 : 20,
           paddingTop: embedded ? 18 : 16,
-          paddingBottom: embedded ? 28 : 120,
+          paddingBottom: embedded ? 28 : tabBarHeight + 32,
           gap: 14,
         }}
         showsVerticalScrollIndicator={false}
@@ -318,42 +322,42 @@ export function PartnerBillDetail({ billId, onClose, embedded = false }: {
           {embedded ? null : (
             <Pressable
               onPress={onClose}
-              style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: colors.bg.secondary, alignItems: 'center', justifyContent: 'center' }}
+              style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: palette.softFill, alignItems: 'center', justifyContent: 'center' }}
             >
-              <ArrowLeft size={18} color={colors.text.primary} strokeWidth={2.2} />
+              <ArrowLeft size={18} color={palette.text} strokeWidth={2.2} />
             </Pressable>
           )}
-          <Text style={{ flex: 1, color: colors.text.primary, fontSize: embedded ? 18 : 24, fontWeight: '700' }}>Bill Details</Text>
+          <MoneyText style={{ flex: 1, color: palette.text, fontSize: embedded ? 18 : 24, lineHeight: embedded ? 24 : 29 }}>Bill Details</MoneyText>
           {embedded ? (
             <Pressable
               onPress={onClose}
-              style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: colors.bg.secondary, alignItems: 'center', justifyContent: 'center' }}
+              style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: palette.softFill, alignItems: 'center', justifyContent: 'center' }}
             >
-              <X size={16} color={colors.text.primary} strokeWidth={2.2} />
+              <X size={16} color={palette.text} strokeWidth={2.2} />
             </Pressable>
           ) : null}
         </View>
 
-        <View style={{ borderRadius: 22, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card, padding: 16 }}>
+        <View style={{ borderRadius: 26, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, padding: 16 }}>
           <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-            <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }} numberOfLines={1}>
+            <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1 }} numberOfLines={1}>
               {bill.partner.name}
             </Text>
             <View style={{ paddingHorizontal: 12, height: 32, borderRadius: 999, backgroundColor: statusMeta.bg, alignItems: 'center', justifyContent: 'center' }}>
               <Text style={{ color: statusMeta.text, fontSize: 10, fontWeight: '600' }}>{statusMeta.label}</Text>
             </View>
           </View>
-          <Text style={{ color: colors.text.primary, fontSize: 30, fontWeight: '700', marginTop: 10 }}>
+          <MoneyText style={{ color: palette.text, fontSize: 30, lineHeight: 36, marginTop: 8 }}>
             {formatCurrency(bill.total)}
-          </Text>
-          <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 4 }}>
+          </MoneyText>
+          <Text style={{ color: palette.faint, fontSize: 12, marginTop: 4 }}>
             {bill.jobCount} {bill.jobCount === 1 ? 'job' : 'jobs'} · Submitted {formatDate(bill.submittedAt)}
           </Text>
         </View>
 
-        <View style={{ borderRadius: 18, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card, overflow: 'hidden' }}>
+        <View style={{ borderRadius: 26, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, overflow: 'hidden' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 14, paddingBottom: 6 }}>
-            <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1 }}>
               Details
             </Text>
             {bill.status === 'paid' ? (
@@ -361,9 +365,9 @@ export function PartnerBillDetail({ billId, onClose, embedded = false }: {
                 onPress={() => setEditingPaidDate((current) => !current)}
                 accessibilityLabel="Edit bill"
                 hitSlop={8}
-                style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: editingPaidDate ? colors.text.primary : colors.bg.secondary, alignItems: 'center', justifyContent: 'center' }}
+                style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: editingPaidDate ? FYLL_LIME : palette.softFill, alignItems: 'center', justifyContent: 'center' }}
               >
-                <Pencil size={13} color={editingPaidDate ? colors.bg.primary : colors.text.tertiary} strokeWidth={2.2} />
+                <Pencil size={13} color={editingPaidDate ? FYLL_LIME_INK : palette.muted} strokeWidth={2.2} />
               </Pressable>
             ) : null}
           </View>
@@ -377,18 +381,18 @@ export function PartnerBillDetail({ billId, onClose, embedded = false }: {
           ].map((row, index) => (
             <View
               key={row.label}
-              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingHorizontal: 16, paddingVertical: 14, borderTopWidth: index === 0 ? 0 : 1, borderTopColor: colors.border.light }}
+              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingHorizontal: 16, paddingVertical: 14, borderTopWidth: index === 0 ? 0 : 1, borderTopColor: palette.hairline }}
             >
-              <Text style={{ color: colors.text.tertiary, fontSize: 12 }}>{row.label}</Text>
-              <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '600', flexShrink: 1, textAlign: 'right' }}>{row.value}</Text>
+              <Text style={{ color: palette.faint, fontSize: 12 }}>{row.label}</Text>
+              <Text style={{ color: palette.text, fontSize: 12, fontWeight: '500', flexShrink: 1, textAlign: 'right' }}>{row.value}</Text>
             </View>
           ))}
           {bill.note ? (
-            <View style={{ paddingHorizontal: 16, paddingVertical: 14, borderTopWidth: 1, borderTopColor: colors.border.light }}>
-              <Text style={{ color: colors.text.tertiary, fontSize: 12, marginBottom: 4 }}>
+            <View style={{ paddingHorizontal: 16, paddingVertical: 14, borderTopWidth: 1, borderTopColor: palette.hairline }}>
+              <Text style={{ color: palette.faint, fontSize: 12, marginBottom: 4 }}>
                 {bill.status === 'rejected' ? 'Rejection note' : bill.status === 'queried' ? 'Query note' : 'Note'}
               </Text>
-              <Text style={{ color: colors.text.primary, fontSize: 12, lineHeight: 18 }}>{bill.note}</Text>
+              <Text style={{ color: palette.text, fontSize: 12, lineHeight: 18 }}>{bill.note}</Text>
             </View>
           ) : null}
         </View>
@@ -398,24 +402,24 @@ export function PartnerBillDetail({ billId, onClose, embedded = false }: {
             <View style={{ flexDirection: 'row', gap: 12 }}>
               <Pressable
                 onPress={handleReject}
-                style={{ flex: 1, height: 42, borderRadius: 999, backgroundColor: 'rgba(220, 38, 38, 0.12)', alignItems: 'center', justifyContent: 'center' }}
+                style={{ flex: 1, height: 46, borderRadius: 999, backgroundColor: palette.dangerBg, borderWidth: 1, borderColor: palette.dangerBorder, alignItems: 'center', justifyContent: 'center' }}
               >
-                <Text style={{ color: '#DC2626', fontSize: 13, fontWeight: '700' }}>Reject</Text>
+                <MoneyText style={{ color: palette.danger, fontSize: 14 }}>Reject</MoneyText>
               </Pressable>
               <Pressable
                 onPress={handleApprove}
-                style={{ flex: 1, height: 42, borderRadius: 999, backgroundColor: colors.text.primary, alignItems: 'center', justifyContent: 'center' }}
+                style={{ flex: 1, height: 46, borderRadius: 999, backgroundColor: FYLL_LIME, alignItems: 'center', justifyContent: 'center' }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Check size={15} color={colors.bg.primary} strokeWidth={2.4} />
-                  <Text style={{ color: colors.bg.primary, fontSize: 13, fontWeight: '700' }}>Approve</Text>
+                  <Check size={15} color={FYLL_LIME_INK} strokeWidth={2.4} />
+                  <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 14 }}>Approve</MoneyText>
                 </View>
               </Pressable>
             </View>
-            <View style={{ borderRadius: 18, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card, padding: 16 }}>
+            <View style={{ borderRadius: 26, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, padding: 16 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                <MessageSquareWarning size={16} color={colors.text.tertiary} strokeWidth={2} />
-                <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }}>Query partner</Text>
+                <MessageSquareWarning size={16} color={palette.limeOnSurface} strokeWidth={2} />
+                <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>Query partner</Text>
               </View>
               <TextInput
                 value={noteDraft}
@@ -425,12 +429,12 @@ export function PartnerBillDetail({ billId, onClose, embedded = false }: {
                 multiline
                 style={{
                   minHeight: 88,
-                  borderRadius: 12,
+                  borderRadius: 16,
                   borderWidth: 1,
-                  borderColor: colors.border.light,
-                  backgroundColor: colors.input.bg,
-                  color: colors.input.text,
-                  fontSize: 13,
+                  borderColor: palette.outline,
+                  backgroundColor: palette.card,
+                  color: palette.text,
+                  fontSize: 14,
                   paddingHorizontal: 12,
                   paddingVertical: 12,
                   textAlignVertical: 'top',
@@ -444,30 +448,30 @@ export function PartnerBillDetail({ billId, onClose, embedded = false }: {
                   alignSelf: 'flex-start',
                   minHeight: 38,
                   borderRadius: 999,
-                  backgroundColor: noteDraft.trim() ? colors.text.primary : colors.bg.secondary,
-                  paddingHorizontal: 14,
+                  backgroundColor: noteDraft.trim() ? FYLL_LIME : palette.softFill,
+                  paddingHorizontal: 16,
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
               >
-                <Text style={{ color: noteDraft.trim() ? colors.bg.primary : colors.text.tertiary, fontSize: 12.5, fontWeight: '600' }}>
+                <MoneyText style={{ color: noteDraft.trim() ? FYLL_LIME_INK : palette.faint, fontSize: 14 }}>
                   Submit query
-                </Text>
+                </MoneyText>
               </Pressable>
             </View>
           </View>
         ) : bill.status === 'approved' ? (
-          <View style={{ gap: 12, borderRadius: 18, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card, padding: 16 }}>
+          <View style={{ gap: 12, borderRadius: 26, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, padding: 16 }}>
             {renderPaidDateField("Backdate this if you paid the partner earlier — it's the date shown on both sides.")}
             <Pressable
               onPress={handleMarkPaid}
-              style={{ height: 42, borderRadius: 999, backgroundColor: colors.text.primary, alignItems: 'center', justifyContent: 'center' }}
+              style={{ height: 46, borderRadius: 999, backgroundColor: FYLL_LIME, alignItems: 'center', justifyContent: 'center' }}
             >
-              <Text style={{ color: colors.bg.primary, fontSize: 13, fontWeight: '700' }}>Mark paid</Text>
+              <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 14 }}>Mark paid</MoneyText>
             </Pressable>
           </View>
         ) : bill.status === 'paid' && editingPaidDate ? (
-          <View style={{ gap: 12, borderRadius: 18, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card, padding: 16 }}>
+          <View style={{ gap: 12, borderRadius: 26, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, padding: 16 }}>
             {renderPaidDateField('Wrong date? Change it here — it updates on both sides.')}
             <View style={{ flexDirection: 'row', gap: 12 }}>
               <Pressable
@@ -475,9 +479,9 @@ export function PartnerBillDetail({ billId, onClose, embedded = false }: {
                   setPaidDate(bill.paidAt ? new Date(bill.paidAt) : new Date());
                   setEditingPaidDate(false);
                 }}
-                style={{ flex: 1, height: 42, borderRadius: 999, backgroundColor: colors.bg.secondary, alignItems: 'center', justifyContent: 'center' }}
+                style={{ flex: 1, height: 46, borderRadius: 999, borderWidth: 1, borderColor: palette.outline, alignItems: 'center', justifyContent: 'center' }}
               >
-                <Text style={{ color: colors.text.secondary, fontSize: 13, fontWeight: '700' }}>Cancel</Text>
+                <MoneyText style={{ color: palette.text, fontSize: 14 }}>Cancel</MoneyText>
               </Pressable>
               <Pressable
                 onPress={() => {
@@ -485,15 +489,15 @@ export function PartnerBillDetail({ billId, onClose, embedded = false }: {
                   setEditingPaidDate(false);
                 }}
                 disabled={!paidDateChanged}
-                style={{ flex: 1, height: 42, borderRadius: 999, backgroundColor: paidDateChanged ? colors.text.primary : colors.bg.secondary, alignItems: 'center', justifyContent: 'center' }}
+                style={{ flex: 1, height: 46, borderRadius: 999, backgroundColor: paidDateChanged ? FYLL_LIME : palette.softFill, alignItems: 'center', justifyContent: 'center' }}
               >
-                <Text style={{ color: paidDateChanged ? colors.bg.primary : colors.text.tertiary, fontSize: 13, fontWeight: '700' }}>Save date</Text>
+                <MoneyText style={{ color: paidDateChanged ? FYLL_LIME_INK : palette.faint, fontSize: 14 }}>Save date</MoneyText>
               </Pressable>
             </View>
           </View>
         ) : null}
-        <View style={{ borderRadius: 18, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card, overflow: 'hidden' }}>
-          <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8 }}>
+        <View style={{ borderRadius: 26, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, overflow: 'hidden' }}>
+          <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8 }}>
             {bill.jobCount} {bill.jobCount === 1 ? 'Job' : 'Jobs'}
           </Text>
           {bill.jobs.map((job, index) => {
@@ -502,24 +506,24 @@ export function PartnerBillDetail({ billId, onClose, embedded = false }: {
             return (
               <View
                 key={job.id}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: index === 0 ? 0 : 1, borderTopColor: colors.border.light }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: index === 0 ? 0 : 1, borderTopColor: palette.hairline }}
               >
-                <View style={{ width: 42, height: 42, borderRadius: 12, backgroundColor: colors.bg.secondary, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ width: 42, height: 42, borderRadius: 13, backgroundColor: palette.softFill, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }}>
                   {thumbnailUrl ? (
                     <ResolvedAttachmentImage imageUrl={thumbnailUrl} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
                   ) : (
-                    <Glasses size={18} color={colors.text.tertiary} strokeWidth={1.8} />
+                    <Glasses size={18} color={palette.faint} strokeWidth={1.8} />
                   )}
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>
+                  <Text style={{ color: palette.text, fontSize: 12, lineHeight: 18, fontWeight: '600' }} numberOfLines={1}>
                     {job.customerName}
                   </Text>
-                  <Text style={{ color: colors.text.tertiary, fontSize: 11, marginTop: 2 }} numberOfLines={1}>
+                  <Text style={{ color: palette.faint, fontSize: 10, marginTop: 2 }} numberOfLines={1}>
                     {job.jobType || job.itemLabel || 'Job'} · {orderNumber ?? job.id.slice(-6).toUpperCase()}
                   </Text>
                 </View>
-                <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '700' }}>
+                <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }}>
                   {formatCurrency(job.amount ?? 0)}
                 </Text>
               </View>
@@ -527,12 +531,12 @@ export function PartnerBillDetail({ billId, onClose, embedded = false }: {
           })}
         </View>
 
-        <View style={{ borderRadius: 18, borderWidth: 1, borderColor: colors.border.light, backgroundColor: colors.bg.card, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 16 }}>
+        <View style={{ borderRadius: 26, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 16 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1 }}>
               Activity
             </Text>
-            <Text style={{ color: colors.text.tertiary, fontSize: 12 }}>
+            <Text style={{ color: palette.faint, fontSize: 12 }}>
               {activityEntries.length} {activityEntries.length === 1 ? 'event' : 'events'}
             </Text>
           </View>
@@ -540,16 +544,16 @@ export function PartnerBillDetail({ billId, onClose, embedded = false }: {
             {activityEntries.map((entry, index) => (
               <View key={`${entry.label}-${entry.at}-${index}`} style={{ flexDirection: 'row', gap: 12 }}>
                 <View style={{ alignItems: 'center' }}>
-                  <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: entry.tone === 'primary' ? colors.text.primary : colors.text.muted, marginTop: 4 }} />
+                  <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: entry.tone === 'primary' ? palette.limeOnSurface : palette.outline, marginTop: 5 }} />
                   {index < activityEntries.length - 1 ? (
-                    <View style={{ width: 1, flex: 1, backgroundColor: colors.border.light, marginTop: 6, minHeight: 28 }} />
+                    <View style={{ width: 1, flex: 1, backgroundColor: palette.hairline, marginTop: 6, minHeight: 28 }} />
                   ) : null}
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '600' }}>
+                  <Text style={{ color: palette.text, fontSize: 10, lineHeight: 15, fontWeight: '600' }}>
                     {entry.label}
                   </Text>
-                  <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 4 }}>
+                  <Text style={{ color: palette.faint, fontSize: 10, marginTop: 2 }}>
                     {entry.actor} · {formatDateTime(entry.at)}
                   </Text>
                 </View>
@@ -559,8 +563,8 @@ export function PartnerBillDetail({ billId, onClose, embedded = false }: {
         </View>
 
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 2 }}>
-          <Calendar size={14} color={colors.text.tertiary} strokeWidth={2} />
-          <Text style={{ color: colors.text.tertiary, fontSize: 11 }}>
+          <Calendar size={14} color={palette.faint} strokeWidth={2} />
+          <Text style={{ color: palette.faint, fontSize: 12 }}>
             Submitted {formatDate(bill.submittedAt)} for {businessLabel}
           </Text>
         </View>
@@ -574,10 +578,10 @@ export function PartnerBillDetail({ billId, onClose, embedded = false }: {
           >
             <Pressable
               onPress={(e) => e.stopPropagation()}
-              style={{ width: '90%', maxWidth: 400, borderRadius: 16, overflow: 'hidden', backgroundColor: colors.bg.card }}
+              style={{ width: '90%', maxWidth: 400, borderRadius: 28, overflow: 'hidden', backgroundColor: palette.card }}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
-                <Text style={{ color: colors.text.primary, fontSize: 15, fontWeight: '700' }}>Date paid</Text>
+                <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>Date paid</Text>
                 <Pressable onPress={() => setShowPaidDatePicker(false)} style={{ padding: 4 }}>
                   <X size={18} color={colors.text.tertiary} strokeWidth={2} />
                 </Pressable>
@@ -598,9 +602,9 @@ export function PartnerBillDetail({ billId, onClose, embedded = false }: {
                 {Platform.OS === 'ios' ? (
                   <Pressable
                     onPress={() => setShowPaidDatePicker(false)}
-                    style={{ marginTop: 12, height: 44, width: '100%', borderRadius: 999, backgroundColor: colors.text.primary, alignItems: 'center', justifyContent: 'center' }}
+                    style={{ marginTop: 12, height: 46, width: '100%', borderRadius: 999, backgroundColor: FYLL_LIME, alignItems: 'center', justifyContent: 'center' }}
                   >
-                    <Text style={{ color: colors.bg.primary, fontSize: 13.5, fontWeight: '600' }}>Done</Text>
+                    <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 14 }}>Done</MoneyText>
                   </Pressable>
                 ) : null}
               </View>

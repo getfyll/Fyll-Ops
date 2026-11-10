@@ -41,9 +41,15 @@ export function HomeCard({ children, style, flush = false }: { children: React.R
 
 export function HomeLink({ label = 'View all', onPress }: { label?: string; onPress: () => void }) {
   const palette = usePaymentsPalette();
+  const { isMobile } = useBreakpoint();
   return (
     <Pressable onPress={onPress} className="active:opacity-70" style={{ flexDirection: 'row', alignItems: 'center', gap: 2, height: 28 }}>
-      <MoneyText style={[HOME_BUTTON_TEXT_STYLE, { color: palette.limeOnSurface }]}>{label}</MoneyText>
+      {isMobile ? (
+        // Phones: the same plain 600 weight as the card titles next to it (the heading font reads heavier here).
+        <Text style={{ color: palette.limeOnSurface, fontSize: 14, fontWeight: '600' }}>{label}</Text>
+      ) : (
+        <MoneyText style={[HOME_BUTTON_TEXT_STYLE, { color: palette.limeOnSurface }]}>{label}</MoneyText>
+      )}
       <ChevronRight size={14} color={palette.limeOnSurface} strokeWidth={2.2} />
     </Pressable>
   );

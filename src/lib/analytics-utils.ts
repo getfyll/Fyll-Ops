@@ -1,5 +1,6 @@
 // Analytics utility functions for computing real stats from orders
 
+import { isPickupOrder } from '@/lib/pickup';
 import type { Order, OrderClassification, Product, ProductVariant } from './state/fyll-store';
 import { normalizeProductType } from './product-utils';
 
@@ -613,7 +614,8 @@ export function getLocationBreakdown(
   const locationMap = new Map<string, number>();
 
   orders.forEach((order) => {
-    const location = order.deliveryState || 'Unknown';
+    // Pickup orders are collected, not delivered: they get their own bucket rather than a made-up delivery state.
+    const location = isPickupOrder(order) ? 'Pickup' : order.deliveryState || 'Unknown';
     locationMap.set(location, (locationMap.get(location) || 0) + 1);
   });
 
@@ -1330,7 +1332,8 @@ export function getCustomersByLocation(
   const customerLocations = new Map<string, Set<string>>();
 
   orders.forEach((order) => {
-    const location = order.deliveryState || 'Unknown';
+    // Pickup orders are collected, not delivered: they get their own bucket rather than a made-up delivery state.
+    const location = isPickupOrder(order) ? 'Pickup' : order.deliveryState || 'Unknown';
     const customerKey = order.customerEmail || order.customerName?.toLowerCase() || 'unknown';
 
     if (!customerLocations.has(location)) {

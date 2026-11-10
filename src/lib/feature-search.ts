@@ -1,4 +1,4 @@
-import { BarChart3, ClipboardList, DollarSign, FileText, Megaphone, MessageCircle, Package, Plus, Printer, RotateCcw, Settings, ShoppingCart, Truck, Users } from 'lucide-react-native';
+import { BarChart3, Building2, ClipboardList, DollarSign, FileText, Megaphone, MessageCircle, Package, Plus, Printer, RotateCcw, Settings, ShoppingCart, Truck, Users } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
 import { isBusinessFeatureEnabled, type BusinessFeatureAccess } from '@/lib/feature-access';
 
@@ -21,6 +21,7 @@ export const FEATURE_SEARCH_ITEMS: FeatureSearchItem[] = [
   { label: 'Fyll Print', description: 'Shipping and inventory print queues', route: '/fyll-print', Icon: Printer, keywords: 'print label queue barcode shipping' },
   { label: 'Returns', description: 'Return requests and workflows', route: '/returns', Icon: RotateCcw, keywords: 'returns refund exchange customer proof' },
   { label: 'Cases', description: 'Support cases and customer issues', route: '/(tabs)/cases', Icon: FileText, keywords: 'cases support issues complaints' },
+  { label: 'Partners', description: 'Dispatch jobs to external partners and vendors', route: '/partners?partnerSection=jobs', Icon: Building2, keywords: 'partners vendors suppliers jobs dispatch bills external' },
   { label: 'Customers', description: 'Customer profiles and history', route: '/(tabs)/customers', Icon: Users, keywords: 'customers contacts profiles' },
   { label: 'Announcements', description: 'Compose customer announcements', route: '/(tabs)/announcements', Icon: Megaphone, keywords: 'announcements email customers broadcast' },
   { label: 'Announcement Setup', description: 'Email template, sender, and reply-to settings', route: '/(tabs)/announcements?announcementSection=setup', Icon: Settings, keywords: 'announcement setup email template sender reply to' },

@@ -1,4 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
+import { isPickupOrder, orderStatusAppliesToOrder } from '@/lib/pickup';
 import { Pressable, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { CheckCircle2, Copy, Edit2 } from 'lucide-react-native';
@@ -41,8 +42,8 @@ export function OrderFulfillmentSection({
   const snapshot = getFulfillmentSnapshot(order, new Date(), orderStatuses);
   const activeStage = snapshot.stage;
   const steps = useMemo(
-    () => sortOrderStatusesForFulfillment(orderStatuses).filter((status) => !/cancel/i.test(status.name)),
-    [orderStatuses]
+    () => sortOrderStatusesForFulfillment(orderStatuses).filter((status) => !/cancel/i.test(status.name) && orderStatusAppliesToOrder(status, isPickupOrder(order), order.status)),
+    [order, orderStatuses]
   );
   const isCancelled = activeStage === 'cancelled';
   const stepIndex = steps.findIndex((status) => status.name === order.status);
@@ -63,11 +64,11 @@ export function OrderFulfillmentSection({
         orderTypeId: order.orderTypeId,
         orderTypeName: order.orderTypeName,
         deliveryState: order.deliveryState,
-        fulfillmentMethod: order.fulfillmentMethod,
+        fulfillmentMethod: isPickupOrder(order) ? 'pickup' : order.fulfillmentMethod,
       },
       orderTimelineSettings
     ),
-    [order.deliveryState, order.fulfillmentMethod, order.orderTypeId, order.orderTypeName, orderTimelineSettings]
+    [order.deliveryState, order.fulfillmentMethod, order.fulfillmentType, order.shippingOptionId, order.orderTypeId, order.orderTypeName, orderTimelineSettings]
   );
   const timelineChip = useMemo(() => {
     if (snapshot.statusMeta.label.toLowerCase().includes('cancel')) {

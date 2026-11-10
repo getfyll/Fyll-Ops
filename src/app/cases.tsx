@@ -275,10 +275,10 @@ export default function CasesScreen() {
             }}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 14 }}>
-              <Text style={{ color: colors.text.primary, flex: 1.6 }} className="text-sm font-semibold" numberOfLines={1}>
+              <Text style={{ color: colors.text.primary, flex: 1.6, fontWeight: '700' }} className="text-sm" numberOfLines={1}>
                 {caseItem.customerName}
               </Text>
-              <Text style={{ color: colors.text.secondary, flex: 1 }} className="text-sm" numberOfLines={1}>
+              <Text style={{ color: colors.text.primary, flex: 1, fontWeight: '700' }} className="text-sm" numberOfLines={1}>
                 {caseItem.caseNumber}
               </Text>
               <Text style={{ color: colors.text.tertiary, width: 140 }} className="text-sm" numberOfLines={1}>

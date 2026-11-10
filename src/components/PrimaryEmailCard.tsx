@@ -155,7 +155,7 @@ export function PrimaryEmailCard({ fieldBorderColor, appearance = 'default' }: {
       <View style={{ marginBottom: usesAccountAppearance ? 26 : 32 }}>
         <Text
           style={usesAccountAppearance
-            ? { color: colors.text.tertiary, fontFamily: 'DMSans_700Bold', fontSize: 12, lineHeight: 16, letterSpacing: 0.75, textTransform: 'uppercase', marginLeft: 2, marginBottom: 10 }
+            ? { color: colors.text.tertiary, fontWeight: '700', fontSize: 12, lineHeight: 16, letterSpacing: 0.75, textTransform: 'uppercase', marginLeft: 2, marginBottom: 10 }
             : { color: colors.text.tertiary }}
           className={usesAccountAppearance ? undefined : 'text-xs font-semibold uppercase mb-3 tracking-wider'}
         >
@@ -214,7 +214,7 @@ export function PrimaryEmailCard({ fieldBorderColor, appearance = 'default' }: {
     <View style={{ marginBottom: usesAccountAppearance ? 26 : 32 }}>
       <Text
           style={usesAccountAppearance
-            ? { color: colors.text.tertiary, fontFamily: 'DMSans_700Bold', fontSize: 12, lineHeight: 16, letterSpacing: 0.75, textTransform: 'uppercase', marginLeft: 2, marginBottom: 10 }
+            ? { color: colors.text.tertiary, fontWeight: '700', fontSize: 12, lineHeight: 16, letterSpacing: 0.75, textTransform: 'uppercase', marginLeft: 2, marginBottom: 10 }
             : { color: colors.text.tertiary }}
           className={usesAccountAppearance ? undefined : 'text-xs font-semibold uppercase mb-3 tracking-wider'}
         >

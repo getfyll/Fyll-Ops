@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Modal, Pressable, ScrollView, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { Modal, Platform, Pressable, ScrollView, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import { useFonts, BricolageGrotesque_700Bold } from '@expo-google-fonts/bricolage-grotesque';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
+  AlertTriangle,
   Ban,
   Building2,
   Banknote,
@@ -1182,15 +1183,6 @@ export default function PartnersScreen() {
               <Text style={[headingStyle, { color: colors.text.primary }]}>
                 {activePartnerSection === 'jobs' ? 'Partner Jobs' : activePartnerSection === 'bills' ? 'Partner Bills' : activePartnerSection === 'issues' ? 'Issues' : 'Partners'}
               </Text>
-              {activePartnerSection !== 'bills' ? (
-                <Text style={{ color: colors.text.muted, fontSize: isMobile ? 13 : 14, lineHeight: 20, marginTop: 4 }}>
-                  {activePartnerSection === 'jobs'
-                      ? 'Track every job you have sent to your partners.'
-                      : activePartnerSection === 'issues'
-                      ? 'Defects and complaints reported against partner jobs.'
-                      : 'External business partners who work for you.'}
-                </Text>
-              ) : null}
             </View>
             {!isMobile ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -1620,7 +1612,7 @@ export default function PartnersScreen() {
                 return (
                   <View key={job.id} style={{ marginTop: isFirstInGroup && index > 0 ? 18 : 0 }}>
                     {isFirstInGroup ? (
-                      <Text style={{ color: colors.text.muted, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', paddingHorizontal: 4, marginBottom: 8 }}>
+                      <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', paddingHorizontal: 4, marginBottom: 8 }}>
                         {getPartnerJobDayLabel(job)}
                       </Text>
                     ) : null}
@@ -1916,7 +1908,7 @@ export default function PartnersScreen() {
                     return (
                       <View key={bill.billId} style={{ marginTop: isFirstInGroup && index > 0 ? 18 : 0 }}>
                         {isFirstInGroup ? (
-                          <Text style={{ color: colors.text.muted, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', paddingHorizontal: 4, marginBottom: 8 }}>
+                          <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', paddingHorizontal: 4, marginBottom: 8 }}>
                             {getBillDayLabel(bill.submittedAt)}
                           </Text>
                         ) : null}
@@ -2264,115 +2256,6 @@ export default function PartnersScreen() {
           </View>
         ) : null}
 
-        {isMobile ? (
-          <>
-            <Modal visible={showMobilePartnerMenu} transparent animationType="fade" onRequestClose={() => setShowMobilePartnerMenu(false)}>
-              <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.2)' }} onPress={() => setShowMobilePartnerMenu(false)}>
-                <View
-                  style={{
-                    position: 'absolute',
-                    right: 16,
-                    bottom: Math.max(84, tabBarHeight + 28),
-                    width: 196,
-                    borderRadius: 18,
-                    borderWidth: 1,
-                    borderColor: colors.border.light,
-                    backgroundColor: colors.bg.card,
-                    overflow: 'hidden',
-                    shadowColor: '#000000',
-                    shadowOpacity: 0.18,
-                    shadowRadius: 18,
-                    shadowOffset: { width: 0, height: 10 },
-                    elevation: 8,
-                  }}
-                >
-                  <Pressable onPress={(event) => event.stopPropagation()}>
-                    <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
-                      <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600' }}>Partner Menu</Text>
-                    </View>
-                    {partnerSectionItems.map((item, index) => {
-                      const selected = activePartnerSection === item.key;
-                      const badgeCount = item.key === 'issues' ? openPartnerIssueCount : 0;
-                      return (
-                        <Pressable
-                          key={item.key}
-                          onPress={() => selectPartnerSection(item.key)}
-                          style={{
-                            minHeight: 46,
-                            paddingHorizontal: 16,
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            borderTopWidth: index === 0 ? 0 : 1,
-                            borderTopColor: colors.border.light,
-                            backgroundColor: selected ? colors.bg.secondary : colors.bg.card,
-                          }}
-                        >
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                            <Text style={{ color: selected ? colors.text.primary : colors.text.secondary, fontSize: 13, fontWeight: selected ? '600' : '500' }}>
-                              {item.label}
-                            </Text>
-                            {badgeCount > 0 ? (
-                              <View
-                                style={{
-                                  minWidth: 18,
-                                  height: 18,
-                                  borderRadius: 9,
-                                  backgroundColor: '#EF4444',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  paddingHorizontal: 5,
-                                }}
-                              >
-                                <Text style={{ color: '#FFFFFF', fontSize: 10.5, fontWeight: '700' }}>
-                                  {badgeCount > 99 ? '99+' : badgeCount}
-                                </Text>
-                              </View>
-                            ) : null}
-                          </View>
-                          {selected ? <Check size={14} color={colors.text.primary} strokeWidth={2.4} /> : null}
-                        </Pressable>
-                      );
-                    })}
-                    <Pressable
-                      onPress={() => { setShowMobilePartnerMenu(false); router.push('/insights/partner-jobs' as never); }}
-                      style={{ minHeight: 46, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 8, borderTopWidth: 1, borderTopColor: colors.border.light }}
-                    >
-                      <BarChart3 size={15} color={colors.text.secondary} strokeWidth={2} />
-                      <Text style={{ color: colors.text.secondary, fontSize: 13, fontWeight: '500' }}>Reports</Text>
-                    </Pressable>
-                  </Pressable>
-                </View>
-              </Pressable>
-            </Modal>
-
-            <Pressable
-              onPress={() => {
-                closeJobMenus();
-                setShowMobilePartnerMenu(true);
-              }}
-              style={{
-                position: 'absolute',
-                right: 18,
-                bottom: Math.max(12, tabBarHeight - 30),
-                width: 58,
-                height: 58,
-                borderRadius: 29,
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: colors.text.primary,
-                shadowColor: '#000000',
-                shadowOpacity: 0.22,
-                shadowRadius: 14,
-                shadowOffset: { width: 0, height: 8 },
-                elevation: 8,
-                zIndex: 50,
-              }}
-            >
-              <Menu size={24} color={colors.bg.primary} strokeWidth={2.6} />
-            </Pressable>
-          </>
-        ) : null}
       </SafeAreaView>
 
       {/* Add partner modal */}

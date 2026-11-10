@@ -111,7 +111,7 @@ export function NetProfitHeroCard({
               <View style={{ width: 200, height: 44, borderRadius: 12, backgroundColor: palette.softFill }} />
             ) : (
               <MoneyText
-                style={{ color: netProfit < 0 ? palette.danger : palette.text, fontSize: 40, lineHeight: 46, letterSpacing: -1.4 }}
+                style={{ color: netProfit < 0 ? palette.danger : palette.text, fontSize: isMobile ? 32 : 40, lineHeight: isMobile ? 38 : 46, letterSpacing: -1.4 }}
                 numberOfLines={1}
                 adjustsFontSizeToFit
                 minimumFontScale={0.6}

@@ -11,6 +11,8 @@ export type FocusNavItem = {
   label: string;
   Icon: LucideIcon;
   active?: boolean;
+  // Small red count on the icon (for example open issues).
+  badge?: number;
   onPress: () => void;
 };
 
@@ -89,6 +91,11 @@ export function FocusBottomNav({ items, onHome }: { items: FocusNavItem[]; onHom
               >
                 <View style={{ width: 54, height: 40, marginTop: 2, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: item.active ? activeBg : 'transparent' }}>
                   <item.Icon size={23} color={color} strokeWidth={item.active ? 2.5 : 2} />
+                  {item.badge && item.badge > 0 ? (
+                    <View style={{ position: 'absolute', top: 2, right: 6, minWidth: 16, height: 16, borderRadius: 8, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EF4444' }}>
+                      <Text style={{ color: '#FFFFFF', fontSize: 9, fontWeight: '700' }}>{item.badge > 99 ? '99+' : item.badge}</Text>
+                    </View>
+                  ) : null}
                 </View>
                 <Text style={{ color, fontSize: 10, fontWeight: item.active ? '700' : '600', lineHeight: 12, height: 12 }}>{item.label}</Text>
               </Pressable>

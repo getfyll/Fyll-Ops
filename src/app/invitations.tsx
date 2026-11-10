@@ -80,8 +80,8 @@ export default function InvitationsScreen({ embeddedInSettings = false }: Invita
         edge: 'rgba(255,255,255,0.09)', edgeStrong: 'rgba(255,255,255,0.14)', input: 'rgba(255,255,255,0.055)', topGlow: 'rgba(111,125,18,0.55)', topGlowEnd: 'rgba(20,20,20,0)', navButton: 'rgba(255,255,255,0.08)', limeWash: 'rgba(213,224,87,0.14)', limeBorder: 'rgba(213,224,87,0.25)', dangerWash: 'rgba(239,68,68,0.12)', successWash: 'rgba(34,197,94,0.12)',
       }
     : {
-        ground: '#F4F3EB', surface: '#FFFFFF', ink: '#202117', muted: '#5E6056', faint: '#85877C', lime: '#D5E057', limeInk: '#667000', limeDeep: '#879400',
-        edge: 'rgba(35,38,25,0.09)', edgeStrong: 'rgba(35,38,25,0.15)', input: '#F7F7F1', topGlow: 'rgba(213,224,87,0.42)', topGlowEnd: 'rgba(244,243,235,0)', navButton: 'rgba(32,33,23,0.07)', limeWash: 'rgba(135,148,0,0.13)', limeBorder: 'rgba(102,112,0,0.22)', dangerWash: 'rgba(239,68,68,0.08)', successWash: 'rgba(34,197,94,0.08)',
+        ground: '#FFFFFF', surface: '#FFFFFF', ink: '#202117', muted: '#5E6056', faint: '#85877C', lime: '#D5E057', limeInk: '#667000', limeDeep: '#879400',
+        edge: 'rgba(35,38,25,0.09)', edgeStrong: 'rgba(35,38,25,0.15)', input: '#F7F7F1', topGlow: 'rgba(255,255,255,0)', topGlowEnd: 'rgba(255,255,255,0)', navButton: 'rgba(32,33,23,0.07)', limeWash: 'rgba(135,148,0,0.13)', limeBorder: 'rgba(102,112,0,0.22)', dangerWash: 'rgba(239,68,68,0.08)', successWash: 'rgba(34,197,94,0.08)',
       };
   const { isDesktop, isMobile } = useBreakpoint();
   useFonts({ BricolageGrotesque_700Bold, BricolageGrotesque_800ExtraBold });
@@ -369,7 +369,6 @@ export default function InvitationsScreen({ embeddedInSettings = false }: Invita
         <Stack.Screen options={{ headerShown: false }} />
         <View style={screenInnerStyle}>
         <SafeAreaView className="flex-1" edges={['top']} style={{ backgroundColor: palette.ground }}>
-          {!showWebSettingsPanel ? <LinearGradient pointerEvents="none" colors={[palette.topGlow, palette.topGlowEnd]} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 300 }} /> : null}
           <View style={desktopContentWrapStyle}>
             <View
               className="flex-row items-center"
@@ -412,7 +411,6 @@ export default function InvitationsScreen({ embeddedInSettings = false }: Invita
       <Stack.Screen options={{ headerShown: false }} />
       <View style={screenInnerStyle}>
       <SafeAreaView className="flex-1" edges={['top']} style={{ backgroundColor: palette.ground }}>
-        {!showWebSettingsPanel ? <LinearGradient pointerEvents="none" colors={[palette.topGlow, palette.topGlowEnd]} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 300 }} /> : null}
         <View>
           <View style={desktopContentWrapStyle}>
             <View
@@ -428,7 +426,7 @@ export default function InvitationsScreen({ embeddedInSettings = false }: Invita
                   <ArrowLeft size={18} color={palette.ink} strokeWidth={2.2} />
                 </Pressable>
                 <View>
-                  <Text style={{ color: palette.faint, fontSize: 9.5, lineHeight: 12, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Settings</Text>
+                  <Text style={{ color: palette.faint, fontSize: 10, lineHeight: 12, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Settings</Text>
                   <Text
                     style={{
                       color: palette.ink,
@@ -487,16 +485,16 @@ export default function InvitationsScreen({ embeddedInSettings = false }: Invita
                   </View>
 
               <View className="mt-4 flex-row" style={{ gap: 10 }}>
-                <View className="flex-1 rounded-xl p-3" style={{ backgroundColor: palette.input, borderWidth: 1, borderColor: palette.edge }}>
-                  <Text style={{ color: palette.faint }} className="text-[11px] uppercase">Invite limit</Text>
+                <View className="flex-1 rounded-xl p-3" style={{ backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.edge }}>
+                  <Text style={{ color: palette.faint }} className="text-[10px] uppercase">Invite limit</Text>
                   <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold' }} className="text-xl mt-1">{inviteLimitTotal}</Text>
                 </View>
-                <View className="flex-1 rounded-xl p-3" style={{ backgroundColor: palette.input, borderWidth: 1, borderColor: palette.edge }}>
-                  <Text style={{ color: palette.faint }} className="text-[11px] uppercase">Used</Text>
+                <View className="flex-1 rounded-xl p-3" style={{ backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.edge }}>
+                  <Text style={{ color: palette.faint }} className="text-[10px] uppercase">Used</Text>
                   <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold' }} className="text-xl mt-1">{usedInviteCount}</Text>
                 </View>
-                <View className="flex-1 rounded-xl p-3" style={{ backgroundColor: palette.limeWash, borderWidth: 1, borderColor: palette.limeBorder }}>
-                  <Text style={{ color: palette.limeInk }} className="text-[11px] uppercase">Remaining</Text>
+                <View className="flex-1 rounded-xl p-3" style={{ backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.edge }}>
+                  <Text style={{ color: palette.limeInk }} className="text-[10px] uppercase">Remaining</Text>
                   <Text style={{ color: palette.limeInk, fontFamily: 'BricolageGrotesque_700Bold' }} className="text-xl mt-1">{inviteRemaining}</Text>
                 </View>
               </View>
@@ -523,16 +521,16 @@ export default function InvitationsScreen({ embeddedInSettings = false }: Invita
               </View>
             ) : null}
 
-                <Text style={{ color: palette.faint, marginLeft: 6, marginBottom: 10, fontSize: 11, fontWeight: '700', letterSpacing: 1.4, textTransform: 'uppercase' }}>Create invitation</Text>
+                <Text style={{ color: palette.faint, marginLeft: 6, marginBottom: 10, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Create invitation</Text>
                 <View className="p-4 mb-6" style={{ borderRadius: 26, backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.edge }}>
               <View className="flex-row items-center mb-3">
                 <View style={{ width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.limeWash }}><Sparkles size={18} color={palette.limeInk} strokeWidth={2} /></View>
-                <View style={{ flex: 1, marginLeft: 12 }}><Text style={{ color: palette.ink, fontSize: isMobile ? 14 : 15, fontWeight: '600' }}>Create founder invite</Text><Text style={{ color: palette.faint, fontSize: 12, marginTop: 2 }}>Generate secure admin access</Text></View>
+                <View style={{ flex: 1, marginLeft: 12 }}><Text style={{ color: palette.ink, fontSize: 14, lineHeight: 20, fontWeight: '600' }}>Create founder invite</Text><Text style={{ color: palette.faint, fontSize: 12, marginTop: 2 }}>Generate secure admin access</Text></View>
               </View>
 
               <View className="mb-3">
                 <Text style={{ color: palette.muted }} className="text-xs font-semibold uppercase mb-2 tracking-wider">Founder email</Text>
-                <View className="rounded-xl px-4 flex-row items-center" style={{ backgroundColor: palette.input, borderWidth: 1, borderColor: formError ? '#EF4444' : palette.edgeStrong, height: 52 }}>
+                <View className="rounded-xl px-4 flex-row items-center" style={{ backgroundColor: palette.surface, borderWidth: 1, borderColor: formError ? '#EF4444' : palette.edgeStrong, height: 52 }}>
                   <Mail size={17} color={palette.faint} strokeWidth={1.8} />
                   <TextInput
                     value={inviteEmail}
@@ -622,11 +620,11 @@ export default function InvitationsScreen({ embeddedInSettings = false }: Invita
                   </View>
                 </View>
                 <Text style={{ color: palette.faint }} className="text-xs">{latestInvite.email}</Text>
-                <View className="mt-3 rounded-xl p-4" style={{ backgroundColor: palette.input, borderWidth: 1, borderColor: palette.edge }}>
+                <View className="mt-3 rounded-xl p-4" style={{ backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.edge }}>
                   <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold' }} className="text-xl tracking-widest text-center">{latestInvite.inviteCode}</Text>
                 </View>
                 <View className="flex-row mt-3" style={{ gap: 10 }}>
-                  <Pressable onPress={() => handleCopyCode(latestInvite)} className="flex-1 rounded-full items-center justify-center active:opacity-80" style={{ backgroundColor: palette.input, borderWidth: 1, borderColor: palette.edgeStrong, height: 46 }}>
+                  <Pressable onPress={() => handleCopyCode(latestInvite)} className="flex-1 rounded-full items-center justify-center active:opacity-80" style={{ backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.edgeStrong, height: 46 }}>
                     <View className="flex-row items-center">
                       <Copy size={15} color={palette.ink} strokeWidth={2} />
                       <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400' }} className="text-sm ml-2">Copy</Text>
@@ -645,7 +643,7 @@ export default function InvitationsScreen({ embeddedInSettings = false }: Invita
                 <View className="mb-6">
               <View className="flex-row items-center justify-between mb-3">
                 <View className="px-1">
-                  <Text style={{ color: palette.faint, fontSize: 11, fontWeight: '700', letterSpacing: 1.4, textTransform: 'uppercase' }}>Invite history</Text>
+                  <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Invite history</Text>
                   <Text style={{ color: palette.faint }} className="text-xs mt-1">
                     Pending, joined, cancelled, and expired invites.
                   </Text>
@@ -726,11 +724,11 @@ export default function InvitationsScreen({ embeddedInSettings = false }: Invita
                             <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '500' }}>
                               {invite.email}
                             </Text>
-                            <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '400', marginTop: 4 }}>
+                            <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '400', marginTop: 4 }}>
                               Invited {formatDate(invite.invitedAt)}
                             </Text>
                             {invite.joinedAt ? (
-                              <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '400', marginTop: 4 }}>
+                              <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '400', marginTop: 4 }}>
                                 Joined {formatDate(invite.joinedAt)}
                               </Text>
                             ) : null}
@@ -768,7 +766,7 @@ export default function InvitationsScreen({ embeddedInSettings = false }: Invita
                             <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '500' }}>
                               {formatDate(invite.expiresAt)}
                             </Text>
-                            <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '400', marginTop: 4 }}>
+                            <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '400', marginTop: 4 }}>
                               {formatDateTime(invite.expiresAt)}
                             </Text>
                           </View>
@@ -821,7 +819,7 @@ export default function InvitationsScreen({ embeddedInSettings = false }: Invita
                         >
                           <View className="flex-row items-start justify-between" style={{ gap: 12 }}>
                             <View style={{ flex: 1, minWidth: 0 }}>
-                              <Text style={{ color: palette.ink, fontSize: isMobile ? 14 : 15, fontWeight: '600' }} numberOfLines={1}>
+                              <Text style={{ color: palette.ink, fontSize: 14, lineHeight: 20, fontWeight: '600' }} numberOfLines={1}>
                                 {invite.email}
                               </Text>
                               <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '400', lineHeight: 16, marginTop: 6 }}>
@@ -873,7 +871,7 @@ export default function InvitationsScreen({ embeddedInSettings = false }: Invita
                             </View>
                           </View>
 
-                          <Text style={{ color: palette.faint, fontSize: isMobile ? 10 : 12, fontWeight: '400', lineHeight: 16, marginTop: 10 }}>
+                          <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '400', lineHeight: 16, marginTop: 10 }}>
                             Expires {formatDateTime(invite.expiresAt)}
                           </Text>
                         </View>

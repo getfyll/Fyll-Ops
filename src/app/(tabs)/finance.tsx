@@ -1,9 +1,12 @@
 import { QuickActionsSheet } from '@/components/home/QuickActionsSheet';
+import { getRefundActivity } from '@/lib/refund-activity';
+import { FocusTextInput } from '@/components/FocusTextInput';
 import type { QuickActionDef } from '@/lib/quick-actions';
 import React, { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { View, Text, ScrollView, Pressable, Platform, Modal, TextInput, Image, ActivityIndicator } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Lock, Plus, Receipt, TrendingUp, TrendingDown, Truck, Trash2, MoreVertical, ChevronDown, ChevronLeft, ChevronRight, Search, Filter, Settings, Download, Pencil, X, Sparkles, Calendar, FileText, Camera, Check, Clock, Paperclip, Image as ImageIcon, ShoppingCart, User, Shield, ArrowLeft, Banknote, Menu, Package, BarChart3, Tag, Calculator } from 'lucide-react-native';
@@ -1570,8 +1573,10 @@ function StatusBadge({
 
 export default function FinanceScreen() {
   const router = useRouter();
-  const { section, procurementPage, editExpenseId, editProcurementId } = useLocalSearchParams<{
+  const { section, procurementPage, editExpenseId, editProcurementId, review } = useLocalSearchParams<{
     section?: string | string[];
+    // Set by the "waiting for approval" banners on Home: opens that approval queue straight away.
+    review?: string | string[];
     procurementPage?: string | string[];
     editExpenseId?: string | string[];
     editProcurementId?: string | string[];
@@ -1611,6 +1616,7 @@ export default function FinanceScreen() {
   const otherIncomes = useFyllStore((s) => s.otherIncomes);
   const expenseRequests = useFyllStore((s) => s.expenseRequests);
   const refundRequests = useFyllStore((s) => s.refundRequests);
+  const allCases = useFyllStore((s) => s.cases);
   const procurements = useFyllStore((s) => s.procurements);
   const expenseCategories = useFyllStore((s) => s.expenseCategories);
   const financeSuppliers = useFyllStore((s) => s.financeSuppliers);
@@ -1662,7 +1668,18 @@ export default function FinanceScreen() {
   const lastDataSyncAt = useFyllStore((s) => s.lastDataSyncAt);
   const authRole = useAuthStore((s) => s.currentUser?.role ?? 'staff');
   const currentUserId = useAuthStore((s) => s.currentUser?.id ?? '');
-  const currentUserName = useAuthStore((s) => s.currentUser?.name ?? 'Team Member');
+  // The signed-in person's name. A blank profile name falls back to the name on their team record, then the start of their email.
+  const currentUserName = useAuthStore((s) => {
+    const user = s.currentUser;
+    if (!user) return 'Team Member';
+    const own = user.name?.trim();
+    if (own) return own;
+    const record = (s.teamMembers ?? []).find((member) => member.id === user.id || (member.email && member.email.toLowerCase() === user.email?.toLowerCase()));
+    const fromTeam = record?.name?.trim();
+    if (fromTeam) return fromTeam;
+    const emailName = user.email?.split('@')[0]?.trim();
+    return emailName || 'Team Member';
+  });
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
   const isOfflineMode = useAuthStore((s) => s.isOfflineMode);
   const teamMembers = useAuthStore((s) => s.teamMembers);
@@ -1789,6 +1806,9 @@ export default function FinanceScreen() {
   const [showRefundRequestModal, setShowRefundRequestModal] = useState(false);
   const [showRefundRequestDetailModal, setShowRefundRequestDetailModal] = useState(false);
   const [showPendingRefundsSheet, setShowPendingRefundsSheet] = useState(false);
+  const [refundStatusListOpen, setRefundStatusListOpen] = useState(false);
+  const [expenseDateFocused, setExpenseDateFocused] = useState(false);
+  const [refundDateFocused, setRefundDateFocused] = useState(false);
   const [refundOrderSearchQuery, setRefundOrderSearchQuery] = useState('');
   const [selectedRefundOrderId, setSelectedRefundOrderId] = useState<string | null>(null);
   const [refundAmountDraft, setRefundAmountDraft] = useState('');
@@ -3647,6 +3667,7 @@ const buildExpenseDescription = (
     const request = refundRequests.find((item) => item.id === requestId);
     if (!request) return;
     setRefundDetailActionMenuOpen(false);
+    setRefundStatusListOpen(false);
     setSelectedRefundRequestId(requestId);
     setRefundPaymentReferenceDraft(request.paymentReference ?? '');
     setRefundAdminNoteDraft('');
@@ -4598,6 +4619,7 @@ const buildExpenseDescription = (
           amount: parsedAmount,
           date: toIsoDate(expenseDate),
           createdAt: new Date().toISOString(),
+          createdBy: currentUserName,
           status: expenseStatusDraft,
         }, businessId);
       } else {
@@ -5056,6 +5078,30 @@ const buildExpenseDescription = (
     () => expenses.filter((expense) => !isFixedExpense(expense)),
     [expenses]
   );
+
+  // One-time clean-up for salary entries logged before the creator was saved: an admin opening Finance puts their own
+  // name on salary entries that have no creator (or only the placeholder "Team Member") and did not come from a team
+  // member's expense request. Runs once per business on this device.
+  useEffect(() => {
+    if (!isFinanceApprover || !businessId || !currentUserName || currentUserName === 'Team Member') return;
+    const storageKey = `fyll:salary-creator-backfill:${businessId}`;
+    let cancelled = false;
+    void (async () => {
+      try {
+        if (await AsyncStorage.getItem(storageKey)) return;
+        if (expenses.length === 0) return;
+        const requestedExpenseIds = new Set((expenseRequests ?? []).map((request) => request.approvedExpenseId).filter(Boolean));
+        expenses
+          .filter((expense) => isSalaryExpense(expense) && !requestedExpenseIds.has(expense.id))
+          .filter((expense) => !expense.createdBy?.trim() || expense.createdBy.trim() === 'Team Member')
+          .forEach((expense) => updateExpense(expense.id, { createdBy: currentUserName }, businessId));
+        if (!cancelled) await AsyncStorage.setItem(storageKey, '1');
+      } catch (error) {
+        console.warn('Salary creator backfill skipped:', error);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isFinanceApprover, businessId, currentUserName, expenses, expenseRequests, updateExpense]);
 
   const overviewFinancials = useMemo(() => {
     let totalRevenue = 0;
@@ -8290,6 +8336,48 @@ const buildExpenseDescription = (
     setProcurementWorkspaceView('approvals');
   }, [pendingProcurementApprovalRows]);
 
+  // Opened from a banner on Home (…&review=expenses|refunds|procurement): jump straight into that approval queue once.
+  const routeReview = resolveParamValue(review);
+  const consumedRouteReviewRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!routeReview) {
+      consumedRouteReviewRef.current = null;
+      return;
+    }
+    if (consumedRouteReviewRef.current === routeReview) return;
+    if (!isFinanceApprover) return;
+    if (routeReview === 'expenses') {
+      if (pendingExpenseApprovalRows.length === 0) return;
+      consumedRouteReviewRef.current = routeReview;
+      setActiveTab('expenses');
+      openExpenseApprovalWorkspace();
+    } else if (routeReview === 'procurement') {
+      if (pendingProcurementApprovalRows.length === 0) return;
+      consumedRouteReviewRef.current = routeReview;
+      setActiveTab('procurement');
+      openProcurementApprovalWorkspace();
+    } else if (routeReview === 'refunds') {
+      if (pendingRefundApprovalRows.length === 0) return;
+      consumedRouteReviewRef.current = routeReview;
+      setActiveTab('refunds');
+      if (isWebDesktop) setRefundWorkspaceView('approvals');
+      else setShowPendingRefundsSheet(true);
+    } else {
+      return;
+    }
+    router.setParams({ review: '' } as any);
+  }, [
+    isFinanceApprover,
+    isWebDesktop,
+    openExpenseApprovalWorkspace,
+    openProcurementApprovalWorkspace,
+    pendingExpenseApprovalRows.length,
+    pendingProcurementApprovalRows.length,
+    pendingRefundApprovalRows.length,
+    routeReview,
+    router,
+  ]);
+
   const focusNextPendingProcurementApproval = useCallback((processedId: string) => {
     const currentRows = pendingProcurementApprovalRows;
     if (currentRows.length <= 1) {
@@ -10726,12 +10814,10 @@ const buildExpenseDescription = (
               style={{
                 width: 40,
                 height: 40,
-                borderWidth: 1,
-                borderColor: colors.divider,
-                backgroundColor: refundDetailActionMenuOpen ? colors.bg.input : colors.bg.card,
+                backgroundColor: palette.softFill,
               }}
             >
-              <MoreVertical size={16} color={colors.text.secondary} strokeWidth={2} />
+              <MoreVertical size={16} color={palette.muted} strokeWidth={2} />
             </Pressable>
             {refundDetailActionMenuOpen ? (
               <View
@@ -10739,13 +10825,13 @@ const buildExpenseDescription = (
                   position: 'absolute',
                   right: 0,
                   top: 46,
-                  borderRadius: 10,
+                  borderRadius: 18,
                   borderWidth: 1,
-                  borderColor: colors.divider,
-                  backgroundColor: colors.bg.card,
+                  borderColor: palette.border,
+                  backgroundColor: palette.card,
                   zIndex: 1400,
                   elevation: 36,
-                  minWidth: 160,
+                  minWidth: 180,
                   overflow: 'hidden',
                 }}
               >
@@ -10758,10 +10844,10 @@ const buildExpenseDescription = (
                       }
                       openRefundRequestEditor(request.id);
                     }}
-                    className="px-3 py-2.5"
-                    style={{ borderBottomWidth: canVoidRequest || canDeleteRequest ? 1 : 0, borderBottomColor: colors.divider }}
+                    className="px-4 py-3"
+                    style={{ borderBottomWidth: canVoidRequest || canDeleteRequest ? 1 : 0, borderBottomColor: palette.border }}
                   >
-                    <Text style={{ color: colors.text.primary }} className="text-sm font-medium">Edit</Text>
+                    <Text style={{ color: palette.text, fontSize: 14, fontWeight: '500' }}>Edit</Text>
                   </Pressable>
                 ) : null}
                 {canVoidRequest ? (
@@ -10770,10 +10856,10 @@ const buildExpenseDescription = (
                       setRefundDetailActionMenuOpen(false);
                       void handleVoidRefundRequest(request.id, refundAdminNoteDraft);
                     }}
-                    className="px-3 py-2.5"
-                    style={{ borderBottomWidth: canDeleteRequest ? 1 : 0, borderBottomColor: colors.divider }}
+                    className="px-4 py-3"
+                    style={{ borderBottomWidth: canDeleteRequest ? 1 : 0, borderBottomColor: palette.border }}
                   >
-                    <Text style={{ color: colors.danger }} className="text-sm font-medium">Mark Void</Text>
+                    <Text style={{ color: palette.danger, fontSize: 14, fontWeight: '500' }}>Mark Void</Text>
                   </Pressable>
                 ) : null}
                 {canDeleteRequest ? (
@@ -10782,9 +10868,9 @@ const buildExpenseDescription = (
                       setRefundDetailActionMenuOpen(false);
                       void handleDeleteRefundRequest(request.id);
                     }}
-                    className="px-3 py-2.5"
+                    className="px-4 py-3"
                   >
-                    <Text style={{ color: colors.danger }} className="text-sm font-medium">Delete</Text>
+                    <Text style={{ color: palette.danger, fontSize: 14, fontWeight: '500' }}>Delete</Text>
                   </Pressable>
                 ) : null}
               </View>
@@ -10797,9 +10883,9 @@ const buildExpenseDescription = (
               setRefundDetailActionMenuOpen(false);
               options.onClose?.();
             }}
-            style={{ width: 38, height: 38, borderRadius: 10, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.input, alignItems: 'center', justifyContent: 'center' }}
+            style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: palette.softFill, alignItems: 'center', justifyContent: 'center' }}
           >
-            <X size={18} color={colors.text.secondary} strokeWidth={2.4} />
+            <X size={18} color={palette.muted} strokeWidth={2.4} />
           </Pressable>
         ) : null}
       </View>
@@ -10824,6 +10910,12 @@ const buildExpenseDescription = (
       { label: 'Total Debit', value: formatCurrency(requestTotalDebit), emphasize: true },
     ];
 
+    // The case this refund came from. Refunds made from a case store it; older ones only have "Case CASE-000123" in the note.
+    const noteCaseNumber = /\bCASE-\d+\b/i.exec(request.note ?? '')?.[0]?.toUpperCase();
+    const linkedCase = allCases.find((item) => (request.caseId ? item.id === request.caseId : false))
+      ?? (noteCaseNumber ? allCases.find((item) => item.caseNumber.toUpperCase() === noteCaseNumber) : undefined);
+    const linkedCaseNumber = linkedCase?.caseNumber ?? request.caseNumber ?? noteCaseNumber;
+
     return (
       <>
         <ScrollView
@@ -10831,83 +10923,151 @@ const buildExpenseDescription = (
           style={isPanel ? { flex: 1 } : (isWebDesktop ? { maxHeight: 560 } : { flex: 1 })}
           contentContainerStyle={{ paddingTop: isPanel ? 0 : 18, paddingBottom: 12, gap: 14 }}
         >
-          <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, overflow: 'hidden' }}>
-            <View style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: colors.divider }}>
+          <View style={{ borderRadius: 26, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, overflow: 'hidden' }}>
+            <View style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: palette.hairline }}>
               <View className="flex-row items-start justify-between" style={{ gap: 12 }}>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
+                  <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1, marginBottom: 4 }}>
                     Refund
                   </Text>
                   <Pressable
                     onPress={() => openOrderInWorkspace(request.orderId)}
                     style={{ alignSelf: 'flex-start', maxWidth: '100%' }}
                   >
-                    <Text style={{ color: colors.text.primary, fontSize: isPanel ? 18 : 20, fontWeight: '600', lineHeight: isPanel ? 22 : 24 }} numberOfLines={1}>
+                    <MoneyText style={{ color: palette.text, fontSize: 18, lineHeight: 24 }} numberOfLines={1}>
                       {request.orderNumber}
-                    </Text>
+                    </MoneyText>
                   </Pressable>
-                  <Text style={{ color: colors.text.secondary, fontSize: 13, marginTop: 4 }} numberOfLines={1}>
+                  <Text style={{ color: palette.faint, fontSize: 12, marginTop: 4 }} numberOfLines={1}>
                     {capitalizeDisplayValue(request.customerName)}
                   </Text>
                 </View>
                 <StatusBadge label={capitalizeDisplayValue(formatRefundRequestStatusLabel(request))} colors={colors} maxWidth={140} />
               </View>
-              <Text style={{ color: colors.text.primary, fontSize: isPanel ? 30 : 36, fontWeight: '500', marginTop: 14 }}>
+              <MoneyText style={{ color: palette.text, fontSize: isPanel ? 40 : 32, lineHeight: isPanel ? 46 : 38, marginTop: 14 }}>
                 {formatCurrency(request.amount)}
-              </Text>
-              <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 6 }}>
+              </MoneyText>
+              <Text style={{ color: palette.faint, fontSize: 12, marginTop: 6 }}>
                 Requested on {new Date(request.requestedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
               </Text>
             </View>
             <View style={{ flexDirection: 'row' }}>
               <View style={{ flex: 1, paddingHorizontal: 16, paddingVertical: 14 }}>
-                <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }}>Customer</Text>
-                <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600', marginTop: 4 }} numberOfLines={1}>
+                <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1 }}>Customer</Text>
+                <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600', marginTop: 4 }} numberOfLines={1}>
                   {capitalizeDisplayValue(request.customerName)}
                 </Text>
               </View>
-              <View style={{ width: 1, backgroundColor: colors.divider }} />
+              <View style={{ width: 1, backgroundColor: palette.hairline }} />
               <View style={{ flex: 1, paddingHorizontal: 16, paddingVertical: 14 }}>
-                <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }}>Refund Type</Text>
-                <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600', marginTop: 4 }} numberOfLines={1}>
+                <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1 }}>Refund Type</Text>
+                <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600', marginTop: 4 }} numberOfLines={1}>
                   {request.refundType === 'full' ? 'Full refund' : 'Partial refund'}
                 </Text>
               </View>
             </View>
           </View>
 
-          <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, padding: 16 }}>
-            <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>Status</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              {refundRequestStatusOptions.map((option) => {
-                const isSelected = request.status === option.key;
-                return (
+          {linkedCaseNumber ? (
+            <Pressable
+              disabled={!linkedCase}
+              onPress={() => {
+                if (!linkedCase) return;
+                setShowRefundRequestDetailModal(false);
+                router.push(`/case/${linkedCase.id}`);
+              }}
+              style={{ borderRadius: 26, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12 }}
+            >
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1, marginBottom: 4 }}>Linked case</Text>
+                <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }} numberOfLines={1}>{linkedCaseNumber}</Text>
+                {linkedCase ? (
+                  <Text style={{ color: palette.faint, fontSize: 12, marginTop: 2 }} numberOfLines={1}>
+                    {[linkedCase.type, linkedCase.status].filter(Boolean).join(' · ')}{linkedCase.issueSummary ? ` · ${linkedCase.issueSummary}` : ''}
+                  </Text>
+                ) : (
+                  <Text style={{ color: palette.faint, fontSize: 12, marginTop: 2 }}>This case is no longer available</Text>
+                )}
+              </View>
+              {linkedCase ? <ChevronRight size={18} color={palette.faint} strokeWidth={2.2} /> : null}
+            </Pressable>
+          ) : null}
+
+          <View style={{ borderRadius: 26, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, padding: 16 }}>
+            <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1, marginBottom: 10 }}>Status</Text>
+            {(() => {
+              // Same look as the status picker on an order: the current status in a tinted box, tap it to pick another.
+              const currentOption = refundRequestStatusOptions.find((option) => option.key === request.status);
+              const currentLabel = currentOption?.label ?? capitalizeDisplayValue(String(request.status));
+              const currentColor = getStatusTone(currentLabel, colors).text;
+              return (
+                <View style={{ gap: 8 }}>
                   <Pressable
-                    key={option.key}
-                    onPress={() => {
-                      void handleUpdateRefundRequestStatus(request.id, option.key);
-                    }}
+                    onPress={() => setRefundStatusListOpen((open) => !open)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Change refund status"
                     style={{
-                      height: 34,
-                      paddingHorizontal: 12,
-                      borderRadius: 999,
+                      minHeight: 50,
+                      flexDirection: 'row',
                       alignItems: 'center',
-                      justifyContent: 'center',
-                      backgroundColor: isSelected ? colors.bg.input : 'transparent',
+                      gap: 10,
+                      paddingHorizontal: 14,
+                      borderRadius: 14,
+                      backgroundColor: `${currentColor}1f`,
                       borderWidth: 1,
-                      borderColor: isSelected ? colors.text.primary : colors.divider,
+                      borderColor: `${currentColor}55`,
                     }}
                   >
-                    <Text style={{ color: isSelected ? colors.text.primary : colors.text.secondary, fontSize: 12, fontWeight: '600' }}>{option.label}</Text>
+                    <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: currentColor }} />
+                    <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
+                      <Text style={{ color: palette.muted, fontSize: 10, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>Current status</Text>
+                      <Text style={{ color: currentColor, fontSize: 14, fontWeight: '600' }} numberOfLines={1}>{currentLabel}</Text>
+                    </View>
+                    <ChevronDown size={16} color={palette.textSoft} strokeWidth={2.4} />
                   </Pressable>
-                );
-              })}
-            </View>
+
+                  {refundStatusListOpen ? (
+                    <View style={{ padding: 6, borderRadius: 16, backgroundColor: palette.cardHover, borderWidth: 1, borderColor: palette.outline }}>
+                      {refundRequestStatusOptions.map((option) => {
+                        const isSelected = request.status === option.key;
+                        const optionColor = getStatusTone(option.label, colors).text;
+                        const isDestructive = option.key === 'rejected' || option.key === 'void';
+                        return (
+                          <Pressable
+                            key={option.key}
+                            onPress={() => {
+                              setRefundStatusListOpen(false);
+                              if (!isSelected) void handleUpdateRefundRequestStatus(request.id, option.key);
+                            }}
+                            className="active:opacity-80"
+                            style={{
+                              minHeight: 42,
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 10,
+                              paddingHorizontal: 10,
+                              borderRadius: 10,
+                              backgroundColor: isSelected ? palette.softFill : 'transparent',
+                            }}
+                          >
+                            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: optionColor }} />
+                            <Text style={{ color: isDestructive ? palette.danger : palette.text, fontSize: 14, fontWeight: isSelected ? '600' : '500', flex: 1 }}>
+                              {option.label}
+                            </Text>
+                            {isSelected ? <Check size={14} color={palette.text} strokeWidth={2.6} /> : null}
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  ) : null}
+                </View>
+              );
+            })()}
           </View>
 
-          <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, overflow: 'hidden' }}>
+          <View style={{ borderRadius: 26, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, overflow: 'hidden' }}>
             <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12 }}>
-              <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 }}>Payment Breakdown</Text>
+              <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1 }}>Payment Breakdown</Text>
             </View>
             <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
               {refundBreakdownRows.map((row, index) => (
@@ -10919,12 +11079,12 @@ const buildExpenseDescription = (
                     justifyContent: 'space-between',
                     paddingVertical: 8,
                     borderBottomWidth: index === refundBreakdownRows.length - 1 ? 0 : 1,
-                    borderBottomColor: colors.divider,
+                    borderBottomColor: palette.hairline,
                     gap: 12,
                   }}
                 >
-                  <Text style={{ color: colors.text.tertiary, fontSize: 13 }}>{row.label}</Text>
-                  <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: row.emphasize ? '700' : '600', textAlign: 'right' }}>
+                  <Text style={{ color: palette.faint, fontSize: 12 }}>{row.label}</Text>
+                  <Text style={{ color: palette.text, fontSize: row.emphasize ? 14 : 12, fontWeight: row.emphasize ? '700' : '600', textAlign: 'right' }}>
                     {row.value}
                   </Text>
                 </View>
@@ -10932,82 +11092,82 @@ const buildExpenseDescription = (
             </View>
           </View>
 
-          <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, padding: 16, gap: 10 }}>
-            <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 }}>Request Details</Text>
+          <View style={{ borderRadius: 26, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, padding: 16, gap: 10 }}>
+            <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1 }}>Request Details</Text>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
-              <Text style={{ color: colors.text.tertiary, fontSize: 13 }}>Bank Charges</Text>
-              <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }}>
+              <Text style={{ color: palette.faint, fontSize: 12 }}>Bank Charges</Text>
+              <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }}>
                 {request.applyBankCharges ? 'Applied' : 'Not applied'}
               </Text>
             </View>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
-              <Text style={{ color: colors.text.tertiary, fontSize: 13 }}>Submitted By</Text>
-              <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }}>
+              <Text style={{ color: palette.faint, fontSize: 12 }}>Submitted By</Text>
+              <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }}>
                 {request.submittedByName || 'Team Member'}
               </Text>
             </View>
             {request.reviewedByName ? (
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
-                <Text style={{ color: colors.text.tertiary, fontSize: 13 }}>Reviewed By</Text>
-                <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }}>
+                <Text style={{ color: palette.faint, fontSize: 12 }}>Reviewed By</Text>
+                <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }}>
                   {request.reviewedByName}
                 </Text>
               </View>
             ) : null}
             {request.paidByName ? (
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
-                <Text style={{ color: colors.text.tertiary, fontSize: 13 }}>Paid By</Text>
-                <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }}>
+                <Text style={{ color: palette.faint, fontSize: 12 }}>Paid By</Text>
+                <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }}>
                   {request.paidByName}
                 </Text>
               </View>
             ) : null}
             {request.paymentReference ? (
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
-                <Text style={{ color: colors.text.tertiary, fontSize: 13 }}>Payment Ref</Text>
-                <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }}>
+                <Text style={{ color: palette.faint, fontSize: 12 }}>Payment Ref</Text>
+                <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }}>
                   {request.paymentReference}
                 </Text>
               </View>
             ) : null}
             {request.voidedByName ? (
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
-                <Text style={{ color: colors.text.tertiary, fontSize: 13 }}>Voided By</Text>
-                <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }}>
+                <Text style={{ color: palette.faint, fontSize: 12 }}>Voided By</Text>
+                <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }}>
                   {request.voidedByName}
                 </Text>
               </View>
             ) : null}
             {request.voidReason ? (
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
-                <Text style={{ color: colors.text.tertiary, fontSize: 13 }}>Void Reason</Text>
-                <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600', textAlign: 'right', flex: 1 }}>
+                <Text style={{ color: palette.faint, fontSize: 12 }}>Void Reason</Text>
+                <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600', textAlign: 'right', flex: 1 }}>
                   {request.voidReason}
                 </Text>
               </View>
             ) : null}
           </View>
 
-          <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, padding: 16, gap: 8 }}>
-            <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 }}>Reason</Text>
-            <Text style={{ color: colors.text.secondary, fontSize: 14, lineHeight: 22 }}>{request.reason}</Text>
+          <View style={{ borderRadius: 26, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, padding: 16, gap: 8 }}>
+            <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1 }}>Reason</Text>
+            <Text style={{ color: palette.muted, fontSize: 12, lineHeight: 18 }}>{request.reason}</Text>
             {request.note?.trim() ? (
               <>
-                <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, marginTop: 6 }}>Internal Note</Text>
-                <Text style={{ color: colors.text.secondary, fontSize: 14, lineHeight: 22 }}>{request.note.trim()}</Text>
+                <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1, marginTop: 6 }}>Internal Note</Text>
+                <Text style={{ color: palette.muted, fontSize: 12, lineHeight: 18 }}>{request.note.trim()}</Text>
               </>
             ) : null}
             {request.rejectionReason ? (
               <>
-                <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, marginTop: 6 }}>Review Note</Text>
-                <Text style={{ color: colors.danger, fontSize: 14, lineHeight: 22 }}>{request.rejectionReason}</Text>
+                <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1, marginTop: 6 }}>Review Note</Text>
+                <Text style={{ color: palette.danger, fontSize: 12, lineHeight: 18 }}>{request.rejectionReason}</Text>
               </>
             ) : null}
           </View>
 
           {(request.attachments ?? []).length > 0 ? (
-            <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, padding: 16, gap: 10 }}>
-              <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 }}>
+            <View style={{ borderRadius: 26, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, padding: 16, gap: 10 }}>
+              <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1 }}>
                 Request Context
               </Text>
               {(request.attachments ?? []).map((attachment) => (
@@ -11019,22 +11179,23 @@ const buildExpenseDescription = (
                       showSettingsToast('error', 'Could not open screenshot.');
                     });
                   }}
-                  className="rounded-xl flex-row items-center px-3"
+                  className="flex-row items-center px-3"
                   style={{
-                    minHeight: 52,
+                    minHeight: 56,
+                    borderRadius: 18,
                     borderWidth: 1,
-                    borderColor: colors.divider,
-                    backgroundColor: colors.bg.input,
+                    borderColor: palette.border,
+                    backgroundColor: palette.card,
                   }}
                 >
                   <View
                     className="rounded-lg items-center justify-center"
-                    style={{ width: 36, height: 36, backgroundColor: colors.bg.screen, borderWidth: 1, borderColor: colors.divider }}
+                    style={{ width: 36, height: 36, backgroundColor: palette.nudgeBg }}
                   >
-                    <ImageIcon size={16} color={colors.text.tertiary} strokeWidth={2} />
+                    <ImageIcon size={16} color={palette.faint} strokeWidth={2} />
                   </View>
                   <View style={{ flex: 1, minWidth: 0, marginLeft: 10 }}>
-                    <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '500' }} numberOfLines={1}>
+                    <Text style={{ color: palette.text, fontSize: 12, fontWeight: '500' }} numberOfLines={1}>
                       {attachment.fileName}
                     </Text>
                   </View>
@@ -11044,82 +11205,83 @@ const buildExpenseDescription = (
           ) : null}
 
           {isFinanceApprover && request.status === 'submitted' ? (
-            <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, padding: 16, gap: 10 }}>
-              <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 }}>
+            <View style={{ borderRadius: 26, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, padding: 16, gap: 10 }}>
+              <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1 }}>
                 Admin Action
               </Text>
               <TextInput
                 value={refundAdminNoteDraft}
                 onChangeText={setRefundAdminNoteDraft}
                 placeholder="Add note for more info or payout context"
-                placeholderTextColor={colors.text.muted}
+                placeholderTextColor={palette.faint}
                 multiline
                 textAlignVertical="top"
                 style={{
                   minHeight: 90,
-                  borderRadius: 12,
+                  borderRadius: 16,
                   borderWidth: 1,
-                  borderColor: formFieldBorder,
-                  backgroundColor: formFieldBg,
-                  color: colors.text.primary,
+                  borderColor: palette.outline,
+                  backgroundColor: palette.card,
+                  color: palette.text,
                   paddingHorizontal: 14,
                   paddingVertical: 14,
-                  fontSize: 15,
+                  fontSize: 14,
                 }}
               />
             </View>
           ) : null}
 
           {request.status === 'approved' && isCurrentUserRefundRequestOwner(request) ? (
-            <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, padding: 16, gap: 10 }}>
-              <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 }}>
+            <View style={{ borderRadius: 26, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, padding: 16, gap: 10 }}>
+              <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1 }}>
                 Refund Payout
               </Text>
-              <Text style={{ color: colors.text.secondary, fontSize: 13, lineHeight: 20 }}>
+              <Text style={{ color: palette.faint, fontSize: 12, lineHeight: 18 }}>
                 This refund has been approved. Upload the transfer receipt after the refund is fully processed, then mark it as paid.
               </Text>
               <TextInput
                 value={refundPaymentReferenceDraft}
                 onChangeText={setRefundPaymentReferenceDraft}
                 placeholder="Payment reference (optional)"
-                placeholderTextColor={colors.text.muted}
+                placeholderTextColor={palette.faint}
                 style={{
                   height: 52,
-                  borderRadius: 12,
+                  borderRadius: 16,
                   borderWidth: 1,
-                  borderColor: formFieldBorder,
-                  backgroundColor: formFieldBg,
-                  color: colors.text.primary,
+                  borderColor: palette.outline,
+                  backgroundColor: palette.card,
+                  color: palette.text,
                   paddingHorizontal: 14,
-                  fontSize: 15,
+                  fontSize: 14,
                 }}
               />
               <View style={{ gap: 10 }}>
-                <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }}>
+                <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }}>
                   Refund Receipt
                 </Text>
                 {refundProofAttachmentDrafts.length === 0 ? (
                   <Pressable
                     onPress={() => { void pickRefundProofAttachments(); }}
-                    className="rounded-2xl items-center justify-center"
+                    className="items-center justify-center"
                     style={{
                       minHeight: 120,
+                      borderRadius: 22,
                       borderWidth: 1,
                       borderStyle: 'dashed',
-                      borderColor: formFieldBorder,
-                      backgroundColor: formFieldBg,
+                      borderColor: palette.outline,
+                      backgroundColor: palette.card,
                       paddingHorizontal: 20,
                       paddingVertical: 20,
                     }}
                   >
                     <View
                       className="rounded-full items-center justify-center mb-3"
-                      style={{ width: 42, height: 42, backgroundColor: colors.bg.cardAlt, borderWidth: 1, borderColor: formFieldBorder }}
+                      style={{ width: 42, height: 42, backgroundColor: palette.nudgeBg }}
                     >
-                      <Camera size={18} color={colors.text.tertiary} strokeWidth={2} />
+                      <Camera size={18} color={palette.faint} strokeWidth={2} />
                     </View>
-                    <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600' }}>Upload refund receipt</Text>
-                    <Text style={{ color: colors.text.muted, fontSize: 12, marginTop: 4, textAlign: 'center' }}>
+                    <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>Upload refund receipt</Text>
+                    <Text style={{ color: palette.faint, fontSize: 12, marginTop: 4, textAlign: 'center' }}>
                       Required before marking this refund as paid
                     </Text>
                   </Pressable>
@@ -11133,8 +11295,8 @@ const buildExpenseDescription = (
                             style={{
                               height: 110,
                               borderWidth: 1,
-                              borderColor: formFieldBorder,
-                              backgroundColor: formFieldBg,
+                              borderColor: palette.outline,
+                              backgroundColor: palette.card,
                               position: 'relative',
                               alignItems: 'center',
                               justifyContent: 'center',
@@ -11144,8 +11306,8 @@ const buildExpenseDescription = (
                               <Image source={{ uri: attachment.localUri }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
                             ) : (
                               <View className="items-center justify-center px-3">
-                                <ImageIcon size={22} color={colors.text.tertiary} strokeWidth={2} />
-                                <Text style={{ color: colors.text.secondary, fontSize: 11, marginTop: 8, textAlign: 'center' }} numberOfLines={2}>
+                                <ImageIcon size={22} color={palette.faint} strokeWidth={2} />
+                                <Text style={{ color: palette.muted, fontSize: 11, marginTop: 8, textAlign: 'center' }} numberOfLines={2}>
                                   {attachment.fileName}
                                 </Text>
                               </View>
@@ -11165,7 +11327,7 @@ const buildExpenseDescription = (
                               <X size={14} color="#FFFFFF" strokeWidth={2} />
                             </Pressable>
                           </View>
-                          <Text style={{ color: colors.text.secondary, fontSize: 11, marginTop: 6, textAlign: 'center' }} numberOfLines={2}>
+                          <Text style={{ color: palette.muted, fontSize: 11, marginTop: 6, textAlign: 'center' }} numberOfLines={2}>
                             {attachment.fileName}
                           </Text>
                         </View>
@@ -11179,16 +11341,16 @@ const buildExpenseDescription = (
                         height: 44,
                         borderWidth: 1,
                         borderStyle: 'dashed',
-                        borderColor: formFieldBorder,
+                        borderColor: palette.outline,
                       }}
                     >
-                      <Text style={{ color: colors.text.secondary, fontSize: 13, fontWeight: '600' }}>+ Add Receipt</Text>
+                      <Text style={{ color: palette.muted, fontSize: 13, fontWeight: '600' }}>+ Add Receipt</Text>
                     </Pressable>
                   </View>
                 )}
 
                 {refundProofAttachmentError ? (
-                  <Text style={{ color: colors.danger, fontSize: 12 }}>
+                  <Text style={{ color: palette.danger, fontSize: 12 }}>
                     {refundProofAttachmentError}
                   </Text>
                 ) : null}
@@ -11197,19 +11359,19 @@ const buildExpenseDescription = (
           ) : null}
 
           {request.status === 'approved' && isFinanceApprover ? (
-            <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, padding: 16, gap: 8 }}>
-              <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 }}>
+            <View style={{ borderRadius: 26, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, padding: 16, gap: 8 }}>
+              <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1 }}>
                 Awaiting Payout Confirmation
               </Text>
-              <Text style={{ color: colors.text.secondary, fontSize: 13, lineHeight: 20 }}>
+              <Text style={{ color: palette.faint, fontSize: 12, lineHeight: 18 }}>
                 The requester will upload the refund receipt after the bank transfer is completed, then mark this refund as paid.
               </Text>
             </View>
           ) : null}
 
           {(request.proofAttachments ?? []).length > 0 ? (
-            <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.card, padding: 16, gap: 10 }}>
-              <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 }}>
+            <View style={{ borderRadius: 26, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, padding: 16, gap: 10 }}>
+              <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1 }}>
                 Refund Proof
               </Text>
               {(request.proofAttachments ?? []).map((attachment) => (
@@ -11221,22 +11383,23 @@ const buildExpenseDescription = (
                       showSettingsToast('error', 'Could not open refund proof.');
                     });
                   }}
-                  className="rounded-xl flex-row items-center px-3"
+                  className="flex-row items-center px-3"
                   style={{
-                    minHeight: 52,
+                    minHeight: 56,
+                    borderRadius: 18,
                     borderWidth: 1,
-                    borderColor: colors.divider,
-                    backgroundColor: colors.bg.input,
+                    borderColor: palette.border,
+                    backgroundColor: palette.card,
                   }}
                 >
                   <View
                     className="rounded-lg items-center justify-center"
-                    style={{ width: 36, height: 36, backgroundColor: colors.bg.screen, borderWidth: 1, borderColor: colors.divider }}
+                    style={{ width: 36, height: 36, backgroundColor: palette.nudgeBg }}
                   >
-                    <ImageIcon size={16} color={colors.text.tertiary} strokeWidth={2} />
+                    <ImageIcon size={16} color={palette.faint} strokeWidth={2} />
                   </View>
                   <View style={{ flex: 1, minWidth: 0, marginLeft: 10 }}>
-                    <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '500' }} numberOfLines={1}>
+                    <Text style={{ color: palette.text, fontSize: 12, fontWeight: '500' }} numberOfLines={1}>
                       {attachment.fileName}
                     </Text>
                   </View>
@@ -11244,6 +11407,41 @@ const buildExpenseDescription = (
               ))}
             </View>
           ) : null}
+          {(() => {
+            // Everything that has happened to this refund, newest first. New activity is recorded as it happens; an older
+            // refund shows what its saved dates allow.
+            const ordered = getRefundActivity(request);
+            if (ordered.length === 0) return null;
+            return (
+              <View style={{ borderRadius: 26, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 16 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                  <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1 }}>Activity</Text>
+                  <Text style={{ color: palette.faint, fontSize: 12 }}>{ordered.length} {ordered.length === 1 ? 'event' : 'events'}</Text>
+                </View>
+                <View style={{ gap: 14 }}>
+                  {ordered.map((entry, index) => (
+                    <View key={`${entry.label}-${entry.at}-${index}`} style={{ flexDirection: 'row', gap: 12 }}>
+                      <View style={{ alignItems: 'center' }}>
+                        <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: index === 0 ? palette.limeOnSurface : palette.outline, marginTop: 4 }} />
+                        {index < ordered.length - 1 ? (
+                          <View style={{ width: 1, flex: 1, backgroundColor: palette.hairline, marginTop: 6, minHeight: 28 }} />
+                        ) : null}
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={{ color: palette.text, fontSize: 10, lineHeight: 15, fontWeight: '600' }}>{entry.label}</Text>
+                        <Text style={{ color: palette.faint, fontSize: 10, marginTop: 2 }}>
+                          {entry.actorName} · {new Date(entry.at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                        </Text>
+                        {entry.detail ? (
+                          <Text style={{ color: palette.muted, fontSize: 10, lineHeight: 15, marginTop: 4 }}>{entry.detail}</Text>
+                        ) : null}
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            );
+          })()}
         </ScrollView>
 
         {canReviewRefundRequest ? (
@@ -11252,23 +11450,23 @@ const buildExpenseDescription = (
               <Pressable
                 onPress={() => handleRequestRefundRequestInfo(request.id, refundAdminNoteDraft)}
                 className="rounded-full px-5"
-                style={{ height: 44, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.divider }}
+                style={{ height: 46, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: palette.outline, backgroundColor: palette.card }}
               >
-                <Text style={{ color: colors.text.secondary }} className="font-semibold">More Info</Text>
+                <MoneyText style={{ color: palette.text, fontSize: 14 }}>More Info</MoneyText>
               </Pressable>
               <Pressable
                 onPress={() => handleRejectRefundRequest(request.id)}
                 className="rounded-full px-5"
-                style={{ height: 44, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.divider }}
+                style={{ height: 46, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: palette.dangerBorder, backgroundColor: palette.dangerBg }}
               >
-                <Text style={{ color: colors.danger }} className="font-semibold">Reject</Text>
+                <MoneyText style={{ color: palette.danger, fontSize: 14 }}>Reject</MoneyText>
               </Pressable>
               <Pressable
                 onPress={() => handleApproveRefundRequest(request.id)}
                 className="rounded-full px-5"
-                style={{ height: 44, alignItems: 'center', justifyContent: 'center', backgroundColor: FYLL_LIME }}
+                style={{ height: 46, alignItems: 'center', justifyContent: 'center', backgroundColor: FYLL_LIME }}
               >
-                <Text style={{ fontFamily: 'BricolageGrotesque_600SemiBold', color: FYLL_LIME_INK }} className="font-semibold">Approve</Text>
+                <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 14 }}>Approve</MoneyText>
               </Pressable>
             </>
           </View>
@@ -11280,28 +11478,15 @@ const buildExpenseDescription = (
             className="rounded-full mt-4"
             style={{
               width: '100%',
-              height: 46,
+              height: 48,
               alignItems: 'center',
               justifyContent: 'center',
-              backgroundColor: refundProofAttachmentDrafts.length > 0
-                ? '#FFFFFF'
-                : (isDarkMode ? '#3A3A3A' : colors.bg.cardAlt),
-              borderWidth: 1,
-              borderColor: refundProofAttachmentDrafts.length > 0
-                ? '#E5E7EB'
-                : (isDarkMode ? '#4A4A4A' : colors.divider),
+              backgroundColor: refundProofAttachmentDrafts.length > 0 ? FYLL_LIME : palette.softFill,
             }}
           >
-            <Text
-              style={{
-                color: refundProofAttachmentDrafts.length > 0
-                  ? '#111111'
-                  : (isDarkMode ? '#B3B3B3' : colors.text.secondary),
-              }}
-              className="font-semibold"
-            >
+            <MoneyText style={{ color: refundProofAttachmentDrafts.length > 0 ? FYLL_LIME_INK : palette.faint, fontSize: 14 }}>
               Mark Paid
-            </Text>
+            </MoneyText>
           </Pressable>
         ) : null}
       </>
@@ -11312,13 +11497,13 @@ const buildExpenseDescription = (
     if (!selectedRefundRequest) {
       return (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-          <Text style={{ color: colors.text.muted, fontSize: 15 }}>Select a refund request</Text>
+          <Text style={{ color: palette.faint, fontSize: 15 }}>Select a refund request</Text>
         </View>
       );
     }
 
     return (
-      <View style={{ flex: 1, backgroundColor: colors.bg.screen }}>
+      <View style={{ flex: 1, backgroundColor: palette.page }}>
         <View
           style={{
             flexDirection: 'row',
@@ -11327,14 +11512,14 @@ const buildExpenseDescription = (
             paddingHorizontal: 16,
             height: 56,
             borderBottomWidth: 1,
-            borderBottomColor: colors.divider,
-            backgroundColor: colors.bg.card,
+            borderBottomColor: palette.border,
+            backgroundColor: palette.card,
             zIndex: 80,
             elevation: 28,
           }}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <Text style={{ color: colors.text.primary, fontSize: isDetailPanelCompact ? 15 : 16, fontWeight: '700' }}>Refund Details</Text>
+            <MoneyText style={{ color: palette.text, fontSize: 16 }}>Refund Details</MoneyText>
           </View>
           {renderRefundDetailHeaderActions(selectedRefundRequest, {
             onClose: () => setSelectedRefundRequestId(null),
@@ -11785,17 +11970,15 @@ const buildExpenseDescription = (
                 {isFirstInGroup && groupByDate ? (
                   <View
                     style={{
-                      paddingHorizontal: 16,
-                      paddingTop: 12,
+                      paddingHorizontal: 22,
+                      paddingTop: 10,
                       paddingBottom: 8,
-                      backgroundColor: palette.inset,
-                      borderTopWidth: index === 0 ? 0 : 1,
-                      borderTopColor: colors.divider,
+                      backgroundColor: palette.isDark ? '#101010' : '#F7F7F7',
                       borderBottomWidth: 1,
                       borderBottomColor: colors.divider,
                     }}
                   >
-                    <Text style={{ color: palette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1.3, textTransform: 'uppercase' }}>{dayGroup.label}</Text>
+                    <Text style={{ color: colors.text.secondary, fontSize: 10, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{dayGroup.label}</Text>
                   </View>
                 ) : null}
                 <Pressable
@@ -11814,7 +11997,7 @@ const buildExpenseDescription = (
                         <Text style={{ color: palette.limeOnSurface, fontSize: 11, fontWeight: '700' }}>{getNameInitials(row.customerName)}</Text>
                       </View>
                       <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text style={{ color: colors.text.primary }} className="text-sm font-normal" numberOfLines={1}>
+                        <Text style={{ color: colors.text.primary, fontWeight: '700' }} className="text-sm" numberOfLines={1}>
                           {row.orderNumber}
                         </Text>
                         <Text style={{ color: colors.text.secondary }} className="text-xs mt-0.5" numberOfLines={1}>
@@ -12950,18 +13133,15 @@ const buildExpenseDescription = (
               {isFirstInGroup ? (
                 <View
                   style={{
-                    paddingHorizontal: 16,
-                    paddingTop: 12,
+                    paddingHorizontal: 22,
+                    paddingTop: 10,
                     paddingBottom: 8,
-                    backgroundColor: palette.inset,
-                    borderTopWidth: index === 0 ? 0 : 1,
-                    borderTopColor: colors.divider,
+                    backgroundColor: palette.isDark ? '#101010' : '#F7F7F7',
                     borderBottomWidth: 1,
                     borderBottomColor: colors.divider,
-                    ...(index === 0 ? { borderTopLeftRadius: 15, borderTopRightRadius: 15 } : null),
                   }}
                 >
-                  <Text style={{ color: palette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1.3, textTransform: 'uppercase' }}>{dayGroup.label}</Text>
+                  <Text style={{ color: colors.text.secondary, fontSize: 10, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{dayGroup.label}</Text>
                 </View>
               ) : null}
               <Pressable
@@ -12991,7 +13171,7 @@ const buildExpenseDescription = (
                     {isExpenseApprovalListMode ? (
                       <>
                         <View className="col-span-2" style={{ minWidth: 0 }}>
-                          <Text style={{ color: colors.text.primary }} className="text-sm font-semibold" numberOfLines={1}>
+                          <Text style={{ color: colors.text.primary, fontWeight: '700' }} className="text-sm" numberOfLines={1}>
                             {expense.name}
                           </Text>
                         </View>
@@ -13014,8 +13194,8 @@ const buildExpenseDescription = (
 
                         <View className="col-span-1 items-end" style={{ minWidth: 0 }}>
                           <Text
-                            style={{ color: colors.text.primary, textAlign: 'right', width: '100%' }}
-                            className="text-sm font-semibold"
+                            style={{ color: colors.text.primary, textAlign: 'right', width: '100%', fontWeight: '700' }}
+                            className="text-sm"
                             numberOfLines={1}
                           >
                             {formatCurrency(expense.amount)}
@@ -13052,7 +13232,7 @@ const buildExpenseDescription = (
                         <View className="col-span-2 flex-row items-center" style={{ gap: 8, minWidth: 0 }}>
                           <Receipt size={16} color={colors.text.tertiary} strokeWidth={2} />
                           <View style={{ minWidth: 0, flex: 1 }}>
-                            <Text style={{ color: colors.text.primary }} className="text-sm font-normal" numberOfLines={1} ellipsizeMode="tail">
+                            <Text style={{ color: colors.text.primary, fontWeight: '700' }} className="text-sm" numberOfLines={1} ellipsizeMode="tail">
                               {expense.name}
                             </Text>
                           </View>
@@ -13074,7 +13254,7 @@ const buildExpenseDescription = (
                           {expense.date}
                         </Text>
 
-                        <Text style={{ color: colors.text.primary, textAlign: 'right' }} className="col-span-1 text-sm font-normal" numberOfLines={1}>
+                        <Text style={{ color: colors.text.primary, textAlign: 'right', fontWeight: '700' }} className="col-span-1 text-sm" numberOfLines={1}>
                           {formatCurrency(expense.amount)}
                         </Text>
 
@@ -13651,17 +13831,15 @@ const buildExpenseDescription = (
           {isFirstInGroup && groupByDate ? (
             <View
               style={{
-                paddingHorizontal: 16,
-                paddingTop: 12,
+                paddingHorizontal: 22,
+                paddingTop: 10,
                 paddingBottom: 8,
-                backgroundColor: palette.inset,
-                borderTopWidth: index === 0 ? 0 : 1,
-                borderTopColor: colors.divider,
+                backgroundColor: palette.isDark ? '#101010' : '#F7F7F7',
                 borderBottomWidth: 1,
                 borderBottomColor: colors.divider,
               }}
             >
-              <Text style={{ color: palette.faint, fontSize: 11, fontWeight: '600', letterSpacing: 1.3, textTransform: 'uppercase' }}>{dayGroup.label}</Text>
+              <Text style={{ color: colors.text.secondary, fontSize: 10, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{dayGroup.label}</Text>
             </View>
           ) : null}
           <Pressable
@@ -13690,7 +13868,7 @@ const buildExpenseDescription = (
                   <>
                     <View className="col-span-2 flex-row items-center" style={{ gap: 8 }}>
                       <Truck size={16} color={colors.text.tertiary} strokeWidth={2} />
-                      <Text style={{ color: colors.text.primary }} className="text-sm font-normal" numberOfLines={1}>
+                      <Text style={{ color: colors.text.primary, fontWeight: '700' }} className="text-sm" numberOfLines={1}>
                         {procurement.poNumber}
                       </Text>
                     </View>
@@ -13711,7 +13889,7 @@ const buildExpenseDescription = (
                       {procurement.receivedDate}
                     </Text>
 
-                    <Text style={{ color: colors.text.primary, textAlign: 'right' }} className="col-span-1 text-sm font-semibold" numberOfLines={1}>
+                    <Text style={{ color: colors.text.primary, textAlign: 'right', fontWeight: '700' }} className="col-span-1 text-sm" numberOfLines={1}>
                       {formatCurrency(procurement.total)}
                     </Text>
 
@@ -13744,7 +13922,7 @@ const buildExpenseDescription = (
                   <>
                     <View className="col-span-2 flex-row items-center" style={{ gap: 8 }}>
                       <Truck size={16} color={colors.text.tertiary} strokeWidth={2} />
-                      <Text style={{ color: colors.text.primary }} className="text-sm font-normal" numberOfLines={1}>
+                      <Text style={{ color: colors.text.primary, fontWeight: '700' }} className="text-sm" numberOfLines={1}>
                         {procurement.poNumber}
                       </Text>
                     </View>
@@ -13773,7 +13951,7 @@ const buildExpenseDescription = (
                       {procurement.receivedDate}
                     </Text>
 
-                    <Text style={{ color: colors.text.primary, textAlign: 'right' }} className="col-span-1 text-sm font-normal" numberOfLines={1}>
+                    <Text style={{ color: colors.text.primary, textAlign: 'right', fontWeight: '700' }} className="col-span-1 text-sm" numberOfLines={1}>
                       {formatCurrency(procurement.total)}
                     </Text>
 
@@ -13978,9 +14156,27 @@ const buildExpenseDescription = (
             <View className="items-center justify-center py-12">
               <Text style={{ color: colors.text.tertiary }} className="text-base">No salary runs found</Text>
             </View>
-          ) : filteredSalaryRunRows.map((row, index) => (
+          ) : filteredSalaryRunRows.map((row, index) => {
+            const dayGroup = getExpenseDayGroup(row.sortAt);
+            const previousRun = index > 0 ? filteredSalaryRunRows[index - 1] : null;
+            const isFirstInGroup = isWebDesktop && (!previousRun || getExpenseDayGroup(previousRun.sortAt).key !== dayGroup.key);
+            return (
+            <React.Fragment key={row.id}>
+            {isFirstInGroup ? (
+              <View
+                style={{
+                  paddingHorizontal: 22,
+                  paddingTop: 10,
+                  paddingBottom: 8,
+                  backgroundColor: palette.isDark ? '#101010' : '#F7F7F7',
+                  borderBottomWidth: 1,
+                  borderBottomColor: colors.divider,
+                }}
+              >
+                <Text style={{ color: colors.text.secondary, fontSize: 10, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{dayGroup.label}</Text>
+              </View>
+            ) : null}
             <Pressable
-              key={row.id}
               onPress={() => {
                 if (isMobile) {
                   router.push({ pathname: '/expense/[id]', params: { id: row.id } } as any);
@@ -14001,7 +14197,7 @@ const buildExpenseDescription = (
                   <View className="col-span-3 flex-row items-center" style={{ gap: 8, minWidth: 0 }}>
                     <User size={16} color={colors.text.tertiary} strokeWidth={2} />
                     <View style={{ minWidth: 0, flex: 1 }}>
-                      <Text style={{ color: colors.text.primary }} className="text-sm font-normal" numberOfLines={1}>
+                      <Text style={{ color: colors.text.primary, fontWeight: '700' }} className="text-sm" numberOfLines={1}>
                         {capitalizeDisplayValue(row.name)}
                       </Text>
                       <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 2 }} numberOfLines={1}>
@@ -14018,7 +14214,7 @@ const buildExpenseDescription = (
                   <Text style={{ color: colors.text.secondary }} className="col-span-2 text-sm" numberOfLines={1}>
                     {row.date}
                   </Text>
-                  <Text style={{ color: colors.text.primary, textAlign: 'right' }} className="col-span-2 text-sm font-normal" numberOfLines={1}>
+                  <Text style={{ color: colors.text.primary, textAlign: 'right', fontWeight: '700' }} className="col-span-2 text-sm" numberOfLines={1}>
                     {formatCurrency(row.amount)}
                   </Text>
                 </View>
@@ -14045,7 +14241,9 @@ const buildExpenseDescription = (
                 </View>
               )}
             </Pressable>
-          ))}
+            </React.Fragment>
+            );
+          })}
         </View>
       </View>
       </View>
@@ -17219,7 +17417,7 @@ const buildExpenseDescription = (
       >
         <Pressable
           className={isWebDesktop ? 'flex-1 items-center justify-center' : 'flex-1'}
-          style={{ backgroundColor: isWebDesktop ? 'rgba(0, 0, 0, 0.6)' : colors.bg.screen }}
+          style={{ backgroundColor: isWebDesktop ? 'rgba(0, 0, 0, 0.6)' : palette.page }}
           onPress={() => setShowRefundRequestModal(false)}
         >
           <Pressable
@@ -17228,36 +17426,30 @@ const buildExpenseDescription = (
               width: isWebDesktop ? '92%' : '100%',
               maxWidth: isWebDesktop ? 680 : undefined,
               height: isWebDesktop ? undefined : '100%',
-              borderRadius: isWebDesktop ? 20 : 0,
+              borderRadius: isWebDesktop ? 28 : 0,
               borderWidth: 1,
-              borderColor: colors.divider,
-              backgroundColor: colors.bg.card,
+              borderColor: palette.border,
+              backgroundColor: palette.page,
               padding: isWebDesktop ? 20 : 16,
               paddingTop: isWebDesktop ? 20 : insets.top + 16,
             }}
           >
             <View className="flex-row items-center justify-between">
-              <Text
-                style={{
-                  color: colors.text.primary,
-                  fontSize: editingRefundRequestId ? 18 : 20,
-                  fontWeight: '700',
-                }}
-              >
+              <MoneyText style={{ color: palette.text, fontSize: 20, lineHeight: 26 }}>
                 {editingRefundRequestId ? 'Edit Refund Request' : 'New Refund Request'}
-              </Text>
+              </MoneyText>
               <Pressable
                 onPress={() => setShowRefundRequestModal(false)}
                 className="rounded-full items-center justify-center"
-                style={{ backgroundColor: colors.bg.input, width: 40, height: 40 }}
+                style={{ backgroundColor: palette.softFill, width: 40, height: 40 }}
               >
-                <X size={20} color={colors.text.secondary} strokeWidth={2.5} />
+                <X size={20} color={palette.muted} strokeWidth={2.5} />
               </Pressable>
             </View>
             <View
               style={{
                 height: 1,
-                backgroundColor: colors.divider,
+                backgroundColor: palette.hairline,
                 marginTop: 12,
                 marginBottom: 4,
               }}
@@ -17270,8 +17462,8 @@ const buildExpenseDescription = (
             >
               <View className="mt-5" style={{ gap: 14 }}>
                 <View>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Order</Text>
-                  <TextInput
+                  <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '500', marginBottom: 6 }}>Order</Text>
+                  <FocusTextInput
                     value={refundOrderSearchQuery}
                     onChangeText={(value) => {
                       if (isEditingPaidRefundRequest) return;
@@ -17281,17 +17473,17 @@ const buildExpenseDescription = (
                       }
                     }}
                     placeholder="Search by order number, customer, phone, or email"
-                    placeholderTextColor={colors.text.muted}
+                    placeholderTextColor={palette.faint}
                     editable={!isEditingPaidRefundRequest}
                     style={{
                       height: 52,
-                      borderRadius: 12,
+                      borderRadius: 16,
                       borderWidth: 1,
-                      borderColor: formFieldBorder,
-                      backgroundColor: formFieldBg,
-                      color: colors.text.primary,
+                      borderColor: palette.outline,
+                      backgroundColor: palette.card,
+                      color: palette.text,
                       paddingHorizontal: 14,
-                      fontSize: 15,
+                      fontSize: 14,
                       opacity: isEditingPaidRefundRequest ? 0.7 : 1,
                       paddingRight: 42,
                     }}
@@ -17304,16 +17496,16 @@ const buildExpenseDescription = (
                   <View
                     style={{
                       marginTop: 10,
-                      borderRadius: 14,
+                      borderRadius: 20,
                       borderWidth: 1,
-                      borderColor: colors.divider,
+                      borderColor: palette.border,
                       overflow: 'hidden',
-                      backgroundColor: colors.bg.input,
+                      backgroundColor: palette.card,
                     }}
                   >
                     {refundOrderMatches.length === 0 ? (
                       <View style={{ paddingHorizontal: 14, paddingVertical: 12 }}>
-                        <Text style={{ color: colors.text.muted, fontSize: 13 }}>No matching orders</Text>
+                        <Text style={{ color: palette.faint, fontSize: 12 }}>No matching orders</Text>
                       </View>
                     ) : refundOrderMatches.map((order) => {
                       const isSelected = selectedRefundOrderId === order.id;
@@ -17333,20 +17525,20 @@ const buildExpenseDescription = (
                             paddingHorizontal: 14,
                             paddingVertical: 12,
                             borderBottomWidth: order.id === refundOrderMatches[refundOrderMatches.length - 1]?.id ? 0 : 1,
-                            borderBottomColor: colors.divider,
-                            backgroundColor: isSelected ? colors.bg.card : 'transparent',
+                            borderBottomColor: palette.hairline,
+                            backgroundColor: isSelected ? palette.nudgeBg : 'transparent',
                           }}
                         >
                           <View className="flex-row items-center justify-between" style={{ gap: 12 }}>
                             <View style={{ flex: 1, minWidth: 0 }}>
-                              <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600' }} numberOfLines={1}>
+                              <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }} numberOfLines={1}>
                                 {order.orderNumber}
                               </Text>
-                              <Text style={{ color: colors.text.secondary, fontSize: 12, marginTop: 2 }} numberOfLines={1}>
+                              <Text style={{ color: palette.muted, fontSize: 12, marginTop: 2 }} numberOfLines={1}>
                                 {order.customerName}
                               </Text>
                             </View>
-                            <Text style={{ color: colors.text.secondary, fontSize: 12 }}>
+                            <Text style={{ color: palette.muted, fontSize: 12 }}>
                               {formatCurrency(remainingRefundable)}
                             </Text>
                           </View>
@@ -17355,40 +17547,40 @@ const buildExpenseDescription = (
                     })}
                   </View>
                   {isEditingPaidRefundRequest ? (
-                    <Text style={{ color: colors.text.muted, fontSize: 12, marginTop: 8 }}>
+                    <Text style={{ color: palette.faint, fontSize: 12, marginTop: 8 }}>
                       Paid refunds keep the original order and refund amount. Use notes or status updates for corrections.
                     </Text>
                   ) : null}
                 </View>
 
                 {selectedRefundOrder ? (
-                  <View style={{ borderRadius: 14, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.input, padding: 14, gap: 6 }}>
-                    <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '700' }}>{selectedRefundOrder.orderNumber}</Text>
-                    <Text style={{ color: colors.text.secondary, fontSize: 13 }}>{selectedRefundOrder.customerName}</Text>
-                    <Text style={{ color: colors.text.tertiary, fontSize: 12 }}>
+                  <View style={{ borderRadius: 22, borderWidth: 1, borderColor: palette.nudgeBorder, backgroundColor: palette.nudgeBg, padding: 16, gap: 6 }}>
+                    <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>{selectedRefundOrder.orderNumber}</Text>
+                    <Text style={{ color: palette.muted, fontSize: 12 }}>{selectedRefundOrder.customerName}</Text>
+                    <Text style={{ color: palette.faint, fontSize: 12 }}>
                       Remaining refundable: {formatCurrency(Math.max(0, selectedRefundOrder.totalAmount - (selectedRefundOrder.refund?.amount ?? 0)))}
                     </Text>
                   </View>
                 ) : null}
 
                 <View>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Refund Amount</Text>
-                  <TextInput
+                  <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '500', marginBottom: 6 }}>Refund amount</Text>
+                  <FocusTextInput
                     value={refundAmountDraft}
                     onChangeText={setRefundAmountDraft}
                     placeholder="0"
                     keyboardType="decimal-pad"
-                    placeholderTextColor={colors.text.muted}
+                    placeholderTextColor={palette.faint}
                     editable={!isEditingPaidRefundRequest}
                     style={{
                       height: 52,
-                      borderRadius: 12,
+                      borderRadius: 16,
                       borderWidth: 1,
-                      borderColor: formFieldBorder,
-                      backgroundColor: formFieldBg,
-                      color: colors.text.primary,
+                      borderColor: palette.outline,
+                      backgroundColor: palette.card,
+                      color: palette.text,
                       paddingHorizontal: 14,
-                      fontSize: 15,
+                      fontSize: 14,
                       opacity: isEditingPaidRefundRequest ? 0.7 : 1,
                     }}
                   />
@@ -17396,25 +17588,23 @@ const buildExpenseDescription = (
 
                 <View
                   style={{
-                    borderRadius: 14,
+                    borderRadius: 26,
                     borderWidth: 1,
-                    borderColor: colors.divider,
-                    backgroundColor: colors.bg.input,
-                    padding: 14,
+                    borderColor: palette.border,
+                    backgroundColor: palette.card,
+                    padding: 16,
                     gap: 10,
                   }}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8 }}>
-                      Transfer Charges
-                    </Text>
+                    <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '500' }}>Transfer charges</Text>
                     <Pressable
                       onPress={() => setApplyRefundBankCharges((prev) => !prev)}
                       style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
                     >
-                      <Text style={{ color: colors.text.tertiary, fontSize: 12 }}>Apply fees</Text>
-                      <View style={{ width: 38, height: 22, borderRadius: 11, backgroundColor: applyRefundBankCharges ? toggleTrackOn : toggleTrackOff, justifyContent: 'center', paddingHorizontal: 2 }}>
-                        <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: toggleKnobColor, marginLeft: applyRefundBankCharges ? 16 : 0 }} />
+                      <Text style={{ color: palette.faint, fontSize: 12 }}>Apply fees</Text>
+                      <View style={{ width: 38, height: 22, borderRadius: 11, backgroundColor: applyRefundBankCharges ? FYLL_LIME : palette.softFill, justifyContent: 'center', paddingHorizontal: 2 }}>
+                        <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: applyRefundBankCharges ? FYLL_LIME_INK : '#FFFFFF', marginLeft: applyRefundBankCharges ? 16 : 0 }} />
                       </View>
                     </Pressable>
                   </View>
@@ -17422,15 +17612,15 @@ const buildExpenseDescription = (
                   {applyRefundBankCharges ? (
                     <>
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <Text style={{ color: colors.text.tertiary, fontSize: 13 }}>
+                        <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '500' }}>
                           Bank charges
                         </Text>
-                        <Text style={{ color: colors.text.muted, fontSize: 12 }}>
+                        <Text style={{ color: palette.faint, fontSize: 12 }}>
                           Auto-filled from transfer fee tiers + VAT ({(financeRules.vatRate * 100).toFixed(0)}%)
                         </Text>
                       </View>
 
-                      <TextInput
+                      <FocusTextInput
                         value={refundBankChargeDraft}
                         onChangeText={(value) => {
                           setRefundBankChargeDraft(value);
@@ -17438,15 +17628,15 @@ const buildExpenseDescription = (
                         }}
                         placeholder="0"
                         keyboardType="decimal-pad"
-                        placeholderTextColor={colors.text.muted}
+                        placeholderTextColor={palette.faint}
                         editable={!isEditingPaidRefundRequest}
                         style={{
                           height: 48,
-                          borderRadius: 12,
+                          borderRadius: 16,
                           borderWidth: 1,
-                          borderColor: formFieldBorder,
-                          backgroundColor: formFieldBg,
-                          color: colors.text.primary,
+                          borderColor: palette.outline,
+                          backgroundColor: palette.card,
+                          color: palette.text,
                           paddingHorizontal: 14,
                           fontSize: 14,
                           opacity: isEditingPaidRefundRequest ? 0.7 : 1,
@@ -17454,15 +17644,15 @@ const buildExpenseDescription = (
                       />
 
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
-                        <Text style={{ color: colors.text.tertiary, fontSize: 13 }}>
+                        <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '500' }}>
                           {`Stamp duty (CBN, ≥${STAMP_DUTY_THRESHOLD_LABEL})`}
                         </Text>
-                        <Text style={{ color: colors.text.muted, fontSize: 12 }}>
+                        <Text style={{ color: palette.faint, fontSize: 12 }}>
                           Edit if bank debit differs
                         </Text>
                       </View>
 
-                      <TextInput
+                      <FocusTextInput
                         value={refundStampDutyDraft}
                         onChangeText={(value) => {
                           setRefundStampDutyDraft(value);
@@ -17470,15 +17660,15 @@ const buildExpenseDescription = (
                         }}
                         placeholder="0"
                         keyboardType="decimal-pad"
-                        placeholderTextColor={colors.text.muted}
+                        placeholderTextColor={palette.faint}
                         editable={!isEditingPaidRefundRequest}
                         style={{
                           height: 48,
-                          borderRadius: 12,
+                          borderRadius: 16,
                           borderWidth: 1,
-                          borderColor: formFieldBorder,
-                          backgroundColor: formFieldBg,
-                          color: colors.text.primary,
+                          borderColor: palette.outline,
+                          backgroundColor: palette.card,
+                          color: palette.text,
                           paddingHorizontal: 14,
                           fontSize: 14,
                           opacity: isEditingPaidRefundRequest ? 0.7 : 1,
@@ -17486,7 +17676,7 @@ const buildExpenseDescription = (
                       />
                     </>
                   ) : (
-                    <Text style={{ color: colors.text.muted, fontSize: 12 }}>
+                    <Text style={{ color: palette.faint, fontSize: 12 }}>
                       Bank charges are turned off for this refund.
                     </Text>
                   )}
@@ -17494,41 +17684,42 @@ const buildExpenseDescription = (
                   <View
                     style={{
                       borderTopWidth: 1,
-                      borderTopColor: colors.divider,
+                      borderTopColor: palette.hairline,
                       paddingTop: 10,
                       flexDirection: 'row',
                       justifyContent: 'space-between',
                       alignItems: 'center',
                     }}
                   >
-                    <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6 }}>
-                      Total Debit
-                    </Text>
-                    <Text style={{ color: colors.text.primary, fontSize: 15, fontWeight: '700' }}>
+                    <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '500' }}>Total debit</Text>
+                    <MoneyText style={{ color: palette.text, fontSize: 16 }}>
                       {formatCurrency(refundTotalDebit)}
-                    </Text>
+                    </MoneyText>
                   </View>
                 </View>
 
                 <View>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Requested Refund Date</Text>
+                  <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '500', marginBottom: 6 }}>Requested refund date</Text>
                   {Platform.OS === 'web' ? (
                     <View
                       style={{
                         height: 52,
-                        borderRadius: 12,
+                        borderRadius: 16,
                         borderWidth: 1,
-                        borderColor: formFieldBorder,
-                        backgroundColor: formFieldBg,
+                        borderColor: refundDateFocused ? FYLL_LIME : palette.outline,
+                        backgroundColor: palette.card,
                         flexDirection: 'row',
                         alignItems: 'center',
                         paddingHorizontal: 14,
+                        ...(refundDateFocused ? ({ boxShadow: '0 0 0 3px rgba(213, 224, 87, 0.32)' } as object) : null),
                       }}
                     >
-                      <Calendar size={18} color={colors.text.tertiary} strokeWidth={2} />
+                      <Calendar size={18} color={palette.faint} strokeWidth={2} />
                       <input
                         className="finance-date-input"
                         type="date"
+                        onFocus={() => setRefundDateFocused(true)}
+                        onBlur={() => setRefundDateFocused(false)}
                         value={refundRequestedDate}
                         onChange={(e: any) => setRefundRequestedDate(e.target.value)}
                         disabled={isEditingPaidRefundRequest}
@@ -17537,8 +17728,8 @@ const buildExpenseDescription = (
                           border: 'none',
                           outline: 'none',
                           background: 'transparent',
-                          color: colors.text.primary,
-                          fontSize: 15,
+                          color: palette.text,
+                          fontSize: 14,
                           marginLeft: 10,
                           fontFamily: 'inherit',
                           colorScheme: isDarkMode ? 'dark' : 'light',
@@ -17553,18 +17744,18 @@ const buildExpenseDescription = (
                       }}
                       style={{
                         height: 52,
-                        borderRadius: 12,
+                        borderRadius: 16,
                         borderWidth: 1,
-                        borderColor: formFieldBorder,
-                        backgroundColor: formFieldBg,
+                        borderColor: palette.outline,
+                        backgroundColor: palette.card,
                         paddingHorizontal: 14,
                         flexDirection: 'row',
                         alignItems: 'center',
                         opacity: isEditingPaidRefundRequest ? 0.7 : 1,
                       }}
                     >
-                      <Calendar size={18} color={colors.text.tertiary} strokeWidth={2} />
-                      <Text style={{ color: colors.text.primary, fontSize: 15, marginLeft: 10 }}>
+                      <Calendar size={18} color={palette.faint} strokeWidth={2} />
+                      <Text style={{ color: palette.text, fontSize: 14, marginLeft: 10 }}>
                         {refundRequestedDate || 'Select date'}
                       </Text>
                     </Pressable>
@@ -17585,77 +17776,78 @@ const buildExpenseDescription = (
                 </View>
 
                 <View>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Reason</Text>
-                  <TextInput
+                  <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '500', marginBottom: 6 }}>Reason</Text>
+                  <FocusTextInput
                     value={refundReasonDraft}
                     onChangeText={setRefundReasonDraft}
                     placeholder="Why is this refund needed?"
-                    placeholderTextColor={colors.text.muted}
+                    placeholderTextColor={palette.faint}
                     multiline
                     textAlignVertical="top"
                     editable={!isEditingPaidRefundRequest}
                     style={{
                       minHeight: 110,
-                      borderRadius: 12,
+                      borderRadius: 16,
                       borderWidth: 1,
-                      borderColor: formFieldBorder,
-                      backgroundColor: formFieldBg,
-                      color: colors.text.primary,
+                      borderColor: palette.outline,
+                      backgroundColor: palette.card,
+                      color: palette.text,
                       paddingHorizontal: 14,
                       paddingVertical: 14,
-                      fontSize: 15,
+                      fontSize: 14,
                       opacity: isEditingPaidRefundRequest ? 0.7 : 1,
                     }}
                   />
                 </View>
 
                 <View>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Internal Note (optional)</Text>
-                  <TextInput
+                  <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '500', marginBottom: 6 }}>Internal note (optional)</Text>
+                  <FocusTextInput
                     value={refundNoteDraft}
                     onChangeText={setRefundNoteDraft}
                     placeholder="Add payout or approval context"
-                    placeholderTextColor={colors.text.muted}
+                    placeholderTextColor={palette.faint}
                     multiline
                     textAlignVertical="top"
                     style={{
                       minHeight: 90,
-                      borderRadius: 12,
+                      borderRadius: 16,
                       borderWidth: 1,
-                      borderColor: formFieldBorder,
-                      backgroundColor: formFieldBg,
-                      color: colors.text.primary,
+                      borderColor: palette.outline,
+                      backgroundColor: palette.card,
+                      color: palette.text,
                       paddingHorizontal: 14,
                       paddingVertical: 14,
-                      fontSize: 15,
+                      fontSize: 14,
                     }}
                   />
                 </View>
 
                 <View>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Context screenshots (optional)</Text>
+                  <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '500', marginBottom: 6 }}>Context screenshots (optional)</Text>
                   {refundAttachmentDrafts.length === 0 ? (
                     <Pressable
                       onPress={pickRefundRequestAttachments}
-                      className="rounded-2xl items-center justify-center"
+                      className="items-center justify-center"
                       style={{
                         minHeight: 148,
-                        borderWidth: 1,
+                        borderRadius: 22,
+                        borderWidth: 1.5,
                         borderStyle: 'dashed',
-                        borderColor: colors.divider,
-                        backgroundColor: colors.bg.input,
+                        borderColor: palette.outline,
+                        backgroundColor: palette.card,
                         paddingHorizontal: 20,
                         paddingVertical: 24,
                       }}
                     >
                       <View
                         className="rounded-full items-center justify-center mb-3"
-                        style={{ width: 48, height: 48, backgroundColor: colors.bg.screen, borderWidth: 1, borderColor: colors.divider }}
+                        style={{ width: 48, height: 48, backgroundColor: palette.nudgeBg }}
                       >
-                        <Camera size={22} color={colors.text.tertiary} strokeWidth={2} />
+                        <Camera size={22} color={palette.faint} strokeWidth={2} />
                       </View>
-                      <Text style={{ color: colors.text.primary, fontSize: 16, fontWeight: '600' }}>Upload screenshot</Text>
-                      <Text style={{ color: colors.text.muted, fontSize: 13, marginTop: 4, textAlign: 'center' }}>
+                      <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>Upload screenshot</Text>
+                      <Text style={{ color: palette.faint, fontSize: 12, marginTop: 4, textAlign: 'center' }}>
                         Optional context for the refund reason. Refund proof is uploaded after approval.
                       </Text>
                     </Pressable>
@@ -17665,12 +17857,13 @@ const buildExpenseDescription = (
                         {refundAttachmentDrafts.map((attachment) => (
                           <View key={attachment.id} style={{ width: 110 }}>
                             <View
-                              className="rounded-2xl overflow-hidden"
+                              className="overflow-hidden"
                               style={{
                                 height: 110,
+                                borderRadius: 22,
                                 borderWidth: 1,
-                                borderColor: colors.divider,
-                                backgroundColor: colors.bg.input,
+                                borderColor: palette.border,
+                                backgroundColor: palette.card,
                                 position: 'relative',
                                 alignItems: 'center',
                                 justifyContent: 'center',
@@ -17684,9 +17877,9 @@ const buildExpenseDescription = (
                                 />
                               ) : (
                                 <View className="items-center justify-center px-3">
-                                  <FileText size={24} color={colors.text.tertiary} strokeWidth={2} />
+                                  <FileText size={24} color={palette.faint} strokeWidth={2} />
                                   <Text
-                                    style={{ color: colors.text.secondary, fontSize: 11, marginTop: 8, textAlign: 'center' }}
+                                    style={{ color: palette.muted, fontSize: 11, marginTop: 8, textAlign: 'center' }}
                                     numberOfLines={2}
                                   >
                                     {attachment.fileName}
@@ -17709,7 +17902,7 @@ const buildExpenseDescription = (
                               </Pressable>
                             </View>
                             <Text
-                              style={{ color: colors.text.secondary, fontSize: 11, marginTop: 6, textAlign: 'center' }}
+                              style={{ color: palette.muted, fontSize: 11, marginTop: 6, textAlign: 'center' }}
                               numberOfLines={2}
                             >
                               {attachment.fileName}
@@ -17720,21 +17913,22 @@ const buildExpenseDescription = (
 
                       <Pressable
                         onPress={pickRefundRequestAttachments}
-                        className="rounded-xl items-center justify-center"
+                        className="items-center justify-center"
                         style={{
                           height: 44,
+                          borderRadius: 16,
                           borderWidth: 1,
                           borderStyle: 'dashed',
-                          borderColor: colors.divider,
+                          borderColor: palette.outline,
                         }}
                       >
-                        <Text style={{ color: colors.text.secondary, fontSize: 13, fontWeight: '600' }}>+ Add Another Image</Text>
+                        <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }}>+ Add another image</Text>
                       </Pressable>
                     </View>
                   )}
 
                   {refundAttachmentError ? (
-                    <Text style={{ color: colors.danger, fontSize: 12, marginTop: 8 }}>
+                    <Text style={{ color: palette.danger, fontSize: 12, marginTop: 8 }}>
                       {refundAttachmentError}
                     </Text>
                   ) : null}
@@ -17742,68 +17936,8 @@ const buildExpenseDescription = (
               </View>
             </ScrollView>
 
-            <View className="flex-row items-center justify-between mt-4" style={{ gap: 10 }}>
-              <View style={{ minWidth: 44 }}>
-                {editingRefundRequestId && canManageEditingRefundRequest ? (
-                  <View style={{ position: 'relative' }}>
-                    <Pressable
-                      onPress={() => setRefundComposerActionMenuOpen((previous) => !previous)}
-                      className="rounded-full items-center justify-center"
-                      style={{
-                        width: 44,
-                        height: 44,
-                        borderWidth: 1,
-                        borderColor: colors.divider,
-                        backgroundColor: refundComposerActionMenuOpen ? colors.bg.input : colors.bg.card,
-                      }}
-                    >
-                      <MoreVertical size={16} color={colors.text.secondary} strokeWidth={2} />
-                    </Pressable>
-                    {refundComposerActionMenuOpen ? (
-                      <View
-                        style={{
-                          position: 'absolute',
-                          left: 0,
-                          bottom: 50,
-                          borderRadius: 10,
-                          borderWidth: 1,
-                          borderColor: colors.divider,
-                          backgroundColor: colors.bg.card,
-                          zIndex: 50,
-                          minWidth: 160,
-                          overflow: 'hidden',
-                        }}
-                      >
-                        {editingRefundRequest?.status !== 'void' ? (
-                          <Pressable
-                            onPress={() => {
-                              setRefundComposerActionMenuOpen(false);
-                              void handleVoidRefundRequest(editingRefundRequestId, refundNoteDraft);
-                              setShowRefundRequestModal(false);
-                            }}
-                            className="px-3 py-2.5"
-                            style={{ borderBottomWidth: 1, borderBottomColor: colors.divider }}
-                          >
-                            <Text style={{ color: colors.danger }} className="text-sm font-medium">Mark Void</Text>
-                          </Pressable>
-                        ) : null}
-                        <Pressable
-                          onPress={() => {
-                            setRefundComposerActionMenuOpen(false);
-                            void handleDeleteRefundRequest(editingRefundRequestId);
-                            setShowRefundRequestModal(false);
-                          }}
-                          className="px-3 py-2.5"
-                        >
-                          <Text style={{ color: colors.danger }} className="text-sm font-medium">Delete</Text>
-                        </Pressable>
-                      </View>
-                    ) : null}
-                  </View>
-                ) : null}
-              </View>
-
-              <View className="flex-row items-center justify-end" style={{ gap: 10, flex: 1 }}>
+            <View className="flex-row items-center mt-4" style={{ gap: 10 }}>
+              <View className="flex-row items-center" style={{ gap: 10, flex: 1 }}>
                 {isEditingDraftLikeRefundRequest ? (
                   <>
                     <Pressable
@@ -17811,20 +17945,20 @@ const buildExpenseDescription = (
                         setRefundComposerActionMenuOpen(false);
                         handleSaveRefundRequestModal('save');
                       }}
-                      className="rounded-full px-5"
-                      style={{ height: 44, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.divider }}
+                      className="rounded-full"
+                      style={{ flex: 1, height: 46, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: palette.outline, backgroundColor: palette.card }}
                     >
-                      <Text style={{ color: colors.text.secondary }} className="font-semibold">Save Draft</Text>
+                      <MoneyText style={{ color: palette.text, fontSize: 14 }}>Save draft</MoneyText>
                     </Pressable>
                     <Pressable
                       onPress={() => {
                         setRefundComposerActionMenuOpen(false);
                         void handleSaveRefundRequestModal('submit');
                       }}
-                      className="rounded-full px-5"
-                      style={{ height: 44, alignItems: 'center', justifyContent: 'center', backgroundColor: FYLL_LIME }}
+                      className="rounded-full"
+                      style={{ flex: 1, height: 46, alignItems: 'center', justifyContent: 'center', backgroundColor: FYLL_LIME }}
                     >
-                      <Text style={{ fontFamily: 'BricolageGrotesque_600SemiBold', color: FYLL_LIME_INK }} className="font-semibold">Submit</Text>
+                      <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 14 }}>Submit</MoneyText>
                     </Pressable>
                   </>
                 ) : (
@@ -17833,10 +17967,10 @@ const buildExpenseDescription = (
                       setRefundComposerActionMenuOpen(false);
                       void handleSaveRefundRequestModal('save');
                     }}
-                    className="rounded-full px-5"
-                    style={{ height: 44, alignItems: 'center', justifyContent: 'center', backgroundColor: FYLL_LIME }}
+                    className="rounded-full"
+                    style={{ flex: 1, height: 46, alignItems: 'center', justifyContent: 'center', backgroundColor: FYLL_LIME }}
                   >
-                    <Text style={{ fontFamily: 'BricolageGrotesque_600SemiBold', color: FYLL_LIME_INK }} className="font-semibold">Save Changes</Text>
+                    <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 14 }}>Save changes</MoneyText>
                   </Pressable>
                 )}
               </View>
@@ -17916,17 +18050,17 @@ const buildExpenseDescription = (
               width: isWebDesktop ? '92%' : '100%',
               maxWidth: isWebDesktop ? 620 : undefined,
               height: isWebDesktop ? undefined : '100%',
-              borderRadius: isWebDesktop ? 20 : 0,
+              borderRadius: isWebDesktop ? 28 : 0,
               borderWidth: 1,
-              borderColor: colors.divider,
-              backgroundColor: colors.bg.card,
+              borderColor: palette.border,
+              backgroundColor: palette.page,
               padding: isWebDesktop ? 20 : 16,
               paddingTop: isWebDesktop ? 20 : insets.top + 16,
             }}
           >
             <View
               className="flex-row items-center justify-between"
-              style={{ borderBottomWidth: 1, borderBottomColor: colors.divider, paddingBottom: 12, marginBottom: 12, zIndex: 80, elevation: 28 }}
+              style={{ borderBottomWidth: 1, borderBottomColor: palette.hairline, paddingBottom: 12, marginBottom: 12, zIndex: 80, elevation: 28 }}
             >
               <View className="flex-row items-center" style={{ gap: 10 }}>
                 <Pressable
@@ -17935,11 +18069,11 @@ const buildExpenseDescription = (
                     setShowRefundRequestDetailModal(false);
                   }}
                   className={isWebDesktop ? '' : 'p-1 -ml-1'}
-                  style={isWebDesktop ? { width: 38, height: 38, borderRadius: 19, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.input, alignItems: 'center', justifyContent: 'center' } : undefined}
+                  style={isWebDesktop ? { width: 38, height: 38, borderRadius: 19, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.softFill, alignItems: 'center', justifyContent: 'center' } : undefined}
                 >
-                  <ArrowLeft size={20} color={colors.text.secondary} strokeWidth={2.4} />
+                  <ArrowLeft size={20} color={palette.muted} strokeWidth={2.4} />
                 </Pressable>
-                <Text style={{ color: colors.text.primary }} className="text-xl font-bold">Refund Details</Text>
+                <MoneyText style={{ color: palette.text, fontSize: 20, lineHeight: 26 }}>Refund Details</MoneyText>
               </View>
               {selectedRefundRequest ? renderRefundDetailHeaderActions(selectedRefundRequest, { closeModalOnEdit: true }) : <View style={{ width: 38, height: 38 }} />}
             </View>
@@ -18256,7 +18390,7 @@ const buildExpenseDescription = (
       <Modal visible={showExpenseModal} transparent animationType="none" onRequestClose={() => setShowExpenseModal(false)}>
         <Pressable
           className={isWebDesktop ? 'flex-1 items-center justify-center' : 'flex-1'}
-          style={{ backgroundColor: isWebDesktop ? 'rgba(0, 0, 0, 0.6)' : colors.bg.screen }}
+          style={{ backgroundColor: isWebDesktop ? 'rgba(0, 0, 0, 0.6)' : palette.page }}
           onPress={() => {
             setShowExpenseModal(false);
             setEditingExpenseId(null);
@@ -18278,19 +18412,19 @@ const buildExpenseDescription = (
               width: isWebDesktop ? '92%' : '100%',
               maxWidth: isWebDesktop ? 760 : undefined,
               height: isWebDesktop ? undefined : '100%',
-              borderRadius: isWebDesktop ? 20 : 0,
+              borderRadius: isWebDesktop ? 28 : 0,
               borderWidth: 1,
-              borderColor: colors.divider,
-              backgroundColor: colors.bg.card,
+              borderColor: palette.border,
+              backgroundColor: palette.page,
               overflow: 'visible',
               padding: isWebDesktop ? 20 : 16,
               paddingTop: isWebDesktop ? 20 : insets.top + 16,
             }}
           >
             <View className="flex-row items-center justify-between">
-              <Text style={{ color: colors.text.primary }} className="text-xl font-bold">
+              <MoneyText style={{ color: palette.text, fontSize: 20, lineHeight: 26 }}>
                 {expenseModalMode === 'edit' ? 'Edit Expense' : 'Add Expense'}
-              </Text>
+              </MoneyText>
               <Pressable
                 onPress={() => {
                   setShowExpenseModal(false);
@@ -18307,9 +18441,9 @@ const buildExpenseDescription = (
                   setIsSavingExpense(false);
                 }}
                 className="rounded-full items-center justify-center"
-                style={{ backgroundColor: colors.bg.input, width: 40, height: 40 }}
+                style={{ backgroundColor: palette.softFill, width: 40, height: 40 }}
               >
-                <X size={20} color={colors.text.secondary} strokeWidth={2.5} />
+                <X size={20} color={palette.muted} strokeWidth={2.5} />
               </Pressable>
             </View>
 
@@ -18320,27 +18454,27 @@ const buildExpenseDescription = (
             >
             <View className="mt-5" style={{ gap: 14 }}>
               <View>
-                <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Name</Text>
-                <TextInput
+                <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '500', marginBottom: 6 }}>Name</Text>
+                <FocusTextInput
                   value={expenseName}
                   onChangeText={setExpenseName}
                   placeholder="e.g. Office Rent"
-                  placeholderTextColor={colors.text.muted}
+                  placeholderTextColor={palette.faint}
                   style={{
                     height: 52,
-                    borderRadius: 12,
+                    borderRadius: 16,
                     borderWidth: 1,
-                    borderColor: formFieldBorder,
-                    backgroundColor: formFieldBg,
-                    color: colors.text.primary,
+                    borderColor: palette.outline,
+                    backgroundColor: palette.card,
+                    color: palette.text,
                     paddingHorizontal: 14,
-                    fontSize: 15,
+                    fontSize: 14,
                   }}
                 />
               </View>
 
               <View>
-                <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Supplier / Merchant</Text>
+                <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '500', marginBottom: 6 }}>Supplier / Merchant</Text>
                 <Pressable
                   onPress={() => {
                     setShowExpenseMerchantDropdown((prev) => !prev);
@@ -18352,13 +18486,13 @@ const buildExpenseDescription = (
                   }}
                   style={{
                     height: 52,
-                    borderTopLeftRadius: 12,
-                    borderTopRightRadius: 12,
-                    borderBottomLeftRadius: showExpenseMerchantDropdown ? 0 : 12,
-                    borderBottomRightRadius: showExpenseMerchantDropdown ? 0 : 12,
+                    borderTopLeftRadius: 16,
+                    borderTopRightRadius: 16,
+                    borderBottomLeftRadius: showExpenseMerchantDropdown ? 0 : 16,
+                    borderBottomRightRadius: showExpenseMerchantDropdown ? 0 : 16,
                     borderWidth: 1,
-                    borderColor: showExpenseMerchantDropdown ? formFieldActiveBorder : formFieldBorder,
-                    backgroundColor: formFieldBg,
+                    borderColor: showExpenseMerchantDropdown ? FYLL_LIME : formFieldBorder,
+                    backgroundColor: palette.card,
                     paddingHorizontal: 14,
                     flexDirection: 'row',
                     alignItems: 'center',
@@ -18367,54 +18501,54 @@ const buildExpenseDescription = (
                 >
                   <Text
                     numberOfLines={1}
-                    style={{ color: expenseMerchant ? colors.text.primary : colors.text.muted, flex: 1, marginRight: 8, fontSize: 15 }}
+                    style={{ color: expenseMerchant ? palette.text : palette.faint, flex: 1, marginRight: 8, fontSize: 14 }}
                   >
                     {expenseMerchant || 'Select or search merchant'}
                   </Text>
-                  <ChevronDown size={16} color={showExpenseMerchantDropdown ? formFieldActiveBorder : colors.text.tertiary} strokeWidth={2} />
+                  <ChevronDown size={16} color={showExpenseMerchantDropdown ? FYLL_LIME : palette.faint} strokeWidth={2} />
                 </Pressable>
                 {showExpenseMerchantDropdown ? (
-                  <View style={{ borderWidth: 1, borderTopWidth: 0, borderColor: formFieldActiveBorder, borderBottomLeftRadius: 12, borderBottomRightRadius: 12, backgroundColor: colors.bg.card, overflow: 'hidden', maxHeight: 220 }}>
-                    <View style={{ padding: 10, borderBottomWidth: 1, borderBottomColor: colors.divider }}>
-                      <TextInput
+                  <View style={{ borderWidth: 1, borderTopWidth: 0, borderColor: FYLL_LIME, borderBottomLeftRadius: 16, borderBottomRightRadius: 16, backgroundColor: palette.card, overflow: 'hidden', maxHeight: 220 }}>
+                    <View style={{ padding: 10, borderBottomWidth: 1, borderBottomColor: palette.border }}>
+                      <FocusTextInput
                         value={expenseMerchantSearch}
                         onChangeText={setExpenseMerchantSearch}
                         placeholder="Search merchant..."
-                        placeholderTextColor={colors.text.muted}
+                        placeholderTextColor={palette.faint}
                         autoFocus
-                        style={{ height: 40, borderRadius: 10, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, color: colors.text.primary, paddingHorizontal: 12, fontSize: 14 }}
+                        style={{ height: 42, borderRadius: 14, borderWidth: 1, borderColor: palette.outline, backgroundColor: palette.card, color: palette.text, paddingHorizontal: 12, fontSize: 14 }}
                       />
                       <SearchClearButton visible={Boolean(expenseMerchantSearch.trim())} onPress={() => setExpenseMerchantSearch('')} />
                     </View>
                     <ScrollView showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
                       <Pressable
                         onPress={() => { setExpenseMerchant(''); setExpenseMerchantSearch(''); setShowExpenseMerchantDropdown(false); }}
-                        style={{ paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.divider, backgroundColor: expenseMerchant === '' ? colors.bg.input : colors.bg.card, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+                        style={{ paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: palette.border, backgroundColor: expenseMerchant === '' ? palette.softFill : palette.card, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
                       >
-                        <Text style={{ color: colors.text.muted, fontSize: 14 }}>No merchant (optional)</Text>
-                        {expenseMerchant === '' ? <Check size={14} color={colors.bar} strokeWidth={2.5} /> : null}
+                        <Text style={{ color: palette.faint, fontSize: 14 }}>No merchant (optional)</Text>
+                        {expenseMerchant === '' ? <Check size={14} color={palette.limeOnSurface} strokeWidth={2.5} /> : null}
                       </Pressable>
                       {filteredExpenseMerchants.map((merchant) => (
                         <Pressable
                           key={merchant}
                           onPress={() => { setExpenseMerchant(merchant); setExpenseMerchantSearch(merchant); setShowExpenseMerchantDropdown(false); }}
-                          style={{ paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.divider, backgroundColor: expenseMerchant === merchant ? colors.bg.input : colors.bg.card, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+                          style={{ paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: palette.border, backgroundColor: expenseMerchant === merchant ? palette.softFill : palette.card, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
                         >
-                          <Text style={{ color: colors.text.primary, fontSize: 14 }} className="font-medium">{merchant}</Text>
-                          {expenseMerchant === merchant ? <Check size={14} color={colors.bar} strokeWidth={2.5} /> : null}
+                          <Text style={{ color: palette.text, fontSize: 14 }} className="font-medium">{merchant}</Text>
+                          {expenseMerchant === merchant ? <Check size={14} color={palette.limeOnSurface} strokeWidth={2.5} /> : null}
                         </Pressable>
                       ))}
                       {expenseMerchantSearch.trim() && !availableExpenseMerchants.some((m) => m.toLowerCase() === expenseMerchantSearch.trim().toLowerCase()) ? (
                         <Pressable
                           onPress={() => { const c = expenseMerchantSearch.trim(); upsertFinanceSupplierName(c); setExpenseMerchant(c); setExpenseMerchantSearch(c); setShowExpenseMerchantDropdown(false); }}
-                          style={{ paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.divider, backgroundColor: colors.bg.card }}
+                          style={{ paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: palette.border, backgroundColor: palette.card }}
                         >
-                          <Text style={{ color: colors.bar, fontSize: 14 }} className="font-medium">Use "{expenseMerchantSearch.trim()}"</Text>
+                          <Text style={{ color: palette.limeOnSurface, fontSize: 14 }} className="font-medium">Use "{expenseMerchantSearch.trim()}"</Text>
                         </Pressable>
                       ) : null}
                       {filteredExpenseMerchants.length === 0 && !expenseMerchantSearch.trim() ? (
                         <View style={{ paddingHorizontal: 14, paddingVertical: 12 }}>
-                          <Text style={{ color: colors.text.muted, fontSize: 13 }}>No merchants yet</Text>
+                          <Text style={{ color: palette.faint, fontSize: 13 }}>No merchants yet</Text>
                         </View>
                       ) : null}
                     </ScrollView>
@@ -18425,21 +18559,21 @@ const buildExpenseDescription = (
               <View
                 style={{
                   borderWidth: 1,
-                  borderColor: colors.divider,
-                  backgroundColor: colors.bg.card,
-                  borderRadius: 16,
-                  padding: 14,
+                  borderColor: palette.border,
+                  backgroundColor: palette.card,
+                  borderRadius: 26,
+                  padding: 16,
                 }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                  <Text style={{ color: colors.text.tertiary, fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }}>Payment Breakdown</Text>
+                  <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '500' }}>Payment breakdown</Text>
                   <Pressable
                     onPress={() => setApplyBankCharges((prev) => !prev)}
                     style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
                   >
-                    <Text style={{ color: colors.text.tertiary, fontSize: 12 }}>Apply fees</Text>
-                    <View style={{ width: 38, height: 22, borderRadius: 11, backgroundColor: applyBankCharges ? toggleTrackOn : toggleTrackOff, justifyContent: 'center', paddingHorizontal: 2 }}>
-                      <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: toggleKnobColor, marginLeft: applyBankCharges ? 16 : 0 }} />
+                    <Text style={{ color: palette.faint, fontSize: 12 }}>Apply fees</Text>
+                    <View style={{ width: 38, height: 22, borderRadius: 11, backgroundColor: applyBankCharges ? FYLL_LIME : palette.softFill, justifyContent: 'center', paddingHorizontal: 2 }}>
+                      <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: applyBankCharges ? FYLL_LIME_INK : '#FFFFFF', marginLeft: applyBankCharges ? 16 : 0 }} />
                     </View>
                   </Pressable>
                 </View>
@@ -18448,27 +18582,27 @@ const buildExpenseDescription = (
                   {expenseLineItems.map((line, index) => {
                     return (
                       <View key={line.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <TextInput
+                        <FocusTextInput
                           value={line.label}
                           onChangeText={(value) => setExpenseLineItems((previous) => previous.map((item) => item.id === line.id ? { ...item, label: value } : item))}
-                          placeholder={index === 0 ? 'Base Amount' : 'Charge label'}
-                          placeholderTextColor={colors.text.muted}
-                          style={{ flex: 3, minWidth: 0, height: 44, borderRadius: 10, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, color: colors.text.primary, paddingHorizontal: 12, fontSize: 14 }}
+                          placeholder={index === 0 ? 'Base amount' : 'Charge label'}
+                          placeholderTextColor={palette.faint}
+                          style={{ flex: 3, minWidth: 0, height: 46, borderRadius: 14, borderWidth: 1, borderColor: palette.outline, backgroundColor: palette.card, color: palette.text, paddingHorizontal: 12, fontSize: 14 }}
                         />
-                        <TextInput
+                        <FocusTextInput
                           value={line.amount}
                           onChangeText={(value) => setExpenseLineItems((previous) => previous.map((item) => item.id === line.id ? { ...item, amount: value } : item))}
                           placeholder="0"
                           keyboardType="decimal-pad"
-                          placeholderTextColor={colors.text.muted}
-                          style={{ flex: 2, minWidth: 0, height: 44, borderRadius: 10, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, color: colors.text.primary, paddingHorizontal: 12, fontSize: 14 }}
+                          placeholderTextColor={palette.faint}
+                          style={{ flex: 2, minWidth: 0, height: 46, borderRadius: 14, borderWidth: 1, borderColor: palette.outline, backgroundColor: palette.card, color: palette.text, paddingHorizontal: 12, fontSize: 14 }}
                         />
                         {index > 0 ? (
                           <Pressable
                             onPress={() => { setExpenseLineItems((previous) => previous.filter((item) => item.id !== line.id)); }}
-                            style={{ width: 44, height: 44, borderRadius: 10, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+                            style={{ width: 44, height: 46, borderRadius: 14, borderWidth: 1, borderColor: palette.outline, backgroundColor: palette.card, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
                           >
-                            <Trash2 size={14} color={colors.text.tertiary} strokeWidth={2} />
+                            <Trash2 size={14} color={palette.faint} strokeWidth={2} />
                           </Pressable>
                         ) : null}
                       </View>
@@ -18478,21 +18612,21 @@ const buildExpenseDescription = (
 
                 {applyBankCharges && bankChargeAmount > 0 ? (
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, paddingHorizontal: 2 }}>
-                    <View style={{ flex: 3, height: 36, borderRadius: 10, borderWidth: 1, borderColor: colors.divider, borderStyle: 'dashed', backgroundColor: colors.bg.input, justifyContent: 'center', paddingHorizontal: 12 }}>
-                      <Text style={{ color: colors.text.tertiary, fontSize: 13 }}>NIP fee + VAT ({(financeRules.vatRate * 100).toFixed(0)}%)</Text>
+                    <View style={{ flex: 3, height: 36, borderRadius: 10, borderWidth: 1, borderColor: palette.outline, borderStyle: 'dashed', backgroundColor: palette.softFill, justifyContent: 'center', paddingHorizontal: 12 }}>
+                      <Text style={{ color: palette.faint, fontSize: 13 }}>NIP fee + VAT ({(financeRules.vatRate * 100).toFixed(0)}%)</Text>
                     </View>
-                    <View style={{ flex: 2, height: 36, borderRadius: 10, borderWidth: 1, borderColor: colors.divider, borderStyle: 'dashed', backgroundColor: colors.bg.input, justifyContent: 'center', alignItems: 'flex-end', paddingHorizontal: 12 }}>
-                      <Text style={{ color: colors.text.secondary, fontSize: 13, fontWeight: '600' }}>{formatCurrency(bankChargeAmount)}</Text>
+                    <View style={{ flex: 2, height: 36, borderRadius: 10, borderWidth: 1, borderColor: palette.outline, borderStyle: 'dashed', backgroundColor: palette.softFill, justifyContent: 'center', alignItems: 'flex-end', paddingHorizontal: 12 }}>
+                      <Text style={{ color: palette.muted, fontSize: 13, fontWeight: '600' }}>{formatCurrency(bankChargeAmount)}</Text>
                     </View>
                   </View>
                 ) : null}
                 {applyBankCharges && expenseStampDuty > 0 ? (
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6, paddingHorizontal: 2 }}>
-                    <View style={{ flex: 3, height: 36, borderRadius: 10, borderWidth: 1, borderColor: colors.divider, borderStyle: 'dashed', backgroundColor: colors.bg.input, justifyContent: 'center', paddingHorizontal: 12 }}>
-                      <Text style={{ color: colors.text.tertiary, fontSize: 13 }}>{`Stamp duty (CBN, ≥${STAMP_DUTY_THRESHOLD_LABEL})`}</Text>
+                    <View style={{ flex: 3, height: 36, borderRadius: 10, borderWidth: 1, borderColor: palette.outline, borderStyle: 'dashed', backgroundColor: palette.softFill, justifyContent: 'center', paddingHorizontal: 12 }}>
+                      <Text style={{ color: palette.faint, fontSize: 13 }}>{`Stamp duty (CBN, ≥${STAMP_DUTY_THRESHOLD_LABEL})`}</Text>
                     </View>
-                    <View style={{ flex: 2, height: 36, borderRadius: 10, borderWidth: 1, borderColor: colors.divider, borderStyle: 'dashed', backgroundColor: colors.bg.input, justifyContent: 'center', alignItems: 'flex-end', paddingHorizontal: 12 }}>
-                      <Text style={{ color: colors.text.secondary, fontSize: 13, fontWeight: '600' }}>{formatCurrency(expenseStampDuty)}</Text>
+                    <View style={{ flex: 2, height: 36, borderRadius: 10, borderWidth: 1, borderColor: palette.outline, borderStyle: 'dashed', backgroundColor: palette.softFill, justifyContent: 'center', alignItems: 'flex-end', paddingHorizontal: 12 }}>
+                      <Text style={{ color: palette.muted, fontSize: 13, fontWeight: '600' }}>{formatCurrency(expenseStampDuty)}</Text>
                     </View>
                   </View>
                 ) : null}
@@ -18509,46 +18643,49 @@ const buildExpenseDescription = (
                       kind: 'charge',
                     }]);
                   }}
-                  className="rounded-xl items-center justify-center mt-3"
-                  style={{ height: 40, borderWidth: 1, borderColor: formFieldBorder, borderStyle: 'dashed', backgroundColor: formDashedBg }}
+                  className="items-center justify-center mt-3"
+                  style={{ height: 44, borderRadius: 16, borderWidth: 1, borderColor: palette.outline, borderStyle: 'dashed', backgroundColor: palette.card }}
                 >
-                  <Text style={{ color: colors.text.secondary }} className="font-semibold text-sm">+ Add Additional Fee / Expense</Text>
+                  <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }}>+ Add additional fee / expense</Text>
                 </Pressable>
 
-                <View className="flex-row items-center justify-between mt-3 pt-3" style={{ borderTopWidth: 1, borderTopColor: colors.divider }}>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase tracking-wider">Total to log</Text>
-                  <Text style={{ color: colors.text.primary }} className="text-base font-bold">{formatCurrency(expenseLineItemsTotal)}</Text>
+                <View className="flex-row items-center justify-between mt-3 pt-3" style={{ borderTopWidth: 1, borderTopColor: palette.border }}>
+                  <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '500' }}>Total to log</Text>
+                  <MoneyText style={{ color: palette.text, fontSize: 16 }}>{formatCurrency(expenseLineItemsTotal)}</MoneyText>
                 </View>
               </View>
 
               <View>
-                <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Date</Text>
+                <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '500', marginBottom: 6 }}>Date</Text>
                 {Platform.OS === 'web' ? (
                   <View
                     style={{
                       height: 52,
-                      borderRadius: 12,
+                      borderRadius: 16,
                       borderWidth: 1,
-                      borderColor: formFieldBorder,
-                      backgroundColor: formFieldBg,
+                      borderColor: expenseDateFocused ? FYLL_LIME : palette.outline,
+                      backgroundColor: palette.card,
                       flexDirection: 'row',
                       alignItems: 'center',
                       paddingHorizontal: 14,
+                      ...(expenseDateFocused ? ({ boxShadow: '0 0 0 3px rgba(213, 224, 87, 0.32)' } as object) : null),
                     }}
                   >
-                    <Calendar size={18} color={colors.text.tertiary} strokeWidth={2} />
+                    <Calendar size={18} color={palette.faint} strokeWidth={2} />
                     <input
                       className="finance-date-input"
                       type="date"
                       value={expenseDate}
+                      onFocus={() => setExpenseDateFocused(true)}
+                      onBlur={() => setExpenseDateFocused(false)}
                       onChange={(e: any) => setExpenseDate(e.target.value)}
                       style={{
                         flex: 1,
                         border: 'none',
                         outline: 'none',
                         background: 'transparent',
-                        color: colors.text.primary,
-                        fontSize: 15,
+                        color: palette.text,
+                        fontSize: 14,
                         marginLeft: 10,
                         fontFamily: 'inherit',
                         colorScheme: isDarkMode ? 'dark' : 'light',
@@ -18560,17 +18697,17 @@ const buildExpenseDescription = (
                     onPress={() => setShowExpenseDatePicker(true)}
                     style={{
                       height: 52,
-                      borderRadius: 12,
+                      borderRadius: 16,
                       borderWidth: 1,
-                      borderColor: formFieldBorder,
-                      backgroundColor: formFieldBg,
+                      borderColor: palette.outline,
+                      backgroundColor: palette.card,
                       paddingHorizontal: 14,
                       flexDirection: 'row',
                       alignItems: 'center',
                     }}
                   >
-                    <Calendar size={18} color={colors.text.tertiary} strokeWidth={2} />
-                    <Text style={{ color: colors.text.primary, fontSize: 15, marginLeft: 10 }}>
+                    <Calendar size={18} color={palette.faint} strokeWidth={2} />
+                    <Text style={{ color: palette.text, fontSize: 14, marginLeft: 10 }}>
                       {expenseDate || 'Select date'}
                     </Text>
                   </Pressable>
@@ -18593,7 +18730,7 @@ const buildExpenseDescription = (
               <View style={{ flexDirection: isMobile ? 'column' : 'row', gap: 12 }}>
                 {/* Category field */}
                 <View style={{ flex: isMobile ? undefined : 1, width: '100%' }}>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Category</Text>
+                  <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '500', marginBottom: 6 }}>Category</Text>
                   <Pressable
                     onPress={() => {
                       setShowExpenseCategoryDropdown((prev) => !prev);
@@ -18605,34 +18742,34 @@ const buildExpenseDescription = (
                     }}
                     style={{
                       height: 52,
-                      borderTopLeftRadius: 12,
-                      borderTopRightRadius: 12,
-                      borderBottomLeftRadius: showExpenseCategoryDropdown ? 0 : 12,
-                      borderBottomRightRadius: showExpenseCategoryDropdown ? 0 : 12,
+                      borderTopLeftRadius: 16,
+                      borderTopRightRadius: 16,
+                      borderBottomLeftRadius: showExpenseCategoryDropdown ? 0 : 16,
+                      borderBottomRightRadius: showExpenseCategoryDropdown ? 0 : 16,
                       borderWidth: 1,
-                      borderColor: showExpenseCategoryDropdown ? formFieldActiveBorder : formFieldBorder,
-                      backgroundColor: formFieldBg,
+                      borderColor: showExpenseCategoryDropdown ? FYLL_LIME : formFieldBorder,
+                      backgroundColor: palette.card,
                       paddingHorizontal: 14,
                       flexDirection: 'row',
                       alignItems: 'center',
                       justifyContent: 'space-between',
                     }}
                   >
-                    <Text numberOfLines={1} style={{ color: expenseCategory ? colors.text.primary : colors.text.muted, flex: 1, marginRight: 8, fontSize: 15 }}>
+                    <Text numberOfLines={1} style={{ color: expenseCategory ? palette.text : palette.faint, flex: 1, marginRight: 8, fontSize: 14 }}>
                       {expenseCategory || 'Select category'}
                     </Text>
-                    <ChevronDown size={16} color={showExpenseCategoryDropdown ? formFieldActiveBorder : colors.text.tertiary} strokeWidth={2} />
+                    <ChevronDown size={16} color={showExpenseCategoryDropdown ? FYLL_LIME : palette.faint} strokeWidth={2} />
                   </Pressable>
                   {showExpenseCategoryDropdown ? (
-                    <View style={{ borderWidth: 1, borderTopWidth: 0, borderColor: formFieldActiveBorder, borderBottomLeftRadius: 12, borderBottomRightRadius: 12, backgroundColor: colors.bg.card, overflow: 'hidden', maxHeight: 220 }}>
-                      <View style={{ padding: 10, borderBottomWidth: 1, borderBottomColor: colors.divider }}>
-                        <TextInput
+                    <View style={{ borderWidth: 1, borderTopWidth: 0, borderColor: FYLL_LIME, borderBottomLeftRadius: 16, borderBottomRightRadius: 16, backgroundColor: palette.card, overflow: 'hidden', maxHeight: 220 }}>
+                      <View style={{ padding: 10, borderBottomWidth: 1, borderBottomColor: palette.border }}>
+                        <FocusTextInput
                           value={expenseCategorySearch}
                           onChangeText={setExpenseCategorySearch}
                           placeholder="Search category..."
-                          placeholderTextColor={colors.text.muted}
+                          placeholderTextColor={palette.faint}
                           autoFocus
-                          style={{ height: 40, borderRadius: 10, borderWidth: 1, borderColor: formFieldBorder, backgroundColor: formFieldBg, color: colors.text.primary, paddingHorizontal: 12, fontSize: 14 }}
+                          style={{ height: 42, borderRadius: 14, borderWidth: 1, borderColor: palette.outline, backgroundColor: palette.card, color: palette.text, paddingHorizontal: 12, fontSize: 14 }}
                         />
                         <SearchClearButton visible={Boolean(expenseCategorySearch.trim())} onPress={() => setExpenseCategorySearch('')} />
                       </View>
@@ -18650,10 +18787,10 @@ const buildExpenseDescription = (
                               ));
                               setShowExpenseCategoryDropdown(false);
                             }}
-                            style={{ paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.divider, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: expenseCategory === category ? colors.bg.input : colors.bg.card }}
+                            style={{ paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: palette.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: expenseCategory === category ? palette.softFill : palette.card }}
                           >
-                            <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '500' }}>{category}</Text>
-                            {expenseCategory === category ? <Check size={14} color={colors.bar} strokeWidth={2.5} /> : null}
+                            <Text style={{ color: palette.text, fontSize: 14, fontWeight: '500' }}>{category}</Text>
+                            {expenseCategory === category ? <Check size={14} color={palette.limeOnSurface} strokeWidth={2.5} /> : null}
                           </Pressable>
                         ))}
                         {expenseCategorySearch.trim() && !availableExpenseCategories.some((c) => c.toLowerCase() === expenseCategorySearch.trim().toLowerCase()) ? (
@@ -18670,14 +18807,14 @@ const buildExpenseDescription = (
                               ));
                               setShowExpenseCategoryDropdown(false);
                             }}
-                            style={{ paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.divider, backgroundColor: colors.bg.card }}
+                            style={{ paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: palette.border, backgroundColor: palette.card }}
                           >
-                            <Text style={{ color: colors.bar, fontSize: 14, fontWeight: '500' }}>Use "{expenseCategorySearch.trim()}"</Text>
+                            <Text style={{ color: palette.limeOnSurface, fontSize: 14, fontWeight: '500' }}>Use "{expenseCategorySearch.trim()}"</Text>
                           </Pressable>
                         ) : null}
                         {filteredExpenseCategories.length === 0 && !expenseCategorySearch.trim() ? (
                           <View style={{ paddingHorizontal: 14, paddingVertical: 12 }}>
-                            <Text style={{ color: colors.text.muted, fontSize: 13 }}>No categories yet</Text>
+                            <Text style={{ color: palette.faint, fontSize: 13 }}>No categories yet</Text>
                           </View>
                         ) : null}
                       </ScrollView>
@@ -18687,7 +18824,7 @@ const buildExpenseDescription = (
 
                 {/* Type field */}
                 <View style={{ flex: isMobile ? undefined : 1, width: '100%' }}>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Type</Text>
+                  <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '500', marginBottom: 6 }}>Type</Text>
                   <Pressable
                     onPress={() => {
                       setShowExpenseTypeDropdown((prev) => !prev);
@@ -18698,34 +18835,34 @@ const buildExpenseDescription = (
                     }}
                     style={{
                       height: 52,
-                      borderTopLeftRadius: 12,
-                      borderTopRightRadius: 12,
-                      borderBottomLeftRadius: showExpenseTypeDropdown ? 0 : 12,
-                      borderBottomRightRadius: showExpenseTypeDropdown ? 0 : 12,
+                      borderTopLeftRadius: 16,
+                      borderTopRightRadius: 16,
+                      borderBottomLeftRadius: showExpenseTypeDropdown ? 0 : 16,
+                      borderBottomRightRadius: showExpenseTypeDropdown ? 0 : 16,
                       borderWidth: 1,
-                      borderColor: showExpenseTypeDropdown ? formFieldActiveBorder : formFieldBorder,
-                      backgroundColor: formFieldBg,
+                      borderColor: showExpenseTypeDropdown ? FYLL_LIME : formFieldBorder,
+                      backgroundColor: palette.card,
                       paddingHorizontal: 14,
                       flexDirection: 'row',
                       alignItems: 'center',
                       justifyContent: 'space-between',
                     }}
                   >
-                    <Text numberOfLines={1} style={{ color: colors.text.primary, flex: 1, marginRight: 8, fontSize: 15 }}>
+                    <Text numberOfLines={1} style={{ color: palette.text, flex: 1, marginRight: 8, fontSize: 14 }}>
                       {formatExpenseTypeLabel(expenseTypeDraft)}
                     </Text>
-                    <ChevronDown size={16} color={showExpenseTypeDropdown ? formFieldActiveBorder : colors.text.tertiary} strokeWidth={2} />
+                    <ChevronDown size={16} color={showExpenseTypeDropdown ? FYLL_LIME : palette.faint} strokeWidth={2} />
                   </Pressable>
                   {showExpenseTypeDropdown ? (
-                    <View style={{ borderWidth: 1, borderTopWidth: 0, borderColor: formFieldActiveBorder, borderBottomLeftRadius: 12, borderBottomRightRadius: 12, backgroundColor: colors.bg.card, overflow: 'hidden' }}>
+                    <View style={{ borderWidth: 1, borderTopWidth: 0, borderColor: FYLL_LIME, borderBottomLeftRadius: 16, borderBottomRightRadius: 16, backgroundColor: palette.card, overflow: 'hidden' }}>
                       {expenseTypeOptions.map((option) => (
                         <Pressable
                           key={option}
                           onPress={() => { setExpenseTypeDraft(option); setShowExpenseTypeDropdown(false); if (option === 'one-time') setExpenseFrequencyDraft('Monthly'); }}
-                          style={{ paddingHorizontal: 14, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.divider, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: expenseTypeDraft === option ? colors.bg.input : colors.bg.card }}
+                          style={{ paddingHorizontal: 14, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: palette.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: expenseTypeDraft === option ? palette.softFill : palette.card }}
                         >
-                          <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '500' }}>{formatExpenseTypeLabel(option)}</Text>
-                          {expenseTypeDraft === option ? <Check size={14} color={colors.bar} strokeWidth={2.5} /> : null}
+                          <Text style={{ color: palette.text, fontSize: 14, fontWeight: '500' }}>{formatExpenseTypeLabel(option)}</Text>
+                          {expenseTypeDraft === option ? <Check size={14} color={palette.limeOnSurface} strokeWidth={2.5} /> : null}
                         </Pressable>
                       ))}
                     </View>
@@ -18735,7 +18872,7 @@ const buildExpenseDescription = (
 
               {expenseTypeDraft !== 'one-time' ? (
                 <View>
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Frequency</Text>
+                  <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '500', marginBottom: 6 }}>Frequency</Text>
                   <View className="flex-row" style={{ gap: 10 }}>
                     {expenseFrequencyOptions.map((option) => (
                       <FinanceFilterPill
@@ -18752,7 +18889,7 @@ const buildExpenseDescription = (
 
               {/* Payment Status */}
               <View>
-                <Text style={{ color: colors.text.tertiary }} className="text-xs mb-2">Payment Status</Text>
+                <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '500', marginBottom: 8 }}>Payment status</Text>
                 <View style={{ flexDirection: 'row', gap: 8 }}>
                   {([
                     { key: 'draft' as ExpensePaymentStatus, label: 'Draft', color: '#6B7280', bg: 'rgba(107,114,128,0.12)' },
@@ -18765,15 +18902,15 @@ const buildExpenseDescription = (
                       style={{
                         flex: 1,
                         height: 44,
-                        borderRadius: 12,
+                        borderRadius: 16,
                         borderWidth: 1.5,
-                        borderColor: expenseStatusDraft === option.key ? option.color : colors.divider,
-                        backgroundColor: expenseStatusDraft === option.key ? option.bg : colors.bg.input,
+                        borderColor: expenseStatusDraft === option.key ? option.color : palette.outline,
+                        backgroundColor: expenseStatusDraft === option.key ? option.bg : palette.card,
                         alignItems: 'center',
                         justifyContent: 'center',
                       }}
                     >
-                      <Text style={{ color: expenseStatusDraft === option.key ? option.color : colors.text.tertiary, fontSize: 13, fontWeight: '600' }}>
+                      <Text style={{ color: expenseStatusDraft === option.key ? option.color : palette.muted, fontSize: 12, fontWeight: '600' }}>
                         {option.label}
                       </Text>
                     </Pressable>
@@ -18782,40 +18919,41 @@ const buildExpenseDescription = (
               </View>
 
               <View>
-                <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase tracking-wider mb-2">Evidence</Text>
+                <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '500', marginBottom: 8 }}>Evidence</Text>
                 {expenseReceiptAssets.length === 0 && !expenseReceiptNameDraft ? (
                   <Pressable
                     onPress={pickExpenseReceipt}
-                    className="rounded-2xl items-center justify-center"
+                    className="items-center justify-center"
                     style={{
                       paddingVertical: 28,
+                      borderRadius: 22,
                       borderWidth: 1.5,
-                      borderColor: colors.divider,
+                      borderColor: palette.outline,
                       borderStyle: 'dashed',
                     }}
                   >
                     <View
                       className="rounded-full items-center justify-center mb-3"
-                      style={{ width: 48, height: 48, backgroundColor: colors.bg.screen, borderWidth: 1, borderColor: colors.divider }}
+                      style={{ width: 48, height: 48, backgroundColor: palette.nudgeBg }}
                     >
-                      <Camera size={22} color={colors.text.tertiary} strokeWidth={2} />
+                      <Camera size={22} color={palette.faint} strokeWidth={2} />
                     </View>
-                    <Text style={{ color: colors.text.primary }} className="text-base font-semibold">Upload Receipt</Text>
-                    <Text style={{ color: colors.text.muted, marginTop: 4 }} className="text-sm">Tap to take a photo or choose file</Text>
+                    <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>Upload receipt</Text>
+                    <Text style={{ color: palette.faint, fontSize: 12, marginTop: 4 }}>Tap to take a photo or choose file</Text>
                   </Pressable>
                 ) : (
                   <View style={{ gap: 10 }}>
                     {expenseReceiptAssets.map((asset, index) => (
                       <View
                         key={`${asset.uri}-${index}`}
-                        className="rounded-xl flex-row items-center px-3"
-                        style={{ height: 52, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.input }}
+                        className="flex-row items-center px-3"
+                        style={{ height: 52, borderRadius: 16, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card }}
                       >
-                        <View className="rounded-lg items-center justify-center" style={{ width: 36, height: 36, backgroundColor: colors.bg.screen, borderWidth: 1, borderColor: colors.divider }}>
-                          <FileText size={16} color={colors.text.tertiary} strokeWidth={2} />
+                        <View className="items-center justify-center" style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: palette.nudgeBg }}>
+                          <FileText size={16} color={palette.faint} strokeWidth={2} />
                         </View>
                         <View style={{ flex: 1, minWidth: 0, marginLeft: 10 }}>
-                          <Text numberOfLines={1} style={{ color: colors.text.primary, fontSize: 14 }} className="font-medium">{asset.name}</Text>
+                          <Text numberOfLines={1} style={{ color: palette.text, fontSize: 12, fontWeight: '500' }}>{asset.name}</Text>
                         </View>
                         <Pressable
                           onPress={() => {
@@ -18825,20 +18963,20 @@ const buildExpenseDescription = (
                           className="rounded-md items-center justify-center ml-2"
                           style={{ width: 30, height: 30 }}
                         >
-                          <X size={16} color={colors.text.tertiary} strokeWidth={2} />
+                          <X size={16} color={palette.faint} strokeWidth={2} />
                         </Pressable>
                       </View>
                     ))}
                     {expenseReceiptNameDraft && expenseReceiptAssets.length === 0 ? (
                       <View
-                        className="rounded-xl flex-row items-center px-3"
-                        style={{ height: 52, borderWidth: 1, borderColor: colors.divider, backgroundColor: colors.bg.input }}
+                        className="flex-row items-center px-3"
+                        style={{ height: 52, borderRadius: 16, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card }}
                       >
-                        <View className="rounded-lg items-center justify-center" style={{ width: 36, height: 36, backgroundColor: colors.bg.screen, borderWidth: 1, borderColor: colors.divider }}>
-                          <FileText size={16} color={colors.text.tertiary} strokeWidth={2} />
+                        <View className="items-center justify-center" style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: palette.nudgeBg }}>
+                          <FileText size={16} color={palette.faint} strokeWidth={2} />
                         </View>
                         <View style={{ flex: 1, minWidth: 0, marginLeft: 10 }}>
-                          <Text numberOfLines={1} style={{ color: colors.text.primary, fontSize: 14 }} className="font-medium">{expenseReceiptNameDraft}</Text>
+                          <Text numberOfLines={1} style={{ color: palette.text, fontSize: 12, fontWeight: '500' }}>{expenseReceiptNameDraft}</Text>
                         </View>
                         <Pressable
                           onPress={() => {
@@ -18849,51 +18987,52 @@ const buildExpenseDescription = (
                           className="rounded-md items-center justify-center ml-2"
                           style={{ width: 30, height: 30 }}
                         >
-                          <X size={16} color={colors.text.tertiary} strokeWidth={2} />
+                          <X size={16} color={palette.faint} strokeWidth={2} />
                         </Pressable>
                       </View>
                     ) : null}
                     <Pressable
                       onPress={pickExpenseReceipt}
-                      className="rounded-xl items-center justify-center"
+                      className="items-center justify-center"
                       style={{
                         height: 44,
+                        borderRadius: 16,
                         borderWidth: 1,
-                        borderColor: colors.divider,
+                        borderColor: palette.outline,
                         borderStyle: 'dashed',
                       }}
                     >
-                      <Text style={{ color: colors.text.secondary }} className="text-sm font-semibold">+ Add Another File</Text>
+                      <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }}>+ Add another file</Text>
                     </Pressable>
                   </View>
                 )}
                 {expenseUploadError ? (
-                  <Text style={{ color: colors.danger }} className="text-xs mt-2">
+                  <Text style={{ color: palette.danger, fontSize: 12, marginTop: 8 }}>
                     {expenseUploadError}
                   </Text>
                 ) : null}
               </View>
 
               <View style={{ position: 'relative', zIndex: 1 }}>
-                <Text style={{ color: colors.text.tertiary }} className="text-xs mb-1.5">Notes (optional)</Text>
-                <TextInput
+                <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '500', marginBottom: 6 }}>Notes (optional)</Text>
+                <FocusTextInput
                   value={expenseNoteDraft}
                   onChangeText={setExpenseNoteDraft}
                   placeholder="Optional notes..."
-                  placeholderTextColor={colors.text.muted}
+                  placeholderTextColor={palette.faint}
                   multiline
                   numberOfLines={3}
                   style={{
                     minHeight: 84,
-                    borderRadius: 12,
+                    borderRadius: 16,
                     borderWidth: 1,
-                    borderColor: formFieldBorder,
-                    backgroundColor: formFieldBg,
-                    color: colors.text.primary,
+                    borderColor: palette.outline,
+                    backgroundColor: palette.card,
+                    color: palette.text,
                     paddingHorizontal: 14,
                     paddingTop: 12,
                     textAlignVertical: 'top',
-                    fontSize: 15,
+                    fontSize: 14,
                   }}
                 />
               </View>
@@ -18919,18 +19058,18 @@ const buildExpenseDescription = (
                   }}
                   className="rounded-full px-5"
                   style={{
-                    height: 44,
+                    height: 46,
                     flex: isMobile ? 1 : undefined,
                     alignItems: 'center',
                     justifyContent: 'center',
                     borderWidth: 1,
-                    borderColor: colors.danger,
-                    backgroundColor: 'transparent',
+                    borderColor: palette.dangerBorder,
+                    backgroundColor: palette.dangerBg,
                   }}
                 >
-                  <Text style={{ color: colors.danger }} className="font-semibold">
+                  <MoneyText style={{ color: palette.danger, fontSize: 14 }}>
                     Delete
-                  </Text>
+                  </MoneyText>
                 </Pressable>
               ) : null}
               {canRevokeExpenseRequestFromModal && editingExpenseRequestId ? (
@@ -18952,18 +19091,18 @@ const buildExpenseDescription = (
                   }}
                   className="rounded-full px-5"
                   style={{
-                    height: 44,
+                    height: 46,
                     flex: isMobile ? 1 : undefined,
                     alignItems: 'center',
                     justifyContent: 'center',
                     borderWidth: 1,
-                    borderColor: colors.danger,
-                    backgroundColor: colors.bg.card,
+                    borderColor: palette.dangerBorder,
+                    backgroundColor: palette.dangerBg,
                   }}
                 >
-                  <Text style={{ color: colors.danger }} className="font-semibold">
+                  <MoneyText style={{ color: palette.danger, fontSize: 14 }}>
                     Delete
-                  </Text>
+                  </MoneyText>
                 </Pressable>
               ) : null}
               {!isFinanceApprover || Boolean(editingExpenseRequestId) ? (
@@ -18973,35 +19112,35 @@ const buildExpenseDescription = (
                     disabled={!canSaveExpense || isSavingExpense}
                     className="rounded-full px-5"
                     style={{
-                      height: 44,
+                      height: 46,
                       flex: isMobile ? 1 : undefined,
                       alignItems: 'center',
                       justifyContent: 'center',
                       borderWidth: 1,
-                      borderColor: formFieldBorder,
-                      backgroundColor: formFieldBg,
+                      borderColor: palette.outline,
+                      backgroundColor: palette.card,
                       opacity: canSaveExpense && !isSavingExpense ? 1 : 0.5,
                     }}
                   >
-                    <Text style={{ color: colors.text.primary }} className="font-semibold">
+                    <MoneyText style={{ color: palette.text, fontSize: 14 }}>
                       {isSavingExpense ? 'Saving...' : 'Save'}
-                    </Text>
+                    </MoneyText>
                   </Pressable>
                   <Pressable
                     onPress={() => handleSaveExpenseModal('submit')}
                     disabled={!canSaveExpense || isSavingExpense}
                     className="rounded-full px-5"
                     style={{
-                      height: 44,
+                      height: 46,
                       flex: isMobile ? 1 : undefined,
                       alignItems: 'center',
                       justifyContent: 'center',
-                      backgroundColor: canSaveExpense && !isSavingExpense ? colors.bar : colors.bg.input,
+                      backgroundColor: canSaveExpense && !isSavingExpense ? FYLL_LIME : palette.softFill,
                     }}
                   >
-                    <Text style={{ color: canSaveExpense && !isSavingExpense ? colors.bg.screen : colors.text.tertiary }} className="font-semibold">
+                    <MoneyText style={{ color: canSaveExpense && !isSavingExpense ? FYLL_LIME_INK : palette.faint, fontSize: 14 }}>
                       {isSavingExpense ? 'Submitting...' : 'Submit'}
-                    </Text>
+                    </MoneyText>
                   </Pressable>
                 </>
               ) : (
@@ -19010,16 +19149,16 @@ const buildExpenseDescription = (
                   disabled={!canSaveExpense || isSavingExpense}
                 className="rounded-full px-5"
                 style={{
-                  height: 44,
+                  height: 46,
                   flex: isMobile ? 1 : undefined,
                   alignItems: 'center',
                   justifyContent: 'center',
-                  backgroundColor: canSaveExpense && !isSavingExpense ? colors.bar : colors.bg.input,
+                  backgroundColor: canSaveExpense && !isSavingExpense ? FYLL_LIME : palette.softFill,
                 }}
               >
-                  <Text style={{ color: canSaveExpense && !isSavingExpense ? colors.bg.screen : colors.text.tertiary }} className="font-semibold">
+                  <MoneyText style={{ color: canSaveExpense && !isSavingExpense ? FYLL_LIME_INK : palette.faint, fontSize: 14 }}>
                     {isSavingExpense ? 'Saving...' : (expenseModalMode === 'edit' ? 'Update' : 'Save')}
-                  </Text>
+                  </MoneyText>
                 </Pressable>
               )}
             </View>

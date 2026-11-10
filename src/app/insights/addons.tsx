@@ -120,6 +120,7 @@ export default function AddonsInsightScreen({ inline }: { inline?: boolean }) {
                 value: 'Revenue',
               }}
               showIndex={true}
+              wrapLabels
               emptyMessage="No add-on data available"
             />
           </View>

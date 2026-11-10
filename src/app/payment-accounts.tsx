@@ -65,10 +65,10 @@ const DARK_PALETTE: PaymentPalette = {
 };
 
 const LIGHT_PALETTE: PaymentPalette = {
-  ground: '#F4F3EB', surface: '#FFFFFF', ink: '#202117', muted: '#5E6056', faint: '#85877C',
+  ground: '#FFFFFF', surface: '#FFFFFF', ink: '#202117', muted: '#5E6056', faint: '#85877C',
   lime: '#D5E057', limeInk: '#667000', limeDeep: '#879400', danger: '#C9574D',
   edge: 'rgba(35,38,25,0.09)', edgeStrong: 'rgba(35,38,25,0.15)', input: '#F7F7F1',
-  topGlow: 'rgba(213,224,87,0.42)', topGlowEnd: 'rgba(244,243,235,0)', navButton: 'rgba(32,33,23,0.07)',
+  topGlow: 'rgba(255,255,255,0)', topGlowEnd: 'rgba(255,255,255,0)', navButton: 'rgba(32,33,23,0.07)',
   limeWash: 'rgba(135,148,0,0.10)', limeWashStrong: 'rgba(135,148,0,0.13)', limeBorder: 'rgba(102,112,0,0.22)',
   dangerWash: 'rgba(201,87,77,0.10)', dangerBorder: 'rgba(201,87,77,0.22)', overlay: 'rgba(24,25,18,0.46)',
 };
@@ -84,7 +84,7 @@ const innerSettingsFont = (size: number, compact: boolean) => {
 };
 
 function SectionLabel({ children, palette }: { children: React.ReactNode; palette: PaymentPalette }) {
-  return <Text style={{ color: palette.faint, fontSize: 11, lineHeight: 14, fontWeight: '700', letterSpacing: 1.4, textTransform: 'uppercase', marginLeft: 6, marginBottom: 10 }}>{children}</Text>;
+  return <Text style={{ color: palette.faint, fontSize: 10, lineHeight: 14, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginLeft: 6, marginBottom: 10 }}>{children}</Text>;
 }
 
 function BankField({ label, value, onChangeText, placeholder, palette, compact, keyboardType = 'default' }: {
@@ -98,8 +98,8 @@ function BankField({ label, value, onChangeText, placeholder, palette, compact, 
 }) {
   return (
     <View style={{ gap: 7 }}>
-      <Text style={{ color: palette.muted, fontSize: innerSettingsFont(13, compact), fontWeight: '500' }}>{label}</Text>
-      <View style={{ height: 52, paddingHorizontal: 15, borderRadius: 16, borderWidth: 1, borderColor: palette.edgeStrong, backgroundColor: palette.input, justifyContent: 'center' }}>
+      <Text style={{ color: palette.muted, fontSize: 12, fontWeight: '500' }}>{label}</Text>
+      <View style={{ height: 52, paddingHorizontal: 15, borderRadius: 16, borderWidth: 1, borderColor: palette.edgeStrong, backgroundColor: palette.surface, justifyContent: 'center' }}>
         <TextInput
           value={value}
           onChangeText={onChangeText}
@@ -245,7 +245,6 @@ export default function PaymentAccountsScreen({ embeddedInSettings = false }: Pa
     return (
       <View style={panelStyles.outer}>
         <SafeAreaView style={[panelStyles.inner, { flex: 1, backgroundColor: palette.ground }]} edges={['top']}>
-          <LinearGradient pointerEvents="none" colors={[palette.topGlow, palette.topGlowEnd]} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 320 }} />
           <View style={{ flex: 1, paddingHorizontal: 24, alignItems: 'center', justifyContent: 'center' }}>
             <View style={{ width: 64, height: 64, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.limeWashStrong, borderWidth: 1, borderColor: palette.limeBorder, marginBottom: 18 }}><Landmark size={27} color={palette.limeInk} strokeWidth={2} /></View>
             <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: 22, textAlign: 'center' }}>Admin access required</Text>
@@ -260,7 +259,6 @@ export default function PaymentAccountsScreen({ embeddedInSettings = false }: Pa
   return (
     <View style={panelStyles.outer}>
       <SafeAreaView style={[panelStyles.inner, { flex: 1, backgroundColor: palette.ground }]} edges={['top']}>
-        {!isEmbeddedWeb ? <LinearGradient pointerEvents="none" colors={[palette.topGlow, palette.topGlowEnd]} locations={[0, 1]} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 300 }} /> : null}
 
         {isDesktop ? (
           <InternalSettingsHeader
@@ -280,7 +278,7 @@ export default function PaymentAccountsScreen({ embeddedInSettings = false }: Pa
             <ArrowLeft size={18} color={palette.ink} strokeWidth={2.2} />
           </Pressable>
           <View style={{ flex: 1, gap: 1 }}>
-            <Text style={{ color: palette.faint, fontSize: 9.5, lineHeight: 12, fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase' }}>Settings</Text>
+            <Text style={{ color: palette.faint, fontSize: 10, lineHeight: 12, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Settings</Text>
             <Text style={{ color: palette.ink, fontSize: 17, lineHeight: 21, fontWeight: '600' }}>Bank Accounts</Text>
           </View>
           <View style={{ height: 28, paddingHorizontal: 10, borderRadius: 14, flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: palette.limeWashStrong, borderWidth: 1, borderColor: palette.limeBorder }}>
@@ -297,15 +295,13 @@ export default function PaymentAccountsScreen({ embeddedInSettings = false }: Pa
           extraScrollHeight={110}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={{ position: 'relative', overflow: 'hidden', minHeight: isDesktop ? 138 : 160, marginBottom: 20, padding: isDesktop ? 24 : 20, justifyContent: 'center', borderRadius: 28, borderWidth: 1, borderColor: palette.edge, backgroundColor: palette.surface, ...(!isEmbeddedWeb ? { shadowColor: '#000000', shadowOpacity: isDark ? 0.24 : 0.07, shadowRadius: 24, shadowOffset: { width: 0, height: 10 } } : {}) }}>
-            {!isEmbeddedWeb ? <LinearGradient pointerEvents="none" colors={[palette.limeWashStrong, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -40, right: -34, width: 190, height: 190, borderRadius: 95 }} /> : null}
+          <View style={{ position: 'relative', overflow: 'hidden', minHeight: isDesktop ? 138 : undefined, marginBottom: 20, padding: isDesktop ? 24 : 20, justifyContent: 'center', borderRadius: 28, borderWidth: 1, borderColor: palette.edge, backgroundColor: palette.surface }}>
             <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, borderBottomLeftRadius: 3, borderBottomRightRadius: 3, backgroundColor: palette.lime }} />
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: isEmbeddedWeb ? 0 : 15 }}>
-              {!isEmbeddedWeb ? <LinearGradient colors={[palette.lime, palette.limeDeep]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 66, height: 66, borderRadius: 22, alignItems: 'center', justifyContent: 'center' }}><Landmark size={28} color="#202117" strokeWidth={2.1} /></LinearGradient> : null}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 0 }}>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Payment destinations</Text>
                 <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_800ExtraBold', fontSize: 29, lineHeight: 34, letterSpacing: -0.8, marginTop: 2 }}>{accounts.length} {accounts.length === 1 ? 'account' : 'accounts'}</Text>
-                <Text numberOfLines={1} style={{ color: palette.faint, fontSize: 12.5, marginTop: 2 }}>{defaultAccount ? `Default · ${defaultAccount.bankName}` : 'Add an account for checkout links'}</Text>
+                <Text numberOfLines={1} style={{ color: palette.faint, fontSize: 12, marginTop: 2 }}>{defaultAccount ? `Default · ${defaultAccount.bankName}` : 'Add an account for checkout links'}</Text>
               </View>
             </View>
           </View>
@@ -347,8 +343,8 @@ export default function PaymentAccountsScreen({ embeddedInSettings = false }: Pa
           ) : accounts.length === 0 ? (
             <View style={[cardStyle, { padding: 24, alignItems: 'center' }]}>
               <CreditCard size={25} color={palette.faint} strokeWidth={1.8} />
-              <Text style={{ color: palette.ink, fontSize: innerSettingsFont(15, compactTypography), fontWeight: '600', marginTop: 10 }}>No saved accounts yet</Text>
-              <Text style={{ color: palette.faint, fontSize: innerSettingsFont(13, compactTypography), marginTop: 4, textAlign: 'center' }}>Complete the form above to add your first payment destination.</Text>
+              <Text style={{ color: palette.ink, fontSize: 14, lineHeight: 20, fontWeight: '600', marginTop: 10 }}>No saved accounts yet</Text>
+              <Text style={{ color: palette.faint, fontSize: 12, lineHeight: 17, marginTop: 4, textAlign: 'center' }}>Complete the form above to add your first payment destination.</Text>
             </View>
           ) : (
             <View style={[cardStyle, { overflow: 'visible' }]}>
@@ -357,7 +353,7 @@ export default function PaymentAccountsScreen({ embeddedInSettings = false }: Pa
                   <View style={{ width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.limeWashStrong }}><Landmark size={18} color={palette.limeInk} strokeWidth={2} /></View>
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <Text numberOfLines={1} style={{ flexShrink: 1, color: palette.ink, fontSize: 12, lineHeight: 17, fontWeight: '600' }}>{account.bankName}</Text>
+                      <Text numberOfLines={1} style={{ flexShrink: 1, color: palette.ink, fontSize: 14, lineHeight: 20, fontWeight: '600' }}>{account.bankName}</Text>
                       {account.isDefault ? <View style={{ height: 23, paddingHorizontal: 8, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: palette.limeWashStrong }}><Check size={11} color={palette.limeInk} strokeWidth={3} /><Text style={{ color: palette.limeInk, fontSize: 9.5, fontWeight: '700', letterSpacing: 0.55, textTransform: 'uppercase' }}>Default</Text></View> : null}
                     </View>
                     <Text numberOfLines={1} style={{ color: palette.muted, fontSize: 12, lineHeight: 16, marginTop: 2 }}>{account.accountName} · {account.accountNumber}</Text>

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { isPickupOrder } from '@/lib/pickup';
 import {
   KeyboardAvoidingView,
   Modal,
@@ -52,10 +53,10 @@ export function FulfillmentEditModal({
       orderTypeId,
       orderTypeName: order.orderTypeName,
       deliveryState: order.deliveryState,
-      fulfillmentMethod: order.fulfillmentMethod,
+      fulfillmentMethod: isPickupOrder(order) ? 'pickup' : order.fulfillmentMethod,
     },
     orderTimelineSettings
-  ), [order.deliveryState, order.fulfillmentMethod, order.orderTypeName, orderTimelineSettings, orderTypeId]);
+  ), [order.deliveryState, order.fulfillmentMethod, order.fulfillmentType, order.shippingOptionId, order.orderTypeName, orderTimelineSettings, orderTypeId]);
 
   const selectedOrderType = resolvedTimeline.orderType;
   const startedAt = useMemo(() => {

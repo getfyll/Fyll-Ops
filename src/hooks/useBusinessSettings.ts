@@ -4,6 +4,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import useAuthStore from '@/lib/state/auth-store';
 import { supabase } from '@/lib/supabase';
 import { slugifyBusinessName } from '@/lib/tracking-url';
+import { EMPTY_PICKUP_SETTINGS, getMissingPickupFields, normalizePickupSettings, withPickupTransportZone, type PickupSettings } from '@/lib/pickup';
+import { normalizeCountry, normalizeCurrency, setActiveCurrency, DEFAULT_COUNTRY, DEFAULT_CURRENCY, type CurrencyCode } from '@/lib/locale';
 import { resolveStorefrontSlug } from '@/lib/storefront-url';
 import {
   DEFAULT_BUSINESS_FEATURE_ACCESS,
@@ -21,6 +23,9 @@ export interface BusinessSettings {
   businessNameLastUpdatedAt: string | null;
   businessLogo: string | null;
   businessPhone: string;
+  country: string;
+  currency: CurrencyCode;
+  pickupSettings: PickupSettings; // businesses.data.pickupSettings, shared with the Fyll Store
   businessWebsite: string;
   returnAddress: string;
   storefrontEnabled: boolean;
@@ -44,6 +49,9 @@ interface BusinessSettingsResult {
   businessNameNextEditableAt: string | null;
   businessLogo: string | null;
   businessPhone: string;
+  country: string;
+  currency: CurrencyCode;
+  pickupSettings: PickupSettings; // businesses.data.pickupSettings, shared with the Fyll Store
   businessWebsite: string;
   returnAddress: string;
   storefrontEnabled: boolean;
@@ -62,6 +70,7 @@ interface BusinessSettingsResult {
   updateBusinessName: (name: string) => Promise<{ success: boolean; error?: string }>;
   updateBusinessLogo: (logoUri: string | null) => Promise<void>;
   saveSettings: (settings: Partial<BusinessSettings>) => Promise<{ success: boolean; error?: string }>;
+  savePickupSettings: (settings: PickupSettings) => Promise<{ success: boolean; error?: string }>;
 }
 
 const BUSINESS_SETTINGS_KEY = 'fyll_business_settings';
@@ -77,6 +86,9 @@ const DEFAULT_SETTINGS: BusinessSettings = {
   businessNameLastUpdatedAt: null,
   businessLogo: null,
   businessPhone: '',
+  country: DEFAULT_COUNTRY,
+  currency: DEFAULT_CURRENCY,
+  pickupSettings: EMPTY_PICKUP_SETTINGS,
   businessWebsite: '',
   returnAddress: '',
   storefrontEnabled: false,
@@ -203,6 +215,9 @@ const fetchBusinessSettings = async (
           businessNameLastUpdatedAt: normalizeTimestamp(data?.businessNameUpdatedAt),
           businessLogo: (data?.businessLogo as string | null) ?? null,
           businessPhone: (data?.businessPhone as string) ?? '',
+          country: normalizeCountry(data?.country),
+          currency: normalizeCurrency(data?.currency),
+          pickupSettings: normalizePickupSettings(data?.pickupSettings),
           businessWebsite: (data?.businessWebsite as string) ?? '',
           returnAddress: (data?.returnAddress as string) ?? '',
           storefrontEnabled: normalizeBoolean(data?.storefrontEnabled),
@@ -292,6 +307,7 @@ export function useBusinessSettings(): BusinessSettingsResult {
     queryFn: () => fetchBusinessSettings(businessId, isOfflineMode),
   });
   const settings = data ?? DEFAULT_SETTINGS;
+  if (data) setActiveCurrency(normalizeCurrency(data.currency));
 
   const setSettings = useCallback((next: BusinessSettings) => {
     queryClient.setQueryData(queryKey, next);
@@ -329,6 +345,9 @@ export function useBusinessSettings(): BusinessSettingsResult {
               businessNameLastUpdatedAt: normalizeTimestamp(data?.businessNameUpdatedAt),
               businessLogo: (data?.businessLogo as string | null) ?? null,
               businessPhone: (data?.businessPhone as string) ?? '',
+          country: normalizeCountry(data?.country),
+          currency: normalizeCurrency(data?.currency),
+          pickupSettings: normalizePickupSettings(data?.pickupSettings),
               businessWebsite: (data?.businessWebsite as string) ?? '',
               returnAddress: (data?.returnAddress as string) ?? '',
               storefrontEnabled: normalizeBoolean(data?.storefrontEnabled),
@@ -405,6 +424,8 @@ export function useBusinessSettings(): BusinessSettingsResult {
         businessSlug: resolveBusinessSlug(newSettings.businessSlug, trimmedBusinessName, trimmedCompanyName),
         businessLogo: sanitizePersistedBusinessLogo(newSettings.businessLogo),
         businessPhone: `+${phoneDigits}`,
+        country: normalizeCountry(newSettings.country),
+        currency: normalizeCurrency(newSettings.currency),
         businessNameLastUpdatedAt: isBusinessNameChanging
           ? new Date().toISOString()
           : normalizeTimestamp(newSettings.businessNameLastUpdatedAt),
@@ -449,6 +470,8 @@ export function useBusinessSettings(): BusinessSettingsResult {
           businessNameUpdatedAt: normalizedSettings.businessNameLastUpdatedAt,
           businessLogo: normalizedSettings.businessLogo,
           businessPhone: normalizedSettings.businessPhone,
+          country: normalizedSettings.country,
+          currency: normalizedSettings.currency,
           businessWebsite: normalizedSettings.businessWebsite,
           returnAddress: normalizedSettings.returnAddress,
           storefrontEnabled: normalizedSettings.storefrontEnabled,
@@ -532,6 +555,54 @@ export function useBusinessSettings(): BusinessSettingsResult {
     return saveSettingsToStorage(newSettings);
   }, [saveSettingsToStorage, settings]);
 
+  // Pickup is saved on its own, never through saveSettings: it reads the stored settings fresh and changes only the pickup
+  // fields, so an ordinary Business Settings save can never overwrite a pickup edit made in the Fyll Store (and the other
+  // way round). The Store offers pickup at checkout through a delivery zone with the id 'pickup', so that zone is kept
+  // in step with the settings here exactly as the Store does it.
+  const savePickupSettings = useCallback(async (nextSettings: PickupSettings): Promise<{ success: boolean; error?: string }> => {
+    const next: PickupSettings = {
+      ...nextSettings,
+      locationName: nextSettings.locationName.trim(),
+      areaName: nextSettings.areaName.trim(),
+      fullAddress: nextSettings.fullAddress.trim(),
+      contactName: nextSettings.contactName.trim(),
+      contactPhone: nextSettings.contactPhone.trim(),
+      instructions: nextSettings.instructions?.trim() ?? '',
+    };
+    if (next.enabled) {
+      const missing = getMissingPickupFields(next);
+      if (missing.length > 0) return { success: false, error: `Please add: ${missing.join(', ')}.` };
+    }
+
+    try {
+      if (businessId && !isOfflineMode) {
+        const { data: businessRow, error: readError } = await supabase
+          .from('businesses')
+          .select('data')
+          .eq('id', businessId)
+          .maybeSingle();
+        if (readError) return { success: false, error: buildSettingsErrorMessage('Could not read your settings.', readError) };
+
+        const existingData = (businessRow?.data as Record<string, unknown> | null) ?? {};
+        const mergedData = {
+          ...existingData,
+          pickupSettings: next,
+          deliveryZones: withPickupTransportZone(existingData.deliveryZones, next),
+          storefrontDeliveryZones: withPickupTransportZone(existingData.storefrontDeliveryZones ?? existingData.deliveryZones, next),
+        };
+        const { error: writeError } = await supabase.from('businesses').update({ data: mergedData }).eq('id', businessId);
+        if (writeError) return { success: false, error: buildSettingsErrorMessage('Could not save pickup settings.', writeError) };
+      }
+
+      const nextSettings2: BusinessSettings = { ...settings, pickupSettings: next };
+      setSettings(nextSettings2);
+      await persistSettingsCache(businessId, nextSettings2);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: buildSettingsErrorMessage('Could not save pickup settings.', err) };
+    }
+  }, [businessId, isOfflineMode, setSettings, settings]);
+
   const { canEditBusinessName, businessNameNextEditableAt } = getBusinessNameEditAvailability(settings);
 
     return {
@@ -543,6 +614,9 @@ export function useBusinessSettings(): BusinessSettingsResult {
     businessNameNextEditableAt,
       businessLogo: settings.businessLogo,
       businessPhone: settings.businessPhone,
+      country: normalizeCountry(settings.country),
+      currency: normalizeCurrency(settings.currency),
+      pickupSettings: normalizePickupSettings(settings.pickupSettings),
       businessWebsite: settings.businessWebsite,
       returnAddress: settings.returnAddress,
       storefrontEnabled: settings.storefrontEnabled,
@@ -569,5 +643,6 @@ export function useBusinessSettings(): BusinessSettingsResult {
       updateBusinessName,
       updateBusinessLogo,
       saveSettings,
+      savePickupSettings,
   };
 }

@@ -713,26 +713,26 @@ export default function CustomersScreen() {
                         {initials}
                       </Text>
                     </View>
-                    <Text style={{ color: palette.text, flex: 1, fontSize: 14, fontWeight: '500' }} numberOfLines={1}>
+                    <Text style={{ color: palette.text, flex: 1, fontSize: 12, fontWeight: '500' }} numberOfLines={1}>
                       {customer.fullName}
                     </Text>
                   </View>
-                  <Text style={{ color: palette.textSoft, flex: 1.8, fontSize: 13 }} numberOfLines={1}>
+                  <Text style={{ color: palette.textSoft, flex: 1.8, fontSize: 12 }} numberOfLines={1}>
                     {customer.email || '—'}
                   </Text>
-                  <Text style={{ color: palette.textSoft, width: 150, fontSize: 13 }} numberOfLines={1}>
+                  <Text style={{ color: palette.textSoft, width: 150, fontSize: 12 }} numberOfLines={1}>
                     {customer.phone || '—'}
                   </Text>
-                  <Text style={{ color: palette.textSoft, flex: 1, fontSize: 13 }} numberOfLines={1}>
+                  <Text style={{ color: palette.textSoft, flex: 1, fontSize: 12 }} numberOfLines={1}>
                     {customer.defaultState || '—'}
                   </Text>
-                  <Text style={{ color: palette.textSoft, width: 90, textAlign: 'center', fontSize: 13, fontWeight: '600' }} numberOfLines={1}>
+                  <Text style={{ color: palette.textSoft, width: 90, textAlign: 'center', fontSize: 12, fontWeight: '600' }} numberOfLines={1}>
                     {ordersCount}
                   </Text>
-                  <Text style={{ color: isFullyRefunded ? palette.danger : palette.text, width: 150, textAlign: 'right', fontSize: 13, fontWeight: '600' }} numberOfLines={1}>
+                  <Text style={{ color: isFullyRefunded ? palette.danger : palette.text, width: 150, textAlign: 'right', fontSize: 12, fontWeight: '600' }} numberOfLines={1}>
                     {isFullyRefunded ? 'Refunded' : formatCurrency(totalSpent)}
                   </Text>
-                  <Text style={{ color: palette.faint, width: 120, textAlign: 'right', fontSize: 13 }} numberOfLines={1}>
+                  <Text style={{ color: palette.faint, width: 120, textAlign: 'right', fontSize: 12 }} numberOfLines={1}>
                     {formatMonthYear(customer.createdAt)}
                   </Text>
                   <View style={{ width: 24, alignItems: 'flex-end' }}>

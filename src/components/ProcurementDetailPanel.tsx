@@ -1,12 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, ScrollView } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
-import { X, MoreVertical, Truck, Package, Paperclip, FileText, Image as ImageIcon, CheckCircle, XCircle, Send, PlusCircle, User, Calendar, Clock, ChevronRight, ChevronLeft } from 'lucide-react-native';
+import { X, MoreVertical, Truck, Package, Paperclip, FileText, Image as ImageIcon, User, Calendar, Clock, ChevronRight, ChevronLeft, ChevronDown, Check } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import useFyllStore, { type Procurement, formatCurrency } from '@/lib/state/fyll-store';
 import useAuthStore from '@/lib/state/auth-store';
 import { useStatsColors } from '@/lib/theme';
 import { openAttachmentPath } from '@/lib/storage-attachments';
+import { MoneyText, usePaymentsPalette } from '@/components/payments/payments-ui';
+import { getProcurementActivity, getProcurementSubmitter } from '@/lib/procurement-activity';
 
 // ── helpers ──
 
@@ -131,11 +133,13 @@ interface ProcurementDetailPanelProps {
 
 export function ProcurementDetailPanel({ procurementId, compact = false, statusOptions = [], onClose, onEdit, onDelete, onMerge, onStatusChange }: ProcurementDetailPanelProps) {
   const colors = useStatsColors();
+  const palette = usePaymentsPalette();
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
   const procurements = useFyllStore((s) => s.procurements);
   const products = useFyllStore((s) => s.products);
   const updateProcurement = useFyllStore((s) => s.updateProcurement);
   const [showActionMenu, setShowActionMenu] = useState<boolean>(false);
+  const [statusListOpen, setStatusListOpen] = useState<boolean>(false);
   const [showPoItemsModal, setShowPoItemsModal] = useState<boolean>(false);
 
   const procurement = useMemo(() => procurements.find((p) => p.id === procurementId) ?? null, [procurements, procurementId]);
@@ -166,6 +170,7 @@ export function ProcurementDetailPanel({ procurementId, compact = false, statusO
   useEffect(() => {
     setShowActionMenu(false);
     setShowPoItemsModal(false);
+    setStatusListOpen(false);
   }, [procurementId]);
 
   const itemRows = useMemo(() => {
@@ -242,31 +247,9 @@ export function ProcurementDetailPanel({ procurementId, compact = false, statusO
     [procurement]
   );
 
-  type ProcActivityEventType = 'create' | 'submit' | 'approve' | 'reject';
-  const activityEvents = useMemo<{ label: string; actor: string; ts: string; type: ProcActivityEventType }[]>(() => {
-    if (!procurement) return [];
-    const events: { label: string; actor: string; ts: string; type: ProcActivityEventType }[] = [];
-    events.push({
-      label: 'PO created',
-      actor: extractMetadataValue(procurement.notes, 'submitted_by_name') || procurement.createdBy || 'Admin',
-      ts: procurement.createdAt,
-      type: 'create',
-    });
-    const approvalStatus = extractMetadataValue(procurement.notes, 'approval_status');
-    const submittedByName = extractMetadataValue(procurement.notes, 'submitted_by_name');
-    const submittedAt = extractMetadataValue(procurement.notes, 'submitted_at');
-    const reviewedByName = extractMetadataValue(procurement.notes, 'reviewed_by_name');
-    const reviewedAt = extractMetadataValue(procurement.notes, 'reviewed_at');
-    if (approvalStatus === 'submitted' || approvalStatus === 'approved' || approvalStatus === 'rejected') {
-      events.push({ label: 'Submitted for approval', actor: submittedByName || 'Team member', ts: submittedAt || procurement.createdAt, type: 'submit' });
-    }
-    if (approvalStatus === 'approved') {
-      events.push({ label: 'PO approved', actor: reviewedByName || 'Admin', ts: reviewedAt || '', type: 'approve' });
-    } else if (approvalStatus === 'rejected') {
-      events.push({ label: 'PO declined', actor: reviewedByName || 'Admin', ts: reviewedAt || '', type: 'reject' });
-    }
-    return events;
-  }, [procurement]);
+  // Same list the full PO page shows (src/lib/procurement-activity.ts).
+  const activity = useMemo(() => (procurement ? getProcurementActivity(procurement) : []), [procurement]);
+  const submittedBy = useMemo(() => (procurement ? getProcurementSubmitter(procurement) : ''), [procurement]);
 
   if (!procurement) {
     return (
@@ -283,7 +266,7 @@ export function ProcurementDetailPanel({ procurementId, compact = false, statusO
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg.screen }}>
+    <View style={{ flex: 1, backgroundColor: palette.page }}>
       {showActionMenu ? (
         <Pressable
           onPress={() => setShowActionMenu(false)}
@@ -299,25 +282,25 @@ export function ProcurementDetailPanel({ procurementId, compact = false, statusO
           paddingHorizontal: 16,
           height: 56,
           borderBottomWidth: 1,
-          borderBottomColor: colors.divider,
-          backgroundColor: colors.bg.card,
+          borderBottomColor: palette.border,
+          backgroundColor: palette.card,
           position: 'relative',
           zIndex: 40,
         }}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <View style={{ width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg.input, borderWidth: 1, borderColor: colors.divider }}>
-            <Truck size={15} color={colors.text.tertiary} strokeWidth={2} />
+          <View style={{ width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.softFill, borderWidth: 1, borderColor: palette.border }}>
+            <Truck size={15} color={palette.faint} strokeWidth={2} />
           </View>
-          <Text style={{ color: colors.text.primary, fontSize: compact ? 15 : 16, fontWeight: '700' }}>PO Details</Text>
+          <Text style={{ color: palette.text, fontSize: compact ? 15 : 16, fontWeight: '700' }}>PO Details</Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <View style={{ position: 'relative' }}>
             <Pressable
               onPress={() => setShowActionMenu((current) => !current)}
-              style={{ width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.divider, backgroundColor: showActionMenu ? colors.bg.input : colors.bg.card }}
+              style={{ width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: palette.border, backgroundColor: showActionMenu ? palette.softFill : palette.card }}
             >
-              <MoreVertical size={16} color={colors.text.secondary} strokeWidth={2} />
+              <MoreVertical size={16} color={palette.muted} strokeWidth={2} />
             </Pressable>
             {showActionMenu ? (
               <View
@@ -328,8 +311,8 @@ export function ProcurementDetailPanel({ procurementId, compact = false, statusO
                   minWidth: 162,
                   borderRadius: 10,
                   borderWidth: 1,
-                  borderColor: colors.divider,
-                  backgroundColor: colors.bg.card,
+                  borderColor: palette.border,
+                  backgroundColor: palette.card,
                   overflow: 'hidden',
                   shadowColor: '#000000',
                   shadowOpacity: 0.12,
@@ -344,9 +327,9 @@ export function ProcurementDetailPanel({ procurementId, compact = false, statusO
                     onEdit(procurementId);
                   }}
                   className="px-3 py-2.5"
-                  style={{ borderBottomWidth: 1, borderBottomColor: colors.divider }}
+                  style={{ borderBottomWidth: 1, borderBottomColor: palette.border }}
                 >
-                  <Text style={{ color: colors.text.primary }} className="text-sm font-medium">Edit</Text>
+                  <Text style={{ color: palette.text }} className="text-sm font-medium">Edit</Text>
                 </Pressable>
                 {onMerge ? (
                   <Pressable
@@ -355,9 +338,9 @@ export function ProcurementDetailPanel({ procurementId, compact = false, statusO
                       onMerge(procurementId);
                     }}
                     className="px-3 py-2.5"
-                    style={{ borderBottomWidth: 1, borderBottomColor: colors.divider }}
+                    style={{ borderBottomWidth: 1, borderBottomColor: palette.border }}
                   >
-                    <Text style={{ color: colors.text.primary }} className="text-sm font-medium">Merge into another PO</Text>
+                    <Text style={{ color: palette.text }} className="text-sm font-medium">Merge into another PO</Text>
                   </Pressable>
                 ) : null}
                 <Pressable
@@ -368,7 +351,7 @@ export function ProcurementDetailPanel({ procurementId, compact = false, statusO
                   }}
                   className="px-3 py-2.5"
                 >
-                  <Text style={{ color: colors.danger }} className="text-sm font-medium">Delete</Text>
+                  <Text style={{ color: palette.danger }} className="text-sm font-medium">Delete</Text>
                 </Pressable>
               </View>
             ) : null}
@@ -378,9 +361,9 @@ export function ProcurementDetailPanel({ procurementId, compact = false, statusO
               setShowActionMenu(false);
               onClose();
             }}
-            style={{ width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg.input, borderWidth: 1, borderColor: colors.divider }}
+            style={{ width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.softFill, borderWidth: 1, borderColor: palette.border }}
           >
-            <X size={16} color={colors.text.secondary} strokeWidth={2.5} />
+            <X size={16} color={palette.muted} strokeWidth={2.5} />
           </Pressable>
         </View>
       </View>
@@ -388,42 +371,42 @@ export function ProcurementDetailPanel({ procurementId, compact = false, statusO
       <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 32, gap: 12 }}>
 
         {/* Hero card */}
-        <View style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.divider }}>
-          <View style={{ padding: heroPadding, borderBottomWidth: 1, borderBottomColor: colors.divider }}>
+        <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}>
+          <View style={{ padding: heroPadding, borderBottomWidth: 1, borderBottomColor: palette.hairline }}>
             <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ color: colors.text.muted, fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
+                <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1, marginBottom: 4 }}>
                   Procurement
                 </Text>
-                <Text style={{ color: colors.text.primary, fontSize: compact ? 18 : 20, fontWeight: '600', lineHeight: compact ? 22 : 24 }} numberOfLines={2}>
+                <MoneyText style={{ color: palette.text, fontSize: 18, lineHeight: 24 }} numberOfLines={2}>
                   {capitalizeDisplayValue(poName)}
-                </Text>
-                <Text style={{ color: colors.text.secondary, fontSize: compact ? 12 : 13, marginTop: 4 }} numberOfLines={1}>
+                </MoneyText>
+                <Text style={{ color: palette.faint, fontSize: 12, marginTop: 4 }} numberOfLines={1}>
                   {capitalizeDisplayValue(procurement.supplierName || 'No supplier')}
                 </Text>
               </View>
               <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 100, backgroundColor: statusColors.bg }}>
-                <Text style={{ color: statusColors.text, fontSize: 11, fontWeight: '600' }}>{capitalizeDisplayValue(status)}</Text>
+                <Text style={{ color: statusColors.text, fontSize: 10, fontWeight: '700', letterSpacing: 0.55, textTransform: 'uppercase' }}>{capitalizeDisplayValue(status)}</Text>
               </View>
             </View>
-            <Text style={{ color: colors.text.primary, fontSize: heroAmountFontSize, fontWeight: '500', lineHeight: heroAmountLineHeight }}>
+            <MoneyText style={{ color: palette.text, fontSize: compact ? 32 : 40, lineHeight: compact ? 38 : 46 }}>
               {formatCurrency(procurement.totalCost)}
-            </Text>
-            <Text style={{ color: colors.text.muted, fontSize: compact ? 12 : 13, fontWeight: '500', marginTop: 6 }}>
+            </MoneyText>
+            <Text style={{ color: palette.faint, fontSize: 12, marginTop: 6 }}>
               {poNumber} · Paid on {paidDate}
             </Text>
           </View>
           <View style={{ flexDirection: 'row' }}>
             <View style={{ flex: 1, paddingHorizontal: 16, paddingVertical: 14 }}>
-              <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }}>Supplier</Text>
-              <Text style={{ color: colors.text.primary, fontSize: compact ? 13 : 15, fontWeight: '600', marginTop: 3 }} numberOfLines={1}>
+              <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1 }}>Supplier</Text>
+              <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600', marginTop: 4 }} numberOfLines={1}>
                 {capitalizeDisplayValue(procurement.supplierName || 'No supplier')}
               </Text>
             </View>
-            <View style={{ width: 1, backgroundColor: colors.divider }} />
+            <View style={{ width: 1, backgroundColor: palette.hairline }} />
             <View style={{ flex: 1, paddingHorizontal: 16, paddingVertical: 14 }}>
-              <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }}>Line Items</Text>
-              <Text style={{ color: colors.text.primary, fontSize: compact ? 13 : 15, fontWeight: '600', marginTop: 3 }}>
+              <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1 }}>Line Items</Text>
+              <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600', marginTop: 4 }}>
                 {nonChargeLineCount > 0 ? nonChargeLineCount : procurement.items.length}
               </Text>
             </View>
@@ -431,52 +414,91 @@ export function ProcurementDetailPanel({ procurementId, compact = false, statusO
         </View>
 
         {/* Status */}
-        <View style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.divider, padding: 16 }}>
-          <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>Status</Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {visibleStatusOptions.map((option) => {
-              const optionColors = STATUS_COLORS[option.toLowerCase()] ?? { bg: colors.bg.input, text: colors.text.secondary };
-              const isSelected = status.trim().toLowerCase() === option.trim().toLowerCase();
-              return (
+        <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, padding: 16 }}>
+          <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1, marginBottom: 10 }}>Status</Text>
+          {(() => {
+            // Same look as the status picker on an order: the current status in a tinted box, tap it to pick another.
+            const currentColor = statusColors.text;
+            return (
+              <View style={{ gap: 8 }}>
                 <Pressable
-                  key={option}
-                  onPress={() => {
-                    if (isSelected) return;
-                    onStatusChange?.(procurement.id, option);
-                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  }}
+                  onPress={() => setStatusListOpen((open) => !open)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Change status"
                   style={{
-                    height: 34,
-                    paddingHorizontal: 12,
-                    borderRadius: 999,
+                    minHeight: 50,
+                    flexDirection: 'row',
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: isSelected ? optionColors.bg : colors.bg.input,
+                    gap: 10,
+                    paddingHorizontal: 14,
+                    borderRadius: 14,
+                    backgroundColor: `${currentColor}1f`,
                     borderWidth: 1,
-                    borderColor: isSelected ? optionColors.text : colors.divider,
+                    borderColor: `${currentColor}55`,
                   }}
                 >
-                  <Text style={{ color: isSelected ? optionColors.text : colors.text.secondary, fontSize: 12, fontWeight: '600' }}>
-                    {capitalizeDisplayValue(option)}
-                  </Text>
+                  <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: currentColor }} />
+                  <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
+                    <Text style={{ color: palette.muted, fontSize: 10, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>Current status</Text>
+                    <Text style={{ color: currentColor, fontSize: 14, fontWeight: '600' }} numberOfLines={1}>{capitalizeDisplayValue(status)}</Text>
+                  </View>
+                  <ChevronDown size={16} color={palette.textSoft} strokeWidth={2.4} />
                 </Pressable>
-              );
-            })}
-          </View>
+
+                {statusListOpen ? (
+                  <View style={{ padding: 6, borderRadius: 16, backgroundColor: palette.cardHover, borderWidth: 1, borderColor: palette.outline }}>
+                    {visibleStatusOptions.map((option) => {
+                      const optionColor = (STATUS_COLORS[option.toLowerCase()] ?? { bg: palette.softFill, text: palette.muted }).text;
+                      const isSelected = status.trim().toLowerCase() === option.trim().toLowerCase();
+                      const isCancel = /cancel/i.test(option);
+                      return (
+                        <Pressable
+                          key={option}
+                          onPress={() => {
+                            setStatusListOpen(false);
+                            if (isSelected) return;
+                            onStatusChange?.(procurement.id, option);
+                            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          }}
+                          className="active:opacity-80"
+                          style={{
+                            minHeight: 42,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 10,
+                            paddingHorizontal: 10,
+                            borderRadius: 10,
+                            backgroundColor: isSelected ? palette.softFill : 'transparent',
+                          }}
+                        >
+                          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: optionColor }} />
+                          <Text style={{ color: isCancel ? palette.danger : palette.text, fontSize: 14, fontWeight: isSelected ? '600' : '500', flex: 1 }}>
+                            {capitalizeDisplayValue(option)}
+                          </Text>
+                          {isSelected ? <Check size={14} color={palette.text} strokeWidth={2.6} /> : null}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                ) : null}
+              </View>
+            );
+          })()}
         </View>
 
         {/* Details */}
-        <View style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.divider }}>
+        <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}>
           <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 }}>
-            <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }}>Details</Text>
+            <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1 }}>Details</Text>
           </View>
           {([
-            { label: 'PO Name', value: poName, icon: <FileText size={compact ? 12 : 13} color={colors.text.tertiary} strokeWidth={2} /> },
-            { label: 'Supplier', value: procurement.supplierName || '—', icon: <User size={compact ? 12 : 13} color={colors.text.tertiary} strokeWidth={2} /> },
-            { label: 'Status', value: status, icon: <Truck size={compact ? 12 : 13} color={colors.text.tertiary} strokeWidth={2} /> },
-            { label: 'Date Paid', value: paidDate || '—', icon: <Calendar size={compact ? 12 : 13} color={colors.text.tertiary} strokeWidth={2} /> },
-            { label: 'Date Received', value: receivedDate || '—', icon: <Calendar size={compact ? 12 : 13} color={colors.text.tertiary} strokeWidth={2} /> },
-            { label: 'Created', value: createdAt || '—', icon: <Clock size={compact ? 12 : 13} color={colors.text.tertiary} strokeWidth={2} /> },
+            { label: 'PO Name', value: poName, icon: <FileText size={compact ? 12 : 13} color={palette.faint} strokeWidth={2} /> },
+            { label: 'Supplier', value: procurement.supplierName || '—', icon: <User size={compact ? 12 : 13} color={palette.faint} strokeWidth={2} /> },
+            { label: 'Status', value: status, icon: <Truck size={compact ? 12 : 13} color={palette.faint} strokeWidth={2} /> },
+            { label: 'Submitted by', value: submittedBy || '—', icon: <User size={compact ? 12 : 13} color={palette.faint} strokeWidth={2} /> },
+            { label: 'Date Paid', value: paidDate || '—', icon: <Calendar size={compact ? 12 : 13} color={palette.faint} strokeWidth={2} /> },
+            { label: 'Date Received', value: receivedDate || '—', icon: <Calendar size={compact ? 12 : 13} color={palette.faint} strokeWidth={2} /> },
+            { label: 'Created', value: createdAt || '—', icon: <Clock size={compact ? 12 : 13} color={palette.faint} strokeWidth={2} /> },
           ] as const).map((row, index) => (
             <View
               key={row.label}
@@ -487,15 +509,15 @@ export function ProcurementDetailPanel({ procurementId, compact = false, statusO
                 paddingHorizontal: 16,
                 paddingVertical: compact ? 9 : 10,
                 borderTopWidth: index === 0 ? 1 : 0,
-                borderTopColor: colors.divider,
+                borderTopColor: palette.hairline,
                 gap: 10,
               }}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 {row.icon}
-                <Text style={{ color: colors.text.secondary, fontSize: compact ? 12 : 13 }}>{row.label}</Text>
+                <Text style={{ color: palette.faint, fontSize: 12 }}>{row.label}</Text>
               </View>
-              <Text style={{ color: colors.text.primary, fontSize: compact ? 12 : detailValueFontSize, fontWeight: '600', flex: 1, textAlign: 'right', marginLeft: 16 }}>
+              <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600', flex: 1, textAlign: 'right', marginLeft: 16 }}>
                 {capitalizeDisplayValue(row.value)}
               </Text>
             </View>
@@ -506,25 +528,25 @@ export function ProcurementDetailPanel({ procurementId, compact = false, statusO
         {poItemRows.length > 0 ? (
           <Pressable
             onPress={() => setShowPoItemsModal(true)}
-            style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.divider }}
+            style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14 }}>
               <View>
-                <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }}>PO Items</Text>
-                <Text style={{ color: colors.text.primary, fontSize: compact ? 12 : 13, fontWeight: '600', marginTop: 4 }}>
+                <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1 }}>PO Items</Text>
+                <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600', marginTop: 4 }}>
                   {poItemRows.length} item{poItemRows.length === 1 ? '' : 's'}
                 </Text>
               </View>
-              <ChevronRight size={16} color={colors.text.tertiary} strokeWidth={2} />
+              <ChevronRight size={16} color={palette.faint} strokeWidth={2} />
             </View>
           </Pressable>
         ) : null}
 
         {/* Payment Breakdown */}
         {paymentLineRows.length > 0 ? (
-          <View style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.divider }}>
+          <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}>
             <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12 }}>
-              <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }}>Payment Breakdown</Text>
+              <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1 }}>Payment Breakdown</Text>
             </View>
             {paymentLineRows.map((item, index) => (
               <View
@@ -533,63 +555,63 @@ export function ProcurementDetailPanel({ procurementId, compact = false, statusO
                   paddingHorizontal: 16,
                   paddingVertical: compact ? 9 : 10,
                   borderTopWidth: index === 0 ? 1 : 0,
-                  borderTopColor: colors.divider,
+                  borderTopColor: palette.hairline,
                 }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, minWidth: 0, paddingRight: 12 }}>
-                    <Package size={compact ? 12 : 13} color={colors.text.tertiary} strokeWidth={2} />
-                    <Text style={{ color: colors.text.secondary, fontSize: compact ? 12 : 13 }} numberOfLines={1}>
+                    <Package size={compact ? 12 : 13} color={palette.faint} strokeWidth={2} />
+                    <Text style={{ color: palette.text, fontSize: 12 }} numberOfLines={1}>
                       {capitalizeDisplayValue(item.name)}
                     </Text>
                   </View>
-                  <Text style={{ color: colors.text.primary, fontSize: compact ? 12 : detailValueFontSize, fontWeight: '600', textAlign: 'right' }}>
+                  <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600', textAlign: 'right' }}>
                     {formatCurrency(item.total)}
                   </Text>
                 </View>
                 {item.paymentDate ? (
-                  <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 4, marginLeft: compact ? 18 : 19 }}>
+                  <Text style={{ color: palette.faint, fontSize: 10, marginTop: 4, marginLeft: compact ? 18 : 19 }}>
                     Paid {item.paymentDate}
                   </Text>
                 ) : null}
               </View>
             ))}
             {procurementChargeTotals.total > 0 ? (
-              <View style={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 10, borderTopWidth: 1, borderTopColor: colors.divider }}>
+              <View style={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 10, borderTopWidth: 1, borderTopColor: palette.hairline }}>
                 {procurementChargeTotals.transfer > 0 ? (
                   <View className="flex-row items-center justify-between">
-                    <Text style={{ color: colors.text.muted, fontSize: compact ? 11 : 12 }}>
+                    <Text style={{ color: palette.faint, fontSize: 10 }}>
                       Transfer fees{procurementChargeTotals.count > 1 ? ` (${procurementChargeTotals.count}x)` : ''}
                     </Text>
-                    <Text style={{ color: colors.text.secondary, fontSize: compact ? 12 : 13, fontWeight: '600' }}>
+                    <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }}>
                       {formatCurrency(procurementChargeTotals.transfer)}
                     </Text>
                   </View>
                 ) : null}
                 {procurementChargeTotals.stampDuty > 0 ? (
                   <View className="flex-row items-center justify-between" style={{ marginTop: procurementChargeTotals.transfer > 0 ? 6 : 0 }}>
-                    <Text style={{ color: colors.text.muted, fontSize: compact ? 11 : 12 }}>
+                    <Text style={{ color: palette.faint, fontSize: 10 }}>
                       Stamp duty{procurementChargeTotals.count > 1 ? ` (${procurementChargeTotals.count}x)` : ''}
                     </Text>
-                    <Text style={{ color: colors.text.secondary, fontSize: compact ? 12 : 13, fontWeight: '600' }}>
+                    <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }}>
                       {formatCurrency(procurementChargeTotals.stampDuty)}
                     </Text>
                   </View>
                 ) : null}
               </View>
             ) : null}
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 12, paddingBottom: 14, borderTopWidth: 1, borderTopColor: colors.divider }}>
-              <Text style={{ color: colors.text.primary, fontSize: compact ? 12 : 13, fontWeight: '700' }}>Total Cost</Text>
-              <Text style={{ color: colors.text.primary, fontSize: compact ? 14 : 15, fontWeight: '500' }}>{formatCurrency(paymentBreakdownTotal)}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 12, paddingBottom: 14, borderTopWidth: 1, borderTopColor: palette.hairline }}>
+              <Text style={{ color: palette.text, fontSize: 14, fontWeight: '700' }}>Total Cost</Text>
+              <MoneyText style={{ color: palette.text, fontSize: 16 }}>{formatCurrency(paymentBreakdownTotal)}</MoneyText>
             </View>
           </View>
         ) : null}
 
         {/* Attachments */}
         {(procurement.attachments?.length ?? 0) > 0 ? (
-          <View style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.divider }}>
+          <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}>
             <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12 }}>
-              <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }}>Attachments</Text>
+              <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1 }}>Attachments</Text>
             </View>
             {procurement.attachments!.map((attachment, index) => (
               <Pressable
@@ -597,18 +619,18 @@ export function ProcurementDetailPanel({ procurementId, compact = false, statusO
                 onPress={() => {
                   void openAttachmentPath(attachment.storagePath ?? attachment.uri).catch(() => null);
                 }}
-                style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: index === 0 ? 1 : 0, borderTopColor: colors.divider, gap: 12 }}
+                style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: index === 0 ? 1 : 0, borderTopColor: palette.border, gap: 12 }}
               >
-                <View style={{ width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg.input, borderWidth: 1, borderColor: colors.divider }}>
+                <View style={{ width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.softFill, borderWidth: 1, borderColor: palette.border }}>
                   {getFileIcon(attachment.mimeType)}
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ color: colors.text.primary, fontSize: detailValueFontSize, fontWeight: '600' }} numberOfLines={1}>{attachment.name}</Text>
+                  <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>{attachment.name}</Text>
                   {attachment.mimeType ? (
-                    <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 1 }}>{attachment.mimeType}</Text>
+                    <Text style={{ color: palette.faint, fontSize: 10, marginTop: 2 }}>{attachment.mimeType}</Text>
                   ) : null}
                 </View>
-                <Paperclip size={14} color={colors.text.muted} strokeWidth={1.5} />
+                <Paperclip size={14} color={palette.faint} strokeWidth={1.5} />
               </Pressable>
             ))}
           </View>
@@ -616,54 +638,37 @@ export function ProcurementDetailPanel({ procurementId, compact = false, statusO
 
         {/* Notes */}
         {cleanNotes ? (
-          <View style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.divider, padding: 16 }}>
-            <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Notes</Text>
-            <Text style={{ color: colors.text.primary, fontSize: detailValueFontSize, lineHeight: compact ? 18 : 20 }}>{cleanNotes}</Text>
+          <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, padding: 16 }}>
+            <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1, marginBottom: 8 }}>Notes</Text>
+            <Text style={{ color: palette.text, fontSize: 12, lineHeight: 18 }}>{cleanNotes}</Text>
           </View>
         ) : null}
 
-        {/* Activity thread */}
-        {activityEvents.length > 0 ? (
-          <View style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.divider }}>
-            <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 10 }}>
-              <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }}>Activity</Text>
+        {/* Activity */}
+        {activity.length > 0 ? (
+          <View style={{ borderRadius: 26, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 16 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1 }}>Activity</Text>
+              <Text style={{ color: palette.faint, fontSize: 12 }}>{activity.length} {activity.length === 1 ? 'event' : 'events'}</Text>
             </View>
-            {activityEvents.map((event, index) => {
-              const isLast = index === activityEvents.length - 1;
-              const dotColor = event.type === 'approve' ? '#10B981' : event.type === 'reject' ? '#EF4444' : event.type === 'submit' ? '#3B82F6' : colors.text.muted;
-              const dotBg = event.type === 'approve' ? 'rgba(16,185,129,0.12)' : event.type === 'reject' ? 'rgba(239,68,68,0.12)' : event.type === 'submit' ? 'rgba(59,130,246,0.12)' : colors.bg.input;
-              const EventIcon = event.type === 'approve' ? CheckCircle : event.type === 'reject' ? XCircle : event.type === 'submit' ? Send : PlusCircle;
-              const tsMs = new Date(event.ts).getTime();
-              const tsLabel = (() => {
-                if (!Number.isFinite(tsMs)) return '';
-                const diffMs = Date.now() - tsMs;
-                const mins = Math.floor(diffMs / 60000);
-                if (mins < 1) return 'just now';
-                if (mins < 60) return `${mins}m ago`;
-                const hrs = Math.floor(mins / 60);
-                if (hrs < 24) return `${hrs}h ago`;
-                const days = Math.floor(hrs / 24);
-                if (days < 7) return `${days}d ago`;
-                return new Date(tsMs).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-              })();
-              return (
-                <View key={index} style={{ flexDirection: 'row', paddingHorizontal: 16, paddingBottom: isLast ? 16 : 0 }}>
-                  <View style={{ width: 32, alignItems: 'center', paddingTop: 2 }}>
-                    <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: dotBg, alignItems: 'center', justifyContent: 'center' }}>
-                      <EventIcon size={13} color={dotColor} strokeWidth={2} />
-                    </View>
-                    {!isLast ? <View style={{ width: 1.5, flex: 1, backgroundColor: colors.divider, marginTop: 4 }} /> : null}
+            <View style={{ gap: 14 }}>
+              {activity.map((entry, index) => (
+                <View key={`${entry.label}-${index}`} style={{ flexDirection: 'row', gap: 12 }}>
+                  <View style={{ alignItems: 'center' }}>
+                    <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: index === 0 ? palette.limeOnSurface : palette.outline, marginTop: 4 }} />
+                    {index < activity.length - 1 ? (
+                      <View style={{ width: 1, flex: 1, backgroundColor: palette.hairline, marginTop: 6, minHeight: 28 }} />
+                    ) : null}
                   </View>
-                  <View style={{ flex: 1, paddingLeft: 10, paddingTop: 4, paddingBottom: isLast ? 0 : 14 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                      <Text style={{ color: colors.text.primary, fontSize: compact ? 11 : 12, fontWeight: '600', flex: 1 }}>{event.label}</Text>
-                      {tsLabel ? <Text style={{ color: colors.text.muted, fontSize: 10 }}>{tsLabel}</Text> : null}
-                    </View>
-                    <Text style={{ color: colors.text.tertiary, fontSize: 10, marginTop: 2 }}>{event.actor}</Text>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ color: palette.text, fontSize: 10, lineHeight: 15, fontWeight: '600' }}>{entry.label}</Text>
+                    <Text style={{ color: palette.faint, fontSize: 10, marginTop: 2 }}>
+                      {entry.actorName}{Number.isFinite(new Date(entry.at).getTime()) ? ` · ${new Date(entry.at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}` : ''}
+                    </Text>
                   </View>
                 </View>
-              );
-            })}
+              ))}
+            </View>
           </View>
         ) : null}
 
@@ -675,7 +680,7 @@ export function ProcurementDetailPanel({ procurementId, compact = false, statusO
         <Animated.View
           entering={FadeIn.duration(260)}
           exiting={FadeOut.duration(200)}
-          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 50, backgroundColor: colors.bg.screen }}
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 50, backgroundColor: palette.page }}
         >
           <View
             style={{
@@ -685,25 +690,25 @@ export function ProcurementDetailPanel({ procurementId, compact = false, statusO
               paddingHorizontal: 16,
               height: 56,
               borderBottomWidth: 1,
-              borderBottomColor: colors.divider,
-              backgroundColor: colors.bg.card,
+              borderBottomColor: palette.border,
+              backgroundColor: palette.card,
             }}
           >
             <Pressable
               onPress={() => setShowPoItemsModal(false)}
-              style={{ width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg.input, borderWidth: 1, borderColor: colors.divider }}
+              style={{ width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.softFill, borderWidth: 1, borderColor: palette.border }}
             >
-              <ChevronLeft size={18} color={colors.text.secondary} strokeWidth={2.5} />
+              <ChevronLeft size={18} color={palette.muted} strokeWidth={2.5} />
             </Pressable>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={{ color: colors.text.primary, fontSize: compact ? 15 : 16, fontWeight: '700' }}>PO Items</Text>
-              <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 1 }} numberOfLines={1}>
+              <Text style={{ color: palette.text, fontSize: compact ? 15 : 16, fontWeight: '700' }}>PO Items</Text>
+              <Text style={{ color: palette.faint, fontSize: 11, marginTop: 1 }} numberOfLines={1}>
                 {poItemRows.length} item{poItemRows.length === 1 ? '' : 's'} · {capitalizeDisplayValue(poName)}
               </Text>
             </View>
           </View>
           <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
-            <View style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.divider }}>
+            <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}>
               {poItemRows.map((item, index) => (
                 <View
                   key={item.id}
@@ -711,17 +716,17 @@ export function ProcurementDetailPanel({ procurementId, compact = false, statusO
                     paddingHorizontal: 16,
                     paddingVertical: 12,
                     borderTopWidth: index === 0 ? 0 : 1,
-                    borderTopColor: colors.divider,
+                    borderTopColor: palette.border,
                   }}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Package size={13} color={colors.text.tertiary} strokeWidth={2} />
-                    <Text style={{ color: colors.text.secondary, fontSize: 13, flex: 1 }} numberOfLines={2}>
+                    <Package size={13} color={palette.faint} strokeWidth={2} />
+                    <Text style={{ color: palette.muted, fontSize: 13, flex: 1 }} numberOfLines={2}>
                       {capitalizeDisplayValue(item.name)}
                     </Text>
                   </View>
                   {item.quantityPurchased > 0 ? (
-                    <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 4, marginLeft: 19 }}>
+                    <Text style={{ color: palette.faint, fontSize: 11, marginTop: 4, marginLeft: 19 }}>
                       Qty {item.quantityPurchased}
                     </Text>
                   ) : null}

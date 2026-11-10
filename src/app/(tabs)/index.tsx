@@ -83,6 +83,7 @@ import { EmptyLine, HomeCard, HomeCardHeader, HomeLink, HomeRow, KpiStrip, Statu
 import useWhatsNewStore from '@/lib/state/whats-new-store';
 import { CURRENT_RELEASE } from '@/lib/release-notes';
 import { PendingExpenseBanner } from '@/components/finance/PendingExpenseBanner';
+import { usePendingRequests } from '@/lib/usePendingRequests';
 import { FYLL_LIME, FYLL_LIME_INK, usePaymentsPalette } from '@/components/payments/payments-ui';
 import { useFonts, BricolageGrotesque_600SemiBold, BricolageGrotesque_700Bold } from '@expo-google-fonts/bricolage-grotesque';
 
@@ -265,6 +266,33 @@ function PrintQueueBanner({
       restText=" waiting in the Fyll Print queue"
       actionLabel="Print"
     />
+  );
+
+  if (!inset) return content;
+
+  return <View className="px-5 pt-4">{content}</View>;
+}
+
+// Requests waiting on you (expense, refund and purchase-order approvals, partner bills and issues): one amber strip each,
+// shown above the Storefront card so nothing needs hunting for in Finance or Partners. Tapping one opens it.
+function PendingRequestBanners({ inset = true }: { inset?: boolean }) {
+  const router = useRouter();
+  const requests = usePendingRequests();
+  if (requests.length === 0) return null;
+
+  const content = (
+    <View style={{ gap: 10 }}>
+      {requests.map((request) => (
+        <PendingExpenseBanner
+          key={request.id}
+          count={request.count}
+          boldText={request.boldText}
+          restText={request.restText}
+          actionLabel={request.actionLabel}
+          onPress={() => router.push(request.route as never)}
+        />
+      ))}
+    </View>
   );
 
   if (!inset) return content;
@@ -2184,7 +2212,8 @@ export default function DashboardScreen() {
           right={trendBadge(revenueTrend7d.change)}
         />
       </View>
-      <View>
+      {/* Left padding lines the chart's axis labels up with the title above; the right side is already inset by the chart. */}
+      <View style={{ paddingLeft: 18 }}>
         {shouldShowDashboardSkeleton ? (
           <SkeletonBox width="100%" height={chartHeight} rounded="lg" />
         ) : (
@@ -2423,6 +2452,8 @@ export default function DashboardScreen() {
                   />
                 ) : null}
 
+                <PendingRequestBanners inset={false} />
+
                 {showOnboardingChecklist ? (
                   <OnboardingChecklistCard
                     steps={onboardingSteps}
@@ -2552,6 +2583,8 @@ export default function DashboardScreen() {
               onPress={() => router.push(`/(tabs)/task/${upcomingHomeEvent.id}` as any)}
             />
           ) : null}
+
+          <PendingRequestBanners />
 
           {!isLoadingBusinessSettings && canUseFyllPrint && pendingPrintQueueCount > 0 ? (
             <PrintQueueBanner

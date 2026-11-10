@@ -498,28 +498,28 @@ function PaymentTableRow({ record, palette, isLast, onOpenActions }: { record: P
     >
       <View style={{ ...DESKTOP_COLUMNS.customer, flexDirection: 'row', alignItems: 'center', gap: 10, paddingRight: 10 }}>
         <InitialsAvatar name={record.customerName} palette={palette} size={32} />
-        <Text style={{ flex: 1, color: palette.text, fontSize: fs(14), fontWeight: '500' }} numberOfLines={1}>
+        <Text style={{ flex: 1, color: palette.text, fontSize: 12, fontWeight: '500' }} numberOfLines={1}>
           {record.customerName && record.customerName !== '—' ? formatPersonName(record.customerName) : 'Awaiting customer'}
         </Text>
       </View>
-      <Text style={{ ...DESKTOP_COLUMNS.reference, color: palette.textSoft, fontSize: fs(13.5), paddingRight: 10 }} numberOfLines={1}>{record.reference}</Text>
-      <Text style={{ ...DESKTOP_COLUMNS.order, color: record.orderNumber ? palette.textSoft : palette.faint, fontSize: fs(13.5), paddingRight: 10 }} numberOfLines={1}>
+      <Text style={{ ...DESKTOP_COLUMNS.reference, color: palette.textSoft, fontSize: 12, paddingRight: 10 }} numberOfLines={1}>{record.reference}</Text>
+      <Text style={{ ...DESKTOP_COLUMNS.order, color: record.orderNumber ? palette.textSoft : palette.faint, fontSize: 12, paddingRight: 10 }} numberOfLines={1}>
         {record.orderNumber ?? 'No order yet'}
       </Text>
       <View style={{ ...DESKTOP_COLUMNS.amount, paddingRight: 10 }}>
-        <Text style={{ color: unsuccessful ? palette.faint : palette.text, fontSize: fs(14), fontWeight: '600', textDecorationLine: unsuccessful ? 'line-through' : 'none', fontVariant: ['tabular-nums'] }}>
+        <Text style={{ color: unsuccessful ? palette.faint : palette.text, fontSize: 12, fontWeight: '600', textDecorationLine: unsuccessful ? 'line-through' : 'none', fontVariant: ['tabular-nums'] }}>
           {formatCurrency(record.amount)}
         </Text>
-        {record.amountCaption ? <Text style={{ color: palette.faint, fontSize: fs(11), marginTop: 2 }} numberOfLines={1}>{record.amountCaption}</Text> : null}
+        {record.amountCaption ? <Text style={{ color: palette.faint, fontSize: 12, marginTop: 2 }} numberOfLines={1}>{record.amountCaption}</Text> : null}
       </View>
       <View style={{ ...DESKTOP_COLUMNS.source, flexDirection: 'row', alignItems: 'center', gap: 6, paddingRight: 10 }}>
         <SourceIcon source={record.source} color={palette.faint} size={13} />
-        <Text style={{ color: palette.muted, fontSize: fs(13) }} numberOfLines={1}>{SOURCE_LABEL[record.source]}</Text>
+        <Text style={{ color: palette.muted, fontSize: 12 }} numberOfLines={1}>{SOURCE_LABEL[record.source]}</Text>
       </View>
       <View style={{ ...DESKTOP_COLUMNS.status, paddingRight: 10 }}>
-        <StatusDot tone={record.tone} label={record.statusLabel} palette={palette} />
+        <StatusDot tone={record.tone} label={record.statusLabel} palette={palette} fontSize={12} />
       </View>
-      <Text style={{ ...DESKTOP_COLUMNS.date, color: palette.faint, fontSize: fs(13), paddingRight: 10 }} numberOfLines={1}>{record.createdLabel}</Text>
+      <Text style={{ ...DESKTOP_COLUMNS.date, color: palette.faint, fontSize: 12, paddingRight: 10 }} numberOfLines={1}>{record.createdLabel}</Text>
       <View style={{ ...DESKTOP_COLUMNS.actions, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
         {record.confirmAction ? <ConfirmPill action={record.confirmAction} compact /> : null}
         {hasMoreActions ? (
@@ -548,7 +548,7 @@ function PaymentTableRow({ record, palette, isLast, onOpenActions }: { record: P
             )}
           </Pressable>
         ) : null}
-        {!record.confirmAction && !hasMoreActions ? <Text style={{ color: palette.faint, fontSize: fs(13) }}>—</Text> : null}
+        {!record.confirmAction && !hasMoreActions ? <Text style={{ color: palette.faint, fontSize: 12 }}>—</Text> : null}
       </View>
     </Pressable>
   );

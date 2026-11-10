@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, ScrollView } from 'react-native';
-import { X, MoreVertical, Receipt, FileText, Download, CheckCircle, XCircle, Send, PlusCircle, User, Tag, Calendar, Clock } from 'lucide-react-native';
+import { X, MoreVertical, Receipt, FileText, Download, User, Tag, Calendar, Clock, ChevronDown, Check } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import useFyllStore, { type Expense, type ExpensePaymentStatus, type ExpenseRequestReceipt, formatCurrency } from '@/lib/state/fyll-store';
 import useAuthStore from '@/lib/state/auth-store';
 import { useStatsColors } from '@/lib/theme';
 import { openAttachmentPath } from '@/lib/storage-attachments';
+import { MoneyText, usePaymentsPalette } from '@/components/payments/payments-ui';
+import { getExpenseActivity, getExpenseSubmitter } from '@/lib/expense-activity';
 
 // ── helpers ──
 
@@ -143,11 +145,13 @@ interface ExpenseDetailPanelProps {
 
 export function ExpenseDetailPanel({ expenseId, compact = false, onClose, onEdit, onDelete }: ExpenseDetailPanelProps) {
   const colors = useStatsColors();
+  const palette = usePaymentsPalette();
   const expenses = useFyllStore((s) => s.expenses);
   const updateExpense = useFyllStore((s) => s.updateExpense);
   const financeRules = useFyllStore((s) => s.financeRules);
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
   const [showActionMenu, setShowActionMenu] = useState<boolean>(false);
+  const [statusListOpen, setStatusListOpen] = useState<boolean>(false);
 
   const expense = useMemo(() => expenses.find((e) => e.id === expenseId) ?? null, [expenses, expenseId]);
 
@@ -218,22 +222,9 @@ export function ExpenseDetailPanel({ expenseId, compact = false, onClose, onEdit
     [expenseRequests, expenseId],
   );
 
-  type ActivityEventType = 'create' | 'submit' | 'approve' | 'reject';
-  const activityEvents = useMemo<{ label: string; actor: string; ts: string; type: ActivityEventType }[]>(() => {
-    if (!expense) return [];
-    if (linkedRequest) {
-      const events: { label: string; actor: string; ts: string; type: ActivityEventType }[] = [
-        { label: 'Expense requested', actor: linkedRequest.submittedByName || 'Team member', ts: linkedRequest.submittedAt || linkedRequest.createdAt, type: 'submit' },
-      ];
-      if (linkedRequest.status === 'approved') {
-        events.push({ label: 'Approved & logged', actor: linkedRequest.reviewedByName || 'Admin', ts: linkedRequest.reviewedAt || expense.createdAt, type: 'approve' });
-      } else if (linkedRequest.status === 'rejected') {
-        events.push({ label: 'Declined', actor: linkedRequest.reviewedByName || 'Admin', ts: linkedRequest.reviewedAt || '', type: 'reject' });
-      }
-      return events;
-    }
-    return [{ label: 'Expense logged', actor: expense.createdBy || 'Admin', ts: expense.createdAt, type: 'create' }];
-  }, [expense, linkedRequest]);
+  // Same list the full expense page shows (src/lib/expense-activity.ts).
+  const activity = useMemo(() => (expense ? getExpenseActivity(expense, linkedRequest) : []), [expense, linkedRequest]);
+  const submittedBy = useMemo(() => (expense ? getExpenseSubmitter(expense, linkedRequest) : ''), [expense, linkedRequest]);
 
   const typeBadgeColors = expenseType === 'recurring'
     ? { bg: 'rgba(139, 92, 246, 0.16)', text: '#8B5CF6' }
@@ -253,6 +244,7 @@ export function ExpenseDetailPanel({ expenseId, compact = false, onClose, onEdit
 
   useEffect(() => {
     setShowActionMenu(false);
+    setStatusListOpen(false);
   }, [expenseId]);
 
   const handleOpenReceipt = async (storagePath: string) => {
@@ -274,7 +266,7 @@ export function ExpenseDetailPanel({ expenseId, compact = false, onClose, onEdit
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg.screen }}>
+    <View style={{ flex: 1, backgroundColor: palette.page }}>
       {showActionMenu ? (
         <Pressable
           onPress={() => setShowActionMenu(false)}
@@ -290,25 +282,25 @@ export function ExpenseDetailPanel({ expenseId, compact = false, onClose, onEdit
           paddingHorizontal: 16,
           height: 56,
           borderBottomWidth: 1,
-          borderBottomColor: colors.divider,
-          backgroundColor: colors.bg.card,
+          borderBottomColor: palette.border,
+          backgroundColor: palette.card,
           position: 'relative',
           zIndex: 40,
         }}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <View style={{ width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg.input, borderWidth: 1, borderColor: colors.divider }}>
-            <Receipt size={15} color={colors.text.tertiary} strokeWidth={2} />
+          <View style={{ width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.softFill, borderWidth: 1, borderColor: palette.border }}>
+            <Receipt size={15} color={palette.faint} strokeWidth={2} />
           </View>
-          <Text style={{ color: colors.text.primary, fontSize: compact ? 15 : 16, fontWeight: '700' }}>Expense Details</Text>
+          <Text style={{ color: palette.text, fontSize: compact ? 15 : 16, fontWeight: '700' }}>Expense Details</Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <View style={{ position: 'relative' }}>
             <Pressable
               onPress={() => setShowActionMenu((current) => !current)}
-              style={{ width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.divider, backgroundColor: showActionMenu ? colors.bg.input : colors.bg.card }}
+              style={{ width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: palette.border, backgroundColor: showActionMenu ? palette.softFill : palette.card }}
             >
-              <MoreVertical size={16} color={colors.text.secondary} strokeWidth={2} />
+              <MoreVertical size={16} color={palette.muted} strokeWidth={2} />
             </Pressable>
             {showActionMenu ? (
               <View
@@ -319,8 +311,8 @@ export function ExpenseDetailPanel({ expenseId, compact = false, onClose, onEdit
                   minWidth: 162,
                   borderRadius: 10,
                   borderWidth: 1,
-                  borderColor: colors.divider,
-                  backgroundColor: colors.bg.card,
+                  borderColor: palette.border,
+                  backgroundColor: palette.card,
                   overflow: 'hidden',
                   shadowColor: '#000000',
                   shadowOpacity: 0.12,
@@ -335,9 +327,9 @@ export function ExpenseDetailPanel({ expenseId, compact = false, onClose, onEdit
                     onEdit(expenseId);
                   }}
                   className="px-3 py-2.5"
-                  style={{ borderBottomWidth: 1, borderBottomColor: colors.divider }}
+                  style={{ borderBottomWidth: 1, borderBottomColor: palette.border }}
                 >
-                  <Text style={{ color: colors.text.primary }} className="text-sm font-medium">Edit</Text>
+                  <Text style={{ color: palette.text }} className="text-sm font-medium">Edit</Text>
                 </Pressable>
                 <Pressable
                   onPress={() => {
@@ -347,7 +339,7 @@ export function ExpenseDetailPanel({ expenseId, compact = false, onClose, onEdit
                   }}
                   className="px-3 py-2.5"
                 >
-                  <Text style={{ color: colors.danger }} className="text-sm font-medium">Delete</Text>
+                  <Text style={{ color: palette.danger }} className="text-sm font-medium">Delete</Text>
                 </Pressable>
               </View>
             ) : null}
@@ -357,9 +349,9 @@ export function ExpenseDetailPanel({ expenseId, compact = false, onClose, onEdit
               setShowActionMenu(false);
               onClose();
             }}
-            style={{ width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg.input, borderWidth: 1, borderColor: colors.divider }}
+            style={{ width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.softFill, borderWidth: 1, borderColor: palette.border }}
           >
-            <X size={16} color={colors.text.secondary} strokeWidth={2.5} />
+            <X size={16} color={palette.muted} strokeWidth={2.5} />
           </Pressable>
         </View>
       </View>
@@ -367,49 +359,49 @@ export function ExpenseDetailPanel({ expenseId, compact = false, onClose, onEdit
       <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 32, gap: 12 }}>
 
         {/* Hero card */}
-        <View style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.divider }}>
-          <View style={{ padding: heroPadding, borderBottomWidth: 1, borderBottomColor: colors.divider }}>
+        <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}>
+          <View style={{ padding: heroPadding, borderBottomWidth: 1, borderBottomColor: palette.border }}>
             <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ color: colors.text.muted, fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
+                <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1, marginBottom: 4 }}>
                   Expense
                 </Text>
-                <Text style={{ color: colors.text.primary, fontSize: compact ? 18 : 20, fontWeight: '600', lineHeight: compact ? 22 : 24 }} numberOfLines={2}>
+                <MoneyText style={{ color: palette.text, fontSize: 18, lineHeight: 24 }} numberOfLines={2}>
                   {capitalizeDisplayValue(name || expense.category || 'Expense')}
-                </Text>
-                <Text style={{ color: colors.text.secondary, fontSize: compact ? 12 : 13, marginTop: 4 }} numberOfLines={1}>
+                </MoneyText>
+                <Text style={{ color: palette.faint, fontSize: 12, marginTop: 4 }} numberOfLines={1}>
                   {capitalizeDisplayValue(merchant || expense.category || 'General')}
                 </Text>
               </View>
               <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 100, backgroundColor: typeBadgeColors.bg }}>
-                <Text style={{ color: typeBadgeColors.text, fontSize: 11, fontWeight: '600' }}>
+                <Text style={{ color: typeBadgeColors.text, fontSize: 10, fontWeight: '700', letterSpacing: 0.55, textTransform: 'uppercase' }}>
                   {expenseType === 'one-time' ? 'One-Time' : 'Recurring'}
                 </Text>
               </View>
             </View>
-            <Text style={{ color: colors.text.primary, fontSize: heroAmountFontSize, fontWeight: '500', lineHeight: heroAmountLineHeight }}>
+            <MoneyText style={{ color: palette.text, fontSize: compact ? 32 : 40, lineHeight: compact ? 38 : 46 }}>
               {formatCurrency(expense.amount)}
-            </Text>
+            </MoneyText>
             <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginTop: 8, gap: 8 }}>
-              <Text style={{ color: colors.text.secondary, fontSize: compact ? 12 : 13 }}>{date}</Text>
+              <Text style={{ color: palette.faint, fontSize: 12 }}>{date}</Text>
               {statusBadge ? (
                 <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 100, backgroundColor: statusBadge.bg }}>
-                  <Text style={{ color: statusBadge.text, fontSize: 11, fontWeight: '600' }}>{statusBadge.label}</Text>
+                  <Text style={{ color: statusBadge.text, fontSize: 10, fontWeight: '700', letterSpacing: 0.55, textTransform: 'uppercase' }}>{statusBadge.label}</Text>
                   </View>
               ) : null}
             </View>
           </View>
           <View style={{ flexDirection: 'row' }}>
             <View style={{ flex: 1, paddingHorizontal: 16, paddingVertical: 14 }}>
-              <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }}>Merchant</Text>
-              <Text style={{ color: colors.text.primary, fontSize: compact ? 13 : 15, fontWeight: '600', marginTop: 4 }} numberOfLines={1}>
+              <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1 }}>Merchant</Text>
+              <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600', marginTop: 4 }} numberOfLines={1}>
                 {capitalizeDisplayValue(merchant || 'Not set')}
               </Text>
             </View>
-            <View style={{ width: 1, backgroundColor: colors.divider }} />
+            <View style={{ width: 1, backgroundColor: palette.hairline }} />
             <View style={{ flex: 1, paddingHorizontal: 16, paddingVertical: 14 }}>
-              <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }}>Category</Text>
-              <Text style={{ color: colors.text.primary, fontSize: compact ? 13 : 15, fontWeight: '600', marginTop: 4 }} numberOfLines={1}>
+              <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1 }}>Category</Text>
+              <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600', marginTop: 4 }} numberOfLines={1}>
                 {capitalizeDisplayValue(expense.category || 'General')}
               </Text>
             </View>
@@ -417,41 +409,79 @@ export function ExpenseDetailPanel({ expenseId, compact = false, onClose, onEdit
         </View>
 
         {/* Status */}
-        <View style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.divider, padding: 16 }}>
-          <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>Status</Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {statusOptions.map(([option, meta]) => {
-              const isSelected = expense.status === option;
-              return (
+        <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, padding: 16 }}>
+          <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1, marginBottom: 10 }}>Status</Text>
+          {(() => {
+            // Same look as the status picker on an order: the current status in a tinted box, tap it to pick another.
+            const currentLabel = statusBadge?.label ?? 'Not set';
+            const currentColor = statusBadge?.text ?? palette.faint;
+            return (
+              <View style={{ gap: 8 }}>
                 <Pressable
-                  key={option}
-                  onPress={() => {
-                    if (expense.status === option) return;
-                    updateExpense(expense.id, { status: option }, businessId);
-                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  }}
+                  onPress={() => setStatusListOpen((open) => !open)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Change status"
                   style={{
-                    height: 34,
-                    paddingHorizontal: 12,
-                    borderRadius: 999,
+                    minHeight: 50,
+                    flexDirection: 'row',
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: isSelected ? meta.bg : colors.bg.input,
+                    gap: 10,
+                    paddingHorizontal: 14,
+                    borderRadius: 14,
+                    backgroundColor: `${currentColor}1f`,
                     borderWidth: 1,
-                    borderColor: isSelected ? meta.text : colors.divider,
+                    borderColor: `${currentColor}55`,
                   }}
                 >
-                  <Text style={{ color: isSelected ? meta.text : colors.text.secondary, fontSize: 12, fontWeight: '600' }}>{meta.label}</Text>
+                  <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: currentColor }} />
+                  <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
+                    <Text style={{ color: palette.muted, fontSize: 10, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>Current status</Text>
+                    <Text style={{ color: currentColor, fontSize: 14, fontWeight: '600' }} numberOfLines={1}>{currentLabel}</Text>
+                  </View>
+                  <ChevronDown size={16} color={palette.textSoft} strokeWidth={2.4} />
                 </Pressable>
-              );
-            })}
-          </View>
+
+                {statusListOpen ? (
+                  <View style={{ padding: 6, borderRadius: 16, backgroundColor: palette.cardHover, borderWidth: 1, borderColor: palette.outline }}>
+                    {statusOptions.map(([option, meta]) => {
+                      const isSelected = expense.status === option;
+                      return (
+                        <Pressable
+                          key={option}
+                          onPress={() => {
+                            setStatusListOpen(false);
+                            if (isSelected) return;
+                            updateExpense(expense.id, { status: option }, businessId);
+                            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          }}
+                          className="active:opacity-80"
+                          style={{
+                            minHeight: 42,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 10,
+                            paddingHorizontal: 10,
+                            borderRadius: 10,
+                            backgroundColor: isSelected ? palette.softFill : 'transparent',
+                          }}
+                        >
+                          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: meta.text }} />
+                          <Text style={{ color: palette.text, fontSize: 14, fontWeight: isSelected ? '600' : '500', flex: 1 }}>{meta.label}</Text>
+                          {isSelected ? <Check size={14} color={palette.text} strokeWidth={2.6} /> : null}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                ) : null}
+              </View>
+            );
+          })()}
         </View>
 
         {/* Payment breakdown */}
-        <View style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.divider }}>
+        <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}>
           <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12 }}>
-            <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }}>Payment Breakdown</Text>
+            <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1 }}>Payment Breakdown</Text>
           </View>
           <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
             {lineItems.map((line, index) => (
@@ -463,37 +493,38 @@ export function ExpenseDetailPanel({ expenseId, compact = false, onClose, onEdit
                   justifyContent: 'space-between',
                   paddingVertical: 8,
                   borderBottomWidth: index === lineItems.length - 1 ? 0 : 1,
-                  borderBottomColor: colors.divider,
+                  borderBottomColor: palette.hairline,
                 }}
               >
                 <View style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
-                  <Text style={{ color: colors.text.primary, fontSize: compact ? 12 : 13, fontWeight: '500' }} numberOfLines={1}>{line.label}</Text>
-                  <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 1 }}>{capitalizeDisplayValue(line.category)}</Text>
+                  <Text style={{ color: palette.text, fontSize: 12, fontWeight: '500' }} numberOfLines={1}>{line.label}</Text>
+                  <Text style={{ color: palette.faint, fontSize: 10, marginTop: 2 }}>{capitalizeDisplayValue(line.category)}</Text>
                 </View>
-                <Text style={{ color: colors.text.primary, fontSize: compact ? 13 : 14, fontWeight: '600' }}>
+                <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }}>
                   {formatCurrency(line.amount)}
                 </Text>
               </View>
             ))}
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10, paddingTop: 10, borderTopWidth: 1.5, borderTopColor: colors.divider }}>
-              <Text style={{ color: colors.text.primary, fontSize: compact ? 12 : 13, fontWeight: '700' }}>Total Logged</Text>
-              <Text style={{ color: colors.text.primary, fontSize: compact ? 14 : 15, fontWeight: '500' }}>{formatCurrency(expense.amount)}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: palette.hairline }}>
+              <Text style={{ color: palette.text, fontSize: 14, fontWeight: '700' }}>Total Logged</Text>
+              <MoneyText style={{ color: palette.text, fontSize: 16 }}>{formatCurrency(expense.amount)}</MoneyText>
             </View>
           </View>
         </View>
 
         {/* Metadata card */}
-        <View style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.divider }}>
+        <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}>
           <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 }}>
-            <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }}>Details</Text>
+            <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1 }}>Details</Text>
           </View>
 
           {[
-            { label: 'Supplier / Merchant', value: merchant || '—', icon: <User size={compact ? 12 : 13} color={colors.text.tertiary} strokeWidth={2} /> },
-            { label: 'Primary Category', value: expense.category || '—', icon: <Tag size={compact ? 12 : 13} color={colors.text.tertiary} strokeWidth={2} /> },
-            { label: 'Expense Type', value: expenseType === 'one-time' ? 'One-Time' : 'Recurring', icon: <Receipt size={compact ? 12 : 13} color={colors.text.tertiary} strokeWidth={2} /> },
-            { label: 'Date', value: date || '—', icon: <Calendar size={compact ? 12 : 13} color={colors.text.tertiary} strokeWidth={2} /> },
-            { label: 'Created', value: createdAt || '—', icon: <Clock size={compact ? 12 : 13} color={colors.text.tertiary} strokeWidth={2} /> },
+            { label: 'Supplier / Merchant', value: merchant || '—', icon: <User size={compact ? 12 : 13} color={palette.faint} strokeWidth={2} /> },
+            { label: 'Primary Category', value: expense.category || '—', icon: <Tag size={compact ? 12 : 13} color={palette.faint} strokeWidth={2} /> },
+            { label: 'Expense Type', value: expenseType === 'one-time' ? 'One-Time' : 'Recurring', icon: <Receipt size={compact ? 12 : 13} color={palette.faint} strokeWidth={2} /> },
+            { label: 'Submitted by', value: submittedBy || '—', icon: <User size={compact ? 12 : 13} color={palette.faint} strokeWidth={2} /> },
+            { label: 'Date', value: date || '—', icon: <Calendar size={compact ? 12 : 13} color={palette.faint} strokeWidth={2} /> },
+            { label: 'Created', value: createdAt || '—', icon: <Clock size={compact ? 12 : 13} color={palette.faint} strokeWidth={2} /> },
           ].map((row, index) => (
             <View
               key={row.label}
@@ -504,16 +535,16 @@ export function ExpenseDetailPanel({ expenseId, compact = false, onClose, onEdit
                 paddingHorizontal: 16,
                 paddingVertical: compact ? 9 : 10,
                 borderTopWidth: index === 0 ? 1 : 0,
-                borderTopColor: colors.divider,
+                borderTopColor: palette.border,
                 gap: 10,
               }}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 {row.icon}
-                <Text style={{ color: colors.text.secondary, fontSize: compact ? 12 : 13 }}>{row.label}</Text>
+                <Text style={{ color: palette.faint, fontSize: 12 }}>{row.label}</Text>
               </View>
               <Text
-                style={{ color: colors.text.primary, fontSize: compact ? 12 : detailValueFontSize, fontWeight: '600', flex: 1, textAlign: 'right', marginLeft: 16 }}
+                style={{ color: palette.text, fontSize: 12, fontWeight: '600', flex: 1, textAlign: 'right', marginLeft: 16 }}
               >
                 {capitalizeDisplayValue(row.value)}
               </Text>
@@ -523,17 +554,17 @@ export function ExpenseDetailPanel({ expenseId, compact = false, onClose, onEdit
 
         {/* Notes */}
         {note ? (
-          <View style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.divider, padding: 16 }}>
-            <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Notes</Text>
-            <Text style={{ color: colors.text.primary, fontSize: detailValueFontSize, lineHeight: compact ? 18 : 20 }}>{note}</Text>
+          <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, padding: 16 }}>
+            <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1, marginBottom: 8 }}>Notes</Text>
+            <Text style={{ color: palette.text, fontSize: 12, lineHeight: 18 }}>{note}</Text>
           </View>
         ) : null}
 
         {/* Receipts */}
         {receipts.length > 0 ? (
-          <View style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.divider }}>
+          <View style={{ borderRadius: 26, overflow: 'hidden', backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}>
             <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 }}>
-              <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }}>Receipts & Evidence</Text>
+              <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1 }}>Receipts & Evidence</Text>
             </View>
             {receipts.map((receipt, index) => (
               <Pressable
@@ -545,65 +576,49 @@ export function ExpenseDetailPanel({ expenseId, compact = false, onClose, onEdit
                   paddingHorizontal: 16,
                   paddingVertical: 10,
                   borderTopWidth: 1,
-                  borderTopColor: colors.divider,
+                  borderTopColor: palette.hairline,
                   gap: 12,
                 }}
               >
-                <View style={{ width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg.input, borderWidth: 1, borderColor: colors.divider }}>
-                  <FileText size={17} color={colors.text.tertiary} strokeWidth={2} />
+                <View style={{ width: 40, height: 40, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.nudgeBg }}>
+                  <FileText size={17} color={palette.faint} strokeWidth={2} />
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }} numberOfLines={1}>{receipt.fileName}</Text>
-                  <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 1 }}>Tap to view</Text>
+                  <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>{receipt.fileName}</Text>
+                  <Text style={{ color: palette.faint, fontSize: 10, marginTop: 2 }}>Tap to view</Text>
                 </View>
-                <Download size={16} color={colors.text.muted} strokeWidth={2} />
+                <Download size={16} color={palette.faint} strokeWidth={2} />
               </Pressable>
             ))}
           </View>
         ) : null}
 
-        {/* Activity thread */}
-        {activityEvents.length > 0 ? (
-          <View style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.divider }}>
-            <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 10 }}>
-              <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }}>Activity</Text>
+        {/* Activity */}
+        {activity.length > 0 ? (
+          <View style={{ borderRadius: 26, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 16 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1 }}>Activity</Text>
+              <Text style={{ color: palette.faint, fontSize: 12 }}>{activity.length} {activity.length === 1 ? 'event' : 'events'}</Text>
             </View>
-            {activityEvents.map((event, index) => {
-              const isLast = index === activityEvents.length - 1;
-              const dotColor = event.type === 'approve' ? '#10B981' : event.type === 'reject' ? '#EF4444' : event.type === 'submit' ? '#3B82F6' : colors.text.muted;
-              const dotBg = event.type === 'approve' ? 'rgba(16,185,129,0.12)' : event.type === 'reject' ? 'rgba(239,68,68,0.12)' : event.type === 'submit' ? 'rgba(59,130,246,0.12)' : colors.bg.input;
-              const EventIcon = event.type === 'approve' ? CheckCircle : event.type === 'reject' ? XCircle : event.type === 'submit' ? Send : PlusCircle;
-              const tsMs = new Date(event.ts).getTime();
-              const tsLabel = (() => {
-                if (!Number.isFinite(tsMs)) return '';
-                const diffMs = Date.now() - tsMs;
-                const mins = Math.floor(diffMs / 60000);
-                if (mins < 1) return 'just now';
-                if (mins < 60) return `${mins}m ago`;
-                const hrs = Math.floor(mins / 60);
-                if (hrs < 24) return `${hrs}h ago`;
-                const days = Math.floor(hrs / 24);
-                if (days < 7) return `${days}d ago`;
-                return new Date(tsMs).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-              })();
-              return (
-                <View key={index} style={{ flexDirection: 'row', paddingHorizontal: 16, paddingBottom: isLast ? 16 : 0 }}>
-                  <View style={{ width: 32, alignItems: 'center', paddingTop: 2 }}>
-                    <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: dotBg, alignItems: 'center', justifyContent: 'center' }}>
-                      <EventIcon size={13} color={dotColor} strokeWidth={2} />
-                    </View>
-                    {!isLast ? <View style={{ width: 1.5, flex: 1, backgroundColor: colors.divider, marginTop: 4 }} /> : null}
+            <View style={{ gap: 14 }}>
+              {activity.map((entry, index) => (
+                <View key={`${entry.label}-${entry.at}-${index}`} style={{ flexDirection: 'row', gap: 12 }}>
+                  <View style={{ alignItems: 'center' }}>
+                    <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: index === 0 ? palette.limeOnSurface : palette.outline, marginTop: 4 }} />
+                    {index < activity.length - 1 ? (
+                      <View style={{ width: 1, flex: 1, backgroundColor: palette.hairline, marginTop: 6, minHeight: 28 }} />
+                    ) : null}
                   </View>
-                  <View style={{ flex: 1, paddingLeft: 10, paddingTop: 4, paddingBottom: isLast ? 0 : 14 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                      <Text style={{ color: colors.text.primary, fontSize: compact ? 11 : 12, fontWeight: '600', flex: 1 }}>{event.label}</Text>
-                      {tsLabel ? <Text style={{ color: colors.text.muted, fontSize: 10 }}>{tsLabel}</Text> : null}
-                    </View>
-                    <Text style={{ color: colors.text.tertiary, fontSize: 10, marginTop: 2 }}>{event.actor}</Text>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ color: palette.text, fontSize: 10, lineHeight: 15, fontWeight: '600' }}>{entry.label}</Text>
+                    <Text style={{ color: palette.faint, fontSize: 10, marginTop: 2 }}>
+                      {entry.actorName} · {new Date(entry.at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                    </Text>
+                    {entry.detail ? <Text style={{ color: palette.muted, fontSize: 10, lineHeight: 15, marginTop: 4 }}>{entry.detail}</Text> : null}
                   </View>
                 </View>
-              );
-            })}
+              ))}
+            </View>
           </View>
         ) : null}
 

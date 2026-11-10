@@ -8,7 +8,6 @@ import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { useFonts, BricolageGrotesque_800ExtraBold } from '@expo-google-fonts/bricolage-grotesque';
-import { DMSans_400Regular, DMSans_600SemiBold, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
 import { Landmark, Check, Copy, Upload, CircleAlert, ChevronDown, ChevronLeft, ChevronRight, Clock, Lock, ArrowRight, Share2 } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
 import { getSocialCheckoutPublic, saveSocialCheckoutDetails, submitSocialCheckoutPayment } from '@/lib/supabase/social-checkout-public';
@@ -247,8 +246,7 @@ function CheckoutInput({
             borderColor: isFocused ? fyllColors.accent : 'rgba(255,255,255,0.14)',
             backgroundColor: 'rgba(255,255,255,0.05)',
             color: '#FFFFFF',
-            fontFamily: 'DMSans_400Regular',
-            fontSize: 15,
+                        fontSize: 15,
             lineHeight: multiline ? 22 : undefined,
           },
           isFocused ? INPUT_FOCUS_RING : null,
@@ -294,9 +292,8 @@ function CopyRow({ label, value, copied, onPress, fontReady }: { label: string; 
 }
 
 function DText({ weight = '400', style, ...props }: TextProps & { weight?: '400' | '600' | '700' }) {
-  const face = weight === '700' ? 'DMSans_700Bold' : weight === '600' ? 'DMSans_600SemiBold' : 'DMSans_400Regular';
-  const family = Platform.OS === 'web' ? `${face}, system-ui, -apple-system, 'Segoe UI', sans-serif` : face;
-  return <NativeText {...props} style={[{ fontFamily: family }, style]} />;
+  const family = Platform.OS === 'web' ? "system-ui, -apple-system, 'Segoe UI', sans-serif" : undefined;
+  return <NativeText {...props} style={[{ fontFamily: family, fontWeight: weight }, style]} />;
 }
 
 const MONO_FONT = Platform.select({ ios: 'Menlo', android: 'monospace', default: 'ui-monospace, SFMono-Regular, Menlo, monospace' });
@@ -441,7 +438,7 @@ function formatExpiryCountdown(ms: number) {
 }
 
 export default function PublicSocialCheckoutScreen() {
-  const [bricolageReady, fontError] = useFonts({ BricolageGrotesque_800ExtraBold, DMSans_400Regular, DMSans_600SemiBold, DMSans_700Bold });
+  const [bricolageReady, fontError] = useFonts({ BricolageGrotesque_800ExtraBold });
   // Hold the loading screen until the fonts are in, so the page never flashes
   // in the browser's default serif. A font error just falls back to system type.
   const fontsSettled = bricolageReady || fontError != null;
@@ -1014,7 +1011,7 @@ export default function PublicSocialCheckoutScreen() {
                         placeholder="Search state"
                         placeholderTextColor="rgba(244,244,239,0.4)"
                         autoFocus
-                        style={[{ flex: 1, color: '#F4F4EF', fontSize: 15, fontFamily: 'DMSans_400Regular' }, WEB_NO_OUTLINE]}
+                        style={[{ flex: 1, color: '#F4F4EF', fontSize: 15 }, WEB_NO_OUTLINE]}
                       />
                       <SearchClearButton visible={Boolean(stateSearchQuery.trim())} onPress={() => setStateSearchQuery('')} />
                     </View>

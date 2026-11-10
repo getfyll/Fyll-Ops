@@ -46,7 +46,8 @@ import { supabaseData } from '@/lib/supabase/data';
 import { createWooCommerceOrderFromFyll, fetchWooCommerceOrder } from '@/lib/woocommerce';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
 import { useWooCommerceAvailable } from '@/hooks/useWooCommerceAvailable';
-import { FYLL_LIME, FYLL_LIME_INK } from '@/components/payments/payments-ui';
+import { FYLL_LIME, FYLL_LIME_INK, MoneyText } from '@/components/payments/payments-ui';
+import { formatPickupHours, isPickupOrder, normalizePickupSettings, orderStatusAppliesToOrder } from '@/lib/pickup';
 
 const STAMP_DUTY_THRESHOLD = 10000;
 
@@ -192,7 +193,7 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
   const isOfflineMode = useAuthStore((s) => s.isOfflineMode);
   const wooAvailable = useWooCommerceAvailable();
-  const { woocommerceStoreUrl, woocommerceConsumerKey, woocommerceConsumerSecret, hasWooCommerceConnection } = useBusinessSettings();
+  const { woocommerceStoreUrl, woocommerceConsumerKey, woocommerceConsumerSecret, hasWooCommerceConnection, pickupSettings: businessPickupSettings } = useBusinessSettings();
   const [pendingCancelOrder, setPendingCancelOrder] = useState(false);
   const [pendingDeleteOrder, setPendingDeleteOrder] = useState(false);
   const [showStatusModal, setShowStatusModal] = useState(false);
@@ -251,8 +252,8 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
   }, [activeStatus, orderStatuses]);
   const activeStatusDisplay = getSystemOrderStatusDisplay(activeStatus, selectedOrderStatus?.color ?? statusColor);
   const orderedOrderStatuses = useMemo(() => (
-    sortOrderStatusesForFulfillment(orderStatuses)
-  ), [orderStatuses]);
+    sortOrderStatusesForFulfillment(orderStatuses).filter((status) => orderStatusAppliesToOrder(status, isPickupOrder(order), activeStatus))
+  ), [activeStatus, order, orderStatuses]);
   const canSendDeliveryConfirmationEmail = Boolean(order?.customerEmail?.trim()) && !isOfflineMode;
   const showDeliveryConfirmationTrigger = isDeliveryConfirmationStatus(activeStatus);
 
@@ -1299,8 +1300,12 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
   }
 
   const relatedPayment = relatedPaymentQuery.data ?? null;
-  const deliveryAddressText = formatAddressValue(order.deliveryAddress);
-  const deliveryStateText = normalizeDeliveryStateValue(order.deliveryState, order.deliveryAddress);
+  const isPickup = isPickupOrder(order);
+  // Where the customer collects it (the order's own snapshot, else the current pickup settings). Ops is internal, so the
+  // full address is always shown.
+  const pickupInfo = isPickup ? normalizePickupSettings(order.pickupDetails ?? businessPickupSettings) : null;
+  const deliveryAddressText = isPickup ? '' : formatAddressValue(order.deliveryAddress);
+  const deliveryStateText = isPickup ? '' : normalizeDeliveryStateValue(order.deliveryState, order.deliveryAddress);
 
   return (
     <View style={{ flex: disableRootFlex ? undefined : 1 }}>
@@ -1435,6 +1440,37 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
             <Text style={{ color: colors.text.secondary, fontSize: 14, marginLeft: 8 }}>{order.customerEmail}</Text>
           </Pressable>
         )}
+
+        {pickupInfo ? (
+          <View style={{ marginTop: 8, padding: 14, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(170,184,40,0.45)', backgroundColor: 'rgba(213,224,87,0.16)', gap: 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <View style={{ height: 22, paddingHorizontal: 9, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: FYLL_LIME }}>
+                <Text style={{ color: FYLL_LIME_INK, fontSize: 10, fontWeight: '700', letterSpacing: 0.55, textTransform: 'uppercase' }}>Pickup</Text>
+              </View>
+              <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600', flex: 1 }} numberOfLines={1}>
+                {pickupInfo.locationName || pickupInfo.areaName || 'Customer collects this order'}
+              </Text>
+            </View>
+            {pickupInfo.fullAddress || pickupInfo.areaName ? (
+              <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+                <MapPin size={14} color={colors.text.tertiary} strokeWidth={2} style={{ marginTop: 2 }} />
+                <Text style={{ color: colors.text.secondary, fontSize: 12, lineHeight: 18, flex: 1 }} selectable>{pickupInfo.fullAddress || pickupInfo.areaName}</Text>
+              </View>
+            ) : null}
+            {pickupInfo.contactName || pickupInfo.contactPhone ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Phone size={14} color={colors.text.tertiary} strokeWidth={2} />
+                <Text style={{ color: colors.text.secondary, fontSize: 12, lineHeight: 18, flex: 1 }} selectable>{[pickupInfo.contactName, pickupInfo.contactPhone].filter(Boolean).join(' · ')}</Text>
+              </View>
+            ) : null}
+            {formatPickupHours(pickupInfo) ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Calendar size={14} color={colors.text.tertiary} strokeWidth={2} />
+                <Text style={{ color: colors.text.secondary, fontSize: 12, lineHeight: 18, flex: 1 }}>{formatPickupHours(pickupInfo)}</Text>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
 
         {deliveryAddressText ? (
           <View style={{ flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 6 }}>
@@ -1620,7 +1656,7 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
           {order.services?.map((service, index) => (
             <DetailKeyValue key={`${service.serviceId}-${index}`} label={getLinkedServiceLabel(service)} value={formatCurrency(service.price)} />
           ))}
-          {order.deliveryFee > 0 && (
+          {!isPickup && order.deliveryFee > 0 && (
             <DetailKeyValue label="Delivery Fee" value={formatCurrency(order.deliveryFee)} />
           )}
           {order.discountAmount && order.discountAmount > 0 && (
@@ -1821,7 +1857,8 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
         </DetailSection>
       ) : null}
 
-      {/* Logistics */}
+      {/* Logistics: courier and dispatch details do not apply to a pickup order */}
+      {isPickup ? null : (
       <DetailSection title="Logistics">
         <View className="flex-row items-center justify-end mb-3">
           <Pressable
@@ -1872,6 +1909,7 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
           </View>
         )}
       </DetailSection>
+      )}
 
       {/* Prescription */}
       <DetailSection title="Prescription">
@@ -2800,7 +2838,7 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
           style={{ marginTop: 12, minHeight: 48, borderRadius: 999, backgroundColor: FYLL_LIME, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}
         >
           <Printer size={17} color={FYLL_LIME_INK} strokeWidth={2.2} />
-          <Text style={{ color: FYLL_LIME_INK, fontSize: 14, fontWeight: '700' }}>Print Shipping Label</Text>
+          <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 14 }}>Print Shipping Label</MoneyText>
         </Pressable>
       </DetailSection>
 

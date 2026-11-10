@@ -68,25 +68,45 @@ declare
       'order', 3,
       'trackingStage', 'processing'
     ),
+    -- The Fyll Store matches these two by name and stage: "Ready for pickup" must be 'out-for-delivery' and match
+    -- /ready.*pick[ -]?up/i, "Collected by customer" must be 'delivered' and match /collected|collection/i.
+    jsonb_build_object(
+      'id', 'order-status-ready-for-pickup',
+      'name', 'Ready for pickup',
+      'color', '#06B6D4',
+      'order', 4,
+      'trackingStage', 'out-for-delivery',
+      'appliesTo', 'pickup'
+    ),
     jsonb_build_object(
       'id', 'order-status-out-for-delivery',
       'name', 'Out for delivery',
       'color', '#F97316',
-      'order', 4,
-      'trackingStage', 'out-for-delivery'
+      'order', 5,
+      'trackingStage', 'out-for-delivery',
+      'appliesTo', 'delivery'
     ),
     jsonb_build_object(
       'id', 'order-status-delivered',
       'name', 'Delivered',
       'color', '#10B981',
-      'order', 5,
-      'trackingStage', 'delivered'
+      'order', 6,
+      'trackingStage', 'delivered',
+      'appliesTo', 'delivery'
+    ),
+    jsonb_build_object(
+      'id', 'order-status-collected-by-customer',
+      'name', 'Collected by customer',
+      'color', '#0D9488',
+      'order', 7,
+      'trackingStage', 'delivered',
+      'appliesTo', 'pickup'
     ),
     jsonb_build_object(
       'id', 'order-status-completed',
       'name', 'Completed',
       'color', '#22C55E',
-      'order', 6,
+      'order', 8,
       'trackingStage', 'completed'
     )
   );
@@ -185,9 +205,11 @@ with default_statuses as (
       (1, 'order-status-pending-payment', 'Payment approval', '#F59E0B', 'pending-payment'),
       (2, 'order-status-payment-confirmed', 'Payment confirmed', '#059669', 'received'),
       (3, 'order-status-preparing', 'Preparing', '#8B5CF6', 'processing'),
-      (4, 'order-status-out-for-delivery', 'Out for delivery', '#F97316', 'out-for-delivery'),
-      (5, 'order-status-delivered', 'Delivered', '#10B981', 'delivered'),
-      (6, 'order-status-completed', 'Completed', '#22C55E', 'completed')
+      (4, 'order-status-ready-for-pickup', 'Ready for pickup', '#06B6D4', 'out-for-delivery'),
+      (5, 'order-status-out-for-delivery', 'Out for delivery', '#F97316', 'out-for-delivery'),
+      (6, 'order-status-delivered', 'Delivered', '#10B981', 'delivered'),
+      (7, 'order-status-collected-by-customer', 'Collected by customer', '#0D9488', 'delivered'),
+      (8, 'order-status-completed', 'Completed', '#22C55E', 'completed')
   ) as status_rows(position, id, name, color, tracking_stage)
 ),
 businesses_without_statuses as (

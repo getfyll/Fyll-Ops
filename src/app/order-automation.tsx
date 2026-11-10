@@ -282,16 +282,6 @@ export default function OrderAutomationScreen() {
     <View style={panelStyles.outer}>
       <View style={panelStyles.inner}>
         <SafeAreaView className="flex-1" edges={['top']} style={{ backgroundColor: isWebDesktop ? colors.bg.card : colors.bg.primary }}>
-          {!isWebDesktop ? (
-            <LinearGradient
-              pointerEvents="none"
-              colors={resolvedThemeMode === 'dark' ? ['rgba(111,125,18,0.55)', 'rgba(17,17,17,0)'] : ['rgba(213,224,87,0.42)', 'rgba(244,243,235,0)']}
-              locations={[0, 1]}
-              start={{ x: 0.5, y: 0 }}
-              end={{ x: 0.5, y: 1 }}
-              style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 360 }}
-            />
-          ) : null}
           <View
             style={{
               minHeight: isWebDesktop ? 60 : 66,
@@ -361,9 +351,8 @@ export default function OrderAutomationScreen() {
             >
               <View
                 className="rounded-3xl overflow-hidden mb-5"
-                style={{ position: 'relative', minHeight: isWebDesktop ? 138 : 150, justifyContent: 'center', backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}
+                style={{ position: 'relative', minHeight: isWebDesktop ? 138 : undefined, justifyContent: 'center', backgroundColor: settingsPalette.card, borderWidth: 1, borderColor: settingsPalette.border }}
               >
-                <LinearGradient pointerEvents="none" colors={[settingsPalette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -44, right: -36, width: 210, height: 210, borderRadius: 105 }} />
                 <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
                 <View style={{ padding: isWebDesktop ? 24 : 20 }}>
                   <View className="flex-row items-center">

@@ -79,7 +79,6 @@ export default function WarehouseSettingsScreen() {
     <View style={panelStyles.outer}>
       <View style={panelStyles.inner}>
     <SafeAreaView style={{ flex: 1, backgroundColor: settingsPalette.page }}>
-      {!isDesktop ? <LinearGradient pointerEvents="none" colors={resolvedThemeMode === 'dark' ? ['rgba(111,125,18,0.55)', 'rgba(20,20,20,0)'] : ['rgba(213,224,87,0.42)', 'rgba(244,243,235,0)']} style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 360 }} /> : null}
       <InternalSettingsHeader
         title="Warehouse Settings"
         description="Configure the categories and units used to structure inventory."

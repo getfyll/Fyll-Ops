@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, Pressable, ScrollView, Modal, Image, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, Pressable, ScrollView, Modal, Image, KeyboardAvoidingView, Platform } from 'react-native';
+import { FocusTextInput } from '@/components/FocusTextInput';
+import { FYLL_LIME, FYLL_LIME_INK, MoneyText, usePaymentsPalette } from '@/components/payments/payments-ui';
 import { useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { RealtimeChannel } from '@supabase/supabase-js';
@@ -87,14 +89,10 @@ interface CaseDetailPanelProps {
 }
 
 function CaseCommentAvatar({ member, size = 28 }: { member?: TeamMember; size?: number }) {
+  const brand = usePaymentsPalette();
   const name = member?.name?.trim() ?? 'T';
   const initial = name.charAt(0).toUpperCase();
-  const palette = ['#111827', '#2563EB', '#0F766E', '#9333EA', '#C2410C'];
-  let hash = 0;
-  for (let i = 0; i < name.length; i += 1) {
-    hash = (hash + name.charCodeAt(i) * (i + 1)) % 10000;
-  }
-  const bg = palette[hash % palette.length];
+  const bg = brand.avatarBg;
 
   return (
     <View
@@ -107,7 +105,7 @@ function CaseCommentAvatar({ member, size = 28 }: { member?: TeamMember; size?: 
         backgroundColor: bg,
       }}
     >
-      <Text style={{ color: '#FFFFFF', fontSize: size <= 24 ? 10 : 11, fontWeight: '700' }}>{initial}</Text>
+      <Text style={{ color: brand.avatarText, fontSize: size <= 24 ? 10 : 12, fontWeight: '700' }}>{initial}</Text>
     </View>
   );
 }
@@ -190,6 +188,7 @@ function CaseCommentsSection({
   teamMembers: TeamMember[];
 }) {
   const colors = useThemeColors();
+  const palette = usePaymentsPalette();
   const { isDesktop } = useBreakpoint();
   const isWebDesktop = Platform.OS === 'web' && isDesktop;
   const queryClient = useQueryClient();
@@ -201,16 +200,12 @@ function CaseCommentsSection({
   const commentBodyFontSize = isDesktop ? 13 : 14;
   const commentBodyLineHeight = isDesktop ? 20 : 22;
   const commentsListMaxHeight = isWebDesktop ? 340 : 300;
-  const commentsSectionSurface = isWebDesktop
-    ? colors.bg.card
-    : (colors.bg.secondary || '#F3F4F6');
-  const commentsSectionHorizontalPadding = isWebDesktop ? 0 : 18;
-  const commentsSectionContentPadding = isWebDesktop ? 0 : 2;
-  const mentionBg = isWebDesktop ? 'rgba(37, 99, 235, 0.12)' : 'rgba(37, 99, 235, 0.10)';
-  const mentionText = '#1D4ED8';
-  const commentDividerColor = colors.border.light.startsWith('#')
-    ? `${colors.border.light}${isWebDesktop ? '7A' : '5E'}`
-    : colors.border.light;
+  const commentsSectionSurface = palette.card;
+  const commentsSectionHorizontalPadding = 16;
+  const commentsSectionContentPadding = 0;
+  const mentionBg = palette.nudgeBg;
+  const mentionText = palette.limeOnSurface;
+  const commentDividerColor = palette.hairline;
   const teamMap = useMemo(() => new Map(teamMembers.map((member) => [member.id, member])), [teamMembers]);
   const mentionAliasMap = useMemo(() => buildMentionAliasMap(teamMembers), [teamMembers]);
   const activeMentionQuery = useMemo(() => {
@@ -392,30 +387,30 @@ function CaseCommentsSection({
   return (
     <View
       style={{
-        marginTop: 16,
+        marginTop: isWebDesktop ? 16 : 0,
+        marginHorizontal: isWebDesktop ? 0 : 20,
+        marginBottom: isWebDesktop ? 0 : 24,
         backgroundColor: commentsSectionSurface,
-        borderWidth: isWebDesktop ? 1 : 0,
-        borderColor: colors.border.light,
-        borderTopWidth: isWebDesktop ? 1 : 0.5,
-        borderTopColor: colors.border.light,
-        borderRadius: isWebDesktop ? 12 : 0,
+        borderWidth: 1,
+        borderColor: palette.border,
+        borderRadius: 26,
+        overflow: 'hidden',
       }}
     >
       <View
         style={{
-          paddingHorizontal: isWebDesktop ? 16 : commentsSectionHorizontalPadding,
-          paddingTop: isWebDesktop ? 16 : 12,
+          paddingHorizontal: commentsSectionHorizontalPadding,
+          paddingTop: 14,
           paddingBottom: 12,
           borderBottomWidth: 1,
-          borderBottomColor: colors.border.light,
+          borderBottomColor: palette.hairline,
         }}
       >
         <View className="flex-row items-center gap-2">
-          <MessageSquare size={16} color={colors.text.tertiary} strokeWidth={2} />
-          <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase tracking-wider">
+          <Text style={{ color: palette.faint, fontSize: 10 }} className="font-bold uppercase tracking-widest">
             Comments
           </Text>
-          <Text style={{ color: colors.text.muted }} className="text-xs ml-auto">
+          <Text style={{ color: palette.faint, fontSize: 12 }} className="ml-auto">
             {comments.length} {comments.length === 1 ? 'comment' : 'comments'}
           </Text>
         </View>
@@ -424,9 +419,9 @@ function CaseCommentsSection({
       {isOfflineMode ? (
         <Text
           style={{
-            color: colors.text.muted,
+            color: palette.faint,
             fontSize: 14,
-            paddingHorizontal: isWebDesktop ? 16 : commentsSectionHorizontalPadding,
+            paddingHorizontal: commentsSectionHorizontalPadding,
             paddingBottom: 16,
           }}
         >
@@ -447,23 +442,23 @@ function CaseCommentsSection({
             showsVerticalScrollIndicator={comments.length > 4}
           >
             {threadQuery.isPending || commentsQuery.isPending ? (
-              <Text style={{ color: colors.text.muted }} className="text-sm text-center py-4">
+              <Text style={{ color: palette.faint, fontSize: 12 }} className="text-center py-4">
                 Loading comments...
               </Text>
             ) : null}
 
             {threadQuery.isError || commentsQuery.isError ? (
-              <Text style={{ color: '#B91C1C' }} className="text-sm text-center py-2">
+              <Text style={{ color: palette.danger, fontSize: 12 }} className="text-center py-2">
                 Could not load case comments right now.
               </Text>
             ) : null}
 
             {!threadQuery.isPending && !commentsQuery.isPending && comments.length === 0 ? (
               <View className="py-5">
-                <Text style={{ color: colors.text.secondary }} className="text-sm font-semibold text-center">
+                <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }} className="text-center">
                   No follow-ups yet
                 </Text>
-                <Text style={{ color: colors.text.muted }} className="text-xs text-center mt-1">
+                <Text style={{ color: palette.faint, fontSize: 12 }} className="text-center mt-1">
                   Leave a note or tag a team member with @name.
                 </Text>
               </View>
@@ -482,7 +477,7 @@ function CaseCommentsSection({
                   style={{
                     width: '100%',
                     paddingTop: index === 0 ? 6 : 8,
-                    paddingHorizontal: isWebDesktop ? 16 : commentsSectionHorizontalPadding,
+                    paddingHorizontal: commentsSectionHorizontalPadding,
                     paddingBottom: showDivider ? 14 : 0,
                     marginBottom: showDivider ? 2 : 0,
                     borderBottomWidth: showDivider ? 1 : 0,
@@ -499,16 +494,16 @@ function CaseCommentsSection({
                     <CaseCommentAvatar member={author} />
                     <View style={{ minWidth: 0, flex: 1 }}>
                       <View className="flex-row items-center gap-2 mb-1 pr-2">
-                        <Text style={{ color: colors.text.secondary }} className="text-[11px] font-semibold">
+                        <Text style={{ color: palette.text, fontSize: 12 }} className="font-semibold">
                           {author?.name ?? currentUserName ?? 'Team member'}
                         </Text>
-                        <Text style={{ color: colors.text.muted }} className="text-[10px]">
+                        <Text style={{ color: palette.faint, fontSize: 10 }}>
                           {new Date(comment.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </Text>
                         {isMine ? (
-                          <Text style={{ color: colors.text.muted }} className="text-[10px] font-semibold">
-                            You
-                          </Text>
+                          <View style={{ backgroundColor: palette.nudgeBg, borderRadius: 999, paddingHorizontal: 7, paddingVertical: 1 }}>
+                            <Text style={{ color: palette.limeOnSurface, fontSize: 10, fontWeight: '700' }}>You</Text>
+                          </View>
                         ) : null}
                       </View>
                       <View className="flex-row items-start gap-2">
@@ -523,9 +518,9 @@ function CaseCommentsSection({
                           >
                             <Text
                               style={{
-                                color: colors.text.primary,
-                                fontSize: commentBodyFontSize,
-                                lineHeight: commentBodyLineHeight,
+                                color: palette.text,
+                                fontSize: 14,
+                                lineHeight: 21,
                               }}
                             >
                               {commentSegments.map((segment, segmentIndex) => (
@@ -546,7 +541,7 @@ function CaseCommentsSection({
                             onPress={() => setReplyTarget({ commentId: comment.id, authorName: author?.name?.split(' ')[0] ?? 'Member' })}
                             className="mt-2 px-1 active:opacity-70"
                           >
-                            <Text style={{ color: colors.text.muted }} className="text-[11px] font-bold">Reply</Text>
+                            <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '600' }}>Reply</Text>
                           </Pressable>
                         </View>
 
@@ -568,15 +563,15 @@ function CaseCommentsSection({
                               borderRadius: 15,
                               alignItems: 'center',
                               justifyContent: 'center',
-                              backgroundColor: liked || likeCount > 0 ? 'rgba(245, 158, 11, 0.16)' : colors.bg.secondary,
+                              backgroundColor: liked || likeCount > 0 ? palette.nudgeBg : palette.softFill,
                               borderWidth: 1,
-                              borderColor: liked || likeCount > 0 ? 'rgba(245, 158, 11, 0.32)' : colors.border.light,
+                              borderColor: liked || likeCount > 0 ? palette.nudgeBorder : palette.border,
                             }}
                           >
                             <Text style={{ fontSize: 14, opacity: liked || likeCount > 0 ? 1 : 0.7 }}>👍</Text>
                           </View>
                           {likeCount > 0 ? (
-                            <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '700', marginTop: 4 }}>
+                            <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', marginTop: 4 }}>
                               {likeCount}
                             </Text>
                           ) : null}
@@ -593,23 +588,24 @@ function CaseCommentsSection({
             className="mt-4 pt-4"
             style={{
               borderTopWidth: 1,
-              borderTopColor: colors.border.light,
-              paddingHorizontal: isWebDesktop ? 16 : commentsSectionHorizontalPadding,
-              paddingBottom: isWebDesktop ? 16 : 26,
+              borderTopColor: palette.hairline,
+              paddingHorizontal: commentsSectionHorizontalPadding,
+              paddingBottom: 16,
             }}
           >
             {activeMentionQuery !== null ? (
               <View
-                className="mb-2 rounded-xl overflow-hidden"
+                className="mb-2 overflow-hidden"
                 style={{
+                  borderRadius: 18,
                   borderWidth: 1,
-                  borderColor: colors.border.light,
-                  backgroundColor: colors.bg.secondary,
+                  borderColor: palette.border,
+                  backgroundColor: palette.card,
                 }}
               >
                 {filteredMentionMembers.length === 0 ? (
                   <View className="px-3 py-2">
-                    <Text style={{ color: colors.text.muted }} className="text-xs">
+                    <Text style={{ color: palette.faint }} className="text-xs">
                       No team member match.
                     </Text>
                   </View>
@@ -627,10 +623,10 @@ function CaseCommentsSection({
                         className="px-3 py-2 flex-row items-center gap-2 active:opacity-80"
                       >
                         <CaseCommentAvatar member={member} size={20} />
-                        <Text style={{ color: colors.text.primary }} className="text-xs font-semibold">
+                        <Text style={{ color: palette.text }} className="text-xs font-semibold">
                           @{handle}
                         </Text>
-                        <Text style={{ color: colors.text.muted }} className="text-xs" numberOfLines={1}>
+                        <Text style={{ color: palette.faint }} className="text-xs" numberOfLines={1}>
                           {member.name}
                         </Text>
                       </Pressable>
@@ -642,35 +638,31 @@ function CaseCommentsSection({
 
             {replyTarget && (
               <View className="flex-row items-center justify-between mt-3 px-1" style={{ gap: 8 }}>
-                <Text style={{ color: colors.text.muted }} className="text-xs flex-1" numberOfLines={1}>
+                <Text style={{ color: palette.faint }} className="text-xs flex-1" numberOfLines={1}>
                   Replying to {replyTarget.authorName}
                 </Text>
                 <Pressable onPress={() => setReplyTarget(null)}>
-                  <Text style={{ color: colors.text.muted }} className="text-xs font-semibold">Cancel</Text>
+                  <Text style={{ color: palette.faint }} className="text-xs font-semibold">Cancel</Text>
                 </Pressable>
               </View>
             )}
             <View className="flex-row items-center gap-2 mt-3">
-              <View
-                className="flex-1 rounded-full px-4 flex-row items-center"
-                style={{
-                  backgroundColor: colors.bg.secondary,
-                  borderWidth: 1,
-                  borderColor: colors.border.light,
-                  minHeight: 44,
-                }}
-              >
-                <TextInput
+              <View className="flex-1">
+                <FocusTextInput
                   placeholder={replyTarget ? `Reply to ${replyTarget.authorName}...` : 'Add case follow-up'}
-                  placeholderTextColor={colors.text.muted}
+                  placeholderTextColor={palette.faint}
                   value={commentText}
                   onChangeText={setCommentText}
-                  className="flex-1 text-sm"
                   style={{
-                    color: colors.text.primary,
-                    height: 42,
-                    lineHeight: 18,
+                    color: palette.text,
+                    height: 46,
+                    fontSize: 14,
+                    paddingHorizontal: 16,
                     paddingVertical: 0,
+                    borderRadius: 23,
+                    borderWidth: 1,
+                    borderColor: palette.outline,
+                    backgroundColor: palette.card,
                     textAlignVertical: 'center',
                   }}
                   returnKeyType="send"
@@ -684,14 +676,16 @@ function CaseCommentsSection({
               <Pressable
                 onPress={() => postMutation.mutate()}
                 disabled={postMutation.isPending || !commentText.trim()}
-                className="w-10 h-10 rounded-full items-center justify-center active:opacity-80"
+                className="rounded-full items-center justify-center active:opacity-80"
                 style={{
+                  width: 46,
+                  height: 46,
                   backgroundColor: postMutation.isPending || !commentText.trim()
-                    ? colors.bg.secondary
-                    : '#111111',
+                    ? palette.softFill
+                    : FYLL_LIME,
                 }}
               >
-                <Send size={16} color={postMutation.isPending || !commentText.trim() ? colors.text.muted : '#FFFFFF'} strokeWidth={2.2} />
+                <Send size={16} color={postMutation.isPending || !commentText.trim() ? palette.faint : FYLL_LIME_INK} strokeWidth={2.2} />
               </Pressable>
             </View>
           </View>
@@ -708,7 +702,8 @@ export function CaseDetailPanel({
   showBackButton = false,
 }: CaseDetailPanelProps) {
   const colors = useThemeColors();
-  const isDark = colors.bg.primary === '#111111';
+  const palette = usePaymentsPalette();
+  const isDark = palette.page === '#111111';
   const router = useRouter();
   const { isDesktop, width: viewportWidth } = useBreakpoint();
   const isWebDesktop = Platform.OS === 'web' && isDesktop;
@@ -823,16 +818,16 @@ export function CaseDetailPanel({
 
   if (!caseItem) {
     return (
-      <View className="flex-1 items-center justify-center" style={{ backgroundColor: colors.bg.primary }}>
-        <FileText size={48} color={colors.text.muted} strokeWidth={1} />
-        <Text style={{ color: colors.text.muted }} className="mt-4 text-lg">
+      <View className="flex-1 items-center justify-center" style={{ backgroundColor: palette.page }}>
+        <FileText size={48} color={palette.faint} strokeWidth={1} />
+        <Text style={{ color: palette.faint }} className="mt-4 text-lg">
           Case not found
         </Text>
       </View>
     );
   }
 
-  const statusColor = statusColorMap[caseItem.status] ?? colors.text.muted;
+  const statusColor = statusColorMap[caseItem.status] ?? palette.faint;
   const formattedCreatedDate = new Date(caseItem.createdAt).toLocaleDateString('en-GB', {
     day: 'numeric',
     month: 'long',
@@ -913,17 +908,17 @@ export function CaseDetailPanel({
     ? refundButtonActiveBg
     : isApprovedRefundRequestForOrder
       ? refundButtonApprovedBg
-      : colors.bg.secondary;
+      : palette.softFill;
   const refundButtonBorder = canStartRefundRequestFromCase
     ? refundButtonActiveBorder
     : isApprovedRefundRequestForOrder
       ? refundButtonApprovedBorder
-      : colors.border.light;
+      : palette.border;
   const refundButtonText = canStartRefundRequestFromCase
     ? refundButtonActiveText
     : isApprovedRefundRequestForOrder
       ? refundButtonApprovedText
-      : colors.text.muted;
+      : palette.faint;
   const isWebOrTabletRefundLayout = Platform.OS === 'web' || viewportWidth >= 768;
   const refundButtonLabelFontSize = isWebOrTabletRefundLayout ? 13 : (viewportWidth <= 390 ? 12 : 13);
   const refundButtonMinHeight = isWebOrTabletRefundLayout ? 44 : 42;
@@ -948,7 +943,7 @@ export function CaseDetailPanel({
     setShowStatusModal(false);
   };
 
-  const selectedStatusColor = statusColorMap[caseItem.status] ?? colors.text.muted;
+  const selectedStatusColor = statusColorMap[caseItem.status] ?? palette.faint;
 
   const handleAddNote = async () => {
     if (!noteText.trim()) return;
@@ -1153,6 +1148,8 @@ export function CaseDetailPanel({
         status: nextStatus,
         refundType: inferRefundRequestType(linkedOrder.totalAmount, (linkedOrder.refund?.amount ?? 0) + parsedAmount),
         source: 'order',
+        caseId: caseItem.id,
+        caseNumber: caseItem.caseNumber,
         submittedByUserId: currentUserId,
         submittedByName: userName,
         submittedAt: nowIso,
@@ -1226,53 +1223,53 @@ export function CaseDetailPanel({
     }
   };
 
-  const linkedOrderActionBg = isDark ? '#FFFFFF' : colors.accent.primary;
-  const linkedOrderActionTextColor = isDark ? '#000000' : '#FFFFFF';
+  const linkedOrderActionBg = FYLL_LIME;
+  const linkedOrderActionTextColor = FYLL_LIME_INK;
   const linkedOrderThreadDotColor = linkedOrderThreadQuery.data ? '#EF4444' : '#9CA3AF';
 
   // Left column content sections
   const caseDetailsSection = (
     <View
-      className="p-4 rounded-xl"
-      style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+      className="p-4 rounded-[26px]"
+      style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}
     >
-      <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase tracking-wider mb-3">
+      <Text style={{ color: palette.faint, fontSize: 10 }} className="font-bold uppercase tracking-widest mb-3">
         Case Details
       </Text>
       <View className="gap-3">
         <View className="flex-row justify-between">
-          <Text style={{ color: colors.text.secondary }} className="text-sm">Category</Text>
-          <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">{caseItem.type}</Text>
+          <Text style={{ color: palette.faint }} className="text-xs">Category</Text>
+          <Text style={{ color: palette.text }} className="text-xs font-semibold">{caseItem.type}</Text>
         </View>
         {caseItem.assignedTo && (
           <View className="flex-row justify-between">
-            <Text style={{ color: colors.text.secondary }} className="text-sm">Assigned To</Text>
-            <Text style={{ color: colors.text.primary }} className="text-sm font-semibold text-right flex-1 ml-4">{caseItem.assignedTo}</Text>
+            <Text style={{ color: palette.faint }} className="text-xs">Assigned To</Text>
+            <Text style={{ color: palette.text }} className="text-sm font-semibold text-right flex-1 ml-4">{caseItem.assignedTo}</Text>
           </View>
         )}
         <View className="flex-row justify-between">
-          <Text style={{ color: colors.text.secondary }} className="text-sm">Created</Text>
-          <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">{formattedCreatedDate}</Text>
+          <Text style={{ color: palette.faint }} className="text-xs">Created</Text>
+          <Text style={{ color: palette.text }} className="text-xs font-semibold">{formattedCreatedDate}</Text>
         </View>
         {caseItem.updatedAt && (
           <View className="flex-row justify-between">
-            <Text style={{ color: colors.text.secondary }} className="text-sm">Updated</Text>
-            <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">
+            <Text style={{ color: palette.faint }} className="text-xs">Updated</Text>
+            <Text style={{ color: palette.text }} className="text-xs font-semibold">
               {new Date(caseItem.updatedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
             </Text>
           </View>
         )}
       </View>
-      <View className="mt-4 pt-4" style={{ borderTopWidth: 1, borderTopColor: colors.border.light }}>
+      <View className="mt-4 pt-4" style={{ borderTopWidth: 1, borderTopColor: palette.border }}>
         <View className="flex-row items-center justify-between gap-3">
-          <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase tracking-wider">
+          <Text style={{ color: palette.faint, fontSize: 10 }} className="font-bold uppercase tracking-widest">
             Assign Case
           </Text>
 
           <Pressable
             onPress={() => setShowAssigneePicker((current) => !current)}
             className="rounded-xl px-3 py-2 flex-row items-center gap-2 active:opacity-80"
-            style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light, maxWidth: isWebDesktop ? 280 : 240 }}
+            style={{ backgroundColor: palette.softFill, borderWidth: 1, borderColor: palette.border, maxWidth: isWebDesktop ? 280 : 240 }}
           >
             <View
               style={{
@@ -1281,21 +1278,21 @@ export function CaseDetailPanel({
                 borderRadius: 12,
                 borderWidth: 1,
                 borderStyle: 'dashed',
-                borderColor: colors.border.medium,
+                borderColor: palette.outline,
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <UserIcon size={12} color={colors.text.muted} strokeWidth={2} />
+              <UserIcon size={12} color={palette.faint} strokeWidth={2} />
             </View>
-            <Text style={{ color: colors.text.secondary }} className="text-xs font-semibold" numberOfLines={1}>
+            <Text style={{ color: palette.muted }} className="text-xs font-semibold" numberOfLines={1}>
               {assignedNames.length === 0
                 ? 'No assignee'
                 : assignedNames.length === 1
                   ? assignedNames[0]
                   : `${assignedNames.length} assignees`}
             </Text>
-            <Text style={{ color: colors.text.muted }} className="text-[11px] font-semibold">
+            <Text style={{ color: palette.faint, fontSize: isWebDesktop ? 11 : 12 }} className="font-semibold">
               {showAssigneePicker ? 'Hide' : 'Assign'}
             </Text>
           </Pressable>
@@ -1304,7 +1301,7 @@ export function CaseDetailPanel({
         {showAssigneePicker ? (
           <View
             className="mt-2 rounded-xl p-2"
-            style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}
+            style={{ backgroundColor: palette.softFill, borderWidth: 1, borderColor: palette.border }}
           >
             {assignedNames.length > 0 ? (
               <View className="flex-row flex-wrap gap-1.5 mb-2">
@@ -1312,17 +1309,17 @@ export function CaseDetailPanel({
                   <View
                     key={`assigned-${name}`}
                     className="flex-row items-center gap-1.5 px-2 py-1 rounded-full"
-                    style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+                    style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}
                   >
                     <CaseCommentAvatar member={teamMembers.find((member) => member.name === name)} size={18} />
-                    <Text style={{ color: colors.text.secondary }} className="text-[11px] font-semibold" numberOfLines={1}>
+                    <Text style={{ color: palette.muted, fontSize: isWebDesktop ? 11 : 12 }} className="font-semibold" numberOfLines={1}>
                       {name}
                     </Text>
                     <Pressable
                       onPress={() => { void handleAssignCase(assignedNames.filter((item) => item !== name)); }}
                       hitSlop={6}
                     >
-                      <Text style={{ color: colors.text.muted }} className="text-xs font-semibold">×</Text>
+                      <Text style={{ color: palette.faint }} className="text-xs font-semibold">×</Text>
                     </Pressable>
                   </View>
                 ))}
@@ -1332,19 +1329,19 @@ export function CaseDetailPanel({
             <View
               className="rounded-lg px-2.5 flex-row items-center gap-1.5"
               style={{
-                backgroundColor: colors.bg.card,
+                backgroundColor: palette.card,
                 borderWidth: 1,
-                borderColor: colors.border.light,
+                borderColor: palette.border,
                 minHeight: 34,
               }}
             >
-              <UserIcon size={13} color={colors.text.muted} strokeWidth={2} />
-              <TextInput
+              <UserIcon size={13} color={palette.faint} strokeWidth={2} />
+              <FocusTextInput
                 value={assigneeQuery}
                 onChangeText={setAssigneeQuery}
                 placeholder="Name or email"
-                placeholderTextColor={colors.text.muted}
-                style={{ color: colors.text.primary, fontSize: 12, height: 32, flex: 1 }}
+                placeholderTextColor={palette.faint}
+                style={{ color: palette.text, fontSize: 12, height: 32, flex: 1 }}
                 returnKeyType="done"
                 onSubmitEditing={() => {
                   const first = filteredAssignableMembers[0];
@@ -1357,10 +1354,10 @@ export function CaseDetailPanel({
             </View>
 
             {assigneeQuery.trim().length > 0 ? (
-              <View className="mt-1.5 rounded-lg overflow-hidden" style={{ borderWidth: 1, borderColor: colors.border.light }}>
+              <View className="mt-1.5 rounded-lg overflow-hidden" style={{ borderWidth: 1, borderColor: palette.border }}>
                 {filteredAssignableMembers.length === 0 ? (
-                  <View className="px-2.5 py-2" style={{ backgroundColor: colors.bg.card }}>
-                    <Text style={{ color: colors.text.muted }} className="text-xs">No team member found.</Text>
+                  <View className="px-2.5 py-2" style={{ backgroundColor: palette.card }}>
+                    <Text style={{ color: palette.faint }} className="text-xs">No team member found.</Text>
                   </View>
                 ) : (
                   filteredAssignableMembers.slice(0, 6).map((member) => (
@@ -1371,13 +1368,13 @@ export function CaseDetailPanel({
                         setAssigneeQuery('');
                       }}
                       className="px-2.5 py-2 flex-row items-center gap-2 active:opacity-80"
-                      style={{ backgroundColor: colors.bg.card }}
+                      style={{ backgroundColor: palette.card }}
                     >
                       <CaseCommentAvatar member={member} size={20} />
-                      <Text style={{ color: colors.text.primary }} className="text-xs font-semibold flex-1" numberOfLines={1}>
+                      <Text style={{ color: palette.text }} className="text-xs font-semibold flex-1" numberOfLines={1}>
                         {member.name}
                       </Text>
-                      <Text style={{ color: colors.text.muted }} className="text-[11px]" numberOfLines={1}>
+                      <Text style={{ color: palette.faint, fontSize: isWebDesktop ? 11 : 12 }} numberOfLines={1}>
                         {member.email}
                       </Text>
                     </Pressable>
@@ -1394,9 +1391,9 @@ export function CaseDetailPanel({
                   }
                 }}
                 className="px-2.5 py-1.5 rounded-full active:opacity-80"
-                style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+                style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}
               >
-                <Text style={{ color: colors.text.secondary }} className="text-[11px] font-semibold">
+                <Text style={{ color: palette.muted, fontSize: isWebDesktop ? 11 : 12 }} className="font-semibold">
                   Assign to me
                 </Text>
               </Pressable>
@@ -1404,9 +1401,9 @@ export function CaseDetailPanel({
                 <Pressable
                   onPress={() => { void handleAssignCase([]); }}
                   className="px-2.5 py-1.5 rounded-full active:opacity-80"
-                  style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+                  style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}
                 >
-                  <Text style={{ color: colors.text.muted }} className="text-[11px] font-semibold">
+                  <Text style={{ color: palette.faint, fontSize: isWebDesktop ? 11 : 12 }} className="font-semibold">
                     Clear all
                   </Text>
                 </Pressable>
@@ -1420,11 +1417,11 @@ export function CaseDetailPanel({
 
   const linkedOrderSection = (
     <View
-      className="p-4 rounded-xl mt-4"
-      style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+      className="p-4 rounded-[26px] mt-4"
+      style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}
     >
       <View className="flex-row items-center justify-between mb-3">
-        <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase tracking-wider">
+        <Text style={{ color: palette.faint, fontSize: 10 }} className="font-bold uppercase tracking-widest">
           Linked Order
         </Text>
         <View className="flex-row items-center gap-2">
@@ -1435,13 +1432,13 @@ export function CaseDetailPanel({
               width: 30,
               height: 30,
               borderRadius: 15,
-              backgroundColor: colors.bg.secondary,
+              backgroundColor: palette.softFill,
               alignItems: 'center',
               justifyContent: 'center',
               position: 'relative',
             }}
           >
-            <MessageSquare size={14} color={colors.text.primary} strokeWidth={2} />
+            <MessageSquare size={14} color={palette.text} strokeWidth={2} />
             <View
               style={{
                 position: 'absolute',
@@ -1460,49 +1457,49 @@ export function CaseDetailPanel({
             style={{ backgroundColor: linkedOrderActionBg }}
           >
             <ExternalLink size={12} color={linkedOrderActionTextColor} strokeWidth={2} />
-            <Text className="text-xs font-semibold" style={{ color: linkedOrderActionTextColor }}>View Order</Text>
+            <MoneyText style={{ color: linkedOrderActionTextColor, fontSize: 12 }}>View order</MoneyText>
           </Pressable>
         </View>
       </View>
       <View className="gap-3">
         <View className="flex-row items-center justify-between">
           <View className="flex-row items-center gap-2">
-            <Package size={14} color={colors.text.muted} strokeWidth={1.8} />
-            <Text style={{ color: colors.text.secondary }} className="text-sm">Order</Text>
+            <Package size={14} color={palette.faint} strokeWidth={1.8} />
+            <Text style={{ color: palette.faint }} className="text-xs">Order</Text>
           </View>
-          <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">
+          <Text style={{ color: palette.text }} className="text-xs font-semibold">
             {caseItem.orderNumber}
           </Text>
         </View>
 
         <View className="flex-row items-center justify-between">
           <View className="flex-row items-center gap-2">
-            <UserIcon size={14} color={colors.text.muted} strokeWidth={1.8} />
-            <Text style={{ color: colors.text.secondary }} className="text-sm">Customer</Text>
+            <UserIcon size={14} color={palette.faint} strokeWidth={1.8} />
+            <Text style={{ color: palette.faint }} className="text-xs">Customer</Text>
           </View>
-          <Text style={{ color: colors.text.primary }} className="text-sm font-semibold text-right ml-4" numberOfLines={1}>
+          <Text style={{ color: palette.text }} className="text-xs font-semibold text-right ml-4" numberOfLines={1}>
             {caseItem.customerName}
           </Text>
         </View>
 
         <View className="flex-row items-center justify-between">
           <View className="flex-row items-center gap-2">
-            <DollarSign size={14} color={colors.text.muted} strokeWidth={1.8} />
-            <Text style={{ color: colors.text.secondary }} className="text-sm">Original Total</Text>
+            <DollarSign size={14} color={palette.faint} strokeWidth={1.8} />
+            <Text style={{ color: palette.faint }} className="text-xs">Original Total</Text>
           </View>
-          <Text style={{ color: colors.text.primary }} className="text-sm font-semibold text-right ml-4" numberOfLines={1}>
+          <Text style={{ color: palette.text }} className="text-xs font-semibold text-right ml-4" numberOfLines={1}>
             {linkedOrder ? formatCurrency(linkedOrder.totalAmount) : '—'}
           </Text>
         </View>
 
         <View className="flex-row items-center justify-between">
           <View className="flex-row items-center gap-2">
-            <DollarSign size={14} color={colors.text.muted} strokeWidth={1.8} />
-            <Text style={{ color: colors.text.secondary }} className="text-sm">Refunded</Text>
+            <DollarSign size={14} color={palette.faint} strokeWidth={1.8} />
+            <Text style={{ color: palette.faint }} className="text-xs">Refunded</Text>
           </View>
           <Text
-            style={{ color: refundedAmountForOrder > 0 ? '#DC2626' : colors.text.primary }}
-            className="text-sm font-semibold text-right ml-4"
+            style={{ color: refundedAmountForOrder > 0 ? palette.danger : palette.text }}
+            className="text-xs font-semibold text-right ml-4"
             numberOfLines={1}
           >
             {linkedOrder ? formatCurrency(refundedAmountForOrder) : '—'}
@@ -1511,26 +1508,26 @@ export function CaseDetailPanel({
 
         <View className="flex-row items-center justify-between">
           <View className="flex-row items-center gap-2">
-            <DollarSign size={14} color={colors.text.muted} strokeWidth={1.8} />
-            <Text style={{ color: colors.text.secondary }} className="text-sm">Remaining Balance</Text>
+            <DollarSign size={14} color={palette.faint} strokeWidth={1.8} />
+            <Text style={{ color: palette.faint }} className="text-xs">Remaining Balance</Text>
           </View>
-          <Text style={{ color: colors.text.primary }} className="text-sm font-semibold text-right ml-4" numberOfLines={1}>
+          <Text style={{ color: palette.text }} className="text-xs font-semibold text-right ml-4" numberOfLines={1}>
             {linkedOrder ? formatCurrency(remainingRefundableAmount) : '—'}
           </Text>
         </View>
       </View>
 
       {linkedReturn ? (
-        <View className="mt-3 pt-3" style={{ borderTopWidth: 1, borderTopColor: colors.border.light }}>
+        <View className="mt-3 pt-3" style={{ borderTopWidth: 1, borderTopColor: palette.border }}>
           <View className="flex-row items-center justify-between gap-3">
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase tracking-wider mb-1.5">
+              <Text style={{ color: palette.faint, fontSize: 10 }} className="font-bold uppercase tracking-widest mb-1.5">
                 Linked Return
               </Text>
-              <Text style={{ color: colors.text.primary }} className="text-sm font-semibold" numberOfLines={1}>
+              <Text style={{ color: palette.text }} className="text-xs font-semibold" numberOfLines={1}>
                 {linkedReturn.ref} · {linkedReturn.status.replace(/_/g, ' ')}
               </Text>
-              <Text style={{ color: colors.text.secondary }} className="text-xs mt-1" numberOfLines={1}>
+              <Text style={{ color: palette.muted }} className="text-xs mt-1" numberOfLines={1}>
                 {linkedReturn.shippingPayer === 'seller' ? 'Seller pays shipping' : 'Customer pays shipping'}
               </Text>
             </View>
@@ -1540,35 +1537,35 @@ export function CaseDetailPanel({
               style={{ backgroundColor: linkedOrderActionBg }}
             >
               <RefreshCcw size={12} color={linkedOrderActionTextColor} strokeWidth={2} />
-              <Text className="text-xs font-semibold" style={{ color: linkedOrderActionTextColor }}>View Return</Text>
+              <MoneyText style={{ color: linkedOrderActionTextColor, fontSize: 12 }}>View return</MoneyText>
             </Pressable>
           </View>
         </View>
       ) : null}
 
       {caseItem.issueSummary && (
-        <View className="mt-3 pt-3" style={{ borderTopWidth: 1, borderTopColor: colors.border.light }}>
-          <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase tracking-wider mb-1.5">
+        <View className="mt-3 pt-3" style={{ borderTopWidth: 1, borderTopColor: palette.border }}>
+          <Text style={{ color: palette.faint, fontSize: 10 }} className="font-bold uppercase tracking-widest mb-1.5">
             Inquiry
           </Text>
-          <Text style={{ color: colors.text.secondary }} className="text-sm leading-5">
+          <Text style={{ color: palette.muted }} className="text-sm leading-5">
             {caseItem.issueSummary}
           </Text>
         </View>
       )}
 
       {shouldShowRefundPromptFromCase ? (
-        <View className="mt-3 pt-3" style={{ borderTopWidth: 1, borderTopColor: colors.border.light }}>
-          <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase tracking-wider mb-2">
+        <View className="mt-3 pt-3" style={{ borderTopWidth: 1, borderTopColor: palette.border }}>
+          <Text style={{ color: palette.faint, fontSize: 10 }} className="font-bold uppercase tracking-widest mb-2">
             Refund Workflow
           </Text>
           {canCreateRefundRequest ? (
             <>
-              <Text style={{ color: colors.text.secondary }} className="text-xs mb-2">
+              <Text style={{ color: palette.muted }} className="text-xs mb-2">
                 Remaining refundable: {formatCurrency(remainingRefundableAmount)}
               </Text>
               {pendingRefundRequestCountForOrder > 0 ? (
-                <Text style={{ color: colors.text.muted }} className="text-[11px] mb-2">
+                <Text style={{ color: palette.faint, fontSize: isWebDesktop ? 11 : 12 }} className="mb-2">
                   {pendingRefundRequestCountForOrder} pending refund request{pendingRefundRequestCountForOrder > 1 ? 's' : ''} already exist for this order.
                 </Text>
               ) : null}
@@ -1604,13 +1601,13 @@ export function CaseDetailPanel({
                 </Text>
               </Pressable>
               {refundActionBlockMessage ? (
-                <Text style={{ color: colors.text.muted }} className="text-[11px] mt-2">
+                <Text style={{ color: palette.faint, fontSize: isWebDesktop ? 11 : 12 }} className="mt-2">
                   {refundActionBlockMessage}
                 </Text>
               ) : null}
             </>
           ) : (
-            <Text style={{ color: colors.text.muted }} className="text-xs">
+            <Text style={{ color: palette.faint }} className="text-xs">
               Only staff, managers, or admins can create refund requests from cases.
             </Text>
           )}
@@ -1621,18 +1618,18 @@ export function CaseDetailPanel({
 
   const caseTypeSection = (
     <View
-      className="p-4 rounded-xl mt-4"
-      style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+      className="p-4 rounded-[26px] mt-4"
+      style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}
     >
-      <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase tracking-wider mb-3">
+      <Text style={{ color: palette.faint, fontSize: 10 }} className="font-bold uppercase tracking-widest mb-3">
         Case Type
       </Text>
       <View className="flex-row items-center justify-between">
         <View className="flex-row items-center gap-2">
-          <Tag size={14} color={colors.text.muted} strokeWidth={1.8} />
-          <Text style={{ color: colors.text.secondary }} className="text-sm">Type</Text>
+          <Tag size={14} color={palette.faint} strokeWidth={1.8} />
+          <Text style={{ color: palette.faint }} className="text-xs">Type</Text>
         </View>
-        <Text style={{ color: colors.text.primary }} className="text-sm font-semibold text-right ml-4" numberOfLines={1}>
+        <Text style={{ color: palette.text }} className="text-xs font-semibold text-right ml-4" numberOfLines={1}>
           {caseItem.type}
         </Text>
       </View>
@@ -1641,13 +1638,13 @@ export function CaseDetailPanel({
 
   const issueSummarySection = (
     <View
-      className="p-4 rounded-xl mt-4"
-      style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+      className="p-4 rounded-[26px] mt-4"
+      style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}
     >
-      <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase tracking-wider mb-3">
+      <Text style={{ color: palette.faint, fontSize: 10 }} className="font-bold uppercase tracking-widest mb-3">
         Issue Summary
       </Text>
-      <Text style={{ color: colors.text.primary }} className="text-base leading-6">
+      <Text style={{ color: palette.text }} className="text-base leading-6">
         {caseItem.issueSummary}
       </Text>
     </View>
@@ -1655,20 +1652,20 @@ export function CaseDetailPanel({
 
   const originalMessageSection = caseItem.originalCustomerMessage ? (
     <View
-      className="p-4 rounded-xl mt-4"
-      style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+      className="p-4 rounded-[26px] mt-4"
+      style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}
     >
       <View className="flex-row items-center gap-2 mb-3">
-        <MessageSquare size={16} color={colors.text.muted} strokeWidth={1.5} />
-        <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase tracking-wider">
+        <MessageSquare size={16} color={palette.faint} strokeWidth={1.5} />
+        <Text style={{ color: palette.faint, fontSize: 10 }} className="font-bold uppercase tracking-widest">
           Original Customer Message
         </Text>
       </View>
       <View
         className="p-3 rounded-lg"
-        style={{ backgroundColor: colors.bg.secondary }}
+        style={{ backgroundColor: palette.softFill }}
       >
-        <Text style={{ color: colors.text.secondary }} className="text-sm leading-5 italic">
+        <Text style={{ color: palette.muted }} className="text-sm leading-5 italic">
           "{caseItem.originalCustomerMessage}"
         </Text>
       </View>
@@ -1677,7 +1674,7 @@ export function CaseDetailPanel({
 
   const resolutionSection = caseItem.resolution ? (
     <View
-      className="p-4 rounded-xl mt-4"
+      className="p-4 rounded-[26px] mt-4"
       style={{
         backgroundColor: CASE_STATUS_COLORS['Resolved'] ? CASE_STATUS_COLORS['Resolved'] + '15' : '#10B98115',
         borderWidth: 1,
@@ -1687,25 +1684,24 @@ export function CaseDetailPanel({
       <View className="flex-row items-center gap-2 mb-3">
         <Check size={16} color={CASE_STATUS_COLORS['Resolved'] || '#10B981'} strokeWidth={2} />
         <Text
-          style={{ color: CASE_STATUS_COLORS['Resolved'] || '#10B981' }}
-          className="text-xs font-semibold uppercase tracking-wider"
+          style={{ color: CASE_STATUS_COLORS['Resolved'] || '#10B981', fontSize: 10 }} className="font-bold uppercase tracking-widest"
         >
           Resolution
         </Text>
       </View>
       <View className="gap-3">
         <View className="flex-row justify-between">
-          <Text style={{ color: colors.text.secondary }} className="text-sm">Resolution Type</Text>
-          <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">
+          <Text style={{ color: palette.faint }} className="text-xs">Resolution Type</Text>
+          <Text style={{ color: palette.text }} className="text-xs font-semibold">
             {caseItem.resolution.type}
           </Text>
         </View>
         {caseItem.resolution.value != null && caseItem.resolution.value > 0 && (
           <View className="flex-row justify-between">
-            <Text style={{ color: colors.text.secondary }} className="text-sm">Value</Text>
+            <Text style={{ color: palette.faint }} className="text-xs">Value</Text>
             <View className="flex-row items-center gap-1">
-              <DollarSign size={14} color={colors.text.primary} strokeWidth={1.5} />
-              <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">
+              <DollarSign size={14} color={palette.text} strokeWidth={1.5} />
+              <Text style={{ color: palette.text }} className="text-xs font-semibold">
                 {formatCurrency(caseItem.resolution.value)}
               </Text>
             </View>
@@ -1713,8 +1709,8 @@ export function CaseDetailPanel({
         )}
         {caseItem.resolution.resolvedAt && (
           <View className="flex-row justify-between">
-            <Text style={{ color: colors.text.secondary }} className="text-sm">Resolved On</Text>
-            <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">
+            <Text style={{ color: palette.faint }} className="text-xs">Resolved On</Text>
+            <Text style={{ color: palette.text }} className="text-xs font-semibold">
               {new Date(caseItem.resolution.resolvedAt).toLocaleDateString('en-GB', {
                 day: 'numeric',
                 month: 'long',
@@ -1724,9 +1720,9 @@ export function CaseDetailPanel({
           </View>
         )}
         {caseItem.resolution.notes && (
-          <View className="mt-2 pt-2" style={{ borderTopWidth: 1, borderTopColor: colors.border.light }}>
-            <Text style={{ color: colors.text.secondary }} className="text-xs mb-1">Notes</Text>
-            <Text style={{ color: colors.text.primary }} className="text-sm leading-5">
+          <View className="mt-2 pt-2" style={{ borderTopWidth: 1, borderTopColor: palette.border }}>
+            <Text style={{ color: palette.muted }} className="text-xs mb-1">Notes</Text>
+            <Text style={{ color: palette.text }} className="text-sm leading-5">
               {caseItem.resolution.notes}
             </Text>
           </View>
@@ -1739,21 +1735,21 @@ export function CaseDetailPanel({
         Haptics.selectionAsync();
         setShowResolutionModal(true);
       }}
-      className="p-4 rounded-xl mt-4 active:opacity-80"
+      className="p-4 rounded-[26px] mt-4 active:opacity-80"
       style={{
-        backgroundColor: colors.bg.card,
+        backgroundColor: palette.card,
         borderWidth: 1,
-        borderColor: colors.border.light,
+        borderColor: palette.border,
         borderStyle: 'dashed',
       }}
     >
       <View className="flex-row items-center justify-center gap-2">
-        <Plus size={18} color={colors.text.secondary} strokeWidth={2} />
-        <Text style={{ color: colors.text.secondary }} className="text-sm font-semibold">
+        <Plus size={18} color={palette.muted} strokeWidth={2} />
+        <Text style={{ color: palette.muted }} className="text-sm font-semibold">
           Add Resolution
         </Text>
       </View>
-      <Text style={{ color: colors.text.muted }} className="text-xs text-center mt-2">
+      <Text style={{ color: palette.faint }} className="text-xs text-center mt-2">
         Record how this case was resolved
       </Text>
     </Pressable>
@@ -1762,30 +1758,28 @@ export function CaseDetailPanel({
   // Right column content sections
   const updateStatusSection = (
     <View
-      className="p-4 rounded-xl"
-      style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+      className="p-4 rounded-[26px]"
+      style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}
     >
-      <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase tracking-wider mb-3">
-        Update Status
+      <Text style={{ color: palette.faint, fontSize: 10 }} className="font-bold uppercase tracking-widest mb-3">
+        Status
       </Text>
       <Pressable
         onPress={() => setShowStatusModal((value) => !value)}
-        className="flex-row items-center px-4 py-3 rounded-full active:opacity-70"
+        className="flex-row items-center px-4 active:opacity-70"
         style={{
-          backgroundColor: selectedStatusColor + '20',
+          minHeight: 50,
+          borderRadius: 14,
+          backgroundColor: selectedStatusColor + '1f',
           borderWidth: 1,
           borderColor: selectedStatusColor + '55',
         }}
       >
-        <View
-          className="w-6 h-6 rounded-full items-center justify-center mr-3"
-          style={{ backgroundColor: selectedStatusColor + '30' }}
-        >
-          <View className="w-2 h-2 rounded-full" style={{ backgroundColor: selectedStatusColor }} />
+        <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: selectedStatusColor, marginRight: 10 }} />
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={{ color: palette.muted, fontSize: 10, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>Current status</Text>
+          <Text style={{ color: selectedStatusColor, fontSize: 14, fontWeight: '600' }} numberOfLines={1}>{caseItem.status}</Text>
         </View>
-        <Text className="font-semibold text-sm flex-1" style={{ color: selectedStatusColor }}>
-          {caseItem.status}
-        </Text>
         <ChevronDown size={18} color={selectedStatusColor} strokeWidth={2} />
       </Pressable>
       {showStatusModal ? (
@@ -1793,16 +1787,16 @@ export function CaseDetailPanel({
           {sortedCaseStatuses.map((statusOption) => {
             const statusName = statusOption.name;
             const isSelected = statusName === caseItem.status;
-            const color = statusColorMap[statusName] ?? colors.text.muted;
+            const color = statusColorMap[statusName] ?? palette.faint;
             return (
               <Pressable
                 key={statusName}
                 onPress={() => handleStatusChange(statusName)}
-                className="w-full py-3 px-4 rounded-full active:opacity-70 flex-row items-center justify-between"
+                className="w-full py-3 px-4 rounded-[14px] active:opacity-70 flex-row items-center justify-between"
                 style={{
-                  backgroundColor: isSelected ? color + '20' : colors.bg.secondary,
+                  backgroundColor: isSelected ? color + '20' : palette.softFill,
                   borderWidth: 1,
-                  borderColor: isSelected ? color + '55' : colors.border.light,
+                  borderColor: isSelected ? color + '55' : palette.border,
                 }}
               >
                 <View className="flex-row items-center gap-3 flex-1 min-w-0">
@@ -1816,7 +1810,7 @@ export function CaseDetailPanel({
                     }}
                   />
                   <Text
-                    style={{ color: isSelected ? color : colors.text.primary }}
+                    style={{ color: isSelected ? color : palette.text }}
                     className="text-sm font-semibold flex-1"
                     numberOfLines={1}
                   >
@@ -1841,20 +1835,20 @@ export function CaseDetailPanel({
     if (action.includes('Priority →')) return { label: 'Priority', color: '#EF4444' };
     if (action === 'Case Created') return { label: 'Created', color: '#8B5CF6' };
     if (action.includes('Type →') || action.includes('Source →') || action.includes('summary')) return { label: 'Edited', color: '#6B7280' };
-    return { label: 'Update', color: colors.text.muted };
+    return { label: 'Update', color: palette.faint };
   };
 
   const activitySection = (caseItem.timeline && caseItem.timeline.length > 0) ? (
     <View
-      className="p-4 rounded-xl mt-4"
-      style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+      className="p-4 rounded-[26px] mt-4"
+      style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}
     >
       <View className="flex-row items-center gap-2 mb-3">
-        <MessageSquare size={16} color={colors.text.tertiary} strokeWidth={2} />
-        <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase tracking-wider">
+        <MessageSquare size={16} color={palette.faint} strokeWidth={2} />
+        <Text style={{ color: palette.faint, fontSize: 10 }} className="font-bold uppercase tracking-widest">
           Activity
         </Text>
-        <Text style={{ color: colors.text.muted }} className="text-xs ml-auto">
+        <Text style={{ color: palette.faint }} className="text-xs ml-auto">
           {caseItem.timeline.length} {caseItem.timeline.length === 1 ? 'entry' : 'entries'}
         </Text>
       </View>
@@ -1871,7 +1865,7 @@ export function CaseDetailPanel({
               key={entry.id}
               style={{
                 borderTopWidth: index === 0 ? 0 : 1,
-                borderTopColor: colors.border.light,
+                borderTopColor: palette.border,
                 paddingTop: index === 0 ? 0 : 12,
               }}
             >
@@ -1882,21 +1876,20 @@ export function CaseDetailPanel({
                     style={{ backgroundColor: badge.color + '18' }}
                   >
                     <Text
-                      style={{ color: badge.color }}
-                      className="text-[10px] font-bold"
+                      style={{ color: badge.color, fontSize: 10 }} className="font-bold"
                     >
                       {badge.label}
                     </Text>
                   </View>
-                  <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">
+                  <Text style={{ color: palette.text, fontSize: 10 }} className="font-semibold">
                     {entry.user}
                   </Text>
                 </View>
-                <Text style={{ color: colors.text.muted }} className="text-xs">
+                <Text style={{ color: palette.faint, fontSize: 10 }}>
                   {formattedEntryDate}
                 </Text>
               </View>
-              <Text style={{ color: colors.text.secondary }} className="text-sm leading-5 mt-1">
+              <Text style={{ color: palette.muted, fontSize: 10, lineHeight: 15 }} className="mt-1">
                 {noteContent}
               </Text>
             </View>
@@ -1905,17 +1898,17 @@ export function CaseDetailPanel({
       </View>
 
       {/* Add note input */}
-      <View className="mt-4 pt-4" style={{ borderTopWidth: 1, borderTopColor: colors.border.light }}>
+      <View className="mt-4 pt-4" style={{ borderTopWidth: 1, borderTopColor: palette.border }}>
         <View className="flex-row items-center gap-2">
-          <TextInput
+          <FocusTextInput
             placeholder="Add a note..."
-            placeholderTextColor={colors.text.muted}
+            placeholderTextColor={palette.faint}
             className="flex-1 rounded-full px-4 py-2.5 text-sm"
             style={{
-              backgroundColor: colors.bg.secondary,
-              color: colors.text.primary,
+              backgroundColor: palette.softFill,
+              color: palette.text,
               borderWidth: 1,
-              borderColor: colors.border.light,
+              borderColor: palette.border,
               height: 40,
             }}
             value={noteText}
@@ -1925,29 +1918,29 @@ export function CaseDetailPanel({
           <Pressable
             onPress={handleAddNote}
             className="w-10 h-10 rounded-full items-center justify-center active:opacity-80"
-            style={{ backgroundColor: noteText.trim() ? '#111111' : colors.bg.secondary }}
+            style={{ backgroundColor: noteText.trim() ? FYLL_LIME : palette.softFill }}
           >
-            <ArrowLeft size={18} color={noteText.trim() ? '#fff' : colors.text.muted} strokeWidth={2} style={{ transform: [{ rotate: '90deg' }] }} />
+            <ArrowLeft size={18} color={noteText.trim() ? FYLL_LIME_INK : palette.faint} strokeWidth={2} style={{ transform: [{ rotate: '90deg' }] }} />
           </Pressable>
         </View>
       </View>
     </View>
   ) : (
     <View
-      className="p-4 rounded-xl mt-4"
-      style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+      className="p-4 rounded-[26px] mt-4"
+      style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}
     >
-      <Text style={{ color: colors.text.tertiary }} className="text-xs font-semibold uppercase tracking-wider mb-3">
+      <Text style={{ color: palette.faint, fontSize: 10 }} className="font-bold uppercase tracking-widest mb-3">
         Activity
       </Text>
-      <Text style={{ color: colors.text.muted }} className="text-sm text-center py-4">No activity yet</Text>
+      <Text style={{ color: palette.faint }} className="text-sm text-center py-4">No activity yet</Text>
       <Pressable
         onPress={() => setShowNoteModal(true)}
         className="flex-row items-center justify-center py-3 rounded-full active:opacity-80"
-        style={{ backgroundColor: '#111111' }}
+        style={{ backgroundColor: FYLL_LIME }}
       >
-        <Plus size={16} color="#FFFFFF" strokeWidth={2} />
-        <Text className="text-white font-semibold ml-2 text-sm">Add Note</Text>
+        <Plus size={16} color={FYLL_LIME_INK} strokeWidth={2} />
+        <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 14, marginLeft: 8 }}>Add note</MoneyText>
       </Pressable>
     </View>
   );
@@ -1963,10 +1956,10 @@ export function CaseDetailPanel({
   );
 
   return (
-    <View className="flex-1" style={{ backgroundColor: colors.bg.primary }}>
+    <View className="flex-1" style={{ backgroundColor: palette.page }}>
       {/* Desktop Header */}
       {isWebDesktop ? (
-        <View style={{ backgroundColor: colors.bg.primary }}>
+        <View style={{ backgroundColor: palette.page }}>
           <View
             style={{
               paddingHorizontal: 28,
@@ -1991,14 +1984,14 @@ export function CaseDetailPanel({
                   className="active:opacity-70"
                   style={{ width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 14 }}
                 >
-                  <ArrowLeft size={20} color={colors.text.primary} strokeWidth={2} />
+                  <ArrowLeft size={20} color={palette.text} strokeWidth={2} />
                 </Pressable>
 
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-                    <Text style={{ color: colors.text.primary, fontSize: 24, fontWeight: '700' }} numberOfLines={1}>
+                    <MoneyText style={{ color: palette.text, fontSize: 24, lineHeight: 30 }} numberOfLines={1}>
                       {caseItem.caseNumber}
-                    </Text>
+                    </MoneyText>
                     <View
                       style={{ backgroundColor: statusColor + '20', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 }}
                     >
@@ -2014,7 +2007,7 @@ export function CaseDetailPanel({
                       </Text>
                     </View>
                   </View>
-                  <Text style={{ color: colors.text.muted, fontSize: 14, marginTop: 6 }} numberOfLines={1}>
+                  <Text style={{ color: palette.faint, fontSize: 14, marginTop: 6 }} numberOfLines={1}>
                     {caseItem.issueSummary}
                   </Text>
                 </View>
@@ -2027,7 +2020,7 @@ export function CaseDetailPanel({
                   className="active:opacity-80"
                   style={{ paddingHorizontal: 8, height: 44, justifyContent: 'center' }}
                 >
-                  <Text style={{ color: '#EF4444', fontSize: 16, fontWeight: '700' }}>Delete</Text>
+                  <Text style={{ color: palette.danger, fontSize: 16, fontWeight: '700' }}>Delete</Text>
                 </Pressable>
                 <Pressable
                   onPress={() => setShowEditForm(true)}
@@ -2036,16 +2029,16 @@ export function CaseDetailPanel({
                     height: 44,
                     paddingHorizontal: 16,
                     borderRadius: 999,
-                    backgroundColor: colors.bg.primary,
+                    backgroundColor: palette.page,
                     borderWidth: 1,
-                    borderColor: colors.border.light,
+                    borderColor: palette.border,
                     flexDirection: 'row',
                     alignItems: 'center',
                     gap: 8,
                   }}
                 >
-                  <Edit2 size={16} color={colors.text.primary} strokeWidth={2} />
-                  <Text style={{ color: colors.text.primary, fontWeight: '700' }}>Edit</Text>
+                  <Edit2 size={16} color={palette.text} strokeWidth={2} />
+                  <Text style={{ color: palette.text, fontWeight: '700' }}>Edit</Text>
                 </Pressable>
               </View>
             </View>
@@ -2054,7 +2047,7 @@ export function CaseDetailPanel({
       ) : showBackButton ? (
         <View
           className="flex-row items-center px-5 py-4"
-          style={{ borderBottomWidth: 1, borderBottomColor: colors.border.light, position: 'relative', zIndex: 60 }}
+          style={{ borderBottomWidth: 1, borderBottomColor: palette.border, position: 'relative', zIndex: 60 }}
         >
           <Pressable
             onPress={() => {
@@ -2067,20 +2060,20 @@ export function CaseDetailPanel({
             }}
             className="p-2 -ml-2 active:opacity-70"
           >
-            <ChevronLeft size={24} color={colors.text.primary} strokeWidth={1.5} />
+            <ChevronLeft size={24} color={palette.text} strokeWidth={1.5} />
           </Pressable>
-          <Text style={{ color: colors.text.primary }} className="text-xl font-bold ml-2">
-            Case Details
-          </Text>
+          <MoneyText style={{ color: palette.text, fontSize: 20, marginLeft: 8 }}>
+            Case details
+          </MoneyText>
           <Pressable
             onPress={() => {
               Haptics.selectionAsync();
               setShowCaseActionsModal((current) => !current);
             }}
             className="ml-auto w-10 h-10 rounded-full items-center justify-center active:opacity-80"
-            style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}
+            style={{ backgroundColor: palette.softFill, borderWidth: 1, borderColor: palette.border }}
           >
-            <MoreVertical size={18} color={colors.text.primary} strokeWidth={2} />
+            <MoreVertical size={18} color={palette.text} strokeWidth={2} />
           </Pressable>
 
           {isMobileHeaderContext && showCaseActionsModal ? (
@@ -2089,14 +2082,9 @@ export function CaseDetailPanel({
               style={{
                 top: 58,
                 width: 186,
-                backgroundColor: colors.bg.card,
+                backgroundColor: palette.card,
                 borderWidth: 1,
-                borderColor: colors.border.light,
-                shadowColor: '#000000',
-                shadowOpacity: 0.15,
-                shadowRadius: 10,
-                shadowOffset: { width: 0, height: 6 },
-                elevation: 10,
+                borderColor: palette.border,
                 zIndex: 80,
               }}
             >
@@ -2107,10 +2095,10 @@ export function CaseDetailPanel({
                   setShowNoteModal(true);
                 }}
                 className="w-full flex-row items-center py-2.5 px-2 rounded-lg active:opacity-80"
-                style={{ backgroundColor: colors.bg.secondary }}
+                style={{ backgroundColor: palette.softFill }}
               >
-                <Plus size={16} color={colors.text.primary} strokeWidth={2} />
-                <Text style={{ color: colors.text.primary }} className="font-semibold ml-2 text-sm">Add Note</Text>
+                <Plus size={16} color={palette.text} strokeWidth={2} />
+                <Text style={{ color: palette.text }} className="font-semibold ml-2 text-sm">Add Note</Text>
               </Pressable>
 
               {shouldShowRefundPromptFromCase ? (
@@ -2123,17 +2111,17 @@ export function CaseDetailPanel({
                   disabled={!canStartRefundRequestFromCase}
                   className="w-full flex-row items-center py-2.5 px-2 rounded-lg active:opacity-80 mt-1.5"
                   style={{
-                    backgroundColor: canStartRefundRequestFromCase ? colors.bg.secondary : colors.bg.primary,
+                    backgroundColor: canStartRefundRequestFromCase ? palette.softFill : palette.page,
                     opacity: canStartRefundRequestFromCase ? 1 : 0.7,
                   }}
                 >
                   <DollarSign
                     size={16}
-                    color={canStartRefundRequestFromCase ? colors.text.primary : colors.text.muted}
+                    color={canStartRefundRequestFromCase ? palette.text : palette.faint}
                     strokeWidth={2}
                   />
                   <Text
-                    style={{ color: canStartRefundRequestFromCase ? colors.text.primary : colors.text.muted }}
+                    style={{ color: canStartRefundRequestFromCase ? palette.text : palette.faint }}
                     className="font-semibold ml-2 text-sm"
                   >
                     {refundRequestActionLabel}
@@ -2148,10 +2136,10 @@ export function CaseDetailPanel({
                   setShowEditForm(true);
                 }}
                 className="w-full flex-row items-center py-2.5 px-2 rounded-lg active:opacity-80 mt-1.5"
-                style={{ backgroundColor: colors.bg.secondary }}
+                style={{ backgroundColor: palette.softFill }}
               >
-                <Edit2 size={16} color={colors.text.primary} strokeWidth={2} />
-                <Text style={{ color: colors.text.primary }} className="font-semibold ml-2 text-sm">Edit Case</Text>
+                <Edit2 size={16} color={palette.text} strokeWidth={2} />
+                <Text style={{ color: palette.text }} className="font-semibold ml-2 text-sm">Edit Case</Text>
               </Pressable>
 
               <Pressable
@@ -2161,10 +2149,10 @@ export function CaseDetailPanel({
                   setShowDeleteModal(true);
                 }}
                 className="w-full flex-row items-center py-2.5 px-2 rounded-lg active:opacity-80 mt-1.5"
-                style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: '#EF4444' + '40' }}
+                style={{ backgroundColor: palette.softFill, borderWidth: 1, borderColor: palette.dangerBorder }}
               >
-                <Trash2 size={16} color="#EF4444" strokeWidth={2} />
-                <Text style={{ color: '#EF4444' }} className="font-semibold ml-2 text-sm">Delete Case</Text>
+                <Trash2 size={16} color={palette.danger} strokeWidth={2} />
+                <Text style={{ color: palette.danger }} className="font-semibold ml-2 text-sm">Delete Case</Text>
               </Pressable>
             </View>
           ) : null}
@@ -2216,7 +2204,7 @@ export function CaseDetailPanel({
           </View>
         ) : (
           <>
-          <View className="px-5 py-4">
+          <View className="px-5 pt-4">
             {/* Status Update Card */}
             <View className="mb-4">
               {updateStatusSection}
@@ -2224,34 +2212,34 @@ export function CaseDetailPanel({
 
             {/* Case Header Card */}
             <View
-              className="p-4 rounded-xl mb-4"
-              style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+              className="p-4 rounded-[26px] mb-4"
+              style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}
             >
               <View className="flex-row justify-between items-start mb-4">
                 <View className="flex-1 min-w-0">
-                  <Text style={{ color: colors.text.primary }} className="text-2xl font-bold tracking-tight" numberOfLines={1}>
+                  <MoneyText style={{ color: palette.text, fontSize: 20, lineHeight: 26 }} numberOfLines={1}>
                     {caseItem.customerName}
-                  </Text>
-                  <Text style={{ color: colors.text.secondary }} className="text-sm font-semibold mt-2" numberOfLines={1}>
+                  </MoneyText>
+                  <Text style={{ color: palette.muted, fontSize: 12, fontWeight: '600' }} className="mt-2" numberOfLines={1}>
                     {caseItem.caseNumber}
                   </Text>
                 </View>
                 <View
                   className="w-14 h-14 rounded-xl items-center justify-center"
-                  style={{ backgroundColor: colors.bg.tertiary }}
+                  style={{ backgroundColor: palette.softFill }}
                 >
-                  {getCaseTypeIcon(caseItem.type, colors.text.primary, 26)}
+                  {getCaseTypeIcon(caseItem.type, palette.text, 26)}
                 </View>
               </View>
 
-              <View className="gap-3 pt-4" style={{ borderTopWidth: 1, borderTopColor: colors.border.light }}>
+              <View className="gap-3 pt-4" style={{ borderTopWidth: 1, borderTopColor: palette.border }}>
                 {caseItem.priority && (
                   <View className="flex-row items-center justify-between">
                     <View className="flex-row items-center gap-2">
-                      <Flag size={14} color={colors.text.muted} strokeWidth={1.8} />
-                      <Text style={{ color: colors.text.secondary }} className="text-sm">Priority</Text>
+                      <Flag size={14} color={palette.faint} strokeWidth={1.8} />
+                      <Text style={{ color: palette.faint, fontSize: 12 }}>Priority</Text>
                     </View>
-                    <Text style={{ color: CASE_PRIORITY_COLORS[caseItem.priority] }} className="text-sm font-semibold">
+                    <Text style={{ color: CASE_PRIORITY_COLORS[caseItem.priority], fontSize: 12, fontWeight: '600' }}>
                       {caseItem.priority}
                     </Text>
                   </View>
@@ -2259,38 +2247,38 @@ export function CaseDetailPanel({
                 {caseItem.source && (
                   <View className="flex-row items-center justify-between">
                     <View className="flex-row items-center gap-2">
-                      {getCaseSourceIcon(caseItem.source, colors.text.muted, 14)}
-                      <Text style={{ color: colors.text.secondary }} className="text-sm">Source</Text>
+                      {getCaseSourceIcon(caseItem.source, palette.faint, 14)}
+                      <Text style={{ color: palette.faint, fontSize: 12 }}>Source</Text>
                     </View>
-                    <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">
+                    <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }}>
                       {caseItem.source}
                     </Text>
                   </View>
                 )}
                 <View className="flex-row items-center justify-between">
                   <View className="flex-row items-center gap-2">
-                    <Clock size={14} color={colors.text.muted} strokeWidth={1.8} />
-                    <Text style={{ color: colors.text.secondary }} className="text-sm">Logged On</Text>
+                    <Clock size={14} color={palette.faint} strokeWidth={1.8} />
+                    <Text style={{ color: palette.faint, fontSize: 12 }}>Logged On</Text>
                   </View>
-                  <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">
+                  <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }}>
                     {formattedCreatedDate}
                   </Text>
                 </View>
                 {caseItem.createdBy ? (
                   <View className="flex-row items-center justify-between">
                     <View className="flex-row items-center gap-2">
-                      <UserIcon size={14} color={colors.text.muted} strokeWidth={1.8} />
-                      <Text style={{ color: colors.text.secondary }} className="text-sm">Created By</Text>
+                      <UserIcon size={14} color={palette.faint} strokeWidth={1.8} />
+                      <Text style={{ color: palette.faint, fontSize: 12 }}>Created By</Text>
                     </View>
-                    <Text style={{ color: colors.text.primary }} className="text-sm font-semibold" numberOfLines={1}>
+                    <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>
                       {caseItem.createdBy}
                     </Text>
                   </View>
                 ) : null}
               </View>
 
-              <View className="mt-4 pt-4" style={{ borderTopWidth: 1, borderTopColor: colors.border.light }}>
-                <Text style={{ color: colors.text.muted }} className="text-[9px] font-bold uppercase tracking-widest mb-2">
+              <View className="mt-4 pt-4" style={{ borderTopWidth: 1, borderTopColor: palette.border }}>
+                <Text style={{ color: palette.faint, fontSize: 10 }} className="font-bold uppercase tracking-widest mb-2">
                   Status
                 </Text>
                 <View
@@ -2305,7 +2293,7 @@ export function CaseDetailPanel({
                       backgroundColor: statusColor,
                     }}
                   />
-                  <Text style={{ color: statusColor }} className="text-xs font-bold uppercase tracking-wider" numberOfLines={1}>
+                  <Text style={{ color: statusColor, fontSize: 12 }} className="font-bold uppercase tracking-wider" numberOfLines={1}>
                     {caseItem.status}
                   </Text>
                 </View>
@@ -2314,18 +2302,18 @@ export function CaseDetailPanel({
 
             {/* Assign Case (Mobile) */}
             <View
-              className="p-4 rounded-xl mb-4"
-              style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+              className="p-4 rounded-[26px] mb-4"
+              style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}
             >
               <View className="flex-row items-center justify-between gap-3">
-                <Text style={{ color: colors.text.muted }} className="text-xs uppercase font-semibold">
+                <Text style={{ color: palette.faint, fontSize: 10 }} className="font-bold uppercase tracking-widest">
                   Assign Case
                 </Text>
 
                 <Pressable
                   onPress={() => setShowAssigneePicker((current) => !current)}
                   className="rounded-xl px-3 py-2 flex-row items-center gap-2 active:opacity-80"
-                  style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light, maxWidth: 240 }}
+                  style={{ backgroundColor: palette.softFill, borderWidth: 1, borderColor: palette.border, maxWidth: 240 }}
                 >
                   <View
                     style={{
@@ -2334,21 +2322,21 @@ export function CaseDetailPanel({
                       borderRadius: 12,
                       borderWidth: 1,
                       borderStyle: 'dashed',
-                      borderColor: colors.border.medium,
+                      borderColor: palette.outline,
                       alignItems: 'center',
                       justifyContent: 'center',
                     }}
                   >
-                    <UserIcon size={12} color={colors.text.muted} strokeWidth={2} />
+                    <UserIcon size={12} color={palette.faint} strokeWidth={2} />
                   </View>
-                  <Text style={{ color: colors.text.secondary }} className="text-xs font-semibold" numberOfLines={1}>
+                  <Text style={{ color: palette.muted }} className="text-xs font-semibold" numberOfLines={1}>
                     {assignedNames.length === 0
                       ? 'No assignee'
                       : assignedNames.length === 1
                         ? assignedNames[0]
                         : `${assignedNames.length} assignees`}
                   </Text>
-                  <Text style={{ color: colors.text.muted }} className="text-[11px] font-semibold">
+                  <Text style={{ color: palette.faint, fontSize: isWebDesktop ? 11 : 12 }} className="font-semibold">
                     {showAssigneePicker ? 'Hide' : 'Assign'}
                   </Text>
                 </Pressable>
@@ -2357,7 +2345,7 @@ export function CaseDetailPanel({
               {showAssigneePicker ? (
                 <View
                   className="mt-2 rounded-xl p-2"
-                  style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}
+                  style={{ backgroundColor: palette.softFill, borderWidth: 1, borderColor: palette.border }}
                 >
                   {assignedNames.length > 0 ? (
                     <View className="flex-row flex-wrap gap-1.5 mb-2">
@@ -2365,17 +2353,17 @@ export function CaseDetailPanel({
                         <View
                           key={`assigned-mobile-${name}`}
                           className="flex-row items-center gap-1.5 px-2 py-1 rounded-full"
-                          style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+                          style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}
                         >
                           <CaseCommentAvatar member={teamMembers.find((member) => member.name === name)} size={18} />
-                          <Text style={{ color: colors.text.secondary }} className="text-[11px] font-semibold" numberOfLines={1}>
+                          <Text style={{ color: palette.muted, fontSize: isWebDesktop ? 11 : 12 }} className="font-semibold" numberOfLines={1}>
                             {name}
                           </Text>
                           <Pressable
                             onPress={() => { void handleAssignCase(assignedNames.filter((item) => item !== name)); }}
                             hitSlop={6}
                           >
-                            <Text style={{ color: colors.text.muted }} className="text-xs font-semibold">×</Text>
+                            <Text style={{ color: palette.faint }} className="text-xs font-semibold">×</Text>
                           </Pressable>
                         </View>
                       ))}
@@ -2385,19 +2373,19 @@ export function CaseDetailPanel({
                   <View
                     className="rounded-lg px-2.5 flex-row items-center gap-1.5"
                     style={{
-                      backgroundColor: colors.bg.card,
+                      backgroundColor: palette.card,
                       borderWidth: 1,
-                      borderColor: colors.border.light,
+                      borderColor: palette.border,
                       minHeight: 34,
                     }}
                   >
-                    <UserIcon size={13} color={colors.text.muted} strokeWidth={2} />
-                    <TextInput
+                    <UserIcon size={13} color={palette.faint} strokeWidth={2} />
+                    <FocusTextInput
                       value={assigneeQuery}
                       onChangeText={setAssigneeQuery}
                       placeholder="Name or email"
-                      placeholderTextColor={colors.text.muted}
-                      style={{ color: colors.text.primary, fontSize: 12, height: 32, flex: 1 }}
+                      placeholderTextColor={palette.faint}
+                      style={{ color: palette.text, fontSize: 12, height: 32, flex: 1 }}
                       returnKeyType="done"
                       onSubmitEditing={() => {
                         const first = filteredAssignableMembers[0];
@@ -2410,10 +2398,10 @@ export function CaseDetailPanel({
                   </View>
 
                   {assigneeQuery.trim().length > 0 ? (
-                    <View className="mt-1.5 rounded-lg overflow-hidden" style={{ borderWidth: 1, borderColor: colors.border.light }}>
+                    <View className="mt-1.5 rounded-lg overflow-hidden" style={{ borderWidth: 1, borderColor: palette.border }}>
                       {filteredAssignableMembers.length === 0 ? (
-                        <View className="px-2.5 py-2" style={{ backgroundColor: colors.bg.card }}>
-                          <Text style={{ color: colors.text.muted }} className="text-xs">No team member found.</Text>
+                        <View className="px-2.5 py-2" style={{ backgroundColor: palette.card }}>
+                          <Text style={{ color: palette.faint }} className="text-xs">No team member found.</Text>
                         </View>
                       ) : (
                         filteredAssignableMembers.slice(0, 6).map((member) => (
@@ -2424,13 +2412,13 @@ export function CaseDetailPanel({
                               setAssigneeQuery('');
                             }}
                             className="px-2.5 py-2 flex-row items-center gap-2 active:opacity-80"
-                            style={{ backgroundColor: colors.bg.card }}
+                            style={{ backgroundColor: palette.card }}
                           >
                             <CaseCommentAvatar member={member} size={20} />
-                            <Text style={{ color: colors.text.primary }} className="text-xs font-semibold flex-1" numberOfLines={1}>
+                            <Text style={{ color: palette.text }} className="text-xs font-semibold flex-1" numberOfLines={1}>
                               {member.name}
                             </Text>
-                            <Text style={{ color: colors.text.muted }} className="text-[11px]" numberOfLines={1}>
+                            <Text style={{ color: palette.faint, fontSize: isWebDesktop ? 11 : 12 }} numberOfLines={1}>
                               {member.email}
                             </Text>
                           </Pressable>
@@ -2447,9 +2435,9 @@ export function CaseDetailPanel({
                         }
                       }}
                       className="px-2.5 py-1.5 rounded-full active:opacity-80"
-                      style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+                      style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}
                     >
-                      <Text style={{ color: colors.text.secondary }} className="text-[11px] font-semibold">
+                      <Text style={{ color: palette.muted, fontSize: isWebDesktop ? 11 : 12 }} className="font-semibold">
                         Assign to me
                       </Text>
                     </Pressable>
@@ -2457,9 +2445,9 @@ export function CaseDetailPanel({
                       <Pressable
                         onPress={() => { void handleAssignCase([]); }}
                         className="px-2.5 py-1.5 rounded-full active:opacity-80"
-                        style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+                        style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}
                       >
-                        <Text style={{ color: colors.text.muted }} className="text-[11px] font-semibold">
+                        <Text style={{ color: palette.faint, fontSize: isWebDesktop ? 11 : 12 }} className="font-semibold">
                           Clear all
                         </Text>
                       </Pressable>
@@ -2471,12 +2459,12 @@ export function CaseDetailPanel({
 
             {/* Order Info Section */}
             <View
-              className="p-4 rounded-xl mb-4"
-              style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+              className="p-4 rounded-[26px] mb-4"
+              style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}
             >
               <View className="flex-row items-center justify-between mb-3">
-                <Text style={{ color: colors.text.muted }} className="text-xs uppercase font-semibold">
-                  Linked Order
+                <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>
+                  Linked order
                 </Text>
                 <View className="flex-row items-center gap-2">
                   <Pressable
@@ -2486,13 +2474,13 @@ export function CaseDetailPanel({
                       width: 32,
                       height: 32,
                       borderRadius: 16,
-                      backgroundColor: colors.bg.secondary,
+                      backgroundColor: palette.softFill,
                       alignItems: 'center',
                       justifyContent: 'center',
                       position: 'relative',
                     }}
                   >
-                    <MessageSquare size={15} color={colors.text.primary} strokeWidth={2} />
+                    <MessageSquare size={15} color={palette.text} strokeWidth={2} />
                     <View
                       style={{
                         position: 'absolute',
@@ -2507,50 +2495,49 @@ export function CaseDetailPanel({
                   </Pressable>
                   <Pressable
                     onPress={handleViewOrder}
-                    className="px-4 py-2 rounded-full flex-row items-center gap-1 active:opacity-80"
+                    className="px-3 py-1.5 rounded-full flex-row items-center gap-1.5 active:opacity-80"
                     style={{ backgroundColor: linkedOrderActionBg }}
                   >
-                    <ExternalLink size={14} color={linkedOrderActionTextColor} strokeWidth={1.5} />
-                    <Text className="text-sm font-semibold" style={{ color: linkedOrderActionTextColor }}>View Order</Text>
+                    <ExternalLink size={12} color={linkedOrderActionTextColor} strokeWidth={2} />
+                    <MoneyText style={{ color: linkedOrderActionTextColor, fontSize: 12 }}>View order</MoneyText>
                   </Pressable>
                 </View>
               </View>
               <View className="gap-3">
                 <View className="flex-row items-center justify-between">
                   <View className="flex-row items-center gap-2">
-                    <Package size={14} color={colors.text.muted} strokeWidth={1.8} />
-                    <Text style={{ color: colors.text.secondary }} className="text-sm">Order</Text>
+                    <Package size={14} color={palette.faint} strokeWidth={1.8} />
+                    <Text style={{ color: palette.faint, fontSize: 12 }}>Order</Text>
                   </View>
-                  <Text style={{ color: colors.text.primary }} className="text-sm font-semibold">
+                  <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }}>
                     {caseItem.orderNumber}
                   </Text>
                 </View>
                 <View className="flex-row items-center justify-between">
                   <View className="flex-row items-center gap-2">
-                    <UserIcon size={14} color={colors.text.muted} strokeWidth={1.8} />
-                    <Text style={{ color: colors.text.secondary }} className="text-sm">Customer</Text>
+                    <UserIcon size={14} color={palette.faint} strokeWidth={1.8} />
+                    <Text style={{ color: palette.faint, fontSize: 12 }}>Customer</Text>
                   </View>
-                  <Text style={{ color: colors.text.primary }} className="text-sm font-semibold text-right ml-4" numberOfLines={1}>
+                  <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600', textAlign: 'right', marginLeft: 16 }} numberOfLines={1}>
                     {caseItem.customerName}
                   </Text>
                 </View>
                 <View className="flex-row items-center justify-between">
                   <View className="flex-row items-center gap-2">
-                    <DollarSign size={14} color={colors.text.muted} strokeWidth={1.8} />
-                    <Text style={{ color: colors.text.secondary }} className="text-sm">Original Total</Text>
+                    <DollarSign size={14} color={palette.faint} strokeWidth={1.8} />
+                    <Text style={{ color: palette.faint, fontSize: 12 }}>Original Total</Text>
                   </View>
-                  <Text style={{ color: colors.text.primary }} className="text-sm font-semibold text-right ml-4" numberOfLines={1}>
+                  <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600', textAlign: 'right', marginLeft: 16 }} numberOfLines={1}>
                     {linkedOrder ? formatCurrency(linkedOrder.totalAmount) : '—'}
                   </Text>
                 </View>
                 <View className="flex-row items-center justify-between">
                   <View className="flex-row items-center gap-2">
-                    <DollarSign size={14} color={colors.text.muted} strokeWidth={1.8} />
-                    <Text style={{ color: colors.text.secondary }} className="text-sm">Refunded</Text>
+                    <DollarSign size={14} color={palette.faint} strokeWidth={1.8} />
+                    <Text style={{ color: palette.faint, fontSize: 12 }}>Refunded</Text>
                   </View>
                   <Text
-                    style={{ color: refundedAmountForOrder > 0 ? '#DC2626' : colors.text.primary }}
-                    className="text-sm font-semibold text-right ml-4"
+                    style={{ color: refundedAmountForOrder > 0 ? palette.danger : palette.text, fontSize: 12, fontWeight: '600', textAlign: 'right', marginLeft: 16 }}
                     numberOfLines={1}
                   >
                     {linkedOrder ? formatCurrency(refundedAmountForOrder) : '—'}
@@ -2558,26 +2545,26 @@ export function CaseDetailPanel({
                 </View>
                 <View className="flex-row items-center justify-between">
                   <View className="flex-row items-center gap-2">
-                    <DollarSign size={14} color={colors.text.muted} strokeWidth={1.8} />
-                    <Text style={{ color: colors.text.secondary }} className="text-sm">Remaining Balance</Text>
+                    <DollarSign size={14} color={palette.faint} strokeWidth={1.8} />
+                    <Text style={{ color: palette.faint, fontSize: 12 }}>Remaining Balance</Text>
                   </View>
-                  <Text style={{ color: colors.text.primary }} className="text-sm font-semibold text-right ml-4" numberOfLines={1}>
+                  <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600', textAlign: 'right', marginLeft: 16 }} numberOfLines={1}>
                     {linkedOrder ? formatCurrency(remainingRefundableAmount) : '—'}
                   </Text>
                 </View>
               </View>
               {shouldShowRefundPromptFromCase ? (
-                <View className="mt-3 pt-3" style={{ borderTopWidth: 1, borderTopColor: colors.border.light }}>
-                  <Text style={{ color: colors.text.muted }} className="text-xs uppercase font-semibold mb-2">
+                <View className="mt-3 pt-3" style={{ borderTopWidth: 1, borderTopColor: palette.border }}>
+                  <Text style={{ color: palette.faint, fontSize: 10 }} className="font-bold uppercase tracking-widest mb-2">
                     Refund Workflow
                   </Text>
                   {canCreateRefundRequest ? (
                     <>
-                      <Text style={{ color: colors.text.secondary }} className="text-xs mb-2">
+                      <Text style={{ color: palette.muted }} className="text-xs mb-2">
                         Remaining refundable: {formatCurrency(remainingRefundableAmount)}
                       </Text>
                       {pendingRefundRequestCountForOrder > 0 ? (
-                        <Text style={{ color: colors.text.muted }} className="text-[11px] mb-2">
+                        <Text style={{ color: palette.faint, fontSize: isWebDesktop ? 11 : 12 }} className="mb-2">
                           {pendingRefundRequestCountForOrder} pending refund request{pendingRefundRequestCountForOrder > 1 ? 's' : ''} already exist for this order.
                         </Text>
                       ) : null}
@@ -2613,13 +2600,13 @@ export function CaseDetailPanel({
                         </Text>
                       </Pressable>
                       {refundActionBlockMessage ? (
-                        <Text style={{ color: colors.text.muted }} className="text-[11px] mt-2">
+                        <Text style={{ color: palette.faint, fontSize: isWebDesktop ? 11 : 12 }} className="mt-2">
                           {refundActionBlockMessage}
                         </Text>
                       ) : null}
                     </>
                   ) : (
-                    <Text style={{ color: colors.text.muted }} className="text-xs">
+                    <Text style={{ color: palette.faint }} className="text-xs">
                       Only staff, managers, or admins can create refund requests from cases.
                     </Text>
                   )}
@@ -2629,18 +2616,18 @@ export function CaseDetailPanel({
 
             {/* Case Type Section */}
             <View
-              className="p-4 rounded-xl mb-4"
-              style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+              className="p-4 rounded-[26px] mb-4"
+              style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}
             >
-              <Text style={{ color: colors.text.muted }} className="text-xs uppercase font-semibold mb-3">
+              <Text style={{ color: palette.faint, fontSize: 10 }} className="font-bold uppercase tracking-widest mb-3">
                 Case Type
               </Text>
               <View className="flex-row items-center justify-between">
                 <View className="flex-row items-center gap-2">
-                  <Tag size={14} color={colors.text.muted} strokeWidth={1.8} />
-                  <Text style={{ color: colors.text.secondary }} className="text-sm">Type</Text>
+                  <Tag size={14} color={palette.faint} strokeWidth={1.8} />
+                  <Text style={{ color: palette.faint, fontSize: 12 }}>Type</Text>
                 </View>
-                <Text style={{ color: colors.text.primary }} className="text-sm font-semibold text-right ml-4" numberOfLines={1}>
+                <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600', textAlign: 'right', marginLeft: 16 }} numberOfLines={1}>
                   {caseItem.type}
                 </Text>
               </View>
@@ -2648,13 +2635,13 @@ export function CaseDetailPanel({
 
             {/* Issue Summary Section */}
             <View
-              className="p-4 rounded-xl mb-4"
-              style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+              className="p-4 rounded-[26px] mb-4"
+              style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}
             >
-              <Text style={{ color: colors.text.muted }} className="text-xs uppercase font-semibold mb-3">
+              <Text style={{ color: palette.faint }} className="text-xs uppercase font-semibold mb-3">
                 Issue Summary
               </Text>
-              <Text style={{ color: colors.text.primary }} className="text-base leading-6">
+              <Text style={{ color: palette.text }} className="text-base leading-6">
                 {caseItem.issueSummary}
               </Text>
             </View>
@@ -2662,20 +2649,20 @@ export function CaseDetailPanel({
             {/* Original Customer Message */}
             {caseItem.originalCustomerMessage && (
               <View
-                className="p-4 rounded-xl mb-4"
-                style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+                className="p-4 rounded-[26px] mb-4"
+                style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}
               >
                 <View className="flex-row items-center gap-2 mb-3">
-                  <MessageSquare size={16} color={colors.text.muted} strokeWidth={1.5} />
-                  <Text style={{ color: colors.text.muted }} className="text-xs uppercase font-semibold">
+                  <MessageSquare size={16} color={palette.faint} strokeWidth={1.5} />
+                  <Text style={{ color: palette.faint, fontSize: 10 }} className="font-bold uppercase tracking-widest">
                     Original Customer Message
                   </Text>
                 </View>
                 <View
                   className="p-3 rounded-lg"
-                  style={{ backgroundColor: colors.bg.secondary }}
+                  style={{ backgroundColor: palette.softFill }}
                 >
-                  <Text style={{ color: colors.text.secondary }} className="text-sm leading-5 italic">
+                  <Text style={{ color: palette.muted }} className="text-sm leading-5 italic">
                     "{caseItem.originalCustomerMessage}"
                   </Text>
                 </View>
@@ -2685,10 +2672,10 @@ export function CaseDetailPanel({
             {/* Proof Images */}
             {caseItem.attachments && caseItem.attachments.length > 0 && (
               <View
-                className="p-4 rounded-xl mb-4"
-                style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}
+                className="p-4 rounded-[26px] mb-4"
+                style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}
               >
-                <Text style={{ color: colors.text.muted }} className="text-xs uppercase font-semibold mb-3">
+                <Text style={{ color: palette.faint }} className="text-xs uppercase font-semibold mb-3">
                   Proof Images
                 </Text>
                 <ScrollView
@@ -2700,7 +2687,7 @@ export function CaseDetailPanel({
                     <View key={attachment.id} className="mr-3">
                       <View
                         className="rounded-xl overflow-hidden"
-                        style={{ borderWidth: 1, borderColor: colors.border.light }}
+                        style={{ borderWidth: 1, borderColor: palette.border }}
                       >
                         <Image
                           source={{ uri: attachment.preview ?? attachment.uri }}
@@ -2709,14 +2696,12 @@ export function CaseDetailPanel({
                         />
                       </View>
                       <Text
-                        style={{ color: colors.text.secondary }}
-                        className="text-[11px] mt-2"
+                        style={{ color: palette.muted, fontSize: isWebDesktop ? 11 : 12 }} className="mt-2"
                       >
                         {attachment.label}
                       </Text>
                       <Text
-                        style={{ color: colors.text.tertiary }}
-                        className="text-[9px]"
+                        style={{ color: palette.faint, fontSize: isWebDesktop ? 9 : 12 }}
                       >
                         {new Date(
                           attachment.uploadedAt || caseItem.createdAt
@@ -2735,7 +2720,7 @@ export function CaseDetailPanel({
             {/* Resolution Section */}
             {caseItem.resolution ? (
               <View
-                className="p-4 rounded-xl mb-4"
+                className="p-4 rounded-[26px] mb-4"
                 style={{
                   backgroundColor: CASE_STATUS_COLORS['Resolved'] + '10',
                   borderWidth: 1,
@@ -2744,27 +2729,27 @@ export function CaseDetailPanel({
               >
                 <View className="flex-row items-center gap-2 mb-3">
                   <Check size={16} color={CASE_STATUS_COLORS['Resolved']} strokeWidth={2} />
-                  <Text style={{ color: CASE_STATUS_COLORS['Resolved'] }} className="text-xs uppercase font-semibold">
+                  <Text style={{ color: CASE_STATUS_COLORS['Resolved'], fontSize: 10 }} className="font-bold uppercase tracking-widest">
                     Resolution
                   </Text>
                 </View>
                 <View className="gap-3">
                   <View className="flex-row items-center justify-between">
-                    <Text style={{ color: colors.text.secondary }} className="text-sm">
+                    <Text style={{ color: palette.faint }} className="text-xs">
                       Resolution Type
                     </Text>
-                    <Text style={{ color: colors.text.primary }} className="font-semibold">
+                    <Text style={{ color: palette.text }} className="font-semibold">
                       {caseItem.resolution.type}
                     </Text>
                   </View>
                   {caseItem.resolution.value && (
                     <View className="flex-row items-center justify-between">
-                      <Text style={{ color: colors.text.secondary }} className="text-sm">
+                      <Text style={{ color: palette.faint }} className="text-xs">
                         Value
                       </Text>
                       <View className="flex-row items-center gap-1">
-                        <DollarSign size={14} color={colors.text.primary} strokeWidth={1.5} />
-                        <Text style={{ color: colors.text.primary }} className="font-semibold">
+                        <DollarSign size={14} color={palette.text} strokeWidth={1.5} />
+                        <Text style={{ color: palette.text }} className="font-semibold">
                           {formatCurrency(caseItem.resolution.value)}
                         </Text>
                       </View>
@@ -2772,20 +2757,20 @@ export function CaseDetailPanel({
                   )}
                   {formattedResolvedDate && (
                     <View className="flex-row items-center justify-between">
-                      <Text style={{ color: colors.text.secondary }} className="text-sm">
+                      <Text style={{ color: palette.faint }} className="text-xs">
                         Resolved On
                       </Text>
-                      <Text style={{ color: colors.text.primary }} className="font-medium">
+                      <Text style={{ color: palette.text }} className="font-medium">
                         {formattedResolvedDate}
                       </Text>
                     </View>
                   )}
                   {caseItem.resolution.notes && (
                     <View className="mt-2">
-                      <Text style={{ color: colors.text.secondary }} className="text-sm mb-1">
+                      <Text style={{ color: palette.muted }} className="text-sm mb-1">
                         Notes
                       </Text>
-                      <Text style={{ color: colors.text.primary }} className="text-sm leading-5">
+                      <Text style={{ color: palette.text }} className="text-sm leading-5">
                         {caseItem.resolution.notes}
                       </Text>
                     </View>
@@ -2798,66 +2783,53 @@ export function CaseDetailPanel({
                   Haptics.selectionAsync();
                   setShowResolutionModal(true);
                 }}
-                className="p-4 rounded-xl mb-4 active:opacity-80"
+                className="p-4 rounded-[26px] mb-4 active:opacity-80"
                 style={{
-                  backgroundColor: colors.bg.card,
+                  backgroundColor: palette.card,
                   borderWidth: 1,
-                  borderColor: colors.border.light,
+                  borderColor: palette.border,
                   borderStyle: 'dashed',
                 }}
               >
                 <View className="flex-row items-center justify-center gap-2">
-                  <Plus size={18} color={colors.text.secondary} strokeWidth={2} />
-                  <Text style={{ color: colors.text.secondary }} className="text-sm font-semibold">
+                  <Plus size={18} color={palette.muted} strokeWidth={2} />
+                  <Text style={{ color: palette.muted }} className="text-sm font-semibold">
                     Add Resolution
                   </Text>
                 </View>
-                <Text style={{ color: colors.text.muted }} className="text-xs text-center mt-2">
+                <Text style={{ color: palette.faint }} className="text-xs text-center mt-2">
                   Record how this case was resolved
                 </Text>
               </Pressable>
             )}
 
-            {/* Audit History / Timeline Section */}
+            {/* Audit history, in the same card style as Activity on other detail pages */}
             {(caseItem.timeline && caseItem.timeline.length > 0) && (
-              <View className="mb-4">
-                <View className="flex-row items-center gap-2 mb-4">
-                  <History size={16} color={colors.text.muted} strokeWidth={1.5} />
-                  <Text style={{ color: colors.text.muted }} className="text-[10px] font-bold uppercase tracking-[0.2em]">
-                    Audit History
+              <View style={{ borderRadius: 26, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 16, marginBottom: 16 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                  <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1 }}>Audit history</Text>
+                  <Text style={{ color: palette.faint, fontSize: 12 }}>
+                    {caseItem.timeline.length} {caseItem.timeline.length === 1 ? 'event' : 'events'}
                   </Text>
                 </View>
-                <View className="relative pl-4">
-                  {/* Vertical line */}
-                  <View
-                    className="absolute left-[5px] top-2 bottom-2 w-[2px]"
-                    style={{ backgroundColor: colors.border.light }}
-                  />
+                <View style={{ gap: 14 }}>
                   {caseItem.timeline.map((entry, index) => {
-                    const isNote = entry.action.startsWith('Note added:');
                     const entryDate = new Date(entry.date);
-                    const formattedEntryDate = `${entryDate.toLocaleDateString('en-GB', { month: 'short', day: 'numeric' })}, ${entryDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+                    const when = Number.isFinite(entryDate.getTime())
+                      ? entryDate.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+                      : '';
                     return (
-                      <View
-                        key={entry.id} className="flex-row gap-4 mb-4"
-                      >
-                        <View
-                          className="w-3 h-3 rounded-full z-10"
-                          style={{
-                            backgroundColor: isNote ? colors.accent.primary : colors.bg.card,
-                            borderWidth: isNote ? 0 : 3,
-                            borderColor: colors.border.medium,
-                          }}
-                        />
-                        <View className="flex-1 -mt-0.5">
-                          <Text
-                            style={{ color: isNote ? colors.accent.primary : colors.text.primary }}
-                            className="text-sm font-semibold leading-5"
-                          >
-                            {entry.action}
-                          </Text>
-                          <Text style={{ color: colors.text.muted }} className="text-[10px] font-bold uppercase tracking-tighter mt-1">
-                            {entry.user} • {formattedEntryDate}
+                      <View key={entry.id} style={{ flexDirection: 'row', gap: 12 }}>
+                        <View style={{ alignItems: 'center' }}>
+                          <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: index === 0 ? palette.limeOnSurface : palette.outline, marginTop: 4 }} />
+                          {index < (caseItem.timeline?.length ?? 0) - 1 ? (
+                            <View style={{ width: 1, flex: 1, backgroundColor: palette.hairline, marginTop: 6, minHeight: 28 }} />
+                          ) : null}
+                        </View>
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text style={{ color: palette.text, fontSize: 10, lineHeight: 15, fontWeight: '600' }}>{entry.action}</Text>
+                          <Text style={{ color: palette.faint, fontSize: 10, marginTop: 2 }}>
+                            {entry.user} · {when}
                           </Text>
                         </View>
                       </View>
@@ -2887,66 +2859,66 @@ export function CaseDetailPanel({
           <Pressable className="absolute inset-0" onPress={closeRefundRequestModal} />
           <View
             className="w-full max-w-md rounded-[28px] p-6"
-            style={{ backgroundColor: colors.bg.card }}
+            style={{ backgroundColor: palette.card }}
           >
             <View className="flex-row items-center gap-2 mb-5">
-              <DollarSign size={20} color={colors.text.primary} strokeWidth={2} />
-              <Text style={{ color: colors.text.primary }} className="text-xl font-bold tracking-tight">
+              <DollarSign size={20} color={palette.text} strokeWidth={2} />
+              <Text style={{ color: palette.text }} className="text-xl font-bold tracking-tight">
                 Create Refund Request
               </Text>
             </View>
 
-            <View className="rounded-xl px-4 py-3 mb-3" style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}>
-              <Text style={{ color: colors.text.muted }} className="text-[10px] uppercase font-semibold">Case</Text>
-              <Text style={{ color: colors.text.primary }} className="text-sm font-semibold mt-1">{caseItem.caseNumber}</Text>
+            <View className="rounded-xl px-4 py-3 mb-3" style={{ backgroundColor: palette.softFill, borderWidth: 1, borderColor: palette.border }}>
+              <Text style={{ color: palette.faint }} className="text-[10px] uppercase font-semibold">Case</Text>
+              <Text style={{ color: palette.text }} className="text-sm font-semibold mt-1">{caseItem.caseNumber}</Text>
             </View>
 
-            <View className="rounded-xl px-4 py-3 mb-4" style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}>
-              <Text style={{ color: colors.text.muted }} className="text-[10px] uppercase font-semibold">Order</Text>
-              <Text style={{ color: colors.text.primary }} className="text-sm font-semibold mt-1">
+            <View className="rounded-xl px-4 py-3 mb-4" style={{ backgroundColor: palette.softFill, borderWidth: 1, borderColor: palette.border }}>
+              <Text style={{ color: palette.faint }} className="text-[10px] uppercase font-semibold">Order</Text>
+              <Text style={{ color: palette.text }} className="text-sm font-semibold mt-1">
                 {linkedOrder?.orderNumber ?? caseItem.orderNumber ?? 'No linked order'}
               </Text>
-              <Text style={{ color: colors.text.secondary }} className="text-xs mt-1">
+              <Text style={{ color: palette.muted }} className="text-xs mt-1">
                 Remaining refundable: {formatCurrency(remainingRefundableAmount)}
               </Text>
-              <Text style={{ color: colors.text.muted }} className="text-[11px] mt-2">
+              <Text style={{ color: palette.faint }} className="text-[11px] mt-2">
                 {`This request will be sent for ${refundRequestReviewerLabel}.`}
               </Text>
             </View>
 
-            <Text style={{ color: colors.text.muted }} className="text-xs uppercase font-semibold mb-2">
+            <Text style={{ color: palette.faint }} className="text-[10px] font-bold uppercase tracking-widest mb-2">
               Refund Amount
             </Text>
-            <TextInput
+            <FocusTextInput
               value={refundRequestAmount}
               onChangeText={setRefundRequestAmount}
               keyboardType="numeric"
               placeholder="0.00"
-              placeholderTextColor={colors.text.muted}
+              placeholderTextColor={palette.faint}
               className="rounded-xl px-4 mb-4"
               style={{
-                backgroundColor: colors.bg.secondary,
-                color: colors.text.primary,
+                backgroundColor: palette.softFill,
+                color: palette.text,
                 borderWidth: 1,
-                borderColor: colors.border.light,
+                borderColor: palette.border,
                 height: 50,
               }}
             />
 
-            <Text style={{ color: colors.text.muted }} className="text-xs uppercase font-semibold mb-2">
+            <Text style={{ color: palette.faint }} className="text-[10px] font-bold uppercase tracking-widest mb-2">
               Refund Reason
             </Text>
-            <TextInput
+            <FocusTextInput
               value={refundRequestReason}
               onChangeText={setRefundRequestReason}
               placeholder="Why should this refund be paid?"
-              placeholderTextColor={colors.text.muted}
+              placeholderTextColor={palette.faint}
               className="rounded-xl px-4 py-3 mb-4"
               style={{
-                backgroundColor: colors.bg.secondary,
-                color: colors.text.primary,
+                backgroundColor: palette.softFill,
+                color: palette.text,
                 borderWidth: 1,
-                borderColor: colors.border.light,
+                borderColor: palette.border,
                 minHeight: 90,
                 textAlignVertical: 'top',
               }}
@@ -2954,20 +2926,20 @@ export function CaseDetailPanel({
               numberOfLines={3}
             />
 
-            <Text style={{ color: colors.text.muted }} className="text-xs uppercase font-semibold mb-2">
+            <Text style={{ color: palette.faint }} className="text-[10px] font-bold uppercase tracking-widest mb-2">
               Internal Note
             </Text>
-            <TextInput
+            <FocusTextInput
               value={refundRequestNote}
               onChangeText={setRefundRequestNote}
               placeholder="Optional note for finance reviewers"
-              placeholderTextColor={colors.text.muted}
+              placeholderTextColor={palette.faint}
               className="rounded-xl px-4 py-3 mb-4"
               style={{
-                backgroundColor: colors.bg.secondary,
-                color: colors.text.primary,
+                backgroundColor: palette.softFill,
+                color: palette.text,
                 borderWidth: 1,
-                borderColor: colors.border.light,
+                borderColor: palette.border,
                 minHeight: 80,
                 textAlignVertical: 'top',
               }}
@@ -2976,7 +2948,7 @@ export function CaseDetailPanel({
             />
 
             {refundRequestError ? (
-              <Text style={{ color: '#EF4444' }} className="text-xs mb-3">
+              <Text style={{ color: palette.danger }} className="text-xs mb-3">
                 {refundRequestError}
               </Text>
             ) : null}
@@ -2985,9 +2957,9 @@ export function CaseDetailPanel({
               <Pressable
                 onPress={closeRefundRequestModal}
                 className="flex-1 py-4 rounded-full active:opacity-80"
-                style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}
+                style={{ backgroundColor: palette.softFill, borderWidth: 1, borderColor: palette.border }}
               >
-                <Text style={{ color: colors.text.secondary }} className="text-center font-semibold">
+                <Text style={{ color: palette.muted }} className="text-center font-semibold">
                   Cancel
                 </Text>
               </Pressable>
@@ -2995,14 +2967,11 @@ export function CaseDetailPanel({
                 onPress={() => { void handleSubmitRefundRequestFromCase(); }}
                 disabled={isSubmittingRefundRequest}
                 className="flex-1 py-4 rounded-full active:opacity-80"
-                style={{ backgroundColor: isSubmittingRefundRequest ? colors.bg.secondary : (isDark ? '#FFFFFF' : '#111111') }}
+                style={{ backgroundColor: isSubmittingRefundRequest ? palette.softFill : FYLL_LIME }}
               >
-                <Text
-                  className="text-center font-semibold"
-                  style={{ color: isSubmittingRefundRequest ? colors.text.muted : (isDark ? '#111111' : '#FFFFFF') }}
-                >
+                <MoneyText style={{ textAlign: 'center', fontSize: 14, color: isSubmittingRefundRequest ? palette.faint : FYLL_LIME_INK }}>
                   {isSubmittingRefundRequest ? 'Submitting...' : 'Submit'}
-                </Text>
+                </MoneyText>
               </Pressable>
             </View>
           </View>
@@ -3018,30 +2987,30 @@ export function CaseDetailPanel({
         >
           <View
             className="w-80 rounded-xl p-5"
-            style={{ backgroundColor: colors.bg.card }}
+            style={{ backgroundColor: palette.card }}
           >
-            <Text style={{ color: colors.text.primary }} className="text-lg font-bold mb-2 text-center">
+            <Text style={{ color: palette.text }} className="text-lg font-bold mb-2 text-center">
               Delete Case?
             </Text>
-            <Text style={{ color: colors.text.secondary }} className="text-center mb-6">
+            <Text style={{ color: palette.muted }} className="text-center mb-6">
               This action cannot be undone. The case will be permanently deleted.
             </Text>
             <View className="flex-row gap-3">
               <Pressable
                 onPress={() => setShowDeleteModal(false)}
                 className="flex-1 py-4 rounded-full active:opacity-80"
-                style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}
+                style={{ backgroundColor: palette.softFill, borderWidth: 1, borderColor: palette.border }}
               >
-                <Text style={{ color: colors.text.secondary }} className="text-center font-semibold">
+                <Text style={{ color: palette.muted }} className="text-center font-semibold">
                   Cancel
                 </Text>
               </Pressable>
               <Pressable
                 onPress={handleDelete}
                 className="flex-1 py-4 rounded-full active:opacity-80"
-                style={{ backgroundColor: '#EF4444' }}
+                style={{ backgroundColor: palette.dangerBg, borderWidth: 1, borderColor: palette.dangerBorder }}
               >
-                <Text className="text-white text-center font-semibold">Delete</Text>
+                <MoneyText style={{ textAlign: 'center', fontSize: 14, color: palette.danger }}>Delete</MoneyText>
               </Pressable>
             </View>
           </View>
@@ -3064,25 +3033,25 @@ export function CaseDetailPanel({
           />
           <View
             className="w-full max-w-md rounded-[28px] p-6"
-            style={{ backgroundColor: colors.bg.card }}
+            style={{ backgroundColor: palette.card }}
           >
-            <Text style={{ color: colors.text.primary }} className="text-xl font-bold mb-5 tracking-tight">
+            <Text style={{ color: palette.text }} className="text-xl font-bold mb-5 tracking-tight">
               Add Internal Note
             </Text>
-            <TextInput
+            <FocusTextInput
               autoFocus
               value={noteText}
               onChangeText={setNoteText}
               placeholder="Type your notes here..."
-              placeholderTextColor={colors.text.muted}
+              placeholderTextColor={palette.faint}
               multiline
               numberOfLines={4}
               className="rounded-xl p-4 text-sm mb-5"
               style={{
-                backgroundColor: colors.bg.secondary,
-                color: colors.text.primary,
+                backgroundColor: palette.softFill,
+                color: palette.text,
                 borderWidth: 1,
-                borderColor: colors.border.light,
+                borderColor: palette.border,
                 minHeight: 120,
                 textAlignVertical: 'top',
               }}
@@ -3094,20 +3063,20 @@ export function CaseDetailPanel({
                   setNoteText('');
                 }}
                 className="flex-1 py-4 rounded-full active:opacity-80"
-                style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}
+                style={{ backgroundColor: palette.softFill, borderWidth: 1, borderColor: palette.border }}
               >
-                <Text style={{ color: colors.text.secondary }} className="text-center font-semibold">
+                <Text style={{ color: palette.muted }} className="text-center font-semibold">
                   Cancel
                 </Text>
               </Pressable>
               <Pressable
                 onPress={handleAddNote}
                 className="flex-1 py-4 rounded-full active:opacity-80"
-                style={{ backgroundColor: '#111111' }}
+                style={{ backgroundColor: FYLL_LIME }}
               >
-                <Text className="text-white text-center font-semibold">
-                  Post Note
-                </Text>
+                <MoneyText style={{ textAlign: 'center', fontSize: 14, color: FYLL_LIME_INK }}>
+                  Post note
+                </MoneyText>
               </Pressable>
             </View>
           </View>
@@ -3139,17 +3108,17 @@ export function CaseDetailPanel({
           />
           <View
             className="w-full max-w-md rounded-[28px] p-6"
-            style={{ backgroundColor: colors.bg.card }}
+            style={{ backgroundColor: palette.card }}
           >
             <View className="flex-row items-center gap-2 mb-5">
               <Check size={20} color="#10B981" strokeWidth={2} />
-              <Text style={{ color: colors.text.primary }} className="text-xl font-semibold tracking-tight">
+              <Text style={{ color: palette.text }} className="text-xl font-semibold tracking-tight">
                 Add Resolution
               </Text>
             </View>
 
             {/* Resolution Type */}
-            <Text style={{ color: colors.text.muted }} className="text-xs uppercase font-semibold mb-2">
+            <Text style={{ color: palette.faint }} className="text-[10px] font-bold uppercase tracking-widest mb-2">
               Resolution Type
             </Text>
             <View style={{ marginBottom: 16 }}
@@ -3161,24 +3130,24 @@ export function CaseDetailPanel({
                 }}
                 className="flex-row items-center justify-between py-3 px-4 rounded-xl active:opacity-80"
                 style={{
-                  backgroundColor: colors.bg.secondary,
+                  backgroundColor: palette.softFill,
                   borderWidth: 1,
-                  borderColor: showResolutionTypeMenu ? colors.accent.primary : colors.border.light,
+                  borderColor: showResolutionTypeMenu ? colors.accent.primary : palette.border,
                 }}
               >
-                <Text style={{ color: colors.text.primary }} className="text-sm font-medium">
+                <Text style={{ color: palette.text }} className="text-sm font-medium">
                   {resolutionType}
                 </Text>
-                <ChevronDown size={18} color={colors.text.muted} strokeWidth={1.8} />
+                <ChevronDown size={18} color={palette.faint} strokeWidth={1.8} />
               </Pressable>
 
               {showResolutionTypeMenu ? (
                 <View
                   className="mt-2 rounded-xl overflow-hidden"
                   style={{
-                    backgroundColor: colors.bg.secondary,
+                    backgroundColor: palette.softFill,
                     borderWidth: 1,
-                    borderColor: colors.border.light,
+                    borderColor: palette.border,
                   }}
                 >
                   {resolutionTypeOptions.map((type) => {
@@ -3193,11 +3162,11 @@ export function CaseDetailPanel({
                         }}
                         className="flex-row items-center justify-between px-4 py-3 active:opacity-80"
                         style={{
-                          backgroundColor: isSelected ? (isDark ? colors.bg.card : '#F9FAFB') : colors.bg.secondary,
+                          backgroundColor: isSelected ? (isDark ? palette.card : '#F9FAFB') : palette.softFill,
                         }}
                       >
                         <Text
-                          style={{ color: isSelected ? colors.text.primary : colors.text.secondary }}
+                          style={{ color: isSelected ? palette.text : palette.muted }}
                           className="text-sm font-medium"
                         >
                           {type}
@@ -3213,43 +3182,43 @@ export function CaseDetailPanel({
             {/* Resolution Value (for refunds/credits) */}
             {(resolutionType === 'Refund Issued' || resolutionType === 'Credit Applied') && (
               <View className="mb-4">
-                <Text style={{ color: colors.text.muted }} className="text-xs uppercase font-semibold mb-2">
+                <Text style={{ color: palette.faint }} className="text-[10px] font-bold uppercase tracking-widest mb-2">
                   Resolution Value
                 </Text>
-                <TextInput
+                <FocusTextInput
                   value={resolutionValue}
                   onChangeText={setResolutionValue}
                   placeholder="0"
-                  placeholderTextColor={colors.text.muted}
+                  placeholderTextColor={palette.faint}
                   keyboardType="numeric"
                   className="py-3 px-4 rounded-xl"
                   style={{
-                    backgroundColor: colors.bg.secondary,
-                    color: colors.text.primary,
+                    backgroundColor: palette.softFill,
+                    color: palette.text,
                     borderWidth: 1,
-                    borderColor: colors.border.light,
+                    borderColor: palette.border,
                   }}
                 />
               </View>
             )}
 
             {/* Resolution Notes */}
-            <Text style={{ color: colors.text.muted }} className="text-xs uppercase font-semibold mb-2">
+            <Text style={{ color: palette.faint }} className="text-[10px] font-bold uppercase tracking-widest mb-2">
               Resolution Notes
             </Text>
-            <TextInput
+            <FocusTextInput
               value={resolutionNotes}
               onChangeText={setResolutionNotes}
               placeholder="How was this case resolved..."
-              placeholderTextColor={colors.text.muted}
+              placeholderTextColor={palette.faint}
               multiline
               numberOfLines={3}
               className="rounded-xl p-4 text-sm mb-5"
               style={{
-                backgroundColor: colors.bg.secondary,
-                color: colors.text.primary,
+                backgroundColor: palette.softFill,
+                color: palette.text,
                 borderWidth: 1,
-                borderColor: colors.border.light,
+                borderColor: palette.border,
                 minHeight: 100,
                 textAlignVertical: 'top',
               }}
@@ -3265,23 +3234,20 @@ export function CaseDetailPanel({
                   setResolutionValue('');
                 }}
                 className="flex-1 py-4 rounded-full active:opacity-80"
-                style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}
+                style={{ backgroundColor: palette.softFill, borderWidth: 1, borderColor: palette.border }}
               >
-                <Text style={{ color: colors.text.secondary }} className="text-center font-semibold">
+                <Text style={{ color: palette.muted }} className="text-center font-semibold">
                   Cancel
                 </Text>
               </Pressable>
               <Pressable
                 onPress={handleAddResolution}
                 className="flex-1 py-4 rounded-full active:opacity-80"
-                style={{ backgroundColor: isDark ? '#FFFFFF' : '#111111' }}
+                style={{ backgroundColor: FYLL_LIME }}
               >
-                <Text
-                  className="text-center font-semibold"
-                  style={{ color: isDark ? '#111111' : '#FFFFFF' }}
-                >
-                  Save Resolution
-                </Text>
+                <MoneyText style={{ textAlign: 'center', fontSize: 14, color: FYLL_LIME_INK }}>
+                  Save resolution
+                </MoneyText>
               </Pressable>
             </View>
           </View>

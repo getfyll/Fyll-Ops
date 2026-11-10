@@ -8,7 +8,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
-import { useResolvedThemeMode, useThemeColors } from '@/lib/theme';
+import { useResolvedThemeMode } from '@/lib/theme';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import useAuthStore from '@/lib/state/auth-store';
 import useFyllStore, {
@@ -129,7 +129,6 @@ const IMPORT_RECOMMENDED_STEP: Partial<Record<ImportEntityType, number>> = {
   expenses: 4,
 };
 
-const AI_GRADIENT_COLORS = [FYLL_LIME, '#B8C52C', '#879400'] as const;
 
 const normalizeLookupValue = (value: string) => value.trim().toLowerCase();
 
@@ -204,12 +203,11 @@ const toRowObjects = (headers: string[], rows: string[][]) => rows.map((row) => 
 export default function ImportAiScreen() {
   const { from } = useLocalSearchParams<{ from?: string | string[] }>();
   const goBack = useSettingsBack();
-  const colors = useThemeColors();
   const palette = usePaymentsPalette();
   const resolvedThemeMode = useResolvedThemeMode();
   const tabBarHeight = useTabBarHeight();
   const openedFromSettings = isFromSettingsRoute(from);
-  const panelStyles = getSettingsWebPanelStyles(openedFromSettings, colors.bg.primary, colors.border.light);
+  const panelStyles = getSettingsWebPanelStyles(openedFromSettings, palette.page, palette.border);
   const { isDesktop, isMobile } = useBreakpoint();
   const useImportTypeGrid = Platform.OS === 'web' && isDesktop;
 
@@ -980,13 +978,6 @@ export default function ImportAiScreen() {
     <View style={panelStyles.outer}>
       <View style={panelStyles.inner}>
         <SafeAreaView className="flex-1" style={{ backgroundColor: palette.page }} edges={['top']}>
-          {!isDesktop ? (
-            <LinearGradient
-              pointerEvents="none"
-              colors={resolvedThemeMode === 'dark' ? ['rgba(111,125,18,0.55)', 'rgba(20,20,20,0)'] : ['rgba(213,224,87,0.42)', 'rgba(244,243,235,0)']}
-              style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 360 }}
-            />
-          ) : null}
           <InternalSettingsHeader title="AI Import Assistant" description="Map and validate structured business data with guided assistance." isDesktop={isDesktop} onBack={goBack} />
 
           <ScrollView className="flex-1" contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 18, paddingBottom: isDesktop ? 64 : tabBarHeight + 40 }} showsVerticalScrollIndicator={false}>
@@ -999,14 +990,14 @@ export default function ImportAiScreen() {
             />
 
             <Text style={{ color: palette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 10, marginLeft: 2 }}>Choose import type</Text>
-            <View className="rounded-3xl p-4 overflow-hidden" style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}>
+            <View className="p-4 overflow-hidden" style={{ borderRadius: 26, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}>
               <View className="flex-row items-center justify-between mb-3">
                 <Text style={{ color: palette.text }} className="text-sm font-semibold">What are you importing?</Text>
                 <View className="rounded-full px-2.5 py-1" style={{ borderWidth: 1, borderColor: palette.nudgeBorder, backgroundColor: palette.nudgeBg }}>
                   <Text style={{ color: palette.limeOnSurface }} className="text-[10px] font-semibold">AI powered</Text>
                 </View>
               </View>
-              <Text style={{ color: colors.text.tertiary }} className="text-xs mb-3">
+              <Text style={{ color: palette.faint }} className="text-xs mb-3">
                 Recommended order: 1 Products, 2 Customers, 3 Orders, 4 Expenses. Use Auto-detect if unsure.
               </Text>
               <View style={useImportTypeGrid ? { flexDirection: 'row', flexWrap: 'wrap', gap: 10 } : { gap: 10 }}>
@@ -1023,7 +1014,7 @@ export default function ImportAiScreen() {
                       style={{
                         borderWidth: 1,
                         borderColor: active ? FYLL_LIME : palette.border,
-                        backgroundColor: active ? palette.nudgeBg : palette.inset,
+                        backgroundColor: active ? palette.nudgeBg : palette.card,
                         ...(useImportTypeGrid
                           ? {
                               flexBasis: '24%',
@@ -1043,21 +1034,21 @@ export default function ImportAiScreen() {
                               {recommendedStep ? (
                                 <View
                                   className="w-5 h-5 rounded-full items-center justify-center"
-                                  style={{ backgroundColor: active ? colors.text.primary : colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}
+                                  style={{ backgroundColor: active ? palette.text : palette.softFill, borderWidth: 1, borderColor: palette.border }}
                                 >
                                   <Text
                                     className="text-[10px] font-semibold"
-                                    style={{ color: active ? colors.bg.primary : colors.text.secondary }}
+                                    style={{ color: active ? palette.page : palette.muted }}
                                   >
                                     {recommendedStep}
                                   </Text>
                                 </View>
                               ) : null}
-                              {active ? <CheckCircle2 size={15} color={colors.text.primary} strokeWidth={2.2} /> : null}
+                              {active ? <CheckCircle2 size={15} color={palette.text} strokeWidth={2.2} /> : null}
                             </View>
                           </View>
-                          <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '500', marginTop: 8 }}>{option.title}</Text>
-                          <Text style={{ color: colors.text.tertiary }} className="text-xs mt-0.5" numberOfLines={2}>{option.description}</Text>
+                          <Text style={{ color: palette.text, fontSize: 14, lineHeight: 20, fontWeight: '600', marginTop: 8 }}>{option.title}</Text>
+                          <Text style={{ color: palette.faint }} className="text-xs mt-0.5" numberOfLines={2}>{option.description}</Text>
                         </>
                       ) : (
                         <>
@@ -1065,23 +1056,23 @@ export default function ImportAiScreen() {
                             <Icon size={16} color={active ? palette.limeOnSurface : palette.faint} strokeWidth={2} />
                           </View>
                           <View className="ml-3" style={{ flex: 1 }}>
-                            <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '500' }}>{option.title}</Text>
-                            <Text style={{ color: colors.text.tertiary }} className="text-xs mt-0.5">{option.description}</Text>
+                            <Text style={{ color: palette.text, fontSize: 14, lineHeight: 20, fontWeight: '600' }}>{option.title}</Text>
+                            <Text style={{ color: palette.faint }} className="text-xs mt-0.5">{option.description}</Text>
                           </View>
                           {recommendedStep ? (
                             <View
                               className="w-6 h-6 rounded-full items-center justify-center mr-2"
-                              style={{ backgroundColor: active ? colors.text.primary : colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}
+                              style={{ backgroundColor: active ? palette.text : palette.softFill, borderWidth: 1, borderColor: palette.border }}
                             >
                               <Text
                                 className="text-[11px] font-semibold"
-                                style={{ color: active ? colors.bg.primary : colors.text.secondary }}
+                                style={{ color: active ? palette.page : palette.muted }}
                               >
                                 {recommendedStep}
                               </Text>
                             </View>
                           ) : null}
-                          {active ? <CheckCircle2 size={16} color={colors.text.primary} strokeWidth={2.2} /> : null}
+                          {active ? <CheckCircle2 size={16} color={palette.text} strokeWidth={2.2} /> : null}
                         </>
                       )}
                     </Pressable>
@@ -1090,9 +1081,9 @@ export default function ImportAiScreen() {
               </View>
             </View>
 
-            <View className="mt-4 rounded-3xl p-5 overflow-hidden" style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.nudgeBorder, borderStyle: 'dashed' }}>
-              <Text style={{ color: colors.text.primary }} className="text-sm font-semibold mb-2">Upload CSV File</Text>
-              <Text style={{ color: colors.text.tertiary }} className="text-xs mb-3">
+            <View className="mt-4 p-5 overflow-hidden" style={{ borderRadius: 26, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.nudgeBorder, borderStyle: 'dashed' }}>
+              <Text style={{ color: palette.text }} className="text-sm font-semibold mb-2">Upload CSV File</Text>
+              <Text style={{ color: palette.faint }} className="text-xs mb-3">
                 V1 accepts CSV files. AI maps columns, then you approve import.
               </Text>
               <Pressable
@@ -1103,19 +1094,11 @@ export default function ImportAiScreen() {
                   height: 48,
                   borderWidth: 1,
                   borderColor: FYLL_LIME,
-                  backgroundColor: isAnalyzing || isImporting ? palette.nudgeBg : 'transparent',
+                  backgroundColor: isAnalyzing || isImporting ? palette.nudgeBg : FYLL_LIME,
                   opacity: isImporting ? 0.6 : 1,
                   overflow: 'hidden',
                 }}
               >
-                {!isAnalyzing && !isImporting ? (
-                  <LinearGradient
-                    colors={AI_GRADIENT_COLORS}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={StyleSheet.absoluteFillObject}
-                  />
-                ) : null}
                 {isAnalyzing ? (
                   <View className="flex-row items-center">
                     <ActivityIndicator size="small" color={palette.limeOnSurface} />
@@ -1184,15 +1167,16 @@ export default function ImportAiScreen() {
                 </View>
               ) : null}
               {fileName ? (
-                <Text style={{ color: colors.text.muted }} className="text-xs mt-2">Selected: {fileName}</Text>
+                <Text style={{ color: palette.faint }} className="text-xs mt-2">Selected: {fileName}</Text>
               ) : null}
             </View>
 
             {mappingSuggestion ? (
               <View
-                className="mt-4 rounded-2xl p-4 overflow-hidden"
+                className="mt-4 p-4 overflow-hidden"
                 style={{
-                  backgroundColor: colors.bg.card,
+                  borderRadius: 26,
+                  backgroundColor: palette.card,
                   borderWidth: 1,
                   borderColor: mappingSuggestion.usedAI ? palette.nudgeBorder : palette.border,
                 }}
@@ -1207,22 +1191,22 @@ export default function ImportAiScreen() {
                 ) : null}
                 <View className="flex-row items-center justify-between" style={{ gap: 10 }}>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: colors.text.primary }} className="font-semibold text-sm">
+                    <Text style={{ color: palette.text }} className="font-semibold text-sm">
                       Detected: {mappingSuggestion.detectedType.charAt(0).toUpperCase() + mappingSuggestion.detectedType.slice(1)}
                     </Text>
-                    <Text style={{ color: colors.text.tertiary }} className="text-xs mt-0.5">
+                    <Text style={{ color: palette.faint }} className="text-xs mt-0.5">
                       Confidence: {mappingSuggestion.confidence.toUpperCase()} • {mappingSuggestion.usedAI ? 'AI mapping' : 'Smart header mapping'}
                     </Text>
                   </View>
-                  <Sparkles size={16} color={mappingSuggestion.usedAI ? palette.limeOnSurface : colors.text.tertiary} strokeWidth={2} />
+                  <Sparkles size={16} color={mappingSuggestion.usedAI ? palette.limeOnSurface : palette.faint} strokeWidth={2} />
                 </View>
-                <Text style={{ color: colors.text.secondary }} className="text-xs mt-2">{mappingSuggestion.note}</Text>
+                <Text style={{ color: palette.muted }} className="text-xs mt-2">{mappingSuggestion.note}</Text>
 
                 <View className="mt-3" style={{ gap: 8 }}>
                   {mappingFields.slice(0, 12).map((field) => (
                     <View key={field} className="flex-row items-center justify-between" style={{ gap: 10 }}>
-                      <Text style={{ color: colors.text.tertiary }} className="text-xs" numberOfLines={1}>{field.replace(/_/g, ' ')}</Text>
-                      <Text style={{ color: colors.text.primary }} className="text-xs font-medium" numberOfLines={1}>
+                      <Text style={{ color: palette.faint }} className="text-xs" numberOfLines={1}>{field.replace(/_/g, ' ')}</Text>
+                      <Text style={{ color: palette.text }} className="text-xs font-medium" numberOfLines={1}>
                         {mappingSuggestion.mapping[field] || '—'}
                       </Text>
                     </View>
@@ -1232,31 +1216,31 @@ export default function ImportAiScreen() {
             ) : null}
 
             {(parseStats.totalRows > 0 || previewRows.length > 0) ? (
-              <View className="mt-4 rounded-2xl p-4" style={{ backgroundColor: colors.bg.card, borderWidth: 1, borderColor: colors.border.light }}>
-                <Text style={{ color: colors.text.primary }} className="font-semibold text-sm">Parse Summary</Text>
-                <Text style={{ color: colors.text.secondary }} className="text-xs mt-1">
+              <View className="mt-4 p-4" style={{ borderRadius: 26, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}>
+                <Text style={{ color: palette.text }} className="font-semibold text-sm">Parse Summary</Text>
+                <Text style={{ color: palette.muted }} className="text-xs mt-1">
                   Rows: {parseStats.totalRows} • Valid: {parseStats.validRows} • Invalid: {parseStats.invalidRows}
                   {parseStats.skippedExisting > 0 ? ` • Existing skipped: ${parseStats.skippedExisting}` : ''}
                 </Text>
 
                 {missingRequiredColumns.length > 0 ? (
-                  <View className="mt-3 rounded-xl px-3 py-2.5" style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}>
-                    <Text style={{ color: colors.text.primary }} className="text-xs font-semibold">Required columns not mapped</Text>
-                    <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 4 }}>
+                  <View className="mt-3 rounded-xl px-3 py-2.5" style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}>
+                    <Text style={{ color: palette.text }} className="text-xs font-semibold">Required columns not mapped</Text>
+                    <Text style={{ color: palette.faint, fontSize: 12, marginTop: 4 }}>
                       {missingRequiredColumns.map(formatFieldLabel).join(', ')}
                     </Text>
-                    <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 4 }}>
+                    <Text style={{ color: palette.faint, fontSize: 12, marginTop: 4 }}>
                       Include these columns in your CSV header or rename headers so AI can map them.
                     </Text>
                   </View>
                 ) : null}
 
                 {parseStats.invalidRows > 0 && invalidReasonEntries.length > 0 ? (
-                  <View className="mt-3 rounded-xl px-3 py-2.5" style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}>
-                    <Text style={{ color: colors.text.primary }} className="text-xs font-semibold">Why rows are invalid</Text>
+                  <View className="mt-3 rounded-xl px-3 py-2.5" style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}>
+                    <Text style={{ color: palette.text }} className="text-xs font-semibold">Why rows are invalid</Text>
                     <View className="mt-1.5" style={{ gap: 2 }}>
                       {invalidReasonEntries.slice(0, 6).map(([reason, count]) => (
-                        <Text key={reason} style={{ color: colors.text.tertiary, fontSize: 12 }}>
+                        <Text key={reason} style={{ color: palette.faint, fontSize: 12 }}>
                           • {reason} ({count})
                         </Text>
                       ))}
@@ -1266,21 +1250,21 @@ export default function ImportAiScreen() {
 
                 {previewRows.length > 0 ? (
                   <View className="mt-3" style={{ gap: 6 }}>
-                    <Text style={{ color: colors.text.primary }} className="text-xs font-semibold">Preview</Text>
+                    <Text style={{ color: palette.text }} className="text-xs font-semibold">Preview</Text>
                     {previewRows.map((row, index) => (
-                      <Text key={`${row}-${index}`} style={{ color: colors.text.secondary, fontSize: 12 }} numberOfLines={1}>
+                      <Text key={`${row}-${index}`} style={{ color: palette.muted, fontSize: 12 }} numberOfLines={1}>
                         {row}
                       </Text>
                     ))}
                   </View>
                 ) : null}
                 {resolvedType === 'orders' && ordersMissingProducts.length > 0 ? (
-                  <View className="mt-3 rounded-xl px-3 py-2.5" style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}>
-                    <Text style={{ color: colors.text.primary }} className="text-xs font-semibold">Unmatched product names</Text>
-                    <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 4 }}>
+                  <View className="mt-3 rounded-xl px-3 py-2.5" style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}>
+                    <Text style={{ color: palette.text }} className="text-xs font-semibold">Unmatched product names</Text>
+                    <Text style={{ color: palette.faint, fontSize: 12, marginTop: 4 }}>
                       {ordersMissingProducts.join(', ')}
                     </Text>
-                    <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 4 }}>
+                    <Text style={{ color: palette.faint, fontSize: 12, marginTop: 4 }}>
                       Import matching products first or rename CSV product_name values to your existing catalog names.
                     </Text>
                   </View>
@@ -1305,25 +1289,17 @@ export default function ImportAiScreen() {
                 className="rounded-full items-center justify-center active:opacity-80"
                 style={{
                   height: 50,
-                  backgroundColor: !canImport || isImporting ? colors.bg.secondary : 'transparent',
+                  backgroundColor: !canImport || isImporting ? palette.softFill : FYLL_LIME,
                   borderWidth: 1,
                   borderColor: !canImport || isImporting ? palette.border : FYLL_LIME,
                   opacity: !businessId ? 0.6 : 1,
                   overflow: 'hidden',
                 }}
               >
-                {!isImporting && canImport ? (
-                  <LinearGradient
-                    colors={AI_GRADIENT_COLORS}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={StyleSheet.absoluteFillObject}
-                  />
-                ) : null}
                 {isImporting ? (
-                  <ActivityIndicator size="small" color={colors.text.primary} />
+                  <ActivityIndicator size="small" color={palette.text} />
                 ) : (
-                  <Text style={{ color: canImport ? FYLL_LIME_INK : colors.text.primary, fontSize: 14 }} className="font-semibold">
+                  <Text style={{ color: canImport ? FYLL_LIME_INK : palette.text, fontSize: 14 }} className="font-semibold">
                     {canImport
                       ? `Import ${resolvedType ? resolvedType.charAt(0).toUpperCase() + resolvedType.slice(1) : ''}`
                       : 'Fix rows to enable import'}
@@ -1331,7 +1307,7 @@ export default function ImportAiScreen() {
                 )}
               </Pressable>
                 {!canImport && importDisabledReason ? (
-                  <Text style={{ color: colors.text.tertiary }} className="text-xs mt-2">
+                  <Text style={{ color: palette.faint }} className="text-xs mt-2">
                     {importDisabledReason}
                   </Text>
                 ) : null}
@@ -1339,13 +1315,13 @@ export default function ImportAiScreen() {
             ) : null}
 
             {importSummary ? (
-              <View className="mt-5 rounded-2xl p-4" style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}>
-                <Text style={{ color: colors.text.primary }} className="font-semibold text-sm">Import Complete</Text>
-                <Text style={{ color: colors.text.secondary }} className="text-xs mt-1">{importSummary.note}</Text>
-                <Text style={{ color: colors.text.tertiary }} className="text-xs mt-2">
+              <View className="mt-5 p-4" style={{ borderRadius: 26, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}>
+                <Text style={{ color: palette.text }} className="font-semibold text-sm">Import Complete</Text>
+                <Text style={{ color: palette.muted }} className="text-xs mt-1">{importSummary.note}</Text>
+                <Text style={{ color: palette.faint }} className="text-xs mt-2">
                   Imported: {importSummary.imported} • Created: {importSummary.created} • Updated: {importSummary.updated}
                 </Text>
-                <Text style={{ color: colors.text.tertiary }} className="text-xs mt-1">
+                <Text style={{ color: palette.faint }} className="text-xs mt-1">
                   Invalid skipped: {importSummary.skippedInvalid} • Existing skipped: {importSummary.skippedExisting} • Failed: {importSummary.failed}
                 </Text>
               </View>

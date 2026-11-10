@@ -148,6 +148,7 @@ const renderEmailShell = ({
   subtitle,
   highlightLabel,
   highlightValue,
+  detailRows,
   ctaLabel,
   ctaUrl,
   footerNote,
@@ -160,6 +161,8 @@ const renderEmailShell = ({
   subtitle: string
   highlightLabel: string
   highlightValue: string
+  // Extra lines under the highlight (for example the pickup address, contact and hours).
+  detailRows?: { label: string; value: string }[]
   ctaLabel: string
   ctaUrl: string
   footerNote: string
@@ -191,6 +194,7 @@ const renderEmailShell = ({
                     <div style="background-color:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:24px;margin-bottom:32px;text-align:center;">
                       <div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px;">${escapeHtml(highlightLabel)}</div>
                       <div style="font-size:16px;font-weight:600;color:#111827;">${escapeHtml(highlightValue)}</div>
+                      ${(detailRows ?? []).filter((row) => row.value).map((row) => `<div style="border-top:1px solid #e5e7eb;margin-top:16px;padding-top:14px;"><div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;">${escapeHtml(row.label)}</div><div style="font-size:14px;line-height:1.5;color:#374151;">${escapeHtml(row.value)}</div></div>`).join('')}
                     </div>
                     <div style="text-align:center;margin-bottom:40px;">
                       <a href="${ctaUrl}" style="display:inline-block;background-color:#000000;color:#ffffff !important;text-decoration:none;font-weight:500;padding:15px 36px;border-radius:9999px;font-size:14px;text-align:center;">${escapeHtml(ctaLabel)}</a>
@@ -246,6 +250,121 @@ const buildOrderStatusEmail = ({
     '',
     `Your ${businessName} order ${orderLabel} is now: ${newStatus}`,
     `Track your order: ${trackingUrl}`,
+  ].join('\n'),
+})
+
+// --- Pickup (customer collection) -------------------------------------------------------------------------------------
+// The same wording the Fyll Store's send-order-email uses, so a customer reads one voice whichever app sent it.
+// Ops marks a pickup order fulfillmentMethod 'pickup'; the Store marks it fulfillmentType / shippingOptionId 'pickup'.
+const isPickupOrder = (order: Record<string, unknown>) => (
+  toTrimmedString(order.fulfillmentMethod).toLowerCase() === 'pickup'
+  || toTrimmedString(order.fulfillmentType).toLowerCase() === 'pickup'
+  || toTrimmedString(order.shippingOptionId).toLowerCase() === 'pickup'
+)
+const READY_FOR_PICKUP_STATUS = /ready.*pick[ -]?up/i
+const COLLECTED_STATUS = /collected|collection/i
+
+const pickupClock = (value: unknown) => {
+  const match = /^(\d{1,2}):(\d{2})/.exec(toTrimmedString(value))
+  if (!match) return ''
+  const hour = Number(match[1])
+  return `${hour % 12 === 0 ? 12 : hour % 12}:${match[2]} ${hour >= 12 ? 'PM' : 'AM'}`
+}
+
+// "Monday, Tuesday · 10:00 AM – 5:00 PM"
+const pickupAvailability = (pickup: Record<string, unknown>) => {
+  const days = Array.isArray(pickup.days) ? pickup.days.map((day) => toTrimmedString(day)).filter(Boolean).join(', ') : ''
+  const start = pickupClock(pickup.startTime)
+  const end = pickupClock(pickup.endTime)
+  return [days, start && end ? `${start} – ${end}` : ''].filter(Boolean).join(' · ')
+}
+
+const buildPickupReadyEmail = ({
+  customerName,
+  businessName,
+  businessLogoUrl,
+  orderLabel,
+  pickup,
+  trackingUrl,
+}: {
+  customerName: string
+  businessName: string
+  businessLogoUrl?: string
+  orderLabel: string
+  pickup: Record<string, unknown>
+  trackingUrl: string
+}) => {
+  const locationName = toTrimmedString(pickup.locationName)
+  const address = toTrimmedString(pickup.fullAddress) || toTrimmedString(pickup.areaName)
+  const contact = [toTrimmedString(pickup.contactName), toTrimmedString(pickup.contactPhone)].filter(Boolean).join(' · ')
+  const hours = pickupAvailability(pickup)
+  const instructions = toTrimmedString(pickup.instructions)
+  return {
+    subject: `Your order ${orderLabel} is ready for pickup`,
+    html: renderEmailShell({
+      brandName: businessName,
+      brandLogoUrl: businessLogoUrl,
+      preheader: `${orderLabel} is ready for pickup.`,
+      eyebrow: 'Ready for pickup',
+      title: `Hi ${getFirstName(customerName)}, your order is ready for pickup`,
+      subtitle: `Your ${businessName} order is ready to collect. Your pickup address and contact details are below.`,
+      highlightLabel: 'Pick up your order at',
+      highlightValue: locationName || address || businessName,
+      detailRows: [
+        { label: 'Address', value: locationName ? address : '' },
+        { label: 'Contact', value: contact },
+        { label: 'Open', value: hours },
+        { label: 'Good to know', value: instructions },
+      ],
+      ctaLabel: 'View pickup details',
+      ctaUrl: trackingUrl,
+      footerNote: `This update is for ${customerName}. Have your order number ready when you arrive.`,
+    }),
+    text: [
+      `Hi ${getFirstName(customerName)},`,
+      '',
+      `Your ${businessName} order ${orderLabel} is ready for pickup.`,
+      locationName || address ? `Pick up at: ${[locationName, address].filter(Boolean).join(', ')}` : '',
+      contact ? `Contact: ${contact}` : '',
+      hours ? `Open: ${hours}` : '',
+      instructions ? `Good to know: ${instructions}` : '',
+      `Pickup details: ${trackingUrl}`,
+    ].filter((line, index, all) => line !== '' || (index > 0 && all[index - 1] !== '')).join('\n'),
+  }
+}
+
+const buildPickupCollectedEmail = ({
+  customerName,
+  businessName,
+  businessLogoUrl,
+  orderLabel,
+  trackingUrl,
+}: {
+  customerName: string
+  businessName: string
+  businessLogoUrl?: string
+  orderLabel: string
+  trackingUrl: string
+}) => ({
+  subject: `Your order ${orderLabel} has been collected`,
+  html: renderEmailShell({
+    brandName: businessName,
+    brandLogoUrl: businessLogoUrl,
+    preheader: `${orderLabel} has been collected.`,
+    eyebrow: 'Collected',
+    title: `Hi ${getFirstName(customerName)}, your order has been collected`,
+    subtitle: `Your ${businessName} order was marked as collected. We hope you love it!`,
+    highlightLabel: 'Current status',
+    highlightValue: 'Collected',
+    ctaLabel: 'View Your Order',
+    ctaUrl: trackingUrl,
+    footerNote: `This update is for ${customerName}.`,
+  }),
+  text: [
+    `Hi ${getFirstName(customerName)},`,
+    '',
+    `Your ${businessName} order ${orderLabel} was marked as collected. We hope you love it!`,
+    `View your order: ${trackingUrl}`,
   ].join('\n'),
 })
 
@@ -373,14 +492,39 @@ serve(async (req) => {
       || orderId
     const trackingUrl = buildTrackingUrl({ code, email: customerEmail, businessSlug })
 
-    const emailContent = buildOrderStatusEmail({
-      customerName,
-      businessName,
-      businessLogoUrl,
-      orderLabel,
-      newStatus,
-      trackingUrl,
-    })
+    // A pickup order moving to "Ready for pickup" or "Collected by customer" gets the pickup email (location, contact and
+    // hours) instead of the generic status line. The Fyll Store can send the same email from its own order trigger, and
+    // both use the same email log (storefront_order_email_log), so whichever claims the order first sends and the other
+    // skips: the customer never gets it twice. Every other status change is the generic email, as before.
+    const pickupOrder = isPickupOrder(order)
+    const pickupDetails = (order.pickupDetails ?? {}) as Record<string, unknown>
+    const pickupEmailType = pickupOrder && READY_FOR_PICKUP_STATUS.test(newStatus)
+      ? 'customer_out_for_delivery'
+      : pickupOrder && COLLECTED_STATUS.test(newStatus) ? 'customer_delivered' : ''
+
+    if (pickupEmailType) {
+      const { data: claimed, error: claimError } = await admin
+        .from('storefront_order_email_log')
+        .upsert({ order_id: orderId, email_type: pickupEmailType }, { onConflict: 'order_id,email_type', ignoreDuplicates: true })
+        .select('order_id')
+      if (!claimError && (claimed?.length ?? 0) === 0) {
+        return jsonResponse(200, { sent: false, reason: 'pickup-email-already-sent' })
+      }
+      // If the log table cannot be reached, fall through and send rather than silently drop the email.
+    }
+
+    const emailContent = pickupEmailType === 'customer_out_for_delivery'
+      ? buildPickupReadyEmail({ customerName, businessName, businessLogoUrl, orderLabel, pickup: pickupDetails, trackingUrl })
+      : pickupEmailType === 'customer_delivered'
+        ? buildPickupCollectedEmail({ customerName, businessName, businessLogoUrl, orderLabel, trackingUrl })
+        : buildOrderStatusEmail({
+          customerName,
+          businessName,
+          businessLogoUrl,
+          orderLabel,
+          newStatus,
+          trackingUrl,
+        })
 
     await sendEmail({
       toEmail: customerEmail,

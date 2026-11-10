@@ -122,16 +122,15 @@ export function FeaturesSettings({ onConfigure }: { onConfigure: (feature: Featu
 
   return (
     <View style={{ gap: wide ? 18 : 16 }}>
-      <View style={{ position: 'relative', overflow: 'hidden', minHeight: wide ? 138 : 150, borderRadius: 26, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.inset, padding: wide ? 24 : 20, justifyContent: 'center' }}>
-        <LinearGradient pointerEvents="none" colors={[palette.nudgeBg, 'transparent']} start={{ x: 1, y: 0 }} end={{ x: 0.2, y: 1 }} style={{ position: 'absolute', top: -48, right: -34, width: 220, height: 220, borderRadius: 110 }} />
+      <View style={{ position: 'relative', overflow: 'hidden', minHeight: wide ? 138 : undefined, borderRadius: 26, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.inset, padding: wide ? 24 : 20, justifyContent: 'center' }}>
         <View style={{ position: 'absolute', top: 0, left: 28, right: 28, height: 3, backgroundColor: FYLL_LIME }} />
-        <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Workspace tools</Text>
+        <Text style={{ color: palette.faint, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Workspace tools</Text>
         <MoneyText style={{ color: palette.text, fontSize: wide ? 28 : 24, lineHeight: wide ? 34 : 29, marginTop: 2 }}>Features</MoneyText>
         <Text style={{ color: palette.faint, fontSize: 12.5, lineHeight: 18, marginTop: 4 }}>Turn tools on or off for your team, and see how each one is set up.</Text>
       </View>
 
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingHorizontal: 2 }}>
-        <Text style={{ color: palette.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Available features</Text>
+        <Text style={{ color: palette.muted, fontSize: 12, lineHeight: 16, fontWeight: '700', letterSpacing: 0.75, textTransform: 'uppercase' }}>Available features</Text>
         <View style={{ height: 28, paddingHorizontal: 11, borderRadius: 999, backgroundColor: palette.nudgeBg, justifyContent: 'center', flexShrink: 0 }}>
           <Text style={{ color: palette.limeOnSurface, fontSize: 11, fontWeight: '700' }}>{onCount} of {rows.length} on</Text>
         </View>
@@ -163,7 +162,7 @@ export function FeaturesSettings({ onConfigure }: { onConfigure: (feature: Featu
                   <Icon size={18} color={palette.limeOnSurface} strokeWidth={1.9} />
                 </View>
                 <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
-                  <Text style={{ color: palette.text, fontSize: 12, lineHeight: 17, fontWeight: '600' }}>{row.name}</Text>
+                  <Text style={{ color: palette.text, fontSize: 14, lineHeight: 18, fontWeight: '600' }}>{row.name}</Text>
                   <Text style={{ color: palette.faint, fontSize: 12, lineHeight: 16 }}>{row.what}</Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 7 }}>
                     <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: row.on ? palette.tones.verified.dot : palette.outline, flexShrink: 0 }} />

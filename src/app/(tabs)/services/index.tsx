@@ -175,16 +175,16 @@ export default function ServicesScreen() {
             )}
           </View>
           <View style={{ minWidth: 0, flex: 1 }}>
-            <Text style={{ color: palette.text, fontSize: 13.5, fontWeight: '600' }} numberOfLines={1}>{capitalizeDisplayLabel(service.name)}</Text>
-            <Text style={{ color: palette.faint, fontSize: 11.5, marginTop: 2 }} numberOfLines={1}>Service</Text>
+            <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>{capitalizeDisplayLabel(service.name)}</Text>
+            <Text style={{ color: palette.faint, fontSize: 12, marginTop: 2 }} numberOfLines={1}>Service</Text>
           </View>
         </View>
-        <Text style={{ color: palette.textSoft, flex: 1, fontSize: 13 }} numberOfLines={1}>{category}</Text>
-        <Text style={{ color: palette.text, width: SERVICE_TABLE_COLUMNS.price, textAlign: 'right', fontSize: 13, fontWeight: '600', fontVariant: ['tabular-nums'] }} numberOfLines={1}>{formatCurrency(price)}</Text>
-        <Text style={{ color: palette.faint, width: SERVICE_TABLE_COLUMNS.added, fontSize: 13 }} numberOfLines={1}>{dateLabel}</Text>
+        <Text style={{ color: palette.textSoft, flex: 1, fontSize: 12 }} numberOfLines={1}>{category}</Text>
+        <Text style={{ color: palette.text, width: SERVICE_TABLE_COLUMNS.price, textAlign: 'right', fontSize: 12, fontWeight: '600', fontVariant: ['tabular-nums'] }} numberOfLines={1}>{formatCurrency(price)}</Text>
+        <Text style={{ color: palette.faint, width: SERVICE_TABLE_COLUMNS.added, fontSize: 12 }} numberOfLines={1}>{dateLabel}</Text>
         <View style={{ width: SERVICE_TABLE_COLUMNS.status, flexDirection: 'row', alignItems: 'center', gap: 7 }}>
           <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: service.isDiscontinued ? 'transparent' : statusColor, borderWidth: service.isDiscontinued ? 1.5 : 0, borderColor: palette.faint }} />
-          <Text style={{ color: service.isDiscontinued ? palette.faint : palette.text, fontSize: 13, fontWeight: '600' }}>{statusLabel}</Text>
+          <Text style={{ color: service.isDiscontinued ? palette.faint : palette.text, fontSize: 12, fontWeight: '600' }}>{statusLabel}</Text>
         </View>
         <View style={{ width: SERVICE_TABLE_COLUMNS.trail, alignItems: 'flex-end' }}>
           <ChevronRight size={16} color={palette.faint} strokeWidth={2.2} />

@@ -1315,7 +1315,12 @@ const processOrder = async ({
   if (!customerEmail || !code) return { skipped: true, reason: 'missing-code-or-email' }
   if (confirmationStatus === 'confirmed') return { skipped: true, reason: 'already-confirmed' }
   if (currentStatus.includes('cancel')) return { skipped: true, reason: 'cancelled' }
-  if (toTrimmedString(order.fulfillmentMethod).toLowerCase() === 'pickup') return { skipped: true, reason: 'pickup-order' }
+  // Pickup orders are collected, not delivered. Ops marks them fulfillmentMethod 'pickup'; the Fyll Store marks them
+  // fulfillmentType 'pickup' and shippingOptionId 'pickup'. Any one of the three means pickup.
+  if (
+    ['fulfillmentMethod', 'fulfillmentType', 'shippingOptionId']
+      .some((key) => toTrimmedString((order as Record<string, unknown>)[key]).toLowerCase() === 'pickup')
+  ) return { skipped: true, reason: 'pickup-order' }
   if (isDeliveredStatus) return { skipped: true, reason: 'already-delivered' }
 
   const dispatchBase = getDispatchBaseDate(order)

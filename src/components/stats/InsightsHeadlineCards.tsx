@@ -45,7 +45,7 @@ export function HeadlineCard({
       <View style={{ padding: compact ? 20 : 28, gap: compact ? 12 : 16, flex: compact ? undefined : 1, minHeight: compact ? 250 : 300 }}>
         <Text style={{ color: palette.faint, fontSize: compact ? 12 : 10, fontWeight: '600', letterSpacing: 1.3, textTransform: 'uppercase' }}>{label}</Text>
         <View style={{ flexDirection: compact ? 'column' : 'row', alignItems: compact ? 'flex-start' : 'flex-end', flexWrap: 'wrap', gap: compact ? 10 : 16 }}>
-          <MoneyText style={{ color: palette.text, fontSize: 40, lineHeight: 44, letterSpacing: -1.4 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{figure}</MoneyText>
+          <MoneyText style={{ color: palette.text, fontSize: compact ? 32 : 40, lineHeight: compact ? 37 : 44, letterSpacing: -1.4 }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{figure}</MoneyText>
           {hasChange ? (
             <View style={{ height: compact ? 30 : 28, paddingHorizontal: compact ? 14 : 12, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: chipBg, marginBottom: compact ? 0 : 10 }}>
               {up ? <ArrowUp size={15} color={chipInk} strokeWidth={2.6} /> : <ArrowDown size={15} color={chipInk} strokeWidth={2.6} />}
