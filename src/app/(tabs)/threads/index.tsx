@@ -1166,7 +1166,7 @@ export default function ThreadsScreen() {
               <View className="flex-row items-center justify-between">
                 <View className="flex-row items-center flex-1 mr-2">
                   <Text
-                    style={{ color: palette.text, fontSize: orderTextSize, fontWeight: '700' }}
+                    style={{ color: palette.text, fontSize: 12, fontWeight: '500' }}
                     numberOfLines={1}
                   >
                     {item.customerName}
@@ -1229,19 +1229,19 @@ export default function ThreadsScreen() {
 
               <View className="flex-row items-center justify-between" style={{ marginTop: 3 }}>
                 <Text
-                  style={{ color: listHint, fontSize: 12.5 }}
+                  style={{ color: palette.limeOnSurface, fontSize: 10, fontWeight: '500' }}
                   numberOfLines={1}
                 >
                   {orderReference}
                 </Text>
-                <Text style={{ color: listHint, fontSize: 12, marginLeft: 10 }}>
+                <Text style={{ color: listHint, fontSize: 10, marginLeft: 10 }}>
                   {formatThreadTime(item.updatedAt)}
                 </Text>
               </View>
 
               <View className="flex-row items-center justify-between" style={{ marginTop: 3 }}>
                 <Text
-                  style={{ color: listPreview, fontSize: 13.5 }}
+                  style={{ color: listPreview, fontSize: 10 }}
                   className="flex-1 mr-2"
                   numberOfLines={1}
                 >
@@ -1295,7 +1295,7 @@ export default function ThreadsScreen() {
           </Text>
         </View>
         <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-          <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }} numberOfLines={1}>
+          <Text style={{ color: palette.text, fontSize: 12, fontWeight: '500' }} numberOfLines={1}>
             {order.customerName ?? 'Unknown customer'}
           </Text>
           <Text style={{ color: palette.faint, fontSize: 12 }} numberOfLines={1}>
@@ -1821,7 +1821,7 @@ export default function ThreadsScreen() {
                 </Text>
               </View>
               <View className="flex-1">
-                <Text style={{ color: colors.text.primary, fontSize: 14, fontWeight: '600' }} numberOfLines={1}>
+                <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '500' }} numberOfLines={1}>
                   {formatThreadTitle(selectedThread.customerName, selectedThread.orderNumber)}
                 </Text>
               </View>

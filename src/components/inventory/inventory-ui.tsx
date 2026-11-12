@@ -446,7 +446,7 @@ type ProductListRowProps = {
 };
 
 export function ProductListRow({ product, status, totalStock, displayPrice, currencyCode, isOwner, isFirst, active, palette, onPress }: ProductListRowProps) {
-  // Phones use smaller list text (name and qty 12px, status 10px).
+  // Phones use smaller list text (name and qty 12px, details and status 10px).
   const { isMobile: compact } = useBreakpoint();
   const variantCount = product.variants.length;
   const stockInk = status === 'inactive' ? palette.faint : totalStock === 0 ? palette.danger : palette.text;
@@ -475,7 +475,7 @@ export function ProductListRow({ product, status, totalStock, displayPrice, curr
           <Text style={{ color: stockInk, fontSize: compact ? 12 : 15, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{totalStock} left</Text>
         </View>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-          <Text style={{ flex: 1, color: palette.faint, fontSize: 12.5 }} numberOfLines={1}>
+          <Text style={{ flex: 1, color: palette.faint, fontSize: compact ? 10 : 12.5 }} numberOfLines={1}>
             {variantCount} {variantCount === 1 ? 'variant' : 'variants'} · {isOwner ? (
               <Text style={{ color: displayPrice ? palette.text : palette.warn }}>{displayPrice ? formatNaira(displayPrice, currencyCode) : 'Set price'}</Text>
             ) : (product.variants[0]?.sku?.toUpperCase() || '—')}

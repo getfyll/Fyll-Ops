@@ -16,6 +16,7 @@ import { prepareProductMediaForPersistence, uploadProductMediaIfNeeded } from '@
 import { SearchClearButton } from '@/components/SearchClearButton';
 import { FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, MoneyText, isHovered, usePaymentsPalette, BackButton } from '@/components/payments/payments-ui';
 import { BrandSwitch } from '@/components/BrandSwitch';
+import { getOrderActorLabel, resolveOrderItemVariant } from '@/lib/order-item-product-match';
 import { StockStatusLabel, formatNaira, getVariantStatus } from '@/components/inventory/inventory-ui';
 import { parseCurrencyInput } from '@/lib/money-input';
 import { useBusinessCurrency } from '@/hooks/useBusinessCurrency';
@@ -93,14 +94,43 @@ export default function ProductDetailScreen() {
     void updateProduct(product.id, { variants: nextVariants }, businessId);
   }, [businessId, procurements, product, updateProduct]);
 
-  // Get recent restock logs for this product (last 3)
-  const recentRestocks = useMemo(() => {
+  // Every restock for this product, newest first. The card filters by period and pages through them.
+  const productRestocks = useMemo(() => {
     if (!id) return [];
     return restockLogs
       .filter((log) => log.productId === id)
-      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-      .slice(0, 3);
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }, [restockLogs, id]);
+  const [restockRange, setRestockRange] = useState<'30d' | '90d' | 'year' | 'all'>('30d');
+  const [restockVisible, setRestockVisible] = useState<number>(8);
+  const restocksInRange = useMemo(() => {
+    if (restockRange === 'all') return productRestocks;
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    if (restockRange === '30d') start.setDate(start.getDate() - 29);
+    else if (restockRange === '90d') start.setDate(start.getDate() - 89);
+    else start.setMonth(0, 1);
+    const startMs = start.getTime();
+    return productRestocks.filter((log) => new Date(log.timestamp).getTime() >= startMs);
+  }, [productRestocks, restockRange]);
+  const [restockView, setRestockView] = useState<'dates' | 'variants'>('dates');
+  const restockTotalsByVariant = useMemo(() => {
+    const totals = new Map<string, { units: number; count: number }>();
+    restocksInRange.forEach((log) => {
+      if (!(log.quantityAdded > 0)) return;
+      const entry = totals.get(log.variantId) ?? { units: 0, count: 0 };
+      entry.units += log.quantityAdded;
+      entry.count += 1;
+      totals.set(log.variantId, entry);
+    });
+    return Array.from(totals.entries())
+      .map(([variantId, entry]) => ({ variantId, ...entry }))
+      .sort((a, b) => b.units - a.units);
+  }, [restocksInRange]);
+  const restockedUnitsInRange = useMemo(
+    () => restocksInRange.reduce((sum, log) => sum + (log.quantityAdded > 0 ? log.quantityAdded : 0), 0),
+    [restocksInRange]
+  );
 
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(product?.name || '');
@@ -198,6 +228,7 @@ export default function ProductDetailScreen() {
   const [pendingStock, setPendingStock] = useState<Record<string, number>>({});
   const [isSavingStock, setIsSavingStock] = useState<boolean>(false);
   const [activityTab, setActivityTab] = useState<'all' | 'sale' | 'adj' | 'restock'>('all');
+  const [activityVisible, setActivityVisible] = useState<number>(30);
   const [openVariantMenuId, setOpenVariantMenuId] = useState<string | null>(null);
   // The variants table needs about 780 px. A narrower card (an iPad, or a narrow window) gets compact rows instead.
   const [variantsCardWidth, setVariantsCardWidth] = useState<number>(0);
@@ -221,9 +252,10 @@ export default function ProductDetailScreen() {
       if (isCancelled || isRefunded) return;
 
       order.items.forEach((item) => {
-        if (item.productId !== product.id) return;
+        const match = resolveOrderItemVariant(item, product);
+        if (!match) return;
         totalSold += item.quantity;
-        salesByVariantId.set(item.variantId, (salesByVariantId.get(item.variantId) ?? 0) + item.quantity);
+        salesByVariantId.set(match.variantId, (salesByVariantId.get(match.variantId) ?? 0) + item.quantity);
       });
     });
 
@@ -274,18 +306,20 @@ export default function ProductDetailScreen() {
       if (isCancelled || isRefunded) return [];
 
       return (order.items ?? [])
-        .filter((item) => item.productId === product.id && item.quantity > 0)
-        .map((item, index) => {
+        .map((item) => ({ item, match: resolveOrderItemVariant(item, product) }))
+        .filter(({ item, match }) => match !== null && item.quantity > 0)
+        .map(({ item, match }, index) => {
+          const matchedVariantId = match?.variantId ?? item.variantId;
           const orderRef = order.orderNumber ? `ORD-${order.orderNumber.replace(/^ORD[-\s]*/i, '')}` : 'Order';
           return {
-            id: `sale-${order.id}-${item.variantId}-${index}`,
+            id: `sale-${order.id}-${matchedVariantId}-${index}`,
             type: 'sold' as const,
-            variantName: variantNameById.get(item.variantId) ?? 'Unknown variant',
+            variantName: variantNameById.get(matchedVariantId) ?? item.variantName ?? 'Unknown variant',
             quantity: item.quantity,
             delta: -Math.abs(item.quantity),
             at: order.orderDate ?? order.createdAt ?? order.updatedAt ?? new Date().toISOString(),
             subtitle: `${orderRef} · ${order.customerName || 'Unknown customer'}`,
-            actor: order.createdBy,
+            actor: getOrderActorLabel(order as unknown as Parameters<typeof getOrderActorLabel>[0]),
           };
         });
     });
@@ -322,8 +356,7 @@ export default function ProductDetailScreen() {
     ));
 
     return [...saleEvents, ...restockEvents, ...auditAdjustmentEvents]
-      .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
-      .slice(0, 30);
+      .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
   }, [orders, product, restockLogs, auditLogs]);
 
   const selectedCategories = useMemo(() => product?.categories ?? [], [product?.categories]);
@@ -934,7 +967,7 @@ export default function ProductDetailScreen() {
   const cardStyle = { borderRadius: 18, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border } as const;
   const labelStyle = { color: palette.muted, fontSize: mfs(12), fontWeight: '600' as const, letterSpacing: 0.6, textTransform: 'uppercase' as const };
   const thStyle = { color: palette.faint, fontSize: mfs(11.5), fontWeight: '600' as const, letterSpacing: 0.6, textTransform: 'uppercase' as const };
-  const h2Style = { color: palette.text, fontSize: 16, fontWeight: '600' as const };
+  const h2Style = { color: palette.text, fontSize: isWebDesktop ? 16 : 14, fontWeight: '600' as const };
   const ghostButton = (state: PressableStateCallbackType, height = 40) => ({
     height,
     paddingHorizontal: 16,
@@ -1074,11 +1107,11 @@ export default function ProductDetailScreen() {
             return (
               <Pressable
                 key={tab.key}
-                onPress={() => setActivityTab(tab.key)}
-                style={(state) => ({ height: 32, paddingHorizontal: 12, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderColor: on ? palette.inverseBg : palette.outline, backgroundColor: on ? palette.inverseBg : isHovered(state) ? palette.softFill : 'transparent' })}
+                onPress={() => { setActivityTab(tab.key); setActivityVisible(30); }}
+                style={(state) => ({ height: 32, paddingHorizontal: 12, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderColor: on ? FYLL_LIME : palette.outline, backgroundColor: on ? FYLL_LIME : isHovered(state) ? palette.softFill : 'transparent' })}
               >
-                <Text style={{ color: on ? palette.inverseText : palette.textSoft, fontSize: mfs(12.5), fontWeight: '600' }}>{tab.label}</Text>
-                <Text style={{ color: on ? palette.inverseText : palette.textSoft, opacity: 0.55, fontSize: mfs(12.5), fontWeight: '600' }}>{activityCounts[tab.key]}</Text>
+                <Text style={{ color: on ? FYLL_LIME_INK : palette.textSoft, fontSize: mfs(12.5), fontWeight: '600' }}>{tab.label}</Text>
+                <Text style={{ color: on ? FYLL_LIME_INK : palette.textSoft, opacity: 0.55, fontSize: mfs(12.5), fontWeight: '600' }}>{activityCounts[tab.key]}</Text>
               </Pressable>
             );
           })}
@@ -1088,7 +1121,7 @@ export default function ProductDetailScreen() {
         <Text style={{ color: palette.faint, fontSize: mfs(13.5), paddingVertical: 14, borderTopWidth: 1, borderTopColor: palette.hairline }}>No stock movement yet.</Text>
       ) : (
         <ScrollView style={{ maxHeight: isWebDesktop ? 420 : 380 }} nestedScrollEnabled showsVerticalScrollIndicator>
-        {visibleActivity.map((entry) => {
+        {visibleActivity.slice(0, activityVisible).map((entry) => {
         const isSale = entry.type === 'sold';
         const isAdj = entry.type === 'audit_adjustment';
         const positive = entry.delta >= 0;
@@ -1112,6 +1145,14 @@ export default function ProductDetailScreen() {
           </View>
         );
       })}
+        {visibleActivity.length > activityVisible ? (
+          <Pressable
+            onPress={() => setActivityVisible((count) => count + 30)}
+            style={(state) => ({ ...ghostButton(state, 36), marginVertical: 10 })}
+          >
+            <Text style={{ color: palette.text, fontSize: mfs(13), fontWeight: '600' }}>Show more ({visibleActivity.length - activityVisible} left)</Text>
+          </Pressable>
+        ) : null}
         </ScrollView>
       )}
     </View>
@@ -1196,6 +1237,144 @@ export default function ProductDetailScreen() {
       </View>
     </View>
   ) : null;
+
+  const inStockCard = (
+    <View style={{ ...cardStyle, padding: isWebDesktop ? 20 : 14, gap: 14 }}>
+      <View style={{ gap: 4 }}>
+        <Text style={labelStyle}>In stock</Text>
+        <MoneyText style={{ color: palette.text, fontSize: isWebDesktop ? 32 : 20, letterSpacing: isWebDesktop ? -0.8 : -0.4 }}>{unitsLabel}</MoneyText>
+        <Text style={{ color: healthInk, fontSize: 13, fontWeight: '600' }}>{healthText}</Text>
+      </View>
+      <View style={{ height: 1, backgroundColor: palette.hairline }} />
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <Text style={labelStyle}>Sold</Text>
+        <Text style={{ color: palette.faint, fontSize: 13 }}>{soldStats.totalSold} all time</Text>
+      </View>
+      {soldStats.variantSales.map((entry, index) => (
+        <View key={entry.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <Text style={{ width: 72, color: palette.textSoft, fontSize: isWebDesktop ? 13.5 : 12 }} numberOfLines={1}>{entry.name}</Text>
+          <View style={{ flex: 1, height: 6, borderRadius: 3, backgroundColor: palette.softFill, overflow: 'hidden' }}>
+            <View style={{ width: `${(entry.quantity / maxSold) * 100}%`, height: 6, borderRadius: 3, backgroundColor: index === 0 && entry.quantity > 0 ? palette.text : palette.isDark ? '#6B6C63' : '#BDBDB4' }} />
+          </View>
+          <Text style={{ width: 28, textAlign: 'right', color: palette.text, fontSize: isWebDesktop ? 13.5 : 12, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{entry.quantity}</Text>
+        </View>
+      ))}
+      <Text style={{ color: bestSeller && bestSeller.quantity > 0 && soldStats.totalSold > 0 ? palette.limeOnSurface : palette.faint, fontSize: isWebDesktop ? 12.5 : 12, lineHeight: 19, fontWeight: '500' }}>
+        {bestSeller && bestSeller.quantity > 0 && soldStats.totalSold > 0
+          ? `${bestSeller.name} is your best seller: ${Math.round((bestSeller.quantity / soldStats.totalSold) * 100)}% of all ${product.name} sales.`
+          : 'No sales yet.'}
+      </Text>
+    </View>
+  );
+
+  const restockCard = (
+    <View style={{ ...cardStyle, padding: isWebDesktop ? 20 : 14, gap: 12 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Text style={h2Style}>Restocks</Text>
+        {productRestocks[0] ? <Text style={{ color: palette.faint, fontSize: 13 }}>Last: {formatShortDate(productRestocks[0].timestamp, false)}</Text> : null}
+      </View>
+      <View style={{ flexDirection: 'row', padding: 3, borderRadius: 999, backgroundColor: palette.segmentBg, borderWidth: 1, borderColor: palette.border }}>
+        {([
+          { key: 'dates' as const, label: 'By date' },
+          { key: 'variants' as const, label: 'Total per variant' },
+        ]).map((option) => {
+          const on = restockView === option.key;
+          return (
+            <Pressable
+              key={option.key}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: on }}
+              onPress={() => {
+                setRestockView(option.key);
+                if (option.key === 'variants') setRestockRange('year');
+              }}
+              style={{ flex: 1, height: 30, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: on ? FYLL_LIME : 'transparent' }}
+            >
+              <Text style={{ color: on ? FYLL_LIME_INK : palette.muted, fontSize: isWebDesktop ? 12.5 : 12, fontWeight: '600' }}>{option.label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      <View style={{ flexDirection: 'row', gap: 6 }}>
+        {([
+          { key: '30d' as const, label: '30 days' },
+          { key: '90d' as const, label: '90 days' },
+          { key: 'year' as const, label: 'This year' },
+          { key: 'all' as const, label: 'All' },
+        ]).map((option) => {
+          const on = restockRange === option.key;
+          return (
+            <Pressable
+              key={option.key}
+              accessibilityRole="button"
+              accessibilityState={{ selected: on }}
+              onPress={() => { setRestockRange(option.key); setRestockVisible(8); }}
+              style={(state) => ({ height: 30, paddingHorizontal: 11, borderRadius: 999, justifyContent: 'center', borderWidth: 1, borderColor: on ? FYLL_LIME : palette.outline, backgroundColor: on ? FYLL_LIME : isHovered(state) ? palette.softFill : 'transparent' })}
+            >
+              <Text style={{ color: on ? FYLL_LIME_INK : palette.textSoft, fontSize: isWebDesktop ? 12.5 : 12, fontWeight: '600' }}>{option.label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      {restocksInRange.length > 0 ? (
+        <Text style={{ color: palette.faint, fontSize: isWebDesktop ? 12.5 : 12 }}>
+          {restocksInRange.length} {restocksInRange.length === 1 ? 'restock' : 'restocks'} · {restockedUnitsInRange} units added
+        </Text>
+      ) : null}
+      {restockView === 'variants' && restockTotalsByVariant.length > 0 ? (
+        <>
+          {restockTotalsByVariant.map((entry) => {
+            const variant = product.variants.find((v) => v.id === entry.variantId);
+            const share = restockedUnitsInRange > 0 ? entry.units / restockedUnitsInRange : 0;
+            return (
+              <View key={entry.variantId} style={{ gap: 6, paddingTop: 10, borderTopWidth: 1, borderTopColor: palette.hairline }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: 10 }}>
+                  <Text style={{ flex: 1, color: palette.text, fontSize: isWebDesktop ? 13.5 : 12, fontWeight: '500' }} numberOfLines={1}>{variant ? variantDisplayName(variant) : 'Unknown variant'}</Text>
+                  <Text style={{ color: palette.text, fontSize: isWebDesktop ? 14 : 12, fontWeight: '700', fontVariant: ['tabular-nums'] }}>{entry.units} units</Text>
+                </View>
+                <View style={{ height: 6, borderRadius: 3, backgroundColor: palette.softFill, overflow: 'hidden' }}>
+                  <View style={{ width: `${Math.max(3, share * 100)}%`, height: 6, borderRadius: 3, backgroundColor: palette.limeOnSurface }} />
+                </View>
+                <Text style={{ color: palette.faint, fontSize: 12 }}>{entry.count} {entry.count === 1 ? 'restock' : 'restocks'}</Text>
+              </View>
+            );
+          })}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 10, borderTopWidth: 1, borderTopColor: palette.border }}>
+            <Text style={{ color: palette.text, fontSize: 13.5, fontWeight: '700' }}>Total</Text>
+            <Text style={{ color: palette.text, fontSize: isWebDesktop ? 14 : 12, fontWeight: '700', fontVariant: ['tabular-nums'] }}>{restockedUnitsInRange} units</Text>
+          </View>
+        </>
+      ) : null}
+      {restockView === 'variants' ? (
+        restockTotalsByVariant.length === 0 ? <Text style={{ color: palette.faint, fontSize: 13.5 }}>{productRestocks.length === 0 ? 'No restocks yet.' : 'No restocks in this period.'}</Text> : null
+      ) : restocksInRange.length === 0 ? (
+        <Text style={{ color: palette.faint, fontSize: 13.5 }}>{productRestocks.length === 0 ? 'No restocks yet.' : 'No restocks in this period.'}</Text>
+      ) : restocksInRange.slice(0, restockVisible).map((log) => {
+        const variant = product.variants.find((v) => v.id === log.variantId);
+        const positive = log.quantityAdded >= 0;
+        return (
+          <View key={log.id} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: palette.hairline }}>
+            <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+              <Text style={{ color: palette.text, fontSize: isWebDesktop ? 13.5 : 12 }} numberOfLines={1}>
+                <Text style={{ color: positive ? palette.tones.verified.ink : palette.danger, fontWeight: '600' }}>{positive ? '+' : '−'}{Math.abs(log.quantityAdded)}</Text> {variant ? variantDisplayName(variant) : 'Unknown variant'}
+              </Text>
+              <Text style={{ color: palette.faint, fontSize: 12 }} numberOfLines={1}>{log.note?.trim() ? `${log.note.trim()} · ` : ''}{log.previousStock} → {log.newStock}</Text>
+            </View>
+            <Text style={{ color: palette.faint, fontSize: 12.5 }}>{formatShortDate(log.timestamp, false)}</Text>
+          </View>
+        );
+      })}
+      {restockView === 'dates' && restocksInRange.length > restockVisible ? (
+        <Pressable onPress={() => setRestockVisible((count) => count + 10)} style={(state) => ({ ...ghostButton(state, 36) })}>
+          <Text style={{ color: palette.text, fontSize: 13.5, fontWeight: '600' }}>Show more ({restocksInRange.length - restockVisible} left)</Text>
+        </Pressable>
+      ) : null}
+      <Pressable onPress={() => goRestock()} style={(state) => ({ ...ghostButton(state), marginTop: 4 })}>
+        <Package size={15} color={palette.text} strokeWidth={2.2} />
+        <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>Restock variants</Text>
+      </Pressable>
+    </View>
+  );
 
   const desktopLayout = (
     <ScrollView
@@ -1363,60 +1542,9 @@ export default function ProductDetailScreen() {
         </View>
 
         <View style={{ width: rightColumnWidth ?? 400, gap: 16 }}>
-          <View style={{ ...cardStyle, padding: 20, gap: 14 }}>
-            <View style={{ gap: 4 }}>
-              <Text style={labelStyle}>In stock</Text>
-              <MoneyText style={{ color: palette.text, fontSize: 32, letterSpacing: -0.8 }}>{unitsLabel}</MoneyText>
-              <Text style={{ color: healthInk, fontSize: 13, fontWeight: '600' }}>{healthText}</Text>
-            </View>
-            <View style={{ height: 1, backgroundColor: palette.hairline }} />
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
-              <Text style={labelStyle}>Sold</Text>
-              <Text style={{ color: palette.faint, fontSize: 13 }}>{soldStats.totalSold} all time</Text>
-            </View>
-            {soldStats.variantSales.map((entry, index) => (
-              <View key={entry.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <Text style={{ width: 72, color: palette.textSoft, fontSize: 13.5 }} numberOfLines={1}>{entry.name}</Text>
-                <View style={{ flex: 1, height: 6, borderRadius: 3, backgroundColor: palette.softFill, overflow: 'hidden' }}>
-                  <View style={{ width: `${(entry.quantity / maxSold) * 100}%`, height: 6, borderRadius: 3, backgroundColor: index === 0 && entry.quantity > 0 ? palette.text : palette.isDark ? '#6B6C63' : '#BDBDB4' }} />
-                </View>
-                <Text style={{ width: 28, textAlign: 'right', color: palette.text, fontSize: 13.5, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{entry.quantity}</Text>
-              </View>
-            ))}
-            <Text style={{ color: palette.faint, fontSize: 12.5, lineHeight: 19 }}>
-              {bestSeller && bestSeller.quantity > 0 && soldStats.totalSold > 0
-                ? `${bestSeller.name} is your best seller: ${Math.round((bestSeller.quantity / soldStats.totalSold) * 100)}% of all ${product.name} sales.`
-                : 'No sales yet.'}
-            </Text>
-          </View>
+          {inStockCard}
 
-          <View style={{ ...cardStyle, padding: 20, gap: 12 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text style={h2Style}>Restocks</Text>
-              {recentRestocks[0] ? <Text style={{ color: palette.faint, fontSize: 13 }}>Last: {formatShortDate(recentRestocks[0].timestamp, false)}</Text> : null}
-            </View>
-            {recentRestocks.length === 0 ? (
-              <Text style={{ color: palette.faint, fontSize: 13.5 }}>No restocks yet.</Text>
-            ) : recentRestocks.map((log) => {
-              const variant = product.variants.find((v) => v.id === log.variantId);
-              const positive = log.quantityAdded >= 0;
-              return (
-                <View key={log.id} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: palette.hairline }}>
-                  <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-                    <Text style={{ color: palette.text, fontSize: 13.5 }} numberOfLines={1}>
-                      <Text style={{ color: positive ? palette.tones.verified.ink : palette.danger, fontWeight: '600' }}>{positive ? '+' : '−'}{Math.abs(log.quantityAdded)}</Text> {variant ? variantDisplayName(variant) : 'Unknown variant'}
-                    </Text>
-                    <Text style={{ color: palette.faint, fontSize: 12 }} numberOfLines={1}>{log.note?.trim() ? `${log.note.trim()} · ` : ''}{log.previousStock} → {log.newStock}</Text>
-                  </View>
-                  <Text style={{ color: palette.faint, fontSize: 12.5 }}>{formatShortDate(log.timestamp, false)}</Text>
-                </View>
-              );
-            })}
-            <Pressable onPress={() => goRestock()} style={(state) => ({ ...ghostButton(state), marginTop: 4 })}>
-              <Package size={15} color={palette.text} strokeWidth={2.2} />
-              <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>Restock variants</Text>
-            </Pressable>
-          </View>
+          {restockCard}
         </View>
       </View>
     </ScrollView>
@@ -1448,7 +1576,7 @@ export default function ProductDetailScreen() {
             {primaryDisplayImage ? <ResolvedAttachmentImage imageUrl={primaryDisplayImage} style={{ width: 96, height: 96 }} resizeMode="cover" /> : <Camera size={22} color={palette.faint} strokeWidth={1.8} />}
           </Pressable>
           <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
-            <MoneyText style={{ color: palette.text, fontSize: 30, letterSpacing: -0.6 }} numberOfLines={1}>{unitsLabel}</MoneyText>
+            <MoneyText style={{ color: palette.text, fontSize: 20, letterSpacing: -0.4 }} numberOfLines={1}>{unitsLabel}</MoneyText>
             <Text style={{ color: healthInk, fontSize: mfs(13), fontWeight: '600' }}>{healthText}</Text>
             <Text style={{ color: palette.faint, fontSize: mfs(13) }} numberOfLines={1}>
               {[canManageVariants ? priceLabel : null, isOwner ? `${formatNaira(draftValue, currency)} in stock` : null].filter(Boolean).join(' · ')}
@@ -1480,8 +1608,8 @@ export default function ProductDetailScreen() {
                 {renderVariantImage(variant, 44)}
                 <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
                   <Text style={{ color: palette.text, fontSize: mfs(12), fontWeight: '500' }} numberOfLines={1}>{variantDisplayName(variant)}</Text>
-                  <Text style={{ color: flagged ? palette.warn : palette.muted, fontSize: mfs(12) }} numberOfLines={1}>{variant.sku?.toUpperCase() || '—'} · {soldByVariant.get(variant.id) ?? 0} sold</Text>
-                  <StockStatusLabel status={variantStatuses[index]} palette={palette} size={12} />
+                  <Text style={{ color: flagged ? palette.warn : palette.muted, fontSize: 10 }} numberOfLines={1}>{variant.sku?.toUpperCase() || '—'} · {soldByVariant.get(variant.id) ?? 0} sold</Text>
+                  <StockStatusLabel status={variantStatuses[index]} palette={palette} size={10} />
                 </View>
                 {renderStepper(stock, () => stepDraft(variant.id, variant.stock, -1), () => stepDraft(variant.id, variant.stock, 1), { dirty, height: 38, minWidth: 26, ink: stock <= 0 ? palette.danger : palette.text })}
                 <View style={{ width: 28, position: 'relative' }}>
@@ -1510,20 +1638,24 @@ export default function ProductDetailScreen() {
         <View style={{ ...cardStyle, paddingHorizontal: 14, paddingVertical: 16, gap: 12, zIndex: 20 }}>
           <Text style={h2Style}>Settings</Text>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text style={{ color: palette.text, fontSize: mfs(14) }}>Status</Text>
+            <Text style={{ color: palette.text, fontSize: mfs(12) }}>Status</Text>
             {renderActiveToggle()}
           </View>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-            <Text style={{ color: palette.text, fontSize: mfs(14) }}>Low stock alert</Text>
+            <Text style={{ color: palette.text, fontSize: mfs(12) }}>Low stock alert</Text>
             {useGlobalLowStockThreshold ? (
               <Text style={{ color: palette.faint, fontSize: mfs(13) }}>{globalLowStockThreshold} · store-wide</Text>
             ) : thresholdControl}
           </View>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, zIndex: 30 }}>
-            <Text style={{ color: palette.text, fontSize: mfs(14), paddingTop: 6 }}>Category</Text>
+            <Text style={{ color: palette.text, fontSize: mfs(12), paddingTop: 6 }}>Category</Text>
             <View style={{ flex: 1, alignItems: 'flex-end' }}>{categoryChips}</View>
           </View>
         </View>
+
+        {inStockCard}
+
+        {restockCard}
 
         {activityCard}
       </ScrollView>

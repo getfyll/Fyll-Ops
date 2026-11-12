@@ -237,11 +237,18 @@ const formatOrderItemSummary = (order: Order, products: Product[]) => {
   const variant = product?.variants.find((candidate) => candidate.id === firstItem.variantId);
   const productName = product?.name || firstItem.productName || 'Product unavailable';
   const variantName = variant ? Object.values(variant.variableValues).join(' / ') : (firstItem.variantName ?? '');
+  // Show the variant / option only when it adds something: skip it when it just repeats the product name.
+  const norm = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ');
+  const productKey = norm(productName);
+  const repeatsName = (value: string) => {
+    const key = norm(value);
+    return !key || key === productKey || productKey.includes(key) || key.includes(productKey);
+  };
   const selectedOptions = Object.entries(firstItem.selectedOptions ?? {})
-    .filter(([name, value]) => name.trim() && String(value).trim())
+    .filter(([name, value]) => name.trim() && String(value).trim() && !repeatsName(String(value)))
     .map(([name, value]) => `${name}: ${value}`)
     .join(' / ');
-  const details = [variantName, selectedOptions].filter(Boolean).join(' / ');
+  const details = [repeatsName(variantName) ? '' : variantName, selectedOptions].filter(Boolean).join(' / ');
   const suffix = (order.items?.length ?? 0) > 1 ? ` +${(order.items?.length ?? 1) - 1}` : '';
   return `${productName}${details ? ` - ${details}` : ''}${suffix}`;
 };

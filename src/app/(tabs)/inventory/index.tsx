@@ -661,6 +661,7 @@ export default function InventoryScreen() {
           active={inventoryFilter === pill.key}
           onPress={() => pickFilter(pill.key)}
           palette={palette}
+          textSize={isWebDesktop ? 13 : 12}
         />
       ))}
     </ScrollView>

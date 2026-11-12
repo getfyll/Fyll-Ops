@@ -69,6 +69,7 @@ import LocationsInsight from '@/app/insights/locations';
 import TopRevenueInsight from '@/app/insights/top-revenue';
 import MostRestockedInsight from '@/app/insights/most-restocked';
 import SlowMoversInsight from '@/app/insights/slow-movers';
+import StockMovementInsight from '@/app/insights/stock-movement';
 
 // KPI Configuration per tab - always 4 KPIs
 interface KpiConfig {
@@ -645,6 +646,7 @@ export default function InsightsScreen() {
     '/insights/customers': { title: 'Customers Analytics', subtitle: 'Customer insights and metrics' },
     '/insights/top-revenue': { title: 'Top Revenue Products', subtitle: 'Highest earning products' },
     '/insights/most-restocked': { title: 'Most Restocked', subtitle: 'Most frequently restocked products' },
+    '/insights/stock-movement': { title: 'Stock Movement', subtitle: 'Sold and restocked, by period' },
     '/insights/slow-movers': { title: 'Slow Movers', subtitle: 'Products with low sales' },
     '/insights/refunds': { title: 'Refunds Analytics', subtitle: 'Refund trends and analysis' },
   };
@@ -1070,6 +1072,7 @@ export default function InsightsScreen() {
                 {isWebDesktop && selectedInsight === '/insights/customers' && <CustomersInsight inline />}
                 {isWebDesktop && selectedInsight === '/insights/top-revenue' && <TopRevenueInsight inline />}
                 {isWebDesktop && selectedInsight === '/insights/most-restocked' && <MostRestockedInsight inline />}
+                {isWebDesktop && selectedInsight === '/insights/stock-movement' && <StockMovementInsight inline />}
                 {isWebDesktop && selectedInsight === '/insights/slow-movers' && <SlowMoversInsight inline />}
                 {isWebDesktop && selectedInsight === '/insights/refunds' && <RefundsInsight inline />}
               </View>
@@ -2648,6 +2651,24 @@ export default function InsightsScreen() {
                           </View>
                         </View>
                       )}
+
+                      {/* Stock movement: sold vs restocked over a period */}
+                      <View className="px-5 pt-4">
+                        <Pressable
+                          onPress={() => handleOpenInsight('/insights/stock-movement')}
+                          className="rounded-[26px] p-5 flex-row items-center"
+                          style={colors.getCardStyle()}
+                        >
+                          <Boxes size={18} color={colors.text.tertiary} strokeWidth={2} />
+                          <View className="flex-1 ml-3">
+                            <Text style={{ color: colors.text.primary }} className="text-base font-bold">Stock movement</Text>
+                            <Text style={{ color: colors.text.tertiary }} className="text-xs mt-0.5">
+                              Units sold, sales and restocks per product, over 30 days, 90 days, a year or all time
+                            </Text>
+                          </View>
+                          <ChevronRight size={16} color={colors.text.tertiary} />
+                        </Pressable>
+                      </View>
 
                       {/* Most Restocked Products */}
                       {inventoryAnalytics.restockInsights.mostRestockedProducts.length > 0 && (

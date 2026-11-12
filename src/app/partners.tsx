@@ -1162,7 +1162,7 @@ export default function PartnersScreen() {
   const body = (
     <Pressable onPress={() => { closeJobMenus(); setShowMobilePartnerMenu(false); }} style={{ flex: 1, backgroundColor: colors.bg.primary }}>
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg.primary }} edges={isDesktop ? [] : ['top']}>
-        <View style={{ borderBottomWidth: activePartnerSection === 'jobs' || activePartnerSection === 'bills' ? 0 : 0.5, borderBottomColor: separatorColor }}>
+        <View>
           <View
             style={{
               width: '100%',

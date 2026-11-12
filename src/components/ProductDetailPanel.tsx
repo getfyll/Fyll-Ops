@@ -1,3 +1,4 @@
+import { getOrderActorLabel, resolveOrderItemVariant } from '@/lib/order-item-product-match';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, Pressable, Modal, Platform, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -102,20 +103,22 @@ export function ProductDetailPanel({ productId, onClose }: ProductDetailPanelPro
       if (status.includes('cancel') || status.includes('refund')) return [];
 
       return (order.items ?? [])
-        .filter((item) => item.productId === product.id && item.quantity > 0)
-        .map((item, index) => {
+        .map((item) => ({ item, match: resolveOrderItemVariant(item, product) }))
+        .filter(({ item, match }) => match !== null && item.quantity > 0)
+        .map(({ item, match }, index) => {
+          const matchedVariantId = match?.variantId ?? item.variantId;
           const orderRef = order.orderNumber
             ? `ORD-${order.orderNumber.replace(/^ORD[-\s]*/i, '')}`
             : 'Order';
           return {
-            id: `sale-${order.id}-${item.variantId}-${index}`,
+            id: `sale-${order.id}-${matchedVariantId}-${index}`,
             type: 'sold' as const,
-            variantName: variantNameById.get(item.variantId) ?? 'Unknown variant',
+            variantName: variantNameById.get(matchedVariantId) ?? item.variantName ?? 'Unknown variant',
             quantity: item.quantity,
             delta: -Math.abs(item.quantity),
             at: order.orderDate ?? order.createdAt ?? order.updatedAt ?? new Date().toISOString(),
             subtitle: `${orderRef} · ${order.customerName || 'Unknown customer'}`,
-            actor: order.createdBy,
+            actor: getOrderActorLabel(order as unknown as Parameters<typeof getOrderActorLabel>[0]),
           };
         });
     });

@@ -1,6 +1,34 @@
 {
   "releases": [
     {
+      "version": "2.10.1",
+      "date": "2026-11-12T20:00:00Z",
+      "features": [
+        {
+          "icon": "package",
+          "title": "Stock movement in Insights",
+          "body": "See units sold, sales and restocks per product over 30 days, 90 days, a year or all time, from the Inventory tab in Insights."
+        },
+        {
+          "icon": "sparkles",
+          "title": "Restocks, by variant",
+          "body": "The Restocks card now shows every restock with a date filter and a total for each colour or variant, and it is on your phone too."
+        },
+        {
+          "icon": "share",
+          "title": "Website sales in product activity",
+          "body": "Orders from your Storefront and WooCommerce now appear in a product's activity and sold counts, labelled by where they came from."
+        }
+      ],
+      "fixes": [
+        "The Restocks tab in product activity now shows your restocks instead of 0, with a Show more button for older entries.",
+        "Edit fulfillment now matches the new Fyll look.",
+        "The orders list shows a shorter item summary.",
+        "Smaller, tidier text on mobile across Inventory, Threads and product pages.",
+        "The partner Issues and Partners pages no longer show a divider under the header."
+      ]
+    },
+    {
       "version": "2.10.0",
       "date": "2026-11-12T12:00:00Z",
       "features": [
