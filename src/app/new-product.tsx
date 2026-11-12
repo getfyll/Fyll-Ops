@@ -18,6 +18,7 @@ import { BackButton, FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, MoneyText, isHov
 import { formatCompactNaira, formatNaira, swatchForName } from '@/components/inventory/inventory-ui';
 import { formatCurrencyInput, parseCurrencyInput } from '@/lib/money-input';
 import { DesktopSidebar } from '@/components/DesktopSidebar';
+import { useBusinessCurrency } from '@/hooks/useBusinessCurrency';
 
 const DRAFT_KEY = 'new-product-draft-v1';
 
@@ -31,6 +32,7 @@ type DraftState = {
   lowStock: string;
   isNewDesign: boolean;
   hasOptions: boolean;
+  useGlobalPricing: boolean;
   options: ProductOption[];
   overrides: Record<string, VariantOverride>;
   singleStock: string;
@@ -79,6 +81,8 @@ export default function NewProductScreen() {
   const pageHeadingStyle = usePageHeadingStyle(isMobile);
   const isWide = Platform.OS === 'web' && width >= 1100;
   const imagePicker = useImagePicker();
+  const { currency, currencySymbol } = useBusinessCurrency();
+  const priceKeyboardType = currency === 'NGN' ? 'number-pad' : 'decimal-pad';
 
   const productVariables = useFyllStore((s) => s.productVariables);
   const globalCategories = useFyllStore((s) => s.categories);
@@ -100,6 +104,7 @@ export default function NewProductScreen() {
   const [isNewDesign, setIsNewDesign] = useState<boolean>(false);
   const [coverUrl, setCoverUrl] = useState<string | null>(null);
   const [hasOptions, setHasOptions] = useState<boolean>(false);
+  const [useGlobalPricing, setUseGlobalPricing] = useState<boolean>(true);
   const [variableMenuOpen, setVariableMenuOpen] = useState<boolean>(false);
   const [options, setOptions] = useState<ProductOption[]>([]);
   const [overrides, setOverrides] = useState<Record<string, VariantOverride>>({});
@@ -130,6 +135,7 @@ export default function NewProductScreen() {
         setLowStock(draft.lowStock ?? '5');
         setIsNewDesign(Boolean(draft.isNewDesign));
         setHasOptions(Boolean(draft.hasOptions));
+        setUseGlobalPricing(draft.useGlobalPricing ?? true);
         if (draft.options?.length) setOptions(draft.options);
         setOverrides(draft.overrides ?? {});
         setSingleStock(draft.singleStock ?? '');
@@ -145,11 +151,11 @@ export default function NewProductScreen() {
   }, []);
 
   const draft: DraftState = useMemo(() => ({
-    name, price, categories, description, lowStock, isNewDesign, hasOptions, options,
+    name, price, categories, description, lowStock, isNewDesign, hasOptions, useGlobalPricing, options,
     // Picked photos are local files: they don't survive a reload, so keep them out of the draft.
     overrides: Object.fromEntries(Object.entries(overrides).map(([key, value]) => [key, { ...value, imageUrl: undefined }])),
     singleStock, singleSku,
-  }), [name, price, categories, description, lowStock, isNewDesign, hasOptions, options, overrides, singleStock, singleSku]);
+  }), [name, price, categories, description, lowStock, isNewDesign, hasOptions, useGlobalPricing, options, overrides, singleStock, singleSku]);
 
   useEffect(() => {
     if (!draftLoaded.current || isSubmitting) return;
@@ -170,6 +176,7 @@ export default function NewProductScreen() {
     setIsNewDesign(false);
     setCoverUrl(null);
     setHasOptions(false);
+    setUseGlobalPricing(true);
     setOptions([]);
     setOverrides({});
     setSingleStock('');
@@ -192,9 +199,9 @@ export default function NewProductScreen() {
       const sku = override.sku ?? auto;
       const stock = override.stock ?? '';
       const ownPrice = override.price ?? '';
-      return { ...combo, sku, stock, ownPrice, effectivePrice: parseCurrencyInput(ownPrice) || basePrice, imageUrl: override.imageUrl };
+      return { ...combo, sku, stock, ownPrice, effectivePrice: useGlobalPricing ? basePrice : parseCurrencyInput(ownPrice), imageUrl: override.imageUrl };
     });
-  }, [combos, overrides, base, basePrice]);
+  }, [combos, overrides, base, basePrice, useGlobalPricing]);
 
   const variantCount = hasOptions ? rows.length : 1;
   const units = hasOptions ? rows.reduce((sum, row) => sum + (Number(row.stock) || 0), 0) : Number(singleStock) || 0;
@@ -205,6 +212,14 @@ export default function NewProductScreen() {
   const everyPriced = hasOptions ? rows.length > 0 && rows.every((row) => row.effectivePrice > 0) : basePrice > 0;
   const canCreate = Boolean(name.trim()) && everyPriced && variantCount > 0 && uniqueSkus && !isSubmitting;
   const optionNames = options.filter((option) => option.name.trim() && option.values.length).map((option) => option.name.trim());
+  const priceSummary = useMemo(() => {
+    if (!hasOptions || useGlobalPricing) return basePrice > 0 ? formatNaira(basePrice) : null;
+    const prices = rows.map((row) => row.effectivePrice).filter((value) => value > 0);
+    if (!prices.length) return null;
+    const minimum = Math.min(...prices);
+    const maximum = Math.max(...prices);
+    return minimum === maximum ? formatNaira(minimum) : `${formatNaira(minimum)} – ${formatNaira(maximum)}`;
+  }, [basePrice, hasOptions, rows, useGlobalPricing]);
 
   const checks = [
     { key: 'basics', label: categories.length ? 'Name, price and category' : 'Name and price (category optional)', ok: Boolean(name.trim()) && everyPriced, warn: false },
@@ -251,7 +266,7 @@ export default function NewProductScreen() {
     setOverrides((prev) => {
       const next = { ...prev };
       rows.forEach((row) => {
-        next[row.key] = { ...next[row.key], [field]: field === 'stock' ? digitsOnly(value) : formatCurrencyInput(value) };
+        next[row.key] = { ...next[row.key], [field]: field === 'stock' ? digitsOnly(value) : formatCurrencyInput(value, currency) };
       });
       return next;
     });
@@ -427,17 +442,33 @@ export default function NewProductScreen() {
       {photoBlock}
       <View style={{ flex: isWide ? 1 : undefined, minWidth: 0, gap: 18 }}>
         <Text style={h2}>Basics</Text>
-        <View style={{ gap: 8 }}>
-          <Text style={lab}>Name</Text>
-          <TextInput value={name} onChangeText={setName} placeholder="e.g. Abdul" placeholderTextColor={palette.faint} style={[field, webNoOutline]} />
-        </View>
-        <View style={{ gap: 8 }}>
-          <Text style={lab}>Price</Text>
-          <View style={{ maxWidth: isMobile ? undefined : 260, justifyContent: 'center' }}>
-            <Text style={{ position: 'absolute', left: 14, color: palette.faint, fontSize: isMobile ? 14 : 15, zIndex: 1 }}>₦</Text>
-            <TextInput value={price} onChangeText={(value) => setPrice(formatCurrencyInput(value))} keyboardType="number-pad" placeholder="0" placeholderTextColor={palette.faint} style={[field, { paddingLeft: 32 }, webNoOutline]} />
+        <View style={{ flexDirection: isMobile ? 'column' : 'row', alignItems: 'flex-start', gap: isMobile ? 18 : 14 }}>
+          <View style={{ gap: 8, flex: isMobile ? undefined : 7, width: isMobile ? '100%' : undefined, minWidth: 0 }}>
+            <Text style={lab}>Name</Text>
+            <TextInput value={name} onChangeText={setName} placeholder="e.g. Abdul" placeholderTextColor={palette.faint} style={[field, webNoOutline]} />
           </View>
+          {!hasOptions || useGlobalPricing ? (
+            <View style={{ gap: 8, flex: isMobile ? undefined : 3, width: isMobile ? '100%' : undefined, minWidth: 0 }}>
+              <Text style={lab}>{hasOptions ? 'Price for every variant' : 'Price'}</Text>
+              <View style={{ justifyContent: 'center' }}>
+                <Text style={{ position: 'absolute', left: 14, color: palette.faint, fontSize: isMobile ? 14 : 15, zIndex: 1 }}>{currencySymbol}</Text>
+                <TextInput value={price} onChangeText={(value) => setPrice(formatCurrencyInput(value, currency))} keyboardType={priceKeyboardType} placeholder="0" placeholderTextColor={palette.faint} style={[field, { paddingLeft: 32 }, webNoOutline]} />
+              </View>
+            </View>
+          ) : null}
         </View>
+        {hasOptions ? (
+          <View style={{ gap: 10 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 14, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: useGlobalPricing ? 'rgba(215,230,55,0.42)' : palette.border, backgroundColor: useGlobalPricing ? 'rgba(215,230,55,0.08)' : palette.softFill }}>
+              <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                <Text style={lab}>Global pricing</Text>
+                <Text style={sub}>Use one price for every variant.</Text>
+              </View>
+              {renderToggle(useGlobalPricing, () => setUseGlobalPricing((current) => !current), 'Global pricing')}
+            </View>
+            {!useGlobalPricing ? <Text style={[sub, { lineHeight: isMobile ? 18 : 20 }]}>Set a price for each variant in the Variants section below.</Text> : null}
+          </View>
+        ) : null}
         <View style={{ gap: 8 }}>
           <Text style={lab}>Category</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
@@ -652,7 +683,9 @@ export default function NewProductScreen() {
               <TextInput value={row.stock} onChangeText={(value) => setOverride(row.key, { stock: digitsOnly(value) })} keyboardType="number-pad" placeholder="0" placeholderTextColor={palette.faint} accessibilityLabel={`Stock for ${row.label}`} style={[cell, { width: 76, textAlign: 'center', fontWeight: '600' }, webNoOutline]} />
             </View>
           ))}
-          <Text style={[sub, { fontSize: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: palette.hairline }]}>Tap a row to change its price or SKU.</Text>
+          <Text style={[sub, { fontSize: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: palette.hairline }]}>
+            {useGlobalPricing ? 'Tap a row to change its SKU.' : 'Tap a row to change its price or SKU.'}
+          </Text>
         </View>
       ) : (
         <View>
@@ -668,7 +701,13 @@ export default function NewProductScreen() {
             <Text style={{ flex: 1, color: palette.muted, fontSize: 13 }}>Set all at once</Text>
             <View style={{ width: 170 }} />
             <TextInput value={bulkStock} onChangeText={(value) => applyBulk('stock', value)} keyboardType="number-pad" placeholder="Stock" placeholderTextColor={palette.faint} style={[cell, { width: 120 }, webNoOutline]} />
-            <TextInput value={bulkPrice} onChangeText={(value) => applyBulk('price', value)} keyboardType="number-pad" placeholder={basePrice ? formatNaira(basePrice) : '₦ Price'} placeholderTextColor={palette.faint} style={[cell, { width: 150 }, webNoOutline]} />
+            {useGlobalPricing ? (
+              <Text style={{ width: 150, color: basePrice ? palette.textSoft : palette.faint, fontSize: 13, fontWeight: '600' }} numberOfLines={1}>
+                {basePrice ? formatNaira(basePrice) : 'Set global price'}
+              </Text>
+            ) : (
+              <TextInput value={bulkPrice} onChangeText={(value) => applyBulk('price', value)} keyboardType={priceKeyboardType} placeholder={`${currencySymbol} Price`} placeholderTextColor={palette.faint} style={[cell, { width: 150 }, webNoOutline]} />
+            )}
           </View>
           {rows.map((row) => {
             const swatch = swatchForName(row.label);
@@ -684,12 +723,20 @@ export default function NewProductScreen() {
                 </View>
                 <TextInput value={row.sku} onChangeText={(value) => setOverride(row.key, { sku: value.toUpperCase() })} autoCapitalize="characters" style={[cell, { width: 170, color: duplicate ? palette.warn : palette.muted, fontSize: 13, letterSpacing: 0.3, borderColor: duplicate ? palette.warnBorder : palette.border }, webNoOutline]} />
                 <TextInput value={row.stock} onChangeText={(value) => setOverride(row.key, { stock: digitsOnly(value) })} keyboardType="number-pad" placeholder="0" placeholderTextColor={palette.faint} style={[cell, { width: 120, fontWeight: '600' }, webNoOutline]} />
-                <TextInput value={row.ownPrice} onChangeText={(value) => setOverride(row.key, { price: formatCurrencyInput(value) })} keyboardType="number-pad" placeholder={basePrice ? formatNaira(basePrice) : '₦ Price'} placeholderTextColor={palette.faint} style={[cell, { width: 150 }, webNoOutline]} />
+                {useGlobalPricing ? (
+                  <Text style={{ width: 150, color: row.effectivePrice ? palette.textSoft : palette.faint, fontSize: 13, fontWeight: '600' }} numberOfLines={1}>
+                    {row.effectivePrice ? formatNaira(row.effectivePrice) : 'Set global price'}
+                  </Text>
+                ) : (
+                  <TextInput value={row.ownPrice} onChangeText={(value) => setOverride(row.key, { price: formatCurrencyInput(value, currency) })} keyboardType={priceKeyboardType} placeholder={`${currencySymbol} Price`} placeholderTextColor={palette.faint} style={[cell, { width: 150 }, webNoOutline]} />
+                )}
               </View>
             );
           })}
           <Text style={[sub, { fontSize: 12.5, paddingTop: 10, borderTopWidth: 1, borderTopColor: palette.hairline }]}>
-            SKUs follow one pattern: {rows[0]?.sku ?? `${base}-BLK`}.{basePrice ? ` Leave price blank to use ${formatNaira(basePrice)}.` : ' Set a price above to fill blanks.'}
+            {useGlobalPricing
+              ? `SKUs follow one pattern: ${rows[0]?.sku ?? `${base}-BLK`}. ${basePrice ? `Every variant uses ${formatNaira(basePrice)}.` : 'Set the global price in Basics.'}`
+              : `SKUs follow one pattern: ${rows[0]?.sku ?? `${base}-BLK`}. Every variant needs its own price.`}
           </Text>
         </View>
       )}
@@ -704,7 +751,7 @@ export default function NewProductScreen() {
         </View>
         <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
           <Text style={{ color: palette.text, fontSize: 17, fontWeight: '700' }} numberOfLines={1}>{name.trim() || 'New product'}</Text>
-          <Text style={sub} numberOfLines={1}>{[categories[0], basePrice ? formatNaira(basePrice) : null].filter(Boolean).join(' · ') || 'No category or price yet'}</Text>
+          <Text style={sub} numberOfLines={1}>{[categories[0], priceSummary].filter(Boolean).join(' · ') || 'No category or price yet'}</Text>
         </View>
       </View>
       <View style={{ flexDirection: 'row', paddingVertical: 12, borderTopWidth: 1, borderBottomWidth: 1, borderColor: palette.hairline }}>
@@ -824,10 +871,17 @@ export default function NewProductScreen() {
                     <Text style={lab}>SKU</Text>
                     <TextInput value={editingRow.sku} onChangeText={(value) => setOverride(editingRow.key, { sku: value.toUpperCase() })} autoCapitalize="characters" style={[field, webNoOutline]} />
                   </View>
-                  <View style={{ gap: 8 }}>
-                    <Text style={lab}>Price</Text>
-                    <TextInput value={editingRow.ownPrice} onChangeText={(value) => setOverride(editingRow.key, { price: formatCurrencyInput(value) })} keyboardType="number-pad" placeholder={basePrice ? `${formatNaira(basePrice)} (same as product)` : '₦ Price'} placeholderTextColor={palette.faint} style={[field, webNoOutline]} />
-                  </View>
+                  {useGlobalPricing ? (
+                    <View style={{ gap: 4, padding: 12, borderRadius: 12, backgroundColor: palette.softFill }}>
+                      <Text style={lab}>Global price</Text>
+                      <Text style={sub}>{basePrice ? `${formatNaira(basePrice)} applies to this variant.` : 'Set the global price in Basics.'}</Text>
+                    </View>
+                  ) : (
+                    <View style={{ gap: 8 }}>
+                      <Text style={lab}>Price</Text>
+                      <TextInput value={editingRow.ownPrice} onChangeText={(value) => setOverride(editingRow.key, { price: formatCurrencyInput(value, currency) })} keyboardType={priceKeyboardType} placeholder={`${currencySymbol} Price`} placeholderTextColor={palette.faint} style={[field, webNoOutline]} />
+                    </View>
+                  )}
                   <Pressable onPress={() => setEditingKey(null)} style={{ height: 48, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.inverseBg }}>
                     <Text style={{ color: palette.inverseText, fontSize: 15, fontWeight: '600' }}>Done</Text>
                   </Pressable>

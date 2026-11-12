@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { Check, ChevronDown, ChevronRight, Minus, Package, PackagePlus, Plus, Printer } from 'lucide-react-native';
-import type { Product, ProductVariant } from '@/lib/state/fyll-store';
+import { CURRENCIES, formatCurrency, type CurrencyCode, type Product, type ProductVariant } from '@/lib/state/fyll-store';
+import { getActiveCurrency } from '@/lib/locale';
 import { ResolvedAttachmentImage } from '@/components/ResolvedAttachmentImage';
 import { FYLL_LIME, FYLL_LIME_INK, isHovered, type PaymentsPalette } from '@/components/payments/payments-ui';
 import { useBreakpoint } from '@/lib/useBreakpoint';
@@ -30,14 +31,18 @@ export const getVariantStatus = (variant: ProductVariant, threshold: number): St
   return 'in';
 };
 
-export const formatCompactNaira = (value: number) => {
-  if (value >= 1_000_000_000) return `₦${(value / 1_000_000_000).toFixed(1).replace(/\.0$/, '')}b`;
-  if (value >= 1_000_000) return `₦${(value / 1_000_000).toFixed(1).replace(/\.0$/, '')}m`;
-  if (value >= 10_000) return `₦${Math.round(value / 1000)}k`;
-  return `₦${Math.round(value).toLocaleString('en-NG')}`;
+export const formatCompactCurrency = (value: number, currencyCode?: CurrencyCode) => {
+  const code = currencyCode ?? getActiveCurrency();
+  const symbol = CURRENCIES[code].symbol;
+  if (value >= 1_000_000_000) return `${symbol}${(value / 1_000_000_000).toFixed(1).replace(/\.0$/, '')}b`;
+  if (value >= 1_000_000) return `${symbol}${(value / 1_000_000).toFixed(1).replace(/\.0$/, '')}m`;
+  if (value >= 10_000) return `${symbol}${Math.round(value / 1000)}k`;
+  return formatCurrency(Math.round(value), code);
 };
 
-export const formatNaira = (value: number) => `₦${Math.round(value).toLocaleString('en-NG')}`;
+export const formatCompactNaira = formatCompactCurrency;
+export const formatNaira = (value: number, currencyCode?: CurrencyCode) =>
+  formatCurrency(Math.round(value), currencyCode ?? getActiveCurrency());
 
 // Variant swatches: colour names map to a chip; anything else falls back to a
 // neutral tile so the row still lines up.
@@ -244,6 +249,7 @@ type ProductTableRowProps = {
   threshold: number;
   totalStock: number;
   displayPrice: number;
+  currencyCode: CurrencyCode;
   isOwner: boolean;
   selected: boolean;
   expanded: boolean;
@@ -258,7 +264,7 @@ type ProductTableRowProps = {
 };
 
 export function ProductTableRow({
-  product, status, threshold, totalStock, displayPrice, isOwner, selected, expanded, isLast, palette,
+  product, status, threshold, totalStock, displayPrice, currencyCode, isOwner, selected, expanded, isLast, palette,
   onToggleSelect, onToggleExpand, onOpen, onAdjustStock, onRestock, onPrintLabel,
 }: ProductTableRowProps) {
   const C = TABLE_COLUMNS;
@@ -317,7 +323,7 @@ export function ProductTableRow({
         <Text style={{ width: C.stock, textAlign: 'right', color: stockInk, fontSize: 12, fontWeight: '600', fontVariant: ['tabular-nums'] }}>{totalStock}</Text>
         {isOwner ? (
           <Text style={{ width: C.price, textAlign: 'right', color: displayPrice ? palette.text : palette.warn, fontSize: 12, fontWeight: '600', fontVariant: ['tabular-nums'] }} numberOfLines={1}>
-            {displayPrice ? formatNaira(displayPrice) : 'Set price'}
+            {displayPrice ? formatNaira(displayPrice, currencyCode) : 'Set price'}
           </Text>
         ) : null}
         <View style={{ width: C.status }}>
@@ -361,7 +367,7 @@ export function ProductTableRow({
                 </View>
                 {isOwner ? (
                   <Text style={{ width: C.price, textAlign: 'right', color: variant.sellingPrice ? palette.muted : palette.warn, fontSize: 12, fontVariant: ['tabular-nums'] }} numberOfLines={1}>
-                    {variant.sellingPrice ? formatNaira(variant.sellingPrice) : 'Set price'}
+                    {variant.sellingPrice ? formatNaira(variant.sellingPrice, currencyCode) : 'Set price'}
                   </Text>
                 ) : null}
                 <View style={{ width: C.status }}>
@@ -431,6 +437,7 @@ type ProductListRowProps = {
   status: StockStatus;
   totalStock: number;
   displayPrice: number;
+  currencyCode: CurrencyCode;
   isOwner: boolean;
   isFirst: boolean;
   active: boolean;
@@ -438,7 +445,7 @@ type ProductListRowProps = {
   onPress: () => void;
 };
 
-export function ProductListRow({ product, status, totalStock, displayPrice, isOwner, isFirst, active, palette, onPress }: ProductListRowProps) {
+export function ProductListRow({ product, status, totalStock, displayPrice, currencyCode, isOwner, isFirst, active, palette, onPress }: ProductListRowProps) {
   // Phones use smaller list text (name and qty 12px, status 10px).
   const { isMobile: compact } = useBreakpoint();
   const variantCount = product.variants.length;
@@ -470,7 +477,7 @@ export function ProductListRow({ product, status, totalStock, displayPrice, isOw
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
           <Text style={{ flex: 1, color: palette.faint, fontSize: 12.5 }} numberOfLines={1}>
             {variantCount} {variantCount === 1 ? 'variant' : 'variants'} · {isOwner ? (
-              <Text style={{ color: displayPrice ? palette.text : palette.warn }}>{displayPrice ? formatNaira(displayPrice) : 'Set price'}</Text>
+              <Text style={{ color: displayPrice ? palette.text : palette.warn }}>{displayPrice ? formatNaira(displayPrice, currencyCode) : 'Set price'}</Text>
             ) : (product.variants[0]?.sku?.toUpperCase() || '—')}
           </Text>
           <StockStatusLabel status={status} palette={palette} size={compact ? 10 : 12.5} />

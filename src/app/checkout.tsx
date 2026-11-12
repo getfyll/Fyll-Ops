@@ -13,8 +13,11 @@ import * as Clipboard from 'expo-clipboard';
 import { getSocialCheckoutPublic, saveSocialCheckoutDetails, submitSocialCheckoutPayment } from '@/lib/supabase/social-checkout-public';
 import { queueSocialCheckoutEmail } from '@/lib/supabase/social-checkout-emails';
 import { uploadSocialCheckoutProof } from '@/lib/storage-attachments';
-import { formatCurrency, NIGERIA_STATES } from '@/lib/state/fyll-store';
+import { formatCurrency } from '@/lib/state/fyll-store';
 import { SearchClearButton } from '@/components/SearchClearButton';
+import { getBankAccountTransferFields } from '@/lib/bank-account-regions';
+import { getCountry } from '@/lib/locale';
+import { getPickupStatesForCountry } from '@/lib/pickup-locations';
 
 const fyllColors = {
   primary: '#F4F4EF',
@@ -210,6 +213,7 @@ function CheckoutInput({
   autoComplete,
   multiline,
   hint,
+  editable = true,
 }: {
   label: string;
   value: string;
@@ -219,6 +223,7 @@ function CheckoutInput({
   autoComplete?: 'name' | 'tel' | 'email' | 'street-address';
   multiline?: boolean;
   hint?: string;
+  editable?: boolean;
 }) {
   const [isFocused, setIsFocused] = useState<boolean>(false);
   return (
@@ -231,6 +236,7 @@ function CheckoutInput({
         placeholderTextColor="rgba(244,244,239,0.4)"
         keyboardType={keyboardType ?? 'default'}
         autoComplete={autoComplete}
+        editable={editable}
         autoCapitalize={keyboardType === 'email-address' ? 'none' : 'sentences'}
         multiline={multiline}
         textAlignVertical={multiline ? 'top' : 'center'}
@@ -244,9 +250,9 @@ function CheckoutInput({
             borderRadius: 16,
             borderWidth: 1,
             borderColor: isFocused ? fyllColors.accent : 'rgba(255,255,255,0.14)',
-            backgroundColor: 'rgba(255,255,255,0.05)',
-            color: '#FFFFFF',
-                        fontSize: 15,
+            backgroundColor: editable ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.025)',
+            color: editable ? '#FFFFFF' : 'rgba(244,244,239,0.7)',
+            fontSize: 15,
             lineHeight: multiline ? 22 : undefined,
           },
           isFocused ? INPUT_FOCUS_RING : null,
@@ -452,6 +458,7 @@ export default function PublicSocialCheckoutScreen() {
   const [customerEmail, setCustomerEmail] = useState('');
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [deliveryState, setDeliveryState] = useState('');
+  const [deliveryPostcode, setDeliveryPostcode] = useState('');
   const [stateSearchQuery, setStateSearchQuery] = useState('');
   const [showStatePicker, setShowStatePicker] = useState(false);
   const [proofUri, setProofUri] = useState<string | null>(null);
@@ -476,7 +483,9 @@ export default function PublicSocialCheckoutScreen() {
   });
   const draftData = draftQuery.data;
   const refetchDraft = draftQuery.refetch;
-  const filteredStates = NIGERIA_STATES.filter((state) => state.toLowerCase().includes(stateSearchQuery.trim().toLowerCase()));
+  const deliveryCountry = getCountry(draftData?.country ?? 'NG');
+  const deliveryStates = getPickupStatesForCountry(deliveryCountry.name);
+  const filteredStates = deliveryStates.filter((state) => state.toLowerCase().includes(stateSearchQuery.trim().toLowerCase()));
 
   useEffect(() => {
     const interval = setInterval(() => setNowMs(Date.now()), 1000);
@@ -499,11 +508,13 @@ export default function PublicSocialCheckoutScreen() {
     const email = draftData.customerEmail?.trim() ?? '';
     const address = draftData.deliveryAddress?.trim() ?? '';
     const stateValue = draftData.deliveryState?.trim() ?? '';
+    const postcode = draftData.deliveryPostcode?.trim() ?? '';
     if (name) setCustomerName(name);
     if (phone) setCustomerPhone(phone);
     if (email) setCustomerEmail(email);
     if (address) setDeliveryAddress(address);
     if (stateValue) setDeliveryState(stateValue);
+    if (postcode) setDeliveryPostcode(postcode);
     if (name.length > 1 && phone.length >= 7 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && address.length > 4 && stateValue) {
       setCheckoutStep(2);
     }
@@ -518,6 +529,7 @@ export default function PublicSocialCheckoutScreen() {
         customerEmail: customerEmail.trim(),
         deliveryAddress: deliveryAddress.trim(),
         deliveryState,
+        deliveryPostcode: deliveryPostcode.trim(),
       });
       if (!result.ok) throw new Error(result.error ?? 'save_failed');
     },
@@ -548,6 +560,7 @@ export default function PublicSocialCheckoutScreen() {
         customerEmail: customerEmail.trim(),
         deliveryAddress: deliveryAddress.trim(),
         deliveryState,
+        deliveryPostcode: deliveryPostcode.trim(),
         proofImageUrl: upload.publicUrl,
       });
       if (!result.ok) throw new Error(result.error ?? 'submit_failed');
@@ -698,7 +711,7 @@ export default function PublicSocialCheckoutScreen() {
       const pageUrl = Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.href : '';
       const message = [
         `Hi ${draft.businessName}, I've paid for my order.`,
-        `Amount: ${formatCurrency(draft.amount)}`,
+        `Amount: ${formatCurrency(draft.amount, draft.currency)}`,
         `Reference: ${code}`,
         proofPublicUrl ? `Receipt: ${proofPublicUrl}` : pageUrl ? `Payment page: ${pageUrl}` : '',
       ].filter(Boolean).join('\n');
@@ -734,7 +747,7 @@ export default function PublicSocialCheckoutScreen() {
       setTimeout(() => setProofShareCopied(false), 2400);
     };
     const submittedTimeLabel = submittedAtMs ? new Date(submittedAtMs).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : undefined;
-    const amountLabel = formatCurrency(draft.amount);
+    const amountLabel = formatCurrency(draft.amount, draft.currency);
 
     return (
       <PublicPageBackground fieldHeight={420} fadeStart={0.45}>
@@ -811,7 +824,7 @@ export default function PublicSocialCheckoutScreen() {
               <View style={{ paddingTop: 26, paddingHorizontal: 24, paddingBottom: 24, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
                 <View style={{ flex: 1, minWidth: 0, gap: 6 }}>
                   <DText numberOfLines={1} style={{ color: 'rgba(244,244,239,0.82)', fontSize: 15 }}>{draft.businessName} requests</DText>
-                  <AmountText fontReady={bricolageReady} adjustsFontSizeToFit numberOfLines={1} style={{ color: '#FFFFFF', fontSize: 50, lineHeight: 52, letterSpacing: -2.4 }}>{formatCurrency(draft.amount)}</AmountText>
+                  <AmountText fontReady={bricolageReady} adjustsFontSizeToFit numberOfLines={1} style={{ color: '#FFFFFF', fontSize: 50, lineHeight: 52, letterSpacing: -2.4 }}>{formatCurrency(draft.amount, draft.currency)}</AmountText>
                   <DText style={{ color: 'rgba(244,244,239,0.7)', fontSize: 15, lineHeight: 21, marginTop: 6 }}>{billNote || 'Payment request'}</DText>
                 </View>
                 <MerchantLogo logo={draft.businessLogo} name={draft.businessName} size={74} ring={3} innerBorder={3} />
@@ -907,7 +920,7 @@ export default function PublicSocialCheckoutScreen() {
             <MerchantLogo logo={draft.businessLogo} name={draft.businessName} size={56} ring={3} innerBorder={2} />
             <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
               <DText numberOfLines={1} style={{ color: 'rgba(244,244,239,0.72)', fontSize: 13 }}>{draft.businessName} · amount due</DText>
-              <AmountText fontReady={bricolageReady} adjustsFontSizeToFit numberOfLines={1} style={{ color: '#F4F4EF', fontSize: 40, lineHeight: 42, letterSpacing: -1.8 }}>{formatCurrency(draft.amount)}</AmountText>
+              <AmountText fontReady={bricolageReady} adjustsFontSizeToFit numberOfLines={1} style={{ color: '#F4F4EF', fontSize: 40, lineHeight: 42, letterSpacing: -1.8 }}>{formatCurrency(draft.amount, draft.currency)}</AmountText>
             </View>
           </View>
 
@@ -962,11 +975,11 @@ export default function PublicSocialCheckoutScreen() {
               <CardLabel style={{ marginBottom: 8 }}>What you’re paying for</CardLabel>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingTop: 4, paddingBottom: 2 }}>
                 <DText style={{ flex: 1, color: '#FFFFFF', fontSize: 14.5, lineHeight: 21 }}>{billNote || 'Payment request'}</DText>
-                <DText weight="600" style={{ color: '#FFFFFF', fontSize: 14.5, fontVariant: ['tabular-nums'] }}>{formatCurrency(draft.amount)}</DText>
+                <DText weight="600" style={{ color: '#FFFFFF', fontSize: 14.5, fontVariant: ['tabular-nums'] }}>{formatCurrency(draft.amount, draft.currency)}</DText>
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', paddingTop: 12, marginTop: 12, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)' }}>
                 <DText weight="700" style={{ color: '#F4F4EF', fontSize: 15 }}>Total</DText>
-                <AmountText fontReady={bricolageReady} style={{ color: fyllColors.accent, fontSize: 22, letterSpacing: -0.6 }}>{formatCurrency(draft.amount)}</AmountText>
+                <AmountText fontReady={bricolageReady} style={{ color: fyllColors.accent, fontSize: 22, letterSpacing: -0.6 }}>{formatCurrency(draft.amount, draft.currency)}</AmountText>
               </View>
             </View>
           </RequestGlass>
@@ -987,11 +1000,13 @@ export default function PublicSocialCheckoutScreen() {
                 hint="We’ll send your confirmation and verification updates here."
               />
               <CheckoutInput label="Delivery address" value={deliveryAddress} onChangeText={setDeliveryAddress} placeholder="House number, street, area" autoComplete="street-address" multiline />
+              <CheckoutInput label="Country" value={deliveryCountry.name} onChangeText={() => undefined} editable={false} />
+              {deliveryStates.length > 0 ? (
               <View style={{ gap: 6 }}>
                 <DText style={{ color: 'rgba(244,244,239,0.7)', fontSize: 12.5 }}>State</DText>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="Select your state"
+                  accessibilityLabel={`Select your state in ${deliveryCountry.name}`}
                   onPress={() => setShowStatePicker((value) => !value)}
                   style={(state) => [
                     { height: 52, borderRadius: 16, borderWidth: 1, borderColor: showStatePicker ? fyllColors.accent : isHovered(state) ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.14)', backgroundColor: isHovered(state) ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.05)', paddingLeft: 16, paddingRight: 16, flexDirection: 'row', alignItems: 'center' },
@@ -999,7 +1014,7 @@ export default function PublicSocialCheckoutScreen() {
                     WEB_TRANSITION,
                   ]}
                 >
-                  <DText style={{ flex: 1, color: deliveryState ? '#FFFFFF' : 'rgba(244,244,239,0.4)', fontSize: 15 }}>{deliveryState || 'Select your state'}</DText>
+                  <DText style={{ flex: 1, color: deliveryState ? '#FFFFFF' : 'rgba(244,244,239,0.4)', fontSize: 15 }}>{deliveryState || `Select state (${deliveryCountry.name})`}</DText>
                   <ChevronDown size={18} color="rgba(244,244,239,0.6)" strokeWidth={2} />
                 </Pressable>
                 {showStatePicker ? (
@@ -1030,6 +1045,10 @@ export default function PublicSocialCheckoutScreen() {
                   </View>
                 ) : null}
               </View>
+              ) : (
+                <CheckoutInput label="State / region" value={deliveryState} onChangeText={setDeliveryState} placeholder="State or region" />
+              )}
+              <CheckoutInput label="Postcode (optional)" value={deliveryPostcode} onChangeText={setDeliveryPostcode} placeholder="Postcode" />
             </View>
           </RequestGlass>
           ) : null}
@@ -1051,7 +1070,9 @@ export default function PublicSocialCheckoutScreen() {
                 <DText weight="600" style={{ color: '#F4F4EF', fontSize: 16, lineHeight: 22 }}>{draft.bankAccount.accountName}</DText>
               </View>
               <View style={{ gap: 10 }}>
-                <CopyRow label="ACCOUNT NUMBER" value={draft.bankAccount.accountNumber} copied={copiedAccount} onPress={() => handleCopyAccountNumber(draft.bankAccount.accountNumber)} fontReady={bricolageReady} />
+                {getBankAccountTransferFields(draft.bankAccount).map((field) => (
+                  <CopyRow key={field.label} label={field.label.toUpperCase()} value={field.value} copied={copiedAccount} onPress={() => handleCopyAccountNumber(field.value)} fontReady={bricolageReady} />
+                ))}
                 <CopyRow label="PAYMENT REFERENCE" value={code} copied={copiedReference} onPress={handleCopyReference} fontReady={bricolageReady} />
               </View>
             </View>

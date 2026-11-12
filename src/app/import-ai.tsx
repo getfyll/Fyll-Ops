@@ -40,6 +40,7 @@ import { FYLL_LIME, FYLL_LIME_INK, MoneyText, usePaymentsPalette } from '@/compo
 import { InternalSettingsHeader } from '@/components/settings/InternalSettingsHeader';
 import { InventorySettingsHero } from '@/components/settings/InventorySettingsScaffold';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
+import { useBusinessCurrency } from '@/hooks/useBusinessCurrency';
 
 type ParseStats = {
   totalRows: number;
@@ -210,6 +211,7 @@ export default function ImportAiScreen() {
   const panelStyles = getSettingsWebPanelStyles(openedFromSettings, palette.page, palette.border);
   const { isDesktop, isMobile } = useBreakpoint();
   const useImportTypeGrid = Platform.OS === 'web' && isDesktop;
+  const { formatMoney } = useBusinessCurrency();
 
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
   const currentUserName = useAuthStore((s) => s.currentUser?.name ?? 'Import Assistant');
@@ -447,7 +449,7 @@ export default function ImportAiScreen() {
         });
 
         setPreparedProducts(mappedRows);
-        setPreviewRows(mappedRows.slice(0, 8).map((row) => `${row.name} • ${row.color} • ₦${row.sellingPrice.toLocaleString()}`));
+        setPreviewRows(mappedRows.slice(0, 8).map((row) => `${row.name} • ${row.color} • ${formatMoney(row.sellingPrice)}`));
         setParseStats({
           totalRows: rowObjects.length,
           validRows: mappedRows.length,
@@ -492,7 +494,7 @@ export default function ImportAiScreen() {
         });
 
         setPreparedExpenses(mappedRows);
-        setPreviewRows(mappedRows.slice(0, 8).map((row) => `${row.name} • ₦${row.amount.toLocaleString()} • ${row.category}`));
+        setPreviewRows(mappedRows.slice(0, 8).map((row) => `${row.name} • ${formatMoney(row.amount)} • ${row.category}`));
         setParseStats({
           totalRows: rowObjects.length,
           validRows: mappedRows.length,

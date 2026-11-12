@@ -15,7 +15,6 @@ import useFyllStore, {
   generateProductId,
   generateVariantBarcode,
   formatCurrency,
-  NIGERIA_STATES,
   Customer,
 } from '@/lib/state/fyll-store';
 import useAuthStore from '@/lib/state/auth-store';
@@ -45,6 +44,9 @@ import { useQueryClient } from '@tanstack/react-query';
 import { fetchQuotes, quotesQueryKey, updateQuote } from '@/lib/quotes-api';
 import { queueSocialCheckoutEmail } from '@/lib/supabase/social-checkout-emails';
 import { SearchClearButton } from '@/components/SearchClearButton';
+import { useBusinessCurrency } from '@/hooks/useBusinessCurrency';
+import { getCountry } from '@/lib/locale';
+import { getPickupStatesForCountry } from '@/lib/pickup-locations';
 
 interface SearchResult {
   productId: string;
@@ -311,6 +313,7 @@ export default function NewOrderScreen({ editOrderId: editOrderIdProp }: { editO
     customerEmail?: string;
     deliveryAddress?: string;
     deliveryState?: string;
+    deliveryPostcode?: string;
     deliveryFee?: string;
     fulfillmentMethod?: string;
     websiteOrderReference?: string;
@@ -387,6 +390,7 @@ export default function NewOrderScreen({ editOrderId: editOrderIdProp }: { editO
   const wooAvailable = useWooCommerceAvailable();
   const currentUser = useAuthStore((s) => s.currentUser);
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
+  const { currencySymbol } = useBusinessCurrency();
   const {
     woocommerceStoreUrl,
     woocommerceConsumerKey,
@@ -395,6 +399,7 @@ export default function NewOrderScreen({ editOrderId: editOrderIdProp }: { editO
     businessName,
     businessSlug,
     pickupSettings,
+    country,
   } = useBusinessSettings();
 
   const editOrderId = typeof editOrderIdProp === 'string' ? editOrderIdProp : '';
@@ -432,6 +437,7 @@ export default function NewOrderScreen({ editOrderId: editOrderIdProp }: { editO
   const [customerPhone, setCustomerPhone] = useState(params.customerPhone || '');
   const [deliveryState, setDeliveryState] = useState(() => normalizeDeliveryStateValue(params.deliveryState || ''));
   const [deliveryAddress, setDeliveryAddress] = useState(params.deliveryAddress || '');
+  const [deliveryPostcode, setDeliveryPostcode] = useState(params.deliveryPostcode || '');
   const [orderTypeId, setOrderTypeId] = useState(
     (orderTimelineSettings.orderTypes.find((type) => !isPickupTimeline(type)) ?? orderTimelineSettings.orderTypes[0])?.id ?? orderTimelineSettings.defaultOrderType.id
   );
@@ -585,6 +591,7 @@ export default function NewOrderScreen({ editOrderId: editOrderIdProp }: { editO
     setCustomerPhone(editingOrder.customerPhone ?? '');
     setDeliveryState(normalizeDeliveryStateValue(editingOrder.deliveryState ?? ''));
     setDeliveryAddress(editingOrder.deliveryAddress ?? '');
+    setDeliveryPostcode(editingOrder.deliveryPostcode ?? '');
     setFulfillmentMethod(isPickupOrder(editingOrder) ? 'pickup' : 'delivery');
     setOrderTypeId(editingOrder.orderTypeId ?? orderTimelineSettings.orderTypes[0]?.id ?? orderTimelineSettings.defaultOrderType.id);
     setSelectedCustomerId(editingOrder.customerId ?? null);
@@ -893,11 +900,16 @@ export default function NewOrderScreen({ editOrderId: editOrderIdProp }: { editO
   }, [orders, products, searchQuery]);
   const showingBestSellers = !searchQuery.trim() && inventoryTiles.some((tile) => (soldByVariant.get(`${tile.productId}:${tile.variantId}`) ?? 0) > 0);
 
-  const filteredNigeriaStates = useMemo(() => {
+  const deliveryCountryName = getCountry(country).name;
+  const deliveryStateOptions = useMemo(
+    () => getPickupStatesForCountry(deliveryCountryName),
+    [deliveryCountryName]
+  );
+  const filteredDeliveryStates = useMemo(() => {
     const query = stateSearchQuery.trim().toLowerCase();
-    if (!query) return NIGERIA_STATES;
-    return NIGERIA_STATES.filter((state) => state.toLowerCase().includes(query));
-  }, [stateSearchQuery]);
+    if (!query) return deliveryStateOptions;
+    return deliveryStateOptions.filter((state) => state.toLowerCase().includes(query));
+  }, [deliveryStateOptions, stateSearchQuery]);
 
   // Select existing customer to auto-fill
   const handleSelectCustomer = (customer: Customer) => {
@@ -908,6 +920,7 @@ export default function NewOrderScreen({ editOrderId: editOrderIdProp }: { editO
     setCustomerPhone(customer.phone);
     setDeliveryState(customer.defaultState);
     setDeliveryAddress(customer.defaultAddress);
+    setDeliveryPostcode(customer.defaultPostcode ?? '');
     setShowCustomerSearch(false);
     setCustomerSearchQuery('');
   };
@@ -920,6 +933,7 @@ export default function NewOrderScreen({ editOrderId: editOrderIdProp }: { editO
     setCustomerPhone('');
     setDeliveryState('');
     setDeliveryAddress('');
+    setDeliveryPostcode('');
   };
 
   // Calculations
@@ -1426,6 +1440,7 @@ export default function NewOrderScreen({ editOrderId: editOrderIdProp }: { editO
             phone: customerPhone.trim(),
             defaultState: isServiceOrder ? '' : deliveryState,
             defaultAddress: isServiceOrder ? '' : deliveryAddress.trim(),
+            defaultPostcode: isServiceOrder || isPickup ? '' : deliveryPostcode.trim(),
             createdAt: new Date().toISOString(),
           };
           await addCustomer(newCustomer, businessId);
@@ -1468,6 +1483,7 @@ export default function NewOrderScreen({ editOrderId: editOrderIdProp }: { editO
           customerPhone: customerPhone.trim(),
           deliveryState: isServiceOrder || isPickup ? '' : deliveryState,
           deliveryAddress: isServiceOrder || isPickup ? '' : deliveryAddress.trim(),
+          deliveryPostcode: isServiceOrder || isPickup ? '' : deliveryPostcode.trim(),
           fulfillmentMethod: isServiceOrder ? undefined : fulfillmentMethod,
           ...pickupOrderFields,
           orderTypeId: editTimeline.orderType.id,
@@ -1520,6 +1536,7 @@ export default function NewOrderScreen({ editOrderId: editOrderIdProp }: { editO
         customerPhone: customerPhone.trim(),
         deliveryState: isServiceOrder || isPickup ? '' : deliveryState,
         deliveryAddress: isServiceOrder || isPickup ? '' : deliveryAddress.trim(),
+        deliveryPostcode: isServiceOrder || isPickup ? '' : deliveryPostcode.trim(),
         fulfillmentMethod: isServiceOrder ? undefined : fulfillmentMethod,
         ...pickupOrderFields,
         orderTypeId: resolvedTimeline.orderType.id,
@@ -2340,7 +2357,7 @@ export default function NewOrderScreen({ editOrderId: editOrderIdProp }: { editO
                       </View>
                       {Platform.OS === 'web' ? (
                         <View style={{ maxHeight: 260, overflowY: 'auto' } as any}>
-                          {filteredNigeriaStates.length > 0 ? filteredNigeriaStates.map((state) => (
+                          {filteredDeliveryStates.length > 0 ? filteredDeliveryStates.map((state) => (
                             <Pressable
                               key={state}
                               onPress={() => {
@@ -2372,7 +2389,7 @@ export default function NewOrderScreen({ editOrderId: editOrderIdProp }: { editO
                           nestedScrollEnabled
                           keyboardShouldPersistTaps="handled"
                         >
-                          {filteredNigeriaStates.length > 0 ? filteredNigeriaStates.map((state) => (
+                          {filteredDeliveryStates.length > 0 ? filteredDeliveryStates.map((state) => (
                             <Pressable
                               key={state}
                               onPress={() => {
@@ -2417,6 +2434,21 @@ export default function NewOrderScreen({ editOrderId: editOrderIdProp }: { editO
                 />
               </View>
             </>
+          );
+
+          const postcodeField = (
+            <View>
+              {fieldLabel('Postcode (optional)')}
+              <FocusInput
+                placeholder="Enter postcode"
+                placeholderTextColor={palette.faint}
+                value={deliveryPostcode}
+                onChangeText={setDeliveryPostcode}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                style={fieldInput}
+              />
+            </View>
           );
 
           // Delivery or pick up. Pick up hides the delivery fields and the delivery fee, and the order is kept as a record.
@@ -2486,6 +2518,7 @@ export default function NewOrderScreen({ editOrderId: editOrderIdProp }: { editO
                       selectedCustomer.email ? `Email: ${selectedCustomer.email}` : '',
                       deliveryState.trim() ? `State: ${deliveryState.trim()}` : '',
                       deliveryAddress.trim() ? `Address: ${deliveryAddress.trim()}` : '',
+                      deliveryPostcode.trim() ? `Postcode: ${deliveryPostcode.trim()}` : '',
                     ].filter(Boolean).map((line) => (
                       <Text key={line} style={{ color: palette.muted, fontSize: 12, lineHeight: 17 }} selectable>{line}</Text>
                     ))}
@@ -2537,6 +2570,7 @@ export default function NewOrderScreen({ editOrderId: editOrderIdProp }: { editO
               )}
               {isServiceOrder ? null : fulfillmentToggle}
               {isServiceOrder || isPickup ? null : (!selectedCustomer || !deliveryState.trim() || !deliveryAddress.trim()) ? deliveryFields : null}
+              {isServiceOrder || isPickup ? null : postcodeField}
             </StepCard>
           );
 
@@ -3783,7 +3817,7 @@ export default function NewOrderScreen({ editOrderId: editOrderIdProp }: { editO
               style={[{ height: 52, paddingHorizontal: 16, borderRadius: 14, borderWidth: 1, borderColor: palette.outline, backgroundColor: palette.inset, color: palette.text, fontSize: 15 }, Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null]}
             />
             <FocusInput
-              placeholder="Price (₦)"
+              placeholder={`Price (${currencySymbol})`}
               placeholderTextColor={palette.faint}
               value={customItemPrice}
               onChangeText={setCustomItemPrice}

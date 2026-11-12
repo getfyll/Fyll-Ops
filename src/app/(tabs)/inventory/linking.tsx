@@ -190,7 +190,7 @@ export default function InventoryLinkingScreen() {
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
   const products = useFyllStore((s) => s.products);
   const updateProduct = useFyllStore((s) => s.updateProduct);
-  const { hasWooCommerceConnection, isLoading } = useBusinessSettings();
+  const { currency, hasWooCommerceConnection, isLoading } = useBusinessSettings();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeRowKey, setActiveRowKey] = useState<string | null>(null);
@@ -630,7 +630,7 @@ export default function InventoryLinkingScreen() {
                         </View>
 
                         <Text style={{ color: colors.text.secondary, fontSize: 12, fontWeight: '400', flex: 1.1 }} numberOfLines={1}>{row.sku || '-'}</Text>
-                        <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '600', flex: 0.8 }} numberOfLines={1}>{formatCurrency(row.price)}</Text>
+                        <Text style={{ color: colors.text.primary, fontSize: 12, fontWeight: '600', flex: 0.8 }} numberOfLines={1}>{formatCurrency(row.price, currency)}</Text>
 
                         <View style={{ flex: 0.8 }}>
                           <View className="self-start rounded-full px-2.5 py-1" style={{ backgroundColor: stockBg }}>
@@ -782,7 +782,7 @@ export default function InventoryLinkingScreen() {
                                         {option.productName} - {option.variantName}
                                       </Text>
                                       <Text style={{ ...cellTextStyle(colors.text.tertiary, 11), marginTop: 2 }} numberOfLines={1}>
-                                        SKU {option.sku || '-'} · {formatCurrency(option.price)} · {option.stock} in stock
+                                        SKU {option.sku || '-'} · {formatCurrency(option.price, currency)} · {option.stock} in stock
                                       </Text>
                                     </View>
                                   </Pressable>

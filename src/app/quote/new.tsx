@@ -8,6 +8,7 @@ import * as Haptics from 'expo-haptics';
 import useAuthStore from '@/lib/state/auth-store';
 import useFyllStore, { formatCurrency, type BankAccount } from '@/lib/state/fyll-store';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
+import { useBusinessCurrency } from '@/hooks/useBusinessCurrency';
 import { supabaseSettings } from '@/lib/supabase/settings';
 import { generateCheckoutCode } from '@/lib/generateCheckoutCode';
 import { normalizeProductType } from '@/lib/product-utils';
@@ -30,6 +31,7 @@ import {
   type QuoteItem,
 } from '@/lib/quotes';
 import { quotesQueryKey, saveQuote, useQuotes } from '@/lib/quotes-api';
+import { bankAccountSnapshot } from '@/lib/bank-account-regions';
 
 // New quote (and "edit quote" while the customer has not accepted yet): who it is for, what is in
 // it, how much they pay to start, and a private cost worksheet. Creating it gives a link to send.
@@ -63,6 +65,7 @@ export default function NewQuoteScreen() {
   const currentUser = useAuthStore((s) => s.currentUser);
   const products = useFyllStore((s) => s.products);
   const { businessName, businessSlug } = useBusinessSettings();
+  const { currencySymbol } = useBusinessCurrency();
   const linkBusiness = { businessName, businessSlug };
   const quotesQuery = useQuotes();
   const existing = editId ? (quotesQuery.data ?? []).find((quote) => quote.id === editId) ?? null : null;
@@ -199,7 +202,7 @@ export default function NewQuoteScreen() {
         validUntil,
         readyIn: readyIn.trim() || undefined,
         note: note.trim() || undefined,
-        bankAccount: { bankName: bankAccount.bankName, accountName: bankAccount.accountName, accountNumber: bankAccount.accountNumber },
+        bankAccount: bankAccountSnapshot(bankAccount),
         // Editing a quote the customer asked changes on puts it back to "sent".
         status: 'sent',
         changesRequest: undefined,
@@ -595,11 +598,11 @@ export default function NewQuoteScreen() {
                 </View>
                 <View style={{ flexDirection: 'row', gap: 12 }}>
                   <View style={{ flex: 1, gap: 7 }}>
-                    <Text style={labelStyle}>Price each (₦)</Text>
+                    <Text style={labelStyle}>Price each ({currencySymbol})</Text>
                     <TextInput value={draftPrice} onChangeText={setDraftPrice} placeholder="0" placeholderTextColor={palette.faint} keyboardType="numeric" style={inputStyle} />
                   </View>
                   <View style={{ flex: 1, gap: 7 }}>
-                    <Text style={labelStyle}>Your cost (₦)</Text>
+                    <Text style={labelStyle}>Your cost ({currencySymbol})</Text>
                     <TextInput value={draftCost} onChangeText={setDraftCost} placeholder="Optional" placeholderTextColor={palette.faint} keyboardType="numeric" style={inputStyle} />
                   </View>
                 </View>

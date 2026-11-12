@@ -1,6 +1,7 @@
 import { formatCurrency } from '@/lib/state/fyll-store';
 import { getPaymentLinkOrigin, slugifyBusinessName } from '@/lib/tracking-url';
 import type { StatusTone } from '@/components/payments/payments-ui';
+import type { BankAccountSnapshot } from '@/lib/state/fyll-store';
 
 // A quote is a priced offer sent to a customer for approval before any order exists. It lives in
 // the staff-only `quotes` table (supabase/migrations/20261012120000_quotes.sql); the customer
@@ -55,7 +56,7 @@ export interface Quote {
   validUntil: string; // ISO
   readyIn?: string;
   note?: string;
-  bankAccount: { bankName: string; accountName: string; accountNumber: string };
+  bankAccount: BankAccountSnapshot;
 
   createdBy: string;
   createdByUserId: string;

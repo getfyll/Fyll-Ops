@@ -256,6 +256,7 @@ export interface Customer {
   phone: string;
   defaultAddress: string;
   defaultState: string;
+  defaultPostcode?: string;
   createdAt: string;
 }
 
@@ -292,8 +293,22 @@ export interface BankAccount {
   bankName: string;
   accountName: string;
   accountNumber: string;
+  countryCode?: string;
+  currency?: CurrencyCode;
+  routingNumber?: string;
+  accountType?: string;
+  sortCode?: string;
+  swiftCode?: string;
+  institutionNumber?: string;
+  transitNumber?: string;
+  branchCode?: string;
+  bankCode?: string;
+  bsb?: string;
+  ifsc?: string;
   isDefault?: boolean;
 }
+
+export type BankAccountSnapshot = Omit<BankAccount, 'id' | 'isDefault'>;
 
 // A Social Checkout draft — a lightweight, pre-product "checkout link" staff
 // generate for DM orders (WhatsApp/Instagram). Can't reuse Order/OrderItem
@@ -333,7 +348,7 @@ export interface SocialCheckoutDraft {
 
   billNote: string;
   amount: number;
-  bankAccount: { bankName: string; accountName: string; accountNumber: string };
+  bankAccount: BankAccountSnapshot;
   createdBy: string;
   createdByUserId: string;
   createdAt: string;
@@ -344,6 +359,7 @@ export interface SocialCheckoutDraft {
   customerEmail?: string;
   deliveryAddress?: string;
   deliveryState?: string;
+  deliveryPostcode?: string;
   proofImageUrl?: string;
   submittedAt?: string;
 
@@ -408,6 +424,7 @@ export interface Order {
   customerPhone: string;
   deliveryState: string;
   deliveryAddress: string;
+  deliveryPostcode?: string;
   // 'pickup' = the customer collects the order (no delivery address or fee). Missing means delivery.
   fulfillmentMethod?: 'delivery' | 'pickup';
   // The Fyll Store marks a pickup order with these two instead (and the Store's database trigger fills pickupDetails).
@@ -3270,6 +3287,7 @@ const useFyllStore = create<FyllStore>()(
                   || (updates.customerPhone !== undefined && updates.customerPhone !== o.customerPhone)
                   || (updates.deliveryAddress !== undefined && updates.deliveryAddress !== o.deliveryAddress)
                   || (updates.deliveryState !== undefined && updates.deliveryState !== o.deliveryState)
+                  || (updates.deliveryPostcode !== undefined && updates.deliveryPostcode !== o.deliveryPostcode)
                 );
                 const itemsChanged = (
                   updates.items !== undefined

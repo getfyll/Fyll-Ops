@@ -944,7 +944,7 @@ export default function OrdersScreen() {
               </View>
             ) : (
               <View style={{ marginTop: isFirstInGroup && index > 0 ? 18 : 0 }}>
-                {isFirstInGroup ? <Text style={{ color: colors.text.muted, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', paddingHorizontal: 4, marginBottom: 8 }}>{groupLabel}</Text> : null}
+                {isFirstInGroup ? <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', paddingHorizontal: 4, marginBottom: 8 }}>{groupLabel}</Text> : null}
                 <OrderCard order={order} products={products} statusColor={getOrderStatusColor(order.status, statusColorMap, '#888888')} isSelected={selectedOrderId === order.id} showSplitView={showSplitView} onPress={() => handleOrderSelect(order.id)} separatorColor={separatorColor} unreadCount={unreadCounts[order.id] ?? 0} isFirstInGroup={isFirstInGroup} isLastInGroup={isLastInGroup} />
               </View>
             );

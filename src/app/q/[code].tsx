@@ -13,6 +13,7 @@ import { formatCurrency } from '@/lib/state/fyll-store';
 import { getQuotePublic, respondToQuote, submitQuoteProof, type PublicQuote } from '@/lib/supabase/quote-public';
 import { uploadSocialCheckoutProof } from '@/lib/storage-attachments';
 import { buildWhatsAppUrl, formatQuoteDate } from '@/lib/quotes';
+import { getBankAccountTransferFields } from '@/lib/bank-account-regions';
 
 // The customer's quote page. Public and unauthenticated: the quote code in the link is the only
 // credential, and everything goes through the RPCs in supabase/migrations/20261012120000_quotes.sql.
@@ -560,6 +561,7 @@ function QuotePublicInner() {
   if (screen === 'pay') {
     const full = quote.depositPercent >= 100;
     const bank = quote.bankAccount;
+    const transferFields = bank ? getBankAccountTransferFields(bank) : [];
     return (
       <Frame>
         <Hero
@@ -593,13 +595,15 @@ function QuotePublicInner() {
                   <T style={{ color: C.muted, fontSize: 13 }}>Bank</T>
                   <T weight="semi" style={{ fontSize: 15.5 }}>{bank.bankName}</T>
                 </View>
-                <View style={{ paddingVertical: 12, borderTopWidth: 1, borderTopColor: C.line, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                  <View style={{ flex: 1 }}>
-                    <T style={{ color: C.muted, fontSize: 13 }}>Account number</T>
-                    <T weight="bold" style={{ fontSize: 20, letterSpacing: 0.5 }} selectable>{bank.accountNumber}</T>
+                {transferFields.map((field) => (
+                  <View key={field.label} style={{ paddingVertical: 12, borderTopWidth: 1, borderTopColor: C.line, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <View style={{ flex: 1 }}>
+                      <T style={{ color: C.muted, fontSize: 13 }}>{field.label}</T>
+                      <T weight="bold" style={{ fontSize: 18, letterSpacing: 0.35 }} selectable>{field.value}</T>
+                    </View>
+                    <CopyButton value={field.value} />
                   </View>
-                  <CopyButton value={bank.accountNumber} />
-                </View>
+                ))}
                 <View style={{ paddingVertical: 12, borderTopWidth: 1, borderTopColor: C.line }}>
                   <T style={{ color: C.muted, fontSize: 13 }}>Account name</T>
                   <T weight="semi" style={{ fontSize: 14.5 }}>{bank.accountName}</T>

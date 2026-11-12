@@ -6,6 +6,7 @@ import { X, Calendar } from 'lucide-react-native';
 import useFyllStore from '@/lib/state/fyll-store';
 import useAuthStore from '@/lib/state/auth-store';
 import { cn } from '@/lib/cn';
+import { useBusinessCurrency } from '@/hooks/useBusinessCurrency';
 
 export default function NewExpenseScreen() {
   const router = useRouter();
@@ -13,6 +14,7 @@ export default function NewExpenseScreen() {
   const addExpense = useFyllStore((s) => s.addExpense);
   const businessId = useAuthStore((s) => s.businessId);
   const createdByName = useAuthStore((s) => s.currentUser?.name?.trim() || s.currentUser?.email?.split('@')[0] || 'Team Member');
+  const { currencySymbol } = useBusinessCurrency();
 
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
@@ -68,7 +70,7 @@ export default function NewExpenseScreen() {
           <View className="mt-6 items-center">
             <Text className="text-gray-500 text-sm font-medium mb-2">Amount</Text>
             <View className="flex-row items-center">
-              <Text className="text-gray-900 text-4xl font-bold mr-1">₦</Text>
+              <Text className="text-gray-900 text-4xl font-bold mr-1">{currencySymbol}</Text>
               <TextInput
                 placeholder="0"
                 placeholderTextColor="#D1D5DB"

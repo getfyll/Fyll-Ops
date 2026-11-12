@@ -15,6 +15,8 @@ import { generateCheckoutCode } from '@/lib/generateCheckoutCode';
 import { buildSocialCheckoutUrl, getPaymentLinkOrigin } from '@/lib/tracking-url';
 import { formatCurrency, SOCIAL_CHECKOUT_EXPIRY_MS, type BankAccount, type SocialCheckoutDraft } from '@/lib/state/fyll-store';
 import { FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, MoneyText, isHovered, usePaymentsPalette } from '@/components/payments/payments-ui';
+import { useBusinessCurrency } from '@/hooks/useBusinessCurrency';
+import { bankAccountSnapshot } from '@/lib/bank-account-regions';
 
 // New payment link, presented over Payments: a centred dialog on desktop and
 // a bottom sheet on phones. Staff paste the bill they sent in the DM, we add
@@ -24,15 +26,18 @@ const noWebOutline = Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object
 
 type BillLine = { qty: number | null; name: string; amount: number };
 
-// "2x Gold hoop earrings  8,500" -> 2 × ₦8,500. Lines without a trailing
+// "2x Gold hoop earrings  8,500" -> 2 × the business currency. Lines without a trailing
 // price are ignored; quantity is optional ("Delivery Lekki 5,000").
-function parseBill(text: string): BillLine[] {
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+function parseBill(text: string, currencySymbol: string): BillLine[] {
+  const amountPattern = new RegExp(`^(?:(\\d+)\\s*[x×]\\s*)?(.+?)[\\s:–-]+(?:${escapeRegExp(currencySymbol)}|₦)?\\s*([\\d,]+(?:\\.\\d+)?)\\s*$`, 'i');
   return text
     .split('\n')
     .map((raw) => raw.trim())
     .filter(Boolean)
     .map((line): BillLine | null => {
-      const match = line.match(/^(?:(\d+)\s*[x×]\s*)?(.+?)[\s:–-]+₦?\s*([\d,]+(?:\.\d+)?)\s*$/i);
+      const match = line.match(amountPattern);
       if (!match) return null;
       const unit = Number(match[3].replace(/,/g, ''));
       if (!Number.isFinite(unit) || unit <= 0) return null;
@@ -62,6 +67,7 @@ export default function NewSocialCheckoutScreen() {
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
   const currentUser = useAuthStore((s) => s.currentUser);
   const { businessName, businessSlug, businessLogo } = useBusinessSettings();
+  const { currencySymbol, formatMoney } = useBusinessCurrency();
 
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
@@ -88,7 +94,7 @@ export default function NewSocialCheckoutScreen() {
     });
   }, [businessId]);
 
-  const billLines = useMemo(() => parseBill(billNote), [billNote]);
+  const billLines = useMemo(() => parseBill(billNote, currencySymbol), [billNote, currencySymbol]);
   const billTotal = billLines.reduce((sum, line) => sum + line.amount, 0);
 
   // The total follows the bill until staff type their own figure.
@@ -109,7 +115,7 @@ export default function NewSocialCheckoutScreen() {
     'Bill',
     billNote.trim() || 'No bill details provided.',
     '',
-    `Amount: ₦${parsedAmount.toLocaleString('en-NG')}`,
+    `Amount: ${formatMoney(parsedAmount)}`,
     '',
     'Bank Transfer Link',
     link,
@@ -150,11 +156,7 @@ export default function NewSocialCheckoutScreen() {
         status: 'awaiting_payment',
         billNote: billNote.trim(),
         amount: parsedAmount,
-        bankAccount: {
-          bankName: selectedAccount.bankName,
-          accountName: selectedAccount.accountName,
-          accountNumber: selectedAccount.accountNumber,
-        },
+        bankAccount: bankAccountSnapshot(selectedAccount),
         createdBy: currentUser?.name ?? 'Staff',
         createdByUserId: currentUser?.id ?? '',
         createdAt: new Date(now).toISOString(),
@@ -311,7 +313,7 @@ export default function NewSocialCheckoutScreen() {
             </Pressable>
           ) : null}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, height: 44, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1, borderColor: focusedField === 'amount' ? (palette.isDark ? 'rgba(213,224,87,0.6)' : '#111111') : palette.outline, backgroundColor: palette.page }}>
-            <Text style={{ color: palette.faint, fontSize: 15 }}>₦</Text>
+            <Text style={{ color: palette.faint, fontSize: 15 }}>{currencySymbol}</Text>
             <TextInput
               accessibilityLabel="Total amount"
               value={focusedField === 'amount' ? amount : parsedAmount > 0 ? formatPlain(parsedAmount) : ''}
@@ -492,7 +494,7 @@ export default function NewSocialCheckoutScreen() {
               <Text style={{ color: palette.faint, fontSize: 11.5 }}>Fyll checkout</Text>
             </View>
           </View>
-          <MoneyText style={{ color: palette.text, fontSize: 26, letterSpacing: -0.5 }}>{parsedAmount > 0 ? formatCurrency(parsedAmount) : '₦0'}</MoneyText>
+          <MoneyText style={{ color: palette.text, fontSize: 26, letterSpacing: -0.5 }}>{formatMoney(parsedAmount)}</MoneyText>
           <Text style={{ color: palette.faint, fontSize: 12.5, lineHeight: 19 }}>
             {[itemCount > 0 ? `${itemCount} ${itemCount === 1 ? 'item' : 'items'}` : null, selectedAccount ? `transfer to ${selectedAccount.bankName}` : null].filter(Boolean).join(' · ') || 'Bank transfer'}
             {'\n'}Customer adds delivery details and uploads their receipt.

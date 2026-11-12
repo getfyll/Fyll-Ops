@@ -26,6 +26,7 @@ import { buildSocialCheckoutUrl, getPaymentLinkOrigin } from '@/lib/tracking-url
 import { PaymentDetailSkeleton } from '@/components/SkeletonLoader';
 import { SearchClearButton } from '@/components/SearchClearButton';
 import { FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, InitialsAvatar, MoneyText, SectionLabel, isHovered, usePaymentsPalette, type StatusTone, useMobileFont, BackButton } from '@/components/payments/payments-ui';
+import { bankAccountSnapshot } from '@/lib/bank-account-regions';
 
 // Payment link detail: amount + status up top, then what to do next (review
 // the receipt, create or link the order), the bill, the link/message to send,
@@ -114,6 +115,7 @@ export default function SocialCheckoutDetailScreen() {
   const [editCustomerEmail, setEditCustomerEmail] = useState('');
   const [editDeliveryAddress, setEditDeliveryAddress] = useState('');
   const [editDeliveryState, setEditDeliveryState] = useState('');
+  const [editDeliveryPostcode, setEditDeliveryPostcode] = useState('');
   const [editAccountId, setEditAccountId] = useState<string | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
   const [refCopied, setRefCopied] = useState<boolean>(false);
@@ -163,6 +165,7 @@ export default function SocialCheckoutDetailScreen() {
     setEditCustomerEmail(source.customerEmail ?? '');
     setEditDeliveryAddress(source.deliveryAddress ?? '');
     setEditDeliveryState(source.deliveryState ?? '');
+    setEditDeliveryPostcode(source.deliveryPostcode ?? '');
     setEditAccountId(matchedAccount?.id ?? null);
   };
 
@@ -227,6 +230,7 @@ export default function SocialCheckoutDetailScreen() {
       customerEmail: draft.customerEmail ?? '',
       deliveryAddress: draft.deliveryAddress ?? '',
       deliveryState: draft.deliveryState ?? '',
+      deliveryPostcode: draft.deliveryPostcode ?? '',
       socialCheckoutReference: paymentReference,
       socialCheckoutBill: draft.billNote?.trim() || 'No bill note provided.',
       socialCheckoutAmount: String(draft.amount),
@@ -398,16 +402,13 @@ export default function SocialCheckoutDetailScreen() {
       status: effectiveStatus === 'expired' ? 'awaiting_payment' : draft.status,
       billNote: editBillNote.trim(),
       amount: parsedAmount,
-      bankAccount: selectedAccount ? {
-        bankName: selectedAccount.bankName,
-        accountName: selectedAccount.accountName,
-        accountNumber: selectedAccount.accountNumber,
-      } : draft.bankAccount,
+      bankAccount: selectedAccount ? bankAccountSnapshot(selectedAccount) : draft.bankAccount,
       customerName: editCustomerName.trim() || undefined,
       customerPhone: editCustomerPhone.trim() || undefined,
       customerEmail: editCustomerEmail.trim() || undefined,
       deliveryAddress: editDeliveryAddress.trim() || undefined,
       deliveryState: editDeliveryState.trim() || undefined,
+      deliveryPostcode: editDeliveryPostcode.trim() || undefined,
       expiresAt: effectiveStatus === 'expired' ? new Date(nowMs + SOCIAL_CHECKOUT_EXPIRY_MS).toISOString() : draft.expiresAt,
       activityLog: [
         ...(draft.activityLog ?? []),
@@ -582,7 +583,10 @@ export default function SocialCheckoutDetailScreen() {
   const toneStyle = palette.tones[tone];
   const linkedOrder = draft.convertedOrderId ? orders.find((order) => order.id === draft.convertedOrderId) : undefined;
   const linkedOrderNumber = linkedOrder?.orderNumber ?? (draft.convertedOrderId ? 'Linked order' : undefined);
-  const deliveryLocationText = formatDeliveryLocation(draft.deliveryAddress, draft.deliveryState);
+  const deliveryLocationText = formatDeliveryLocation(
+    [draft.deliveryAddress, draft.deliveryPostcode].filter(Boolean).join(', '),
+    draft.deliveryState
+  );
   const linkedOrderItems = linkedOrder?.items ?? [];
   const canDeactivateLink = (draft.status === 'awaiting_payment' || draft.status === 'payment_submitted');
   const canEditLink = isAdmin && effectiveStatus !== 'expired' && draft.status !== 'cancelled' && draft.status !== 'rejected';
@@ -1010,6 +1014,10 @@ export default function SocialCheckoutDetailScreen() {
           <Text style={{ color: palette.muted, fontSize: fs(12.5) }}>Delivery state</Text>
           <TextInput placeholder="State" placeholderTextColor={palette.faint} value={editDeliveryState} onChangeText={setEditDeliveryState} style={inputStyle} selectionColor={palette.text} />
         </View>
+      </View>
+      <View style={{ gap: 6 }}>
+        <Text style={{ color: palette.muted, fontSize: fs(12.5) }}>Postcode (optional)</Text>
+        <TextInput placeholder="Postcode" placeholderTextColor={palette.faint} value={editDeliveryPostcode} onChangeText={setEditDeliveryPostcode} autoCapitalize="characters" autoCorrect={false} style={inputStyle} selectionColor={palette.text} />
       </View>
       {accounts.length > 0 ? (
         <View style={{ gap: 8 }}>

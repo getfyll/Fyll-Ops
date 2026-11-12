@@ -4,6 +4,7 @@
 import { supabase } from '../supabase';
 import { resolveBusinessAssetUrl } from '@/lib/storage-attachments';
 import type { QuoteStatus } from '@/lib/quotes';
+import type { BankAccountSnapshot } from '@/lib/state/fyll-store';
 
 export interface PublicQuote {
   businessName: string;
@@ -20,7 +21,7 @@ export interface PublicQuote {
   validUntil: string;
   readyIn: string;
   note: string;
-  bankAccount: { bankName: string; accountName: string; accountNumber: string } | null;
+  bankAccount: BankAccountSnapshot | null;
   proofRejected: boolean;
 }
 
@@ -55,7 +56,23 @@ const normalizeQuote = (value: unknown): PublicQuote | null => {
     readyIn: text(next.readyIn),
     note: text(next.note),
     bankAccount: bank
-      ? { bankName: text(bank.bankName), accountName: text(bank.accountName), accountNumber: text(bank.accountNumber) }
+      ? {
+        bankName: text(bank.bankName),
+        accountName: text(bank.accountName),
+        accountNumber: text(bank.accountNumber),
+        countryCode: text(bank.countryCode) || undefined,
+        currency: text(bank.currency) as BankAccountSnapshot['currency'] || undefined,
+        routingNumber: text(bank.routingNumber) || undefined,
+        accountType: text(bank.accountType) || undefined,
+        sortCode: text(bank.sortCode) || undefined,
+        swiftCode: text(bank.swiftCode) || undefined,
+        institutionNumber: text(bank.institutionNumber) || undefined,
+        transitNumber: text(bank.transitNumber) || undefined,
+        branchCode: text(bank.branchCode) || undefined,
+        bankCode: text(bank.bankCode) || undefined,
+        bsb: text(bank.bsb) || undefined,
+        ifsc: text(bank.ifsc) || undefined,
+      }
       : null,
     proofRejected: next.proofRejected === true,
   };

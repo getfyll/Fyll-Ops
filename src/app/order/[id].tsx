@@ -36,6 +36,7 @@ import { formatAddressValue, normalizeDeliveryStateValue } from '@/lib/format-ad
 import { SearchClearButton } from '@/components/SearchClearButton';
 import { createWooCommerceOrderFromFyll, fetchWooCommerceOrder } from '@/lib/woocommerce';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
+import { useBusinessCurrency } from '@/hooks/useBusinessCurrency';
 import { formatPickupHours, isPickupOrder, normalizePickupSettings, orderStatusAppliesToOrder } from '@/lib/pickup';
 import { FYLL_LIME, FYLL_LIME_INK, MoneyText, getInitials, usePaymentsPalette } from '@/components/payments/payments-ui';
 
@@ -226,6 +227,7 @@ export default function OrderDetailScreen() {
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
   const isOfflineMode = useAuthStore((s) => s.isOfflineMode);
   const { woocommerceStoreUrl, woocommerceConsumerKey, woocommerceConsumerSecret, hasWooCommerceConnection, pickupSettings: businessPickupSettings } = useBusinessSettings();
+  const { currencySymbol } = useBusinessCurrency();
 
   // Shared look for every card on this page (Fyll Field order-detail redesign).
   const sectionCardStyle = {
@@ -238,7 +240,12 @@ export default function OrderDetailScreen() {
     marginTop: isWebDesktop ? 18 : 14,
     marginHorizontal: isWebDesktop ? 0 : 16,
   };
-  const sectionTitleStyle = { color: palette.text, fontSize: isWebDesktop ? 16 : 14, fontWeight: '600' as const };
+  const sectionTitleStyle = {
+    color: palette.text,
+    fontSize: isWebDesktop ? 16 : 14,
+    lineHeight: isWebDesktop ? 20 : 18,
+    fontWeight: '600' as const,
+  };
   const ghostPillStyle = {
     height: 40,
     paddingHorizontal: 16,
@@ -755,7 +762,9 @@ export default function OrderDetailScreen() {
   // Where the customer collects it. The order keeps its own snapshot; an older Ops pickup order without one falls back to
   // the current pickup settings. Ops is internal, so the full address is always shown.
   const pickupInfo = isPickup ? normalizePickupSettings(order.pickupDetails ?? businessPickupSettings) : null;
-  const deliveryAddressText = isPickup ? '' : formatAddressValue(order.deliveryAddress);
+  const deliveryAddressText = isPickup
+    ? ''
+    : formatAddressValue([order.deliveryAddress, order.deliveryPostcode].filter(Boolean).join(', '));
   const deliveryStateText = isPickup ? '' : normalizeDeliveryStateValue(order.deliveryState, order.deliveryAddress);
   const hasOrderServices = Boolean(order.services?.length);
   const hasDeliveryFee = !isPickup && order.deliveryFee > 0;
@@ -2105,7 +2114,7 @@ export default function OrderDetailScreen() {
             style={{ marginTop: 10, height: 44, borderRadius: 999, backgroundColor: FYLL_LIME, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', opacity: isSendingToWoo ? 0.65 : 1 }}
           >
             {isSendingToWoo ? <ActivityIndicator size="small" color="#17190B" /> : <Send size={16} color="#17190B" strokeWidth={2.3} />}
-            <MoneyText style={{ color: '#17190B', fontSize: 13, fontWeight: '600', marginLeft: 8 }}>{isSendingToWoo ? 'Sending…' : 'Send to Woo'}</MoneyText>
+            <MoneyText style={{ color: '#17190B', fontSize: 14, fontWeight: '600', marginLeft: 8 }}>{isSendingToWoo ? 'Sending…' : 'Send to Woo'}</MoneyText>
           </Pressable>
         </View>
       ) : null}
@@ -2142,6 +2151,7 @@ export default function OrderDetailScreen() {
     </View>
   ) : (
     <View style={sectionCardStyle}>
+      <Text style={[sectionTitleStyle, { marginBottom: 14 }]}>Payment</Text>
       <View className="flex-row items-center justify-between">
         <View className="flex-row items-center">
           <Tag size={16} color={colors.text.primary} strokeWidth={2} />
@@ -2161,6 +2171,7 @@ export default function OrderDetailScreen() {
     <View style={sectionCardStyle}>
       <OrderFulfillmentSection
         order={order}
+        title="Fulfillment"
         onCopied={() => showToast('success', 'Tracking info copied.')}
         onEditFulfillment={() => setShowFulfillmentModal(true)}
       />
@@ -2262,6 +2273,7 @@ export default function OrderDetailScreen() {
   const prescriptionSection = (
     <PrescriptionSection
       containerClassName={isWebDesktop ? 'mt-[18px]' : 'mt-3.5 mx-4'}
+      title="Prescription"
       prescription={order.prescription}
       onUpdate={handleUpdatePrescription}
       editable={true}
@@ -3531,7 +3543,7 @@ export default function OrderDetailScreen() {
                   <View className="mb-4">
                     <Text style={{ color: colors.text.primary }} className="text-sm font-medium mb-2">Delivery Fee</Text>
                     <View className="rounded-xl px-4 flex-row items-center" style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.input.border, height: 52 }}>
-                      <Text style={{ color: colors.input.placeholder, fontSize: 14, marginRight: 4 }}>₦</Text>
+                      <Text style={{ color: colors.input.placeholder, fontSize: 14, marginRight: 4 }}>{currencySymbol}</Text>
                       <TextInput
                         placeholder="0"
                         placeholderTextColor={colors.input.placeholder}
@@ -3567,7 +3579,7 @@ export default function OrderDetailScreen() {
                   <View className="mb-4">
                     <Text style={{ color: colors.text.primary }} className="text-sm font-medium mb-2">Discount Amount</Text>
                     <View className="rounded-xl px-4 flex-row items-center" style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.input.border, height: 52 }}>
-                      <Text style={{ color: colors.input.placeholder, fontSize: 14, marginRight: 4 }}>₦</Text>
+                      <Text style={{ color: colors.input.placeholder, fontSize: 14, marginRight: 4 }}>{currencySymbol}</Text>
                       <TextInput
                         placeholder="0"
                         placeholderTextColor={colors.input.placeholder}
@@ -4300,7 +4312,7 @@ export default function OrderDetailScreen() {
                   <View className="mb-4">
                     <Text style={{ color: colors.text.primary }} className="text-sm font-medium mb-2">Refund Amount *</Text>
                     <View className="rounded-xl px-4 flex-row items-center" style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.input.border, height: 52 }}>
-                      <Text style={{ color: colors.input.placeholder, fontSize: 14, marginRight: 4 }}>₦</Text>
+                      <Text style={{ color: colors.input.placeholder, fontSize: 14, marginRight: 4 }}>{currencySymbol}</Text>
                       <TextInput
                         placeholder="0"
                         placeholderTextColor={colors.input.placeholder}
@@ -4591,7 +4603,7 @@ export default function OrderDetailScreen() {
                   <View className="mb-4">
                     <Text style={{ color: colors.text.primary }} className="text-sm font-medium mb-2">Refund Amount *</Text>
                     <View className="rounded-xl px-4 flex-row items-center" style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.input.border, height: 52 }}>
-                      <Text style={{ color: colors.input.placeholder, fontSize: 14, marginRight: 4 }}>₦</Text>
+                      <Text style={{ color: colors.input.placeholder, fontSize: 14, marginRight: 4 }}>{currencySymbol}</Text>
                       <TextInput
                         placeholder="0"
                         placeholderTextColor={colors.input.placeholder}

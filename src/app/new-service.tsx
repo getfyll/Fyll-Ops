@@ -26,6 +26,7 @@ import { useBreakpoint } from '@/lib/useBreakpoint';
 import { DesktopSidebar } from '@/components/DesktopSidebar';
 import { BackButton, FYLL_LIME, FYLL_LIME_INK, MoneyText, usePaymentsPalette } from '@/components/payments/payments-ui';
 import { useFonts, BricolageGrotesque_500Medium } from '@expo-google-fonts/bricolage-grotesque';
+import { useBusinessCurrency } from '@/hooks/useBusinessCurrency';
 
 const SERVICE_VARIABLE_TYPES: ServiceVariableType[] = ['Select', 'Number', 'Toggle', 'Text'];
 const SERVICE_FIELD_TYPES: ServiceFieldType[] = ['Text', 'Date', 'Time', 'Number', 'Price', 'Select'];
@@ -49,6 +50,7 @@ export default function NewServiceScreen() {
   const { width } = useWindowDimensions();
   const colors = useThemeColors();
   const palette = usePaymentsPalette();
+  const { currencySymbol } = useBusinessCurrency();
   const { isMobile, isDesktop } = useBreakpoint();
   const isDark = useResolvedThemeMode() === 'dark';
   const isWeb = Platform.OS === 'web';
@@ -559,7 +561,7 @@ export default function NewServiceScreen() {
                 <TextInput
                   value={price}
                   onChangeText={setPrice}
-                  placeholder="₦150/hr"
+                  placeholder={`${currencySymbol}150/hr`}
                   placeholderTextColor={colors.input.placeholder}
                   keyboardType="numeric"
                   style={configControlStyle}

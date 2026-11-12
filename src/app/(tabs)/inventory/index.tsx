@@ -25,6 +25,7 @@ import { SearchClearButton } from '@/components/SearchClearButton';
 import { EmptyState } from '@/components/EmptyState';
 import { FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, MoneyText, isHovered, usePaymentsPalette } from '@/components/payments/payments-ui';
 import { FilterPill, InventoryCheckbox, MenuPill, ProductListRow, ProductTableRow, TABLE_COLUMNS, formatCompactNaira, getStockStatus, type StockStatus } from '@/components/inventory/inventory-ui';
+import { useBusinessCurrency } from '@/hooks/useBusinessCurrency';
 
 // Hairline separator colors
 const SEPARATOR_LIGHT = '#EEEEEE';
@@ -74,6 +75,7 @@ export default function InventoryScreen() {
   const products = useFyllStore((s) => s.products);
   const orders = useFyllStore((s) => s.orders);
   const palette = usePaymentsPalette();
+  const { currency } = useBusinessCurrency();
   const procurements = useFyllStore((s) => s.procurements);
   const lastDataSyncAt = useFyllStore((s) => s.lastDataSyncAt);
   const hasVerifiedProductsData = useFyllStore((s) => s.hasVerifiedProductsData);
@@ -579,7 +581,7 @@ export default function InventoryScreen() {
     {
       key: 'value',
       label: isOwner ? 'Stock value' : 'Units in stock',
-      value: isOwner ? formatCompactNaira(inventoryStats.value) : inventoryStats.units.toLocaleString('en-NG'),
+      value: isOwner ? formatCompactNaira(inventoryStats.value, currency) : inventoryStats.units.toLocaleString(),
       sub: isOwner
         ? `${inventoryStats.units.toLocaleString('en-NG')} units · ${inventoryStats.products} products`
         : `${inventoryStats.products} products`,
@@ -903,7 +905,7 @@ export default function InventoryScreen() {
                                 {capitalizeDisplayLabel(service.name)}
                               </Text>
                               <Text style={{ color: colors.text.muted }} className="text-xs mt-0.5">
-                                {tag} · {formatCurrency(price)}
+                                {tag} · {formatCurrency(price, currency)}
                               </Text>
                             </View>
                           </View>
@@ -1095,6 +1097,7 @@ export default function InventoryScreen() {
                     threshold={threshold}
                     totalStock={getTotalStock(product)}
                     displayPrice={getDisplayPrice(product)}
+                    currencyCode={currency}
                     isOwner={isOwner}
                     selected={selectedProductIds.includes(product.id)}
                     expanded={Boolean(expandedByProductId[product.id])}
@@ -1121,6 +1124,7 @@ export default function InventoryScreen() {
                     status={getStockStatus(product, getEffectiveThreshold(product))}
                     totalStock={getTotalStock(product)}
                     displayPrice={getDisplayPrice(product)}
+                    currencyCode={currency}
                     isOwner={isOwner}
                     isFirst={index === 0}
                     active={showSplitView && selectedProductId === product.id}

@@ -9,6 +9,7 @@ import useAuthStore from '@/lib/state/auth-store';
 import { cn } from '@/lib/cn';
 import { uploadBusinessAttachment } from '@/lib/storage-attachments';
 import { SearchClearButton } from '@/components/SearchClearButton';
+import { useBusinessCurrency } from '@/hooks/useBusinessCurrency';
 
 interface ItemFormData extends ProcurementItem {
   tempId: string;
@@ -19,6 +20,7 @@ export default function NewProcurementScreen() {
   const products = useFyllStore((s) => s.products);
   const addProcurement = useFyllStore((s) => s.addProcurement);
   const businessId = useAuthStore((s) => s.businessId);
+  const { currencySymbol } = useBusinessCurrency();
 
   const [title, setTitle] = useState('');
   const [supplierName, setSupplierName] = useState('');
@@ -393,7 +395,7 @@ export default function NewProcurementScreen() {
                         <View className="flex-1">
                           <Text className="text-gray-500 text-xs mb-1">Unit Cost</Text>
                           <View className="flex-row items-center bg-gray-100 rounded-lg px-3 py-2">
-                            <Text className="text-gray-500 text-sm">₦</Text>
+                            <Text className="text-gray-500 text-sm">{currencySymbol}</Text>
                             <TextInput
                               value={String(item.costAtPurchase)}
                               onChangeText={(text) =>

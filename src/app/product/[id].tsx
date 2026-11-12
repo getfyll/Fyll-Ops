@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { View, Text, ScrollView, Pressable, TextInput, Alert, Modal, Switch, KeyboardAvoidingView, Platform, Dimensions, type PressableStateCallbackType } from 'react-native';
+import { View, Text, ScrollView, Pressable, TextInput, Alert, Modal, KeyboardAvoidingView, Platform, Dimensions, type PressableStateCallbackType } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Package, Plus, Minus, Trash2, X, ChevronDown, Printer, Camera, ImageIcon, MoreHorizontal, AlertTriangle } from 'lucide-react-native';
@@ -15,8 +15,10 @@ import { ResolvedAttachmentImage } from '@/components/ResolvedAttachmentImage';
 import { prepareProductMediaForPersistence, uploadProductMediaIfNeeded } from '@/lib/product-media';
 import { SearchClearButton } from '@/components/SearchClearButton';
 import { FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, MoneyText, isHovered, usePaymentsPalette, BackButton } from '@/components/payments/payments-ui';
+import { BrandSwitch } from '@/components/BrandSwitch';
 import { StockStatusLabel, formatNaira, getVariantStatus } from '@/components/inventory/inventory-ui';
 import { parseCurrencyInput } from '@/lib/money-input';
+import { useBusinessCurrency } from '@/hooks/useBusinessCurrency';
 
 const buildProcurementVariantImageMap = (procurements: Procurement[]) => {
   const imageByProductVariant = new Map<string, string>();
@@ -67,6 +69,7 @@ export default function ProductDetailScreen() {
   const useGlobalLowStockThreshold = useFyllStore((s) => s.useGlobalLowStockThreshold);
   const globalLowStockThreshold = useFyllStore((s) => s.globalLowStockThreshold);
   const palette = usePaymentsPalette();
+  const { currency, currencySymbol } = useBusinessCurrency();
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
   const currentUserRole = useAuthStore((s) => s.currentUser?.role ?? null);
 
@@ -161,6 +164,7 @@ export default function ProductDetailScreen() {
 
   // Discontinued edit state
   const [editIsDiscontinued, setEditIsDiscontinued] = useState(product?.isDiscontinued || false);
+  const [focusedProductField, setFocusedProductField] = useState<'name' | 'category' | 'description' | 'threshold' | 'stock' | 'price' | 'year' | null>(null);
 
   // Global pricing state
   const [useGlobalPrice, setUseGlobalPrice] = useState(true);
@@ -188,6 +192,7 @@ export default function ProductDetailScreen() {
   const [editVariantStock, setEditVariantStock] = useState('');
   const [editOverrideVariantPrice, setEditOverrideVariantPrice] = useState(false);
   const [editOverrideVariantStock, setEditOverrideVariantStock] = useState(false);
+  const [focusedVariantField, setFocusedVariantField] = useState<'name' | 'value' | 'sku' | 'stock' | 'price' | null>(null);
 
   // Stock steppers stage changes until Save (see the floating save bar).
   const [pendingStock, setPendingStock] = useState<Record<string, number>>({});
@@ -198,7 +203,6 @@ export default function ProductDetailScreen() {
   const [variantsCardWidth, setVariantsCardWidth] = useState<number>(0);
   const compactVariantTable = variantsCardWidth > 0 && variantsCardWidth < 780;
   const [isAddingCategory, setIsAddingCategory] = useState<boolean>(false);
-  const [mobileVariantActions, setMobileVariantActions] = useState<ProductVariant | null>(null);
 
   // Use the web-safe image picker hook
   const imagePicker = useImagePicker();
@@ -823,7 +827,7 @@ export default function ProductDetailScreen() {
   const prices = product.variants.map((variant) => variant.sellingPrice || 0).filter((price) => price > 0);
   const minPrice = prices.length ? Math.min(...prices) : 0;
   const maxPrice = prices.length ? Math.max(...prices) : 0;
-  const priceLabel = !prices.length ? 'Set price' : minPrice === maxPrice ? formatNaira(minPrice) : `${formatNaira(minPrice)}–${formatNaira(maxPrice)}`;
+  const priceLabel = !prices.length ? 'Set price' : minPrice === maxPrice ? formatNaira(minPrice, currency) : `${formatNaira(minPrice, currency)}–${formatNaira(maxPrice, currency)}`;
   const priceNote = !prices.length ? 'No price on any variant' : minPrice === maxPrice && prices.length === variantCount ? 'Same for all variants' : 'Varies by variant';
   const primaryCategory = product.categories?.[0];
   const headerSub = [primaryCategory, `${variantCount} ${variantCount === 1 ? 'variant' : 'variants'}`, canManageVariants && prices.length ? priceLabel : null].filter(Boolean).join(' · ');
@@ -1024,10 +1028,10 @@ export default function ProductDetailScreen() {
     { key: 'delete', label: 'Move to Recycle Bin', danger: true, onPress: handleDelete },
   ];
   const variantMenuItems = (variant: ProductVariant) => [
+    ...(canManageVariants ? [{ key: 'edit', label: 'Edit variant', onPress: () => handleOpenEditVariant(variant) }] : []),
     { key: 'restock', label: 'Restock', onPress: () => goRestock(variant.id) },
     { key: 'label', label: 'Print label', onPress: () => router.push({ pathname: '/label-print', params: { productId: product.id, variantId: variant.id } }) },
     ...(canManageVariants ? [
-      { key: 'edit', label: 'Edit variant', onPress: () => handleOpenEditVariant(variant) },
       { key: 'delete', label: 'Delete variant', danger: true, onPress: () => handleDeleteVariant(variant.id, variantDisplayName(variant)) },
     ] : []),
   ];
@@ -1261,7 +1265,7 @@ export default function ProductDetailScreen() {
               ) : null}
               <View style={{ width: '45%', flexGrow: 1, gap: 5 }}>
                 <Text style={labelStyle}>{isOwner ? 'Stock value' : 'In stock'}</Text>
-                <MoneyText style={{ color: palette.text, fontSize: 22 }} numberOfLines={1}>{isOwner ? formatNaira(draftValue) : unitsLabel}</MoneyText>
+                <MoneyText style={{ color: palette.text, fontSize: 22 }} numberOfLines={1}>{isOwner ? formatNaira(draftValue, currency) : unitsLabel}</MoneyText>
                 <Text style={{ color: palette.faint, fontSize: 12.5 }}>{isOwner ? `${unitsLabel} at retail price` : healthText}</Text>
               </View>
               <View style={{ width: '45%', flexGrow: 1, gap: 8, zIndex: 30 }}>
@@ -1447,7 +1451,7 @@ export default function ProductDetailScreen() {
             <MoneyText style={{ color: palette.text, fontSize: 30, letterSpacing: -0.6 }} numberOfLines={1}>{unitsLabel}</MoneyText>
             <Text style={{ color: healthInk, fontSize: mfs(13), fontWeight: '600' }}>{healthText}</Text>
             <Text style={{ color: palette.faint, fontSize: mfs(13) }} numberOfLines={1}>
-              {[canManageVariants ? priceLabel : null, isOwner ? `${formatNaira(draftValue)} in stock` : null].filter(Boolean).join(' · ')}
+              {[canManageVariants ? priceLabel : null, isOwner ? `${formatNaira(draftValue, currency)} in stock` : null].filter(Boolean).join(' · ')}
             </Text>
           </View>
         </View>
@@ -1462,7 +1466,7 @@ export default function ProductDetailScreen() {
           </Pressable>
         </View>
 
-        <View style={{ ...cardStyle, paddingHorizontal: 14, paddingTop: 4, paddingBottom: 6 }}>
+        <View style={{ ...cardStyle, paddingHorizontal: 14, paddingTop: 4, paddingBottom: 6, zIndex: 40 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 12, paddingBottom: 10 }}>
             <Text style={h2Style}>Variants</Text>
             <Text style={{ color: palette.faint, fontSize: mfs(13) }}>{variantSummary}</Text>
@@ -1472,14 +1476,26 @@ export default function ProductDetailScreen() {
             const dirty = pendingStock[variant.id] !== undefined && pendingStock[variant.id] !== variant.stock;
             const flagged = skuIssues.flagged.has(variant.id);
             return (
-              <View key={variant.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderTopWidth: 1, borderTopColor: palette.hairline }}>
+              <View key={variant.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, borderTopWidth: 1, borderTopColor: palette.hairline, zIndex: openVariantMenuId === variant.id ? 30 : 1 }}>
                 {renderVariantImage(variant, 44)}
-                <Pressable onPress={() => setMobileVariantActions(variant)} style={{ flex: 1, minWidth: 0, gap: 3 }}>
+                <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
                   <Text style={{ color: palette.text, fontSize: mfs(12), fontWeight: '500' }} numberOfLines={1}>{variantDisplayName(variant)}</Text>
                   <Text style={{ color: flagged ? palette.warn : palette.muted, fontSize: mfs(12) }} numberOfLines={1}>{variant.sku?.toUpperCase() || '—'} · {soldByVariant.get(variant.id) ?? 0} sold</Text>
                   <StockStatusLabel status={variantStatuses[index]} palette={palette} size={12} />
-                </Pressable>
+                </View>
                 {renderStepper(stock, () => stepDraft(variant.id, variant.stock, -1), () => stepDraft(variant.id, variant.stock, 1), { dirty, height: 38, minWidth: 26, ink: stock <= 0 ? palette.danger : palette.text })}
+                <View style={{ width: 28, position: 'relative' }}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Actions for ${variantDisplayName(variant)}`}
+                    hitSlop={8}
+                    onPress={() => setOpenVariantMenuId((previous) => (previous === variant.id ? null : variant.id))}
+                    style={({ pressed }) => ({ width: 28, height: 38, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.5 : 1 })}
+                  >
+                    <MoreHorizontal size={18} color={palette.faint} strokeWidth={2.4} />
+                  </Pressable>
+                  {openVariantMenuId === variant.id ? renderMenu(variantMenuItems(variant), () => setOpenVariantMenuId(null), 40) : null}
+                </View>
               </View>
             );
           })}
@@ -1520,30 +1536,6 @@ export default function ProductDetailScreen() {
         {isWebDesktop ? desktopLayout : mobileLayout}
         {saveBar}
 
-        <Modal visible={mobileVariantActions !== null} animationType="fade" transparent onRequestClose={() => setMobileVariantActions(null)}>
-          <Pressable onPress={() => setMobileVariantActions(null)} style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)', padding: 12 }}>
-            <Pressable onPress={(event) => event.stopPropagation()} style={{ borderRadius: 22, backgroundColor: palette.card, paddingVertical: 8, overflow: 'hidden' }}>
-              {mobileVariantActions ? (
-                <>
-                  <Text style={{ color: palette.faint, fontSize: 13, fontWeight: '600', paddingHorizontal: 18, paddingVertical: 10 }}>{variantDisplayName(mobileVariantActions)}</Text>
-                  {variantMenuItems(mobileVariantActions).map((item) => (
-                    <Pressable
-                      key={item.key}
-                      onPress={() => {
-                        setMobileVariantActions(null);
-                        item.onPress();
-                      }}
-                      style={(state) => ({ height: 50, paddingHorizontal: 18, justifyContent: 'center', borderTopWidth: 1, borderTopColor: palette.hairline, opacity: state.pressed ? 0.6 : 1 })}
-                    >
-                      <Text style={{ color: item.danger ? palette.danger : palette.text, fontSize: 15, fontWeight: '500' }}>{item.label}</Text>
-                    </Pressable>
-                  ))}
-                </>
-              ) : null}
-            </Pressable>
-          </Pressable>
-        </Modal>
-
         {/* Edit Product Modal - Centered */}
         <Modal
           visible={isEditing}
@@ -1557,36 +1549,44 @@ export default function ProductDetailScreen() {
           >
             <View
               className={cn('flex-1', useFullscreenEditModal ? 'items-stretch justify-start' : 'items-center justify-center')}
-              style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)' }}
+              style={{ backgroundColor: 'rgba(0, 0, 0, 0.76)', padding: useFullscreenEditModal ? 0 : 24 }}
             >
               <Pressable
                 className="absolute inset-0"
                 onPress={() => setIsEditing(false)}
               />
               <View
-                className={cn('overflow-hidden', useFullscreenEditModal ? 'flex-1 w-full self-stretch' : 'w-[92%] rounded-2xl')}
+                className={cn('overflow-hidden', useFullscreenEditModal ? 'flex-1 w-full self-stretch' : 'w-full')}
                 style={{
-                  backgroundColor: colors.bg.card,
+                  backgroundColor: palette.card,
                   height: useFullscreenEditModal ? '100%' : undefined,
                   maxHeight: useFullscreenEditModal ? undefined : '90%',
                   maxWidth: useFullscreenEditModal ? undefined : 720,
-                  borderRadius: useFullscreenEditModal ? 0 : 16,
+                  borderRadius: useFullscreenEditModal ? 0 : 28,
+                  borderWidth: useFullscreenEditModal ? 0 : 1,
+                  borderColor: palette.outline,
                 }}
               >
-                {/* Header */}
-                <View className="flex-row items-center justify-between px-5 py-4 border-b" style={{ borderBottomColor: colors.border.light }}>
-                  <Text style={{ color: colors.text.primary }} className="font-bold text-lg">Edit Product</Text>
+                <View style={{ height: 4, backgroundColor: FYLL_LIME }} />
+                <View className="flex-row items-center justify-between" style={{ paddingHorizontal: 22, paddingTop: useFullscreenEditModal ? 20 : 18, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: palette.hairline }}>
+                  <View style={{ flex: 1, paddingRight: 16 }}>
+                    <Text style={{ color: palette.limeOnSurface, fontSize: 10, fontWeight: '600', letterSpacing: 1.3, textTransform: 'uppercase', marginBottom: 5 }}>Product details</Text>
+                    <MoneyText style={{ color: palette.text, fontSize: isMobile ? 20 : 22, lineHeight: isMobile ? 24 : 27 }}>Edit product</MoneyText>
+                    <Text style={{ color: palette.muted, fontSize: 12, marginTop: 4 }} numberOfLines={1}>Update shared details, pricing and availability.</Text>
+                  </View>
                   <Pressable
                     onPress={() => setIsEditing(false)}
-                    className="w-8 h-8 rounded-full items-center justify-center active:opacity-50"
-                    style={{ backgroundColor: colors.bg.secondary }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Close edit product"
+                    className="items-center justify-center active:opacity-60"
+                    style={{ width: 40, height: 40, borderRadius: 20, borderWidth: 1, borderColor: palette.outline, backgroundColor: palette.softFill }}
                   >
-                    <X size={18} color={colors.text.muted} strokeWidth={2} />
+                    <X size={18} color={palette.text} strokeWidth={2} />
                   </Pressable>
                 </View>
 
                 <ScrollView
-                  className="px-5 py-4"
+                  contentContainerStyle={{ paddingHorizontal: 22, paddingTop: 20, paddingBottom: 28 }}
                   showsVerticalScrollIndicator={false}
                   keyboardShouldPersistTaps="handled"
                   bounces={true}
@@ -1594,24 +1594,22 @@ export default function ProductDetailScreen() {
                 >
                   {/* Error Toast */}
                   {imagePicker.error && (
-                    <View className="mb-4 p-3 rounded-xl" style={{ backgroundColor: 'rgba(239, 68, 68, 0.12)' }}>
-                      <Text className="text-red-500 text-sm text-center">{imagePicker.error}</Text>
+                    <View style={{ marginBottom: 16, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 14, backgroundColor: palette.dangerBg, borderWidth: 1, borderColor: palette.dangerBorder }}>
+                      <Text style={{ color: palette.danger, fontSize: 12, fontWeight: '500', textAlign: 'center' }}>{imagePicker.error}</Text>
                     </View>
                   )}
 
-                  <View className="rounded-2xl p-4 border mb-4" style={{ backgroundColor: colors.bg.card, borderColor: colors.border.light }}>
-                    <View className="mb-4">
-                      <Text style={{ color: colors.text.primary }} className={modalSectionTitleClass}>Core Details</Text>
-                      <Text style={{ color: colors.text.muted }} className="text-xs mt-1">
-                        Update the shared product information here.
-                      </Text>
+                  <View style={{ marginBottom: 20 }}>
+                    <View style={{ marginBottom: 16 }}>
+                      <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '600', letterSpacing: 1.1, textTransform: 'uppercase' }}>Core details</Text>
+                      <Text style={{ color: palette.muted, fontSize: 12, lineHeight: 17, marginTop: 5 }}>Shared information used across every variant.</Text>
                     </View>
 
                     <View className="mb-4">
-                      <Text style={{ color: colors.text.secondary }} className={cn(modalFieldLabelClass, 'mb-1.5')}>Product Image</Text>
+                      <Text style={{ color: palette.textSoft, fontSize: 12, fontWeight: '600', marginBottom: 8 }}>Product image</Text>
                       {editImageUrl ? (
                         <View className="flex-row items-start">
-                          <View className="rounded-xl overflow-hidden" style={{ borderWidth: 1, borderColor: colors.border.light }}>
+                          <View className="rounded-xl overflow-hidden" style={{ borderWidth: 1, borderColor: palette.outline }}>
                             <ResolvedAttachmentImage
                               imageUrl={editImageUrl}
                               style={{ width: 72, height: 72 }}
@@ -1622,19 +1620,19 @@ export default function ProductDetailScreen() {
                             <Pressable
                               onPress={handlePickImage}
                               disabled={imagePicker.isLoading}
-                              className="flex-row items-center px-3 py-2 rounded-lg mb-2 active:opacity-70"
-                              style={{ backgroundColor: colors.bg.secondary, opacity: imagePicker.isLoading ? 0.5 : 1 }}
+                              className="flex-row items-center justify-center mb-2 active:opacity-70"
+                              style={{ height: 36, borderRadius: 999, borderWidth: 1, borderColor: palette.outline, backgroundColor: palette.card, opacity: imagePicker.isLoading ? 0.5 : 1 }}
                             >
-                              <Camera size={14} color={colors.text.primary} strokeWidth={2} />
-                              <Text style={{ color: colors.text.primary }} className="text-xs font-medium ml-2">Change</Text>
+                              <Camera size={14} color={palette.text} strokeWidth={2} />
+                              <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600', marginLeft: 7 }}>Change image</Text>
                             </Pressable>
                             <Pressable
                               onPress={handleRemoveImage}
-                              className="flex-row items-center px-3 py-2 rounded-lg active:opacity-70"
-                              style={{ backgroundColor: 'rgba(239, 68, 68, 0.12)' }}
+                              className="flex-row items-center justify-center active:opacity-70"
+                              style={{ height: 36, borderRadius: 999, borderWidth: 1, borderColor: palette.dangerBorder, backgroundColor: palette.dangerBg }}
                             >
-                              <Trash2 size={14} color="#EF4444" strokeWidth={2} />
-                              <Text className="text-red-500 text-xs font-medium ml-2">Remove</Text>
+                              <Trash2 size={14} color={palette.danger} strokeWidth={2} />
+                              <Text style={{ color: palette.danger, fontSize: 12, fontWeight: '600', marginLeft: 7 }}>Remove</Text>
                             </Pressable>
                           </View>
                         </View>
@@ -1642,8 +1640,8 @@ export default function ProductDetailScreen() {
                         <Pressable
                           onPress={handlePickImage}
                           disabled={imagePicker.isLoading}
-                          className="rounded-xl p-4 items-center active:opacity-70"
-                          style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light, borderStyle: 'dashed', opacity: imagePicker.isLoading ? 0.5 : 1 }}
+                          className="items-center justify-center active:opacity-70"
+                          style={{ minHeight: 104, padding: 16, borderRadius: 18, backgroundColor: palette.inset, borderWidth: 1, borderColor: palette.nudgeBorder, borderStyle: 'dashed', opacity: imagePicker.isLoading ? 0.5 : 1 }}
                         >
                           {imagePicker.isLoading ? (
                             <>
@@ -1654,8 +1652,8 @@ export default function ProductDetailScreen() {
                             </>
                           ) : (
                             <>
-                              <ImageIcon size={24} color={colors.text.muted} strokeWidth={1.5} />
-                              <Text style={{ color: colors.text.muted }} className="text-sm font-medium mt-2">Add Image</Text>
+                              <ImageIcon size={20} color={palette.limeOnSurface} strokeWidth={1.8} />
+                              <Text style={{ color: palette.text, fontSize: 13, fontWeight: '600', marginTop: 8 }}>Add product image</Text>
                             </>
                           )}
                         </Pressable>
@@ -1663,26 +1661,28 @@ export default function ProductDetailScreen() {
                     </View>
 
                     <View className="mb-4">
-                      <Text style={{ color: colors.text.secondary }} className={cn(modalFieldLabelClass, 'mb-1.5')}>Product Name</Text>
-                      <View className="rounded-xl px-4" style={{ backgroundColor: modalFieldBg, borderWidth: 1, borderColor: modalFieldBorder, height: 52, justifyContent: 'center' }}>
+                      <Text style={{ color: palette.textSoft, fontSize: 12, fontWeight: '600', marginBottom: 7 }}>Product name</Text>
+                      <View style={{ backgroundColor: palette.inputBg, borderWidth: 1, borderColor: focusedProductField === 'name' ? FYLL_LIME : palette.outline, height: 50, justifyContent: 'center', borderRadius: 14, paddingHorizontal: 14 }}>
                         <TextInput
                           placeholder="Product Name"
                           placeholderTextColor={colors.input.placeholder}
                           value={editName}
                           onChangeText={setEditName}
-                          style={{ color: colors.input.text, fontSize: 14 }}
-                          selectionColor={colors.text.primary}
+                          onFocus={() => setFocusedProductField('name')}
+                          onBlur={() => setFocusedProductField(null)}
+                          style={{ color: palette.text, fontSize: 14, fontWeight: '500' }}
+                          selectionColor={FYLL_LIME}
                         />
                       </View>
                     </View>
 
                     <View className="mb-4" style={{ zIndex: 40 }}>
-                      <Text style={{ color: colors.text.secondary }} className={cn(modalFieldLabelClass, 'mb-1.5')}>Categories</Text>
+                      <Text style={{ color: palette.textSoft, fontSize: 12, fontWeight: '600', marginBottom: 7 }}>Categories</Text>
                       {editCategories.length > 0 && (
                         <View className="flex-row flex-wrap gap-2 mb-3">
                           {editCategories.map((cat) => (
-                            <View key={cat} className="flex-row items-center px-3 py-1.5 rounded-xl" style={{ backgroundColor: colors.bg.secondary, borderWidth: 1, borderColor: colors.border.light }}>
-                              <Text style={{ color: colors.text.primary }} className="text-xs font-medium mr-2">{cat}</Text>
+                            <View key={cat} className="flex-row items-center px-3 py-1.5 rounded-xl" style={{ backgroundColor: palette.nudgeBg, borderWidth: 1, borderColor: palette.nudgeBorder }}>
+                              <Text style={{ color: palette.limeOnSurface, fontSize: 12, fontWeight: '600', marginRight: 8 }}>{cat}</Text>
                               <Pressable onPress={() => handleRemoveCategory(cat)}>
                                 <X size={14} color={colors.text.muted} strokeWidth={2} />
                               </Pressable>
@@ -1695,7 +1695,7 @@ export default function ProductDetailScreen() {
                           <Pressable
                             onPress={() => setShowCategoryDropdown(!showCategoryDropdown)}
                             className="rounded-xl px-4 flex-row items-center"
-                            style={{ backgroundColor: modalFieldBg, borderWidth: 1, borderColor: modalFieldBorder, height: 52 }}
+                            style={{ backgroundColor: palette.inputBg, borderWidth: 1, borderColor: focusedProductField === 'category' ? FYLL_LIME : palette.outline, height: 50, borderRadius: 14 }}
                           >
                             <TextInput
                               placeholder="Search or add category"
@@ -1705,10 +1705,14 @@ export default function ProductDetailScreen() {
                                 setNewCategory(text);
                                 setShowCategoryDropdown(true);
                               }}
-                              onFocus={() => setShowCategoryDropdown(true)}
+                              onFocus={() => {
+                                setFocusedProductField('category');
+                                setShowCategoryDropdown(true);
+                              }}
+                              onBlur={() => setFocusedProductField(null)}
                               onSubmitEditing={handleAddCategory}
-                              style={{ color: colors.input.text, fontSize: 14, flex: 1 }}
-                              selectionColor={colors.text.primary}
+                              style={{ color: palette.text, fontSize: 14, fontWeight: '500', flex: 1 }}
+                              selectionColor={FYLL_LIME}
                             />
                             <SearchClearButton
                               visible={Boolean(newCategory.trim())}
@@ -1760,154 +1764,144 @@ export default function ProductDetailScreen() {
                     </View>
 
                     <View className="mb-4">
-                      <Text style={{ color: colors.text.secondary }} className={cn(modalFieldLabelClass, 'mb-1.5')}>Description</Text>
-                      <View className="rounded-xl px-4 py-3" style={{ backgroundColor: modalFieldBg, borderWidth: 1, borderColor: modalFieldBorder, minHeight: 80 }}>
+                      <Text style={{ color: palette.textSoft, fontSize: 12, fontWeight: '600', marginBottom: 7 }}>Description</Text>
+                      <View style={{ backgroundColor: palette.inputBg, borderWidth: 1, borderColor: focusedProductField === 'description' ? FYLL_LIME : palette.outline, minHeight: 90, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12 }}>
                         <TextInput
                           placeholder="Description"
                           placeholderTextColor={colors.input.placeholder}
                           value={editDescription}
                           onChangeText={setEditDescription}
+                          onFocus={() => setFocusedProductField('description')}
+                          onBlur={() => setFocusedProductField(null)}
                           multiline
                           numberOfLines={3}
-                          style={{ color: colors.input.text, fontSize: 14, textAlignVertical: 'top' }}
-                          selectionColor={colors.text.primary}
+                          style={{ color: palette.text, fontSize: 14, lineHeight: 20, textAlignVertical: 'top' }}
+                          selectionColor={FYLL_LIME}
                         />
                       </View>
                     </View>
 
                     <View className="mb-4">
-                      <Text style={{ color: colors.text.secondary }} className={cn(modalFieldLabelClass, 'mb-1.5')}>Low Stock Alert Threshold</Text>
-                      <View className="rounded-xl px-4" style={{ backgroundColor: modalFieldBg, borderWidth: 1, borderColor: modalFieldBorder, height: 52, justifyContent: 'center' }}>
+                      <Text style={{ color: palette.textSoft, fontSize: 12, fontWeight: '600', marginBottom: 7 }}>Low stock alert threshold</Text>
+                      <View style={{ backgroundColor: palette.inputBg, borderWidth: 1, borderColor: focusedProductField === 'threshold' ? FYLL_LIME : palette.outline, height: 50, justifyContent: 'center', borderRadius: 14, paddingHorizontal: 14 }}>
                         <TextInput
                           placeholder="5"
                           placeholderTextColor={colors.input.placeholder}
                           value={editThreshold}
                           onChangeText={setEditThreshold}
+                          onFocus={() => setFocusedProductField('threshold')}
+                          onBlur={() => setFocusedProductField(null)}
                           keyboardType="number-pad"
-                          style={{ color: colors.input.text, fontSize: 14 }}
-                          selectionColor={colors.text.primary}
+                          style={{ color: palette.text, fontSize: 14, fontWeight: '500' }}
+                          selectionColor={FYLL_LIME}
                         />
                       </View>
                     </View>
 
-                    <View className="border-t pt-4 mb-4" style={{ borderTopColor: colors.border.light, borderTopWidth: 1 }}>
+                    <View style={{ borderTopColor: palette.hairline, borderTopWidth: 1, paddingTop: 18, marginBottom: 18 }}>
                       <View className="flex-row items-center justify-between mb-3">
                         <View className="flex-1">
-                          <Text style={{ color: colors.text.primary }} className={modalSectionTitleClass}>Global Stock</Text>
-                          <Text style={{ color: colors.text.muted }} className="text-xs mt-1">Update all variant stock at once.</Text>
+                          <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>Global stock</Text>
+                          <Text style={{ color: palette.muted, fontSize: 10, lineHeight: 14, marginTop: 3 }}>Update every variant stock level at once.</Text>
                         </View>
-                        <Switch
-                          value={useGlobalStock}
-                          onValueChange={setUseGlobalStock}
-                          trackColor={{ false: '#767577', true: '#D1D5DB' }}
-                          thumbColor={useGlobalStock ? '#374151' : '#FFFFFF'}
-                        />
+                        <BrandSwitch value={useGlobalStock} onValueChange={setUseGlobalStock} />
                       </View>
                       {useGlobalStock ? (
-                        <View className="rounded-xl px-4 flex-row items-center" style={{ backgroundColor: modalFieldBg, borderWidth: 1, borderColor: modalFieldBorder, height: 52 }}>
+                        <View style={{ backgroundColor: palette.inputBg, borderWidth: 1, borderColor: focusedProductField === 'stock' ? FYLL_LIME : palette.outline, height: 50, alignItems: 'center', borderRadius: 14, paddingHorizontal: 14, flexDirection: 'row' }}>
                           <Text style={{ color: colors.text.muted, fontSize: 14, marginRight: 8 }}>#</Text>
                           <TextInput
                             placeholder="0"
                             placeholderTextColor={colors.input.placeholder}
                             value={globalStock}
                             onChangeText={setGlobalStock}
+                            onFocus={() => setFocusedProductField('stock')}
+                            onBlur={() => setFocusedProductField(null)}
                             keyboardType="number-pad"
-                            style={{ color: colors.input.text, fontSize: 14, flex: 1 }}
-                            selectionColor={colors.text.primary}
+                            style={{ color: palette.text, fontSize: 14, fontWeight: '500', flex: 1 }}
+                            selectionColor={FYLL_LIME}
                           />
                         </View>
                       ) : (
-                        <View className="rounded-xl px-4 py-3" style={{ backgroundColor: colors.bg.secondary }}>
-                          <Text style={{ color: colors.text.muted }} className="text-xs">
+                        <View style={{ borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: palette.inset, borderWidth: 1, borderColor: palette.border }}>
+                          <Text style={{ color: palette.muted, fontSize: 10, lineHeight: 14 }}>
                             Edit individual variant stock from the variant list below.
                           </Text>
                         </View>
                       )}
                     </View>
 
-                    <View className="border-t pt-4 mb-4" style={{ borderTopColor: colors.border.light, borderTopWidth: 1 }}>
+                    <View style={{ borderTopColor: palette.hairline, borderTopWidth: 1, paddingTop: 18, marginBottom: 18 }}>
                       <View className="flex-row items-center justify-between mb-3">
                         <View className="flex-1">
-                          <Text style={{ color: colors.text.primary }} className={modalSectionTitleClass}>Global Pricing</Text>
-                          <Text style={{ color: colors.text.muted }} className="text-xs mt-1">Update all variant prices at once.</Text>
+                          <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>Global pricing</Text>
+                          <Text style={{ color: palette.muted, fontSize: 10, lineHeight: 14, marginTop: 3 }}>Update every variant price at once.</Text>
                         </View>
-                        <Switch
-                          value={useGlobalPrice}
-                          onValueChange={setUseGlobalPrice}
-                          trackColor={{ false: '#767577', true: '#D1D5DB' }}
-                          thumbColor={useGlobalPrice ? '#374151' : '#FFFFFF'}
-                        />
+                        <BrandSwitch value={useGlobalPrice} onValueChange={setUseGlobalPrice} />
                       </View>
                       {useGlobalPrice ? (
-                        <View className="rounded-xl px-4 flex-row items-center" style={{ backgroundColor: modalFieldBg, borderWidth: 1, borderColor: modalFieldBorder, height: 52 }}>
-                          <Text style={{ color: colors.text.muted, fontSize: 14, marginRight: 8 }}>₦</Text>
+                        <View style={{ backgroundColor: palette.inputBg, borderWidth: 1, borderColor: focusedProductField === 'price' ? FYLL_LIME : palette.outline, height: 50, alignItems: 'center', borderRadius: 14, paddingHorizontal: 14, flexDirection: 'row' }}>
+                          <Text style={{ color: colors.text.muted, fontSize: 14, marginRight: 8 }}>{currencySymbol}</Text>
                           <TextInput
                             placeholder="Enter price for all variants"
                             placeholderTextColor={colors.input.placeholder}
                             value={globalPrice}
                             onChangeText={setGlobalPrice}
+                            onFocus={() => setFocusedProductField('price')}
+                            onBlur={() => setFocusedProductField(null)}
                             keyboardType="numeric"
-                            style={{ color: colors.input.text, fontSize: 14, flex: 1 }}
-                            selectionColor={colors.text.primary}
+                            style={{ color: palette.text, fontSize: 14, fontWeight: '500', flex: 1 }}
+                            selectionColor={FYLL_LIME}
                           />
                         </View>
                       ) : (
-                        <View className="rounded-xl px-4 py-3" style={{ backgroundColor: colors.bg.secondary }}>
-                          <Text style={{ color: colors.text.muted }} className="text-xs">
+                        <View style={{ borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: palette.inset, borderWidth: 1, borderColor: palette.border }}>
+                          <Text style={{ color: palette.muted, fontSize: 10, lineHeight: 14 }}>
                             Edit individual variant prices from the variant list below.
                           </Text>
                         </View>
                       )}
                     </View>
 
-                    <View className="border-t pt-4 mb-4" style={{ borderTopColor: colors.border.light, borderTopWidth: 1 }}>
+                    <View style={{ borderTopColor: palette.hairline, borderTopWidth: 1, paddingTop: 18, marginBottom: 18 }}>
                       <View className="flex-row items-center justify-between">
                         <View className="flex-1 mr-3">
-                          <Text style={{ color: colors.text.primary }} className={modalSectionTitleClass}>Mark as New Design</Text>
-                          <Text style={{ color: colors.text.muted }} className="text-xs mt-1">Track this for yearly reviews.</Text>
+                          <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>Mark as new design</Text>
+                          <Text style={{ color: palette.muted, fontSize: 10, lineHeight: 14, marginTop: 3 }}>Track this product during yearly reviews.</Text>
                         </View>
-                        <Switch
-                          value={editIsNewDesign}
-                          onValueChange={setEditIsNewDesign}
-                          trackColor={{ false: '#767577', true: '#D1D5DB' }}
-                          thumbColor={editIsNewDesign ? '#374151' : '#FFFFFF'}
-                        />
+                        <BrandSwitch value={editIsNewDesign} onValueChange={setEditIsNewDesign} />
                       </View>
                       {editIsNewDesign && (
                         <View className="mt-3">
-                          <Text style={{ color: colors.text.secondary }} className={cn(modalFieldLabelClass, 'mb-1.5')}>Design Year</Text>
-                          <View className="rounded-xl px-4" style={{ backgroundColor: modalFieldBg, borderWidth: 1, borderColor: modalFieldBorder, height: 48, justifyContent: 'center' }}>
+                          <Text style={{ color: palette.textSoft, fontSize: 12, fontWeight: '600', marginBottom: 7 }}>Design year</Text>
+                          <View style={{ backgroundColor: palette.inputBg, borderWidth: 1, borderColor: focusedProductField === 'year' ? FYLL_LIME : palette.outline, height: 50, justifyContent: 'center', borderRadius: 14, paddingHorizontal: 14 }}>
                             <TextInput
                               placeholder={new Date().getFullYear().toString()}
                               placeholderTextColor={colors.input.placeholder}
                               value={editDesignYear}
                               onChangeText={setEditDesignYear}
+                              onFocus={() => setFocusedProductField('year')}
+                              onBlur={() => setFocusedProductField(null)}
                               keyboardType="number-pad"
                               maxLength={4}
-                              style={{ color: colors.input.text, fontSize: 14 }}
-                              selectionColor={colors.text.primary}
+                              style={{ color: palette.text, fontSize: 14, fontWeight: '500' }}
+                              selectionColor={FYLL_LIME}
                             />
                           </View>
                         </View>
                       )}
                     </View>
 
-                    <View className="border-t pt-4" style={{ borderTopColor: colors.border.light, borderTopWidth: 1 }}>
+                    <View style={{ borderTopColor: palette.hairline, borderTopWidth: 1, paddingTop: 18 }}>
                       <View className="flex-row items-center justify-between">
                         <View className="flex-1 mr-3">
-                          <Text style={{ color: colors.text.primary }} className={modalSectionTitleClass}>Mark as Inactive</Text>
-                          <Text style={{ color: colors.text.muted }} className="text-xs mt-1">Hide from new order product picker.</Text>
+                          <Text style={{ color: editIsDiscontinued ? palette.danger : palette.text, fontSize: 14, fontWeight: '600' }}>Mark as inactive</Text>
+                          <Text style={{ color: palette.muted, fontSize: 10, lineHeight: 14, marginTop: 3 }}>Hide this product from the new-order picker.</Text>
                         </View>
-                        <Switch
-                          value={editIsDiscontinued}
-                          onValueChange={setEditIsDiscontinued}
-                          trackColor={{ false: '#767577', true: '#9CA3AF' }}
-                          thumbColor="#FFFFFF"
-                        />
+                        <BrandSwitch value={editIsDiscontinued} onValueChange={setEditIsDiscontinued} tone="danger" />
                       </View>
                       {editIsDiscontinued && (
-                        <View className="mt-3 p-3 rounded-lg" style={{ backgroundColor: 'rgba(248, 113, 113, 0.12)' }}>
-                          <Text className="text-red-500 text-xs">
+                        <View style={{ marginTop: 12, padding: 12, borderRadius: 14, backgroundColor: palette.dangerBg, borderWidth: 1, borderColor: palette.dangerBorder }}>
+                          <Text style={{ color: palette.danger, fontSize: 10, lineHeight: 15 }}>
                             This product will not appear in the picker for new orders. Existing orders are not affected.
                           </Text>
                         </View>
@@ -1915,30 +1909,29 @@ export default function ProductDetailScreen() {
                     </View>
                   </View>
 
-                  {/* Save Button */}
-                  <Pressable
-                    onPress={handleSaveEdit}
-                    className="rounded-full items-center active:opacity-80 mb-3"
-                    style={{ height: 52, justifyContent: 'center', backgroundColor: colors.text.primary }}
-                  >
-                    <Text style={{ color: colors.bg.primary }} className="font-semibold text-base">Save Changes</Text>
-                  </Pressable>
-
-                  {/* Cancel Button */}
-                  <Pressable
-                    onPress={() => setIsEditing(false)}
-                    className="rounded-full items-center active:opacity-80 mb-4"
-                    style={{ height: 52, justifyContent: 'center', backgroundColor: colors.bg.secondary }}
-                  >
-                    <Text style={{ color: colors.text.tertiary }} className="font-semibold text-base">Cancel</Text>
-                  </Pressable>
+                  <View style={{ flexDirection: isMobile ? 'column-reverse' : 'row', gap: 10 }}>
+                    <Pressable
+                      onPress={() => setIsEditing(false)}
+                      className="items-center justify-center active:opacity-70"
+                      style={{ height: 48, borderRadius: 999, borderWidth: 1, borderColor: palette.outline, backgroundColor: palette.card, flex: isMobile ? undefined : 0.42 }}
+                    >
+                      <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>Cancel</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => void handleSaveEdit()}
+                      className="items-center justify-center active:opacity-80"
+                      style={{ height: 48, borderRadius: 999, backgroundColor: FYLL_LIME, flex: isMobile ? undefined : 1 }}
+                    >
+                      <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 14 }}>Save changes</MoneyText>
+                    </Pressable>
+                  </View>
                 </ScrollView>
               </View>
             </View>
           </KeyboardAvoidingView>
         </Modal>
 
-        {/* Add Variant Modal - Centered - Dynamic theme */}
+        {/* Add Variant Modal */}
         <Modal
           visible={showAddVariant}
           animationType="fade"
@@ -1950,31 +1943,37 @@ export default function ProductDetailScreen() {
             className="flex-1"
           >
             <View
-              className="flex-1 items-center justify-center"
-              style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)' }}
+              className={cn('flex-1', useFullscreenEditModal ? 'items-stretch justify-start' : 'items-center justify-center')}
+              style={{ backgroundColor: 'rgba(0, 0, 0, 0.76)', paddingHorizontal: useFullscreenEditModal ? 0 : 24, paddingVertical: useFullscreenEditModal ? 0 : 24 }}
             >
               <Pressable
                 className="absolute inset-0"
                 onPress={() => setShowAddVariant(false)}
               />
               <View
-                className="w-[90%] rounded-2xl overflow-hidden"
-                style={{ backgroundColor: themeColors.bg.card, maxHeight: '85%', maxWidth: 400 }}
+                className={cn('overflow-hidden', useFullscreenEditModal ? 'flex-1 w-full self-stretch' : 'w-full')}
+                style={{ backgroundColor: palette.card, height: useFullscreenEditModal ? '100%' : undefined, maxHeight: useFullscreenEditModal ? undefined : '90%', maxWidth: useFullscreenEditModal ? undefined : 560, borderRadius: useFullscreenEditModal ? 0 : 28, borderWidth: useFullscreenEditModal ? 0 : 1, borderColor: palette.outline, shadowColor: '#000000', shadowOpacity: 0.28, shadowRadius: 30, shadowOffset: { width: 0, height: 18 }, elevation: 18 }}
               >
-                {/* Header */}
-                <View className="flex-row items-center justify-between px-5 py-4 border-b" style={{ borderBottomColor: themeColors.border.light }}>
-                  <Text style={{ color: themeColors.text.primary }} className="font-bold text-lg">Add New Variant</Text>
+                <View style={{ height: 4, backgroundColor: FYLL_LIME }} />
+                <View className="flex-row items-center justify-between" style={{ paddingHorizontal: 22, paddingTop: useFullscreenEditModal ? 20 : 18, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: palette.hairline }}>
+                  <View style={{ flex: 1, paddingRight: 16 }}>
+                    <Text style={{ color: palette.limeOnSurface, fontSize: 10, fontWeight: '600', letterSpacing: 1.3, textTransform: 'uppercase', marginBottom: 5 }}>Product variant</Text>
+                    <MoneyText style={{ color: palette.text, fontSize: isMobile ? 20 : 22, lineHeight: isMobile ? 24 : 27 }}>Add variant</MoneyText>
+                    <Text style={{ color: palette.muted, fontSize: 12, marginTop: 4 }} numberOfLines={1}>{product.name}</Text>
+                  </View>
                   <Pressable
                     onPress={() => setShowAddVariant(false)}
-                    className="w-8 h-8 rounded-full items-center justify-center active:opacity-50"
-                    style={{ backgroundColor: themeColors.bg.secondary }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Close add variant"
+                    className="items-center justify-center active:opacity-60"
+                    style={{ width: 40, height: 40, borderRadius: 20, borderWidth: 1, borderColor: palette.outline, backgroundColor: palette.softFill }}
                   >
-                    <X size={18} color={themeColors.text.muted} strokeWidth={2} />
+                    <X size={18} color={palette.text} strokeWidth={2} />
                   </Pressable>
                 </View>
 
                 <ScrollView
-                  className="px-5 py-4"
+                  contentContainerStyle={{ paddingHorizontal: 22, paddingTop: 20, paddingBottom: 22 }}
                   showsVerticalScrollIndicator={false}
                   keyboardShouldPersistTaps="handled"
                   bounces={true}
@@ -1982,19 +1981,19 @@ export default function ProductDetailScreen() {
                 >
                   {/* Variable Type Selector */}
                   <View className="mb-4">
-                    <Text style={{ color: themeColors.text.secondary }} className={cn(modalFieldLabelClass, 'mb-2')}>Variable Type</Text>
+                    <Text style={{ color: palette.textSoft, fontSize: 12, fontWeight: '600', marginBottom: 7 }}>Variable type</Text>
                     <Pressable
                       onPress={() => setShowVariableTypeDropdown(!showVariableTypeDropdown)}
-                      className="rounded-xl px-4 flex-row items-center justify-between"
-                      style={{ backgroundColor: modalFieldBg, borderWidth: 1, borderColor: modalFieldBorder, height: 52 }}
+                      className="px-4 flex-row items-center justify-between"
+                      style={{ backgroundColor: palette.inputBg, borderWidth: 1, borderColor: showVariableTypeDropdown ? FYLL_LIME : palette.outline, height: 50, borderRadius: 14 }}
                     >
-                      <Text style={{ color: selectedVariableId ? themeColors.text.primary : themeColors.text.muted }}>
+                      <Text style={{ color: selectedVariableId ? palette.text : palette.faint, fontSize: 14, fontWeight: '500' }}>
                         {productVariables.find(v => v.id === selectedVariableId)?.name || 'Select Variable Type'}
                       </Text>
-                      <ChevronDown size={18} color={themeColors.text.muted} strokeWidth={2} />
+                      <ChevronDown size={18} color={palette.muted} strokeWidth={2} />
                     </Pressable>
                     {showVariableTypeDropdown && (
-                      <View className="rounded-xl mt-2 overflow-hidden" style={{ backgroundColor: modalDropdownBg, borderWidth: 1, borderColor: themeColors.border.light }}>
+                      <View className="rounded-xl mt-2 overflow-hidden" style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.outline }}>
                         {productVariables.map((variable) => (
                           <Pressable
                             key={variable.id}
@@ -2003,9 +2002,9 @@ export default function ProductDetailScreen() {
                               setShowVariableTypeDropdown(false);
                             }}
                             className="px-4 py-3 border-b active:opacity-70"
-                            style={{ borderBottomColor: themeColors.border.light }}
+                            style={{ borderBottomColor: palette.hairline }}
                           >
-                            <Text style={{ color: selectedVariableId === variable.id ? themeColors.text.primary : themeColors.text.tertiary }} className={cn(
+                            <Text style={{ color: selectedVariableId === variable.id ? palette.limeOnSurface : palette.textSoft }} className={cn(
                               'text-sm',
                               selectedVariableId === variable.id && 'font-semibold'
                             )}>
@@ -2022,35 +2021,39 @@ export default function ProductDetailScreen() {
 
                   {/* Variant Value - Editable Text Input */}
                   <View className="mb-4">
-                    <Text style={{ color: themeColors.text.secondary }} className={cn(modalFieldLabelClass, 'mb-2')}>Value</Text>
-                    <View className="rounded-xl px-4" style={{ backgroundColor: modalFieldBg, borderWidth: 1, borderColor: modalFieldBorder, height: 52, justifyContent: 'center' }}>
+                    <Text style={{ color: palette.textSoft, fontSize: 12, fontWeight: '600', marginBottom: 7 }}>Value</Text>
+                    <View style={{ backgroundColor: palette.inputBg, borderWidth: 1, borderColor: focusedVariantField === 'value' ? FYLL_LIME : palette.outline, height: 50, justifyContent: 'center', borderRadius: 14, paddingHorizontal: 14 }}>
                       <TextInput
                         placeholder={selectedVariableId ? `Enter ${productVariables.find(v => v.id === selectedVariableId)?.name || 'value'} (e.g., Pink, Large)` : 'Select a variable type first'}
                         placeholderTextColor={themeColors.input.placeholder}
                         value={newVariantValue}
                         onChangeText={setNewVariantValue}
+                        onFocus={() => setFocusedVariantField('value')}
+                        onBlur={() => setFocusedVariantField(null)}
                         editable={!!selectedVariableId}
-                        style={{ color: themeColors.input.text, fontSize: 14 }}
-                        selectionColor={themeColors.text.primary}
+                        style={{ color: palette.text, fontSize: 14, fontWeight: '500' }}
+                        selectionColor={FYLL_LIME}
                       />
                     </View>
                   </View>
 
                   {/* SKU - Auto-generated but editable */}
                   <View className="mb-4">
-                    <Text style={{ color: themeColors.text.secondary }} className={cn(modalFieldLabelClass, 'mb-2')}>SKU</Text>
-                    <View className="rounded-xl px-4" style={{ backgroundColor: modalFieldBg, borderWidth: 1, borderColor: modalFieldBorder, height: 52, justifyContent: 'center' }}>
+                    <Text style={{ color: palette.textSoft, fontSize: 12, fontWeight: '600', marginBottom: 7 }}>SKU</Text>
+                    <View style={{ backgroundColor: palette.inputBg, borderWidth: 1, borderColor: focusedVariantField === 'sku' ? FYLL_LIME : palette.outline, height: 50, justifyContent: 'center', borderRadius: 14, paddingHorizontal: 14 }}>
                       <TextInput
                         placeholder={getAutoSku() || 'Auto-generated from Product-Value'}
                         placeholderTextColor={themeColors.text.muted}
                         value={newVariantSku}
                         onChangeText={setNewVariantSku}
+                        onFocus={() => setFocusedVariantField('sku')}
+                        onBlur={() => setFocusedVariantField(null)}
                         autoCapitalize="characters"
-                        style={{ color: themeColors.input.text, fontSize: 14 }}
-                        selectionColor={themeColors.text.primary}
+                        style={{ color: palette.text, fontSize: 14, fontWeight: '500' }}
+                        selectionColor={FYLL_LIME}
                       />
                     </View>
-                    <Text style={{ color: themeColors.text.muted }} className="text-xs mt-1">
+                    <Text style={{ color: palette.faint, fontSize: 10, lineHeight: 14, marginTop: 6 }}>
                       {newVariantSku ? 'Custom SKU' : `Will be: ${getAutoSku() || '[PRODUCT]-[VALUE]'}`}
                     </Text>
                   </View>
@@ -2059,34 +2062,31 @@ export default function ProductDetailScreen() {
                   {useGlobalStock ? (
                     <View className="mb-3 flex-row items-center justify-between">
                       <View className="flex-1 pr-3">
-                        <Text style={{ color: themeColors.text.primary }} className="text-sm font-semibold">Custom Stock</Text>
-                        <Text style={{ color: themeColors.text.muted }} className="text-xs mt-1">Use a different stock for this variant.</Text>
+                        <Text style={{ color: palette.text, fontSize: 13, fontWeight: '600' }}>Custom stock</Text>
+                        <Text style={{ color: palette.muted, fontSize: 10, lineHeight: 14, marginTop: 3 }}>Use a different stock level for this variant.</Text>
                         {!overrideVariantStock ? (
-                          <Text style={{ color: themeColors.text.muted }} className="text-xs mt-2">
+                          <Text style={{ color: palette.faint, fontSize: 10, marginTop: 6 }}>
                             Stock uses the global value ({effectiveGlobalStock} units).
                           </Text>
                         ) : null}
                       </View>
-                      <Switch
-                        value={overrideVariantStock}
-                        onValueChange={setOverrideVariantStock}
-                        trackColor={{ false: '#767577', true: '#D1D5DB' }}
-                        thumbColor={overrideVariantStock ? '#374151' : '#FFFFFF'}
-                      />
+                      <BrandSwitch value={overrideVariantStock} onValueChange={setOverrideVariantStock} />
                     </View>
                   ) : null}
                   {(!useGlobalStock || overrideVariantStock) ? (
                     <View className="mb-4">
-                      <Text style={{ color: themeColors.text.secondary }} className={cn(modalFieldLabelClass, 'mb-2')}>Initial Stock</Text>
-                      <View className="rounded-xl px-4" style={{ backgroundColor: modalFieldBg, borderWidth: 1, borderColor: modalFieldBorder, height: 52, justifyContent: 'center' }}>
+                      <Text style={{ color: palette.textSoft, fontSize: 12, fontWeight: '600', marginBottom: 7 }}>Initial stock</Text>
+                      <View style={{ backgroundColor: palette.inputBg, borderWidth: 1, borderColor: focusedVariantField === 'stock' ? FYLL_LIME : palette.outline, height: 50, justifyContent: 'center', borderRadius: 14, paddingHorizontal: 14 }}>
                         <TextInput
                           placeholder="0"
                           placeholderTextColor={themeColors.input.placeholder}
                           value={newVariantStock}
                           onChangeText={setNewVariantStock}
+                          onFocus={() => setFocusedVariantField('stock')}
+                          onBlur={() => setFocusedVariantField(null)}
                           keyboardType="number-pad"
-                          style={{ color: themeColors.input.text, fontSize: 14 }}
-                          selectionColor={themeColors.text.primary}
+                          style={{ color: palette.text, fontSize: 14, fontWeight: '500' }}
+                          selectionColor={FYLL_LIME}
                         />
                       </View>
                     </View>
@@ -2096,55 +2096,60 @@ export default function ProductDetailScreen() {
                   {useGlobalPrice ? (
                     <View className="mb-3 flex-row items-center justify-between">
                       <View className="flex-1 pr-3">
-                        <Text style={{ color: themeColors.text.primary }} className="text-sm font-semibold">Custom Price</Text>
-                        <Text style={{ color: themeColors.text.muted }} className="text-xs mt-1">Use a different price for this variant.</Text>
+                        <Text style={{ color: palette.text, fontSize: 13, fontWeight: '600' }}>Custom price</Text>
+                        <Text style={{ color: palette.muted, fontSize: 10, lineHeight: 14, marginTop: 3 }}>Use a different price for this variant.</Text>
                         {!overrideVariantPrice ? (
-                          <Text style={{ color: themeColors.text.muted }} className="text-xs mt-2">
+                          <Text style={{ color: palette.faint, fontSize: 10, marginTop: 6 }}>
                             Price uses the global value ({effectiveGlobalPrice}).
                           </Text>
                         ) : null}
                       </View>
-                      <Switch
-                        value={overrideVariantPrice}
-                        onValueChange={setOverrideVariantPrice}
-                        trackColor={{ false: '#767577', true: '#D1D5DB' }}
-                        thumbColor={overrideVariantPrice ? '#374151' : '#FFFFFF'}
-                      />
+                      <BrandSwitch value={overrideVariantPrice} onValueChange={setOverrideVariantPrice} />
                     </View>
                   ) : null}
                   {(!useGlobalPrice || overrideVariantPrice) ? (
                     <View className="mb-4">
-                      <Text style={{ color: themeColors.text.secondary }} className={cn(modalFieldLabelClass, 'mb-2')}>Sale Price</Text>
-                      <View className="rounded-xl px-4 flex-row items-center" style={{ backgroundColor: modalFieldBg, borderWidth: 1, borderColor: modalFieldBorder, height: 52 }}>
-                        <Text style={{ color: themeColors.text.muted, fontSize: 14, marginRight: 4 }}>₦</Text>
+                      <Text style={{ color: palette.textSoft, fontSize: 12, fontWeight: '600', marginBottom: 7 }}>Sale price</Text>
+                      <View style={{ backgroundColor: palette.inputBg, borderWidth: 1, borderColor: focusedVariantField === 'price' ? FYLL_LIME : palette.outline, height: 50, alignItems: 'center', borderRadius: 14, paddingHorizontal: 14, flexDirection: 'row' }}>
+                        <Text style={{ color: palette.muted, fontSize: 14, fontWeight: '600', marginRight: 6 }}>{currencySymbol}</Text>
                         <TextInput
                           placeholder="0"
                           placeholderTextColor={themeColors.input.placeholder}
                           value={newVariantPrice}
                           onChangeText={setNewVariantPrice}
+                          onFocus={() => setFocusedVariantField('price')}
+                          onBlur={() => setFocusedVariantField(null)}
                           keyboardType="numeric"
-                          style={{ color: themeColors.input.text, fontSize: 14, flex: 1 }}
-                          selectionColor={themeColors.text.primary}
+                          style={{ color: palette.text, fontSize: 14, fontWeight: '500', flex: 1 }}
+                          selectionColor={FYLL_LIME}
                         />
                       </View>
                     </View>
                   ) : null}
 
-                  {/* Add Button */}
-                  <Pressable
-                    onPress={handleAddVariant}
-                    className="rounded-full items-center active:opacity-80 mb-4"
-                    style={{ height: 52, justifyContent: 'center', backgroundColor: isDark ? '#FFFFFF' : '#111111' }}
-                  >
-                    <Text style={{ color: isDark ? '#000000' : '#FFFFFF' }} className="font-semibold text-base">Add Variant</Text>
-                  </Pressable>
+                  <View style={{ flexDirection: isMobile ? 'column-reverse' : 'row', gap: 10 }}>
+                    <Pressable
+                      onPress={() => setShowAddVariant(false)}
+                      className="items-center justify-center active:opacity-70"
+                      style={{ height: 48, borderRadius: 999, borderWidth: 1, borderColor: palette.outline, backgroundColor: palette.card, flex: isMobile ? undefined : 0.42 }}
+                    >
+                      <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>Cancel</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => void handleAddVariant()}
+                      className="items-center justify-center active:opacity-80"
+                      style={{ height: 48, borderRadius: 999, backgroundColor: FYLL_LIME, flex: isMobile ? undefined : 1 }}
+                    >
+                      <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 14 }}>Add variant</MoneyText>
+                    </Pressable>
+                  </View>
                 </ScrollView>
               </View>
             </View>
           </KeyboardAvoidingView>
         </Modal>
 
-        {/* Edit Variant Modal - Centered - Dynamic Theme */}
+        {/* Edit Variant Modal */}
         <Modal
           visible={!!editingVariant}
           animationType="fade"
@@ -2156,59 +2161,76 @@ export default function ProductDetailScreen() {
             className="flex-1"
           >
             <View
-              className="flex-1 items-center justify-center"
-              style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)' }}
+              className={cn('flex-1', useFullscreenEditModal ? 'items-stretch justify-start' : 'items-center justify-center')}
+              style={{ backgroundColor: 'rgba(0, 0, 0, 0.76)', paddingHorizontal: useFullscreenEditModal ? 0 : 24, paddingVertical: useFullscreenEditModal ? 0 : 24 }}
             >
               <Pressable
                 className="absolute inset-0"
                 onPress={() => setEditingVariant(null)}
               />
               <View
-                className="w-[90%] rounded-2xl overflow-hidden"
-                style={{ backgroundColor: themeColors.bg.card, maxHeight: '85%', maxWidth: 400 }}
+                className={cn('overflow-hidden', useFullscreenEditModal ? 'flex-1 w-full self-stretch' : 'w-full')}
+                style={{
+                  backgroundColor: palette.card,
+                  height: useFullscreenEditModal ? '100%' : undefined,
+                  maxHeight: useFullscreenEditModal ? undefined : '90%',
+                  maxWidth: useFullscreenEditModal ? undefined : 560,
+                  borderRadius: useFullscreenEditModal ? 0 : 28,
+                  borderWidth: useFullscreenEditModal ? 0 : 1,
+                  borderColor: palette.outline,
+                  shadowColor: '#000000',
+                  shadowOpacity: 0.28,
+                  shadowRadius: 30,
+                  shadowOffset: { width: 0, height: 18 },
+                  elevation: 18,
+                }}
               >
-                {/* Header */}
-                <View className="flex-row items-center justify-between px-5 py-4 border-b" style={{ borderBottomColor: themeColors.border.light }}>
-                  <Text style={{ color: themeColors.text.primary }} className="font-bold text-lg">Edit Variant</Text>
+                <View style={{ height: 4, backgroundColor: FYLL_LIME }} />
+                <View className="flex-row items-center justify-between" style={{ paddingHorizontal: 22, paddingTop: useFullscreenEditModal ? 20 : 18, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: palette.hairline }}>
+                  <View style={{ flex: 1, paddingRight: 16 }}>
+                    <Text style={{ color: palette.limeOnSurface, fontSize: 10, fontWeight: '600', letterSpacing: 1.3, textTransform: 'uppercase', marginBottom: 5 }}>Variant details</Text>
+                    <MoneyText style={{ color: palette.text, fontSize: isMobile ? 20 : 22, lineHeight: isMobile ? 24 : 27 }}>Edit variant</MoneyText>
+                    <Text style={{ color: palette.muted, fontSize: 12, marginTop: 4 }} numberOfLines={1}>
+                      {product.name}{editVariantSku ? ` · ${editVariantSku}` : ''}
+                    </Text>
+                  </View>
                   <Pressable
                     onPress={() => setEditingVariant(null)}
-                    className="w-8 h-8 rounded-full items-center justify-center active:opacity-50"
-                    style={{ backgroundColor: themeColors.bg.secondary }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Close edit variant"
+                    className="items-center justify-center active:opacity-60"
+                    style={{ width: 40, height: 40, borderRadius: 20, borderWidth: 1, borderColor: palette.outline, backgroundColor: palette.softFill }}
                   >
-                    <X size={18} color={themeColors.text.muted} strokeWidth={2} />
+                    <X size={18} color={palette.text} strokeWidth={2} />
                   </Pressable>
                 </View>
 
                 <ScrollView
-                  className="px-5 py-4"
+                  contentContainerStyle={{ paddingHorizontal: 22, paddingTop: 20, paddingBottom: 22 }}
                   showsVerticalScrollIndicator={false}
                   keyboardShouldPersistTaps="handled"
-                  bounces={true}
+                  bounces
                   overScrollMode="always"
                 >
-                  {/* Error Toast for image picker */}
                   {imagePicker.error && (
-                    <View className="mb-4 p-3 rounded-xl" style={{ backgroundColor: 'rgba(239, 68, 68, 0.2)' }}>
-                      <Text className="text-red-400 text-sm text-center">{imagePicker.error}</Text>
+                    <View style={{ marginBottom: 16, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 14, backgroundColor: palette.dangerBg, borderWidth: 1, borderColor: palette.dangerBorder }}>
+                      <Text style={{ color: palette.danger, fontSize: 12, fontWeight: '500', textAlign: 'center' }}>{imagePicker.error}</Text>
                     </View>
                   )}
 
-                  {/* Variant Image */}
-                  <View className="mb-4">
-                    <Text style={{ color: themeColors.text.secondary }} className={cn(modalFieldLabelClass, 'mb-2')}>Variant Image</Text>
-                    <Text style={{ color: themeColors.text.muted }} className="text-xs mb-3">
-                      Optional. If not set, will use the main product image.
-                    </Text>
+                  <View style={{ marginBottom: 22 }}>
+                    <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '600', letterSpacing: 1.1, textTransform: 'uppercase' }}>Image</Text>
+                    <Text style={{ color: palette.muted, fontSize: 12, lineHeight: 17, marginTop: 5, marginBottom: 12 }}>Optional · the main product image is used when empty.</Text>
                     {editVariantImageUrl ? (
-                      <View className="flex-row items-start">
-                        <View className="overflow-hidden" style={{ borderWidth: 1, borderColor: themeColors.border.light, borderRadius: 10 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 18, backgroundColor: palette.inset, borderWidth: 1, borderColor: palette.border }}>
+                        <View className="overflow-hidden" style={{ borderWidth: 1, borderColor: palette.outline, borderRadius: 14 }}>
                           <ResolvedAttachmentImage
                             imageUrl={editVariantImageUrl}
-                            style={{ width: 72, height: 72 }}
+                            style={{ width: 76, height: 76 }}
                             resizeMode="cover"
                           />
                         </View>
-                        <View className="ml-3 flex-1">
+                        <View style={{ marginLeft: 14, flex: 1, gap: 8 }}>
                           <Pressable
                             onPress={async () => {
                               try {
@@ -2221,19 +2243,19 @@ export default function ProductDetailScreen() {
                               }
                             }}
                             disabled={imagePicker.isLoading}
-                            className="flex-row items-center px-3 py-2 rounded-lg mb-2 active:opacity-70"
-                            style={{ backgroundColor: themeColors.bg.secondary, opacity: imagePicker.isLoading ? 0.5 : 1 }}
+                            className="flex-row items-center justify-center active:opacity-70"
+                            style={{ height: 36, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1, borderColor: palette.outline, backgroundColor: palette.card, opacity: imagePicker.isLoading ? 0.5 : 1 }}
                           >
-                            <Camera size={14} color={themeColors.text.primary} strokeWidth={2} />
-                            <Text style={{ color: themeColors.text.primary }} className="text-xs font-medium ml-2">Change</Text>
+                            <Camera size={14} color={palette.text} strokeWidth={2} />
+                            <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600', marginLeft: 7 }}>Change image</Text>
                           </Pressable>
                           <Pressable
                             onPress={() => setEditVariantImageUrl(undefined)}
-                            className="flex-row items-center px-3 py-2 rounded-full active:opacity-70"
-                            style={{ backgroundColor: 'rgba(239, 68, 68, 0.2)' }}
+                            className="flex-row items-center justify-center active:opacity-70"
+                            style={{ height: 36, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1, borderColor: palette.dangerBorder, backgroundColor: palette.dangerBg }}
                           >
-                            <Trash2 size={14} color="#EF4444" strokeWidth={2} />
-                            <Text className="text-red-400 text-xs font-medium ml-2">Remove</Text>
+                            <Trash2 size={14} color={palette.danger} strokeWidth={2} />
+                            <Text style={{ color: palette.danger, fontSize: 12, fontWeight: '600', marginLeft: 7 }}>Remove</Text>
                           </Pressable>
                         </View>
                       </View>
@@ -2250,148 +2272,143 @@ export default function ProductDetailScreen() {
                           }
                         }}
                         disabled={imagePicker.isLoading}
-                        className="rounded-xl p-4 items-center active:opacity-70"
-                        style={{ backgroundColor: themeColors.bg.secondary, borderWidth: 1, borderColor: themeColors.border.light, borderStyle: 'dashed', opacity: imagePicker.isLoading ? 0.5 : 1 }}
+                        className="items-center justify-center active:opacity-70"
+                        style={{ minHeight: 104, padding: 16, borderRadius: 18, backgroundColor: palette.inset, borderWidth: 1, borderColor: palette.nudgeBorder, borderStyle: 'dashed', opacity: imagePicker.isLoading ? 0.5 : 1 }}
                       >
                         {imagePicker.isLoading ? (
                           <>
-                            <View className="w-6 h-6 items-center justify-center">
-                              <Text style={{ color: themeColors.text.muted }} className="text-xs">...</Text>
-                            </View>
-                            <Text style={{ color: themeColors.text.muted }} className="text-sm font-medium mt-2">Opening...</Text>
+                            <Text style={{ color: palette.muted, fontSize: 12, fontWeight: '600' }}>Opening image picker…</Text>
                           </>
                         ) : (
                           <>
-                            <ImageIcon size={24} color={themeColors.text.muted} strokeWidth={1.5} />
-                            <Text style={{ color: themeColors.text.muted }} className="text-sm font-medium mt-2">Add Variant Image</Text>
-                            <Text style={{ color: themeColors.text.tertiary }} className="text-xs mt-1">Uses product image if empty</Text>
+                            <View style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.nudgeBg, marginBottom: 8 }}>
+                              <ImageIcon size={18} color={palette.limeOnSurface} strokeWidth={1.8} />
+                            </View>
+                            <Text style={{ color: palette.text, fontSize: 13, fontWeight: '600' }}>Add variant image</Text>
+                            <Text style={{ color: palette.faint, fontSize: 10, marginTop: 3 }}>JPG or PNG</Text>
                           </>
                         )}
                       </Pressable>
                     )}
                   </View>
 
-                  {/* Variant Name/Value - Editable */}
-                  <View className="mb-4">
-                    <Text style={{ color: themeColors.text.secondary }} className={cn(modalFieldLabelClass, 'mb-2')}>Variant Name/Value</Text>
-                    <View className="rounded-xl px-4" style={{ backgroundColor: modalFieldBg, borderWidth: 1, borderColor: modalFieldBorder, height: 52, justifyContent: 'center' }}>
+                  <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '600', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 12 }}>Identity</Text>
+                  <View style={{ marginBottom: 15 }}>
+                    <Text style={{ color: palette.textSoft, fontSize: 12, fontWeight: '600', marginBottom: 7 }}>Variant name</Text>
+                    <View style={{ backgroundColor: palette.inputBg, borderWidth: 1, borderColor: focusedVariantField === 'name' ? FYLL_LIME : palette.outline, height: 50, justifyContent: 'center', borderRadius: 14, paddingHorizontal: 14 }}>
                       <TextInput
                         placeholder="e.g., Pink, Soft Pink"
-                        placeholderTextColor={themeColors.input.placeholder}
+                        placeholderTextColor={palette.faint}
                         value={editVariantName}
                         onChangeText={(text) => {
                           const nextText = text.toUpperCase();
                           setEditVariantName(nextText);
                           setEditVariantSku(buildVariantSku(product.name, nextText).toUpperCase());
                         }}
-                        style={{ color: themeColors.input.text, fontSize: 14 }}
-                        selectionColor={themeColors.text.primary}
+                        onFocus={() => setFocusedVariantField('name')}
+                        onBlur={() => setFocusedVariantField(null)}
+                        style={{ color: palette.text, fontSize: 14, fontWeight: '500' }}
+                        selectionColor={FYLL_LIME}
                       />
                     </View>
-                    <Text style={{ color: themeColors.text.muted }} className="text-xs mt-1">Change the variant name (e.g., "Pink" to "Soft Pink")</Text>
+                    <Text style={{ color: palette.faint, fontSize: 10, lineHeight: 14, marginTop: 6 }}>Changing this value also updates the generated SKU.</Text>
                   </View>
 
-                  {/* SKU */}
-                  <View className="mb-4">
-                    <Text style={{ color: themeColors.text.secondary }} className={cn(modalFieldLabelClass, 'mb-2')}>SKU</Text>
-                    <View className="rounded-xl px-4" style={{ backgroundColor: modalFieldBg, borderWidth: 1, borderColor: modalFieldBorder, height: 52, justifyContent: 'center' }}>
+                  <View style={{ marginBottom: 22 }}>
+                    <Text style={{ color: palette.textSoft, fontSize: 12, fontWeight: '600', marginBottom: 7 }}>SKU</Text>
+                    <View style={{ backgroundColor: palette.inputBg, borderWidth: 1, borderColor: focusedVariantField === 'sku' ? FYLL_LIME : palette.outline, height: 50, justifyContent: 'center', borderRadius: 14, paddingHorizontal: 14 }}>
                       <TextInput
                         placeholder={buildVariantSku(product.name, editVariantName).toUpperCase()}
-                        placeholderTextColor={themeColors.input.placeholder}
+                        placeholderTextColor={palette.faint}
                         value={editVariantSku || buildVariantSku(product.name, editVariantName).toUpperCase()}
                         onChangeText={(text) => setEditVariantSku(text.toUpperCase())}
-                        style={{ color: themeColors.input.text, fontSize: 14 }}
-                        selectionColor={themeColors.text.primary}
+                        onFocus={() => setFocusedVariantField('sku')}
+                        onBlur={() => setFocusedVariantField(null)}
+                        autoCapitalize="characters"
+                        style={{ color: palette.text, fontSize: 14, fontWeight: '500' }}
+                        selectionColor={FYLL_LIME}
                       />
                     </View>
-                    <Text style={{ color: themeColors.text.muted }} className="text-xs mt-1">
-                      Auto-updates from product name and variant value.
-                    </Text>
                   </View>
 
-                  {/* Stock */}
+                  <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '600', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 12 }}>Inventory & pricing</Text>
                   {useGlobalStock ? (
-                    <View className="mb-3 flex-row items-center justify-between">
-                      <View className="flex-1 pr-3">
-                        <Text style={{ color: themeColors.text.primary }} className="text-sm font-semibold">Custom Stock</Text>
-                        <Text style={{ color: themeColors.text.muted }} className="text-xs mt-1">Use a different stock for this variant.</Text>
-                        {!editOverrideVariantStock ? (
-                          <Text style={{ color: themeColors.text.muted }} className="text-xs mt-2">
-                            Stock uses the global value ({effectiveGlobalStock} units).
-                          </Text>
-                        ) : null}
+                    <View style={{ marginBottom: 12, padding: 14, borderRadius: 16, backgroundColor: palette.inset, borderWidth: 1, borderColor: editOverrideVariantStock ? palette.nudgeBorder : palette.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <View style={{ flex: 1, paddingRight: 14 }}>
+                        <Text style={{ color: palette.text, fontSize: 13, fontWeight: '600' }}>Custom stock</Text>
+                        <Text style={{ color: palette.muted, fontSize: 10, lineHeight: 14, marginTop: 3 }}>
+                          {editOverrideVariantStock ? 'This variant has its own stock level.' : `Using global stock · ${effectiveGlobalStock} units`}
+                        </Text>
                       </View>
-                      <Switch
-                        value={editOverrideVariantStock}
-                        onValueChange={setEditOverrideVariantStock}
-                        trackColor={{ false: '#767577', true: '#D1D5DB' }}
-                        thumbColor={editOverrideVariantStock ? '#374151' : '#FFFFFF'}
-                      />
+                      <BrandSwitch value={editOverrideVariantStock} onValueChange={setEditOverrideVariantStock} />
                     </View>
                   ) : null}
                   {(!useGlobalStock || editOverrideVariantStock) ? (
-                    <View className="mb-4">
-                      <Text style={{ color: themeColors.text.secondary }} className={cn(modalFieldLabelClass, 'mb-2')}>Stock</Text>
-                      <View className="rounded-xl px-4" style={{ backgroundColor: modalFieldBg, borderWidth: 1, borderColor: modalFieldBorder, height: 52, justifyContent: 'center' }}>
+                    <View style={{ marginBottom: 15 }}>
+                      <Text style={{ color: palette.textSoft, fontSize: 12, fontWeight: '600', marginBottom: 7 }}>Stock</Text>
+                      <View style={{ backgroundColor: palette.inputBg, borderWidth: 1, borderColor: focusedVariantField === 'stock' ? FYLL_LIME : palette.outline, height: 50, justifyContent: 'center', borderRadius: 14, paddingHorizontal: 14 }}>
                         <TextInput
                           placeholder="0"
-                          placeholderTextColor={themeColors.input.placeholder}
+                          placeholderTextColor={palette.faint}
                           value={editVariantStock}
                           onChangeText={setEditVariantStock}
+                          onFocus={() => setFocusedVariantField('stock')}
+                          onBlur={() => setFocusedVariantField(null)}
                           keyboardType="number-pad"
-                          style={{ color: themeColors.input.text, fontSize: 14 }}
-                          selectionColor={themeColors.text.primary}
+                          style={{ color: palette.text, fontSize: 14, fontWeight: '500' }}
+                          selectionColor={FYLL_LIME}
                         />
                       </View>
                     </View>
                   ) : null}
 
-                  {/* Sale Price */}
                   {useGlobalPrice ? (
-                    <View className="mb-3 flex-row items-center justify-between">
-                      <View className="flex-1 pr-3">
-                        <Text style={{ color: themeColors.text.primary }} className="text-sm font-semibold">Custom Price</Text>
-                        <Text style={{ color: themeColors.text.muted }} className="text-xs mt-1">Use a different price for this variant.</Text>
-                        {!editOverrideVariantPrice ? (
-                          <Text style={{ color: themeColors.text.muted }} className="text-xs mt-2">
-                            Price uses the global value ({effectiveGlobalPrice}).
-                          </Text>
-                        ) : null}
+                    <View style={{ marginBottom: 12, padding: 14, borderRadius: 16, backgroundColor: palette.inset, borderWidth: 1, borderColor: editOverrideVariantPrice ? palette.nudgeBorder : palette.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <View style={{ flex: 1, paddingRight: 14 }}>
+                        <Text style={{ color: palette.text, fontSize: 13, fontWeight: '600' }}>Custom price</Text>
+                        <Text style={{ color: palette.muted, fontSize: 10, lineHeight: 14, marginTop: 3 }}>
+                          {editOverrideVariantPrice ? 'This variant has its own selling price.' : `Using global price · ${currencySymbol}${effectiveGlobalPrice}`}
+                        </Text>
                       </View>
-                      <Switch
-                        value={editOverrideVariantPrice}
-                        onValueChange={setEditOverrideVariantPrice}
-                        trackColor={{ false: '#767577', true: '#D1D5DB' }}
-                        thumbColor={editOverrideVariantPrice ? '#374151' : '#FFFFFF'}
-                      />
+                      <BrandSwitch value={editOverrideVariantPrice} onValueChange={setEditOverrideVariantPrice} />
                     </View>
                   ) : null}
                   {(!useGlobalPrice || editOverrideVariantPrice) ? (
-                    <View className="mb-4">
-                      <Text style={{ color: themeColors.text.secondary }} className={cn(modalFieldLabelClass, 'mb-2')}>Sale Price</Text>
-                      <View className="rounded-xl px-4 flex-row items-center" style={{ backgroundColor: modalFieldBg, borderWidth: 1, borderColor: modalFieldBorder, height: 52 }}>
-                        <Text style={{ color: themeColors.text.muted, fontSize: 14, marginRight: 4 }}>₦</Text>
+                    <View style={{ marginBottom: 20 }}>
+                      <Text style={{ color: palette.textSoft, fontSize: 12, fontWeight: '600', marginBottom: 7 }}>Sale price</Text>
+                      <View style={{ backgroundColor: palette.inputBg, borderWidth: 1, borderColor: focusedVariantField === 'price' ? FYLL_LIME : palette.outline, height: 50, alignItems: 'center', borderRadius: 14, paddingHorizontal: 14, flexDirection: 'row' }}>
+                        <Text style={{ color: palette.muted, fontSize: 14, fontWeight: '600', marginRight: 6 }}>{currencySymbol}</Text>
                         <TextInput
                           placeholder="0"
-                          placeholderTextColor={themeColors.input.placeholder}
+                          placeholderTextColor={palette.faint}
                           value={editVariantPrice}
                           onChangeText={setEditVariantPrice}
+                          onFocus={() => setFocusedVariantField('price')}
+                          onBlur={() => setFocusedVariantField(null)}
                           keyboardType="numeric"
-                          style={{ color: themeColors.input.text, fontSize: 14, flex: 1 }}
-                          selectionColor={themeColors.text.primary}
+                          style={{ color: palette.text, fontSize: 14, fontWeight: '500', flex: 1 }}
+                          selectionColor={FYLL_LIME}
                         />
                       </View>
                     </View>
                   ) : null}
 
-                  {/* Save Button */}
-                  <Pressable
-                    onPress={handleSaveVariant}
-                    className="rounded-full items-center active:opacity-80 mb-4"
-                    style={{ height: 52, justifyContent: 'center', backgroundColor: isDark ? '#FFFFFF' : '#111111' }}
-                  >
-                    <Text style={{ color: isDark ? '#000000' : '#FFFFFF' }} className="font-semibold text-base">Save Changes</Text>
-                  </Pressable>
+                  <View style={{ flexDirection: isMobile ? 'column-reverse' : 'row', gap: 10 }}>
+                    <Pressable
+                      onPress={() => setEditingVariant(null)}
+                      className="items-center justify-center active:opacity-70"
+                      style={{ height: 48, borderRadius: 999, borderWidth: 1, borderColor: palette.outline, backgroundColor: palette.card, flex: isMobile ? undefined : 0.42 }}
+                    >
+                      <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>Cancel</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => void handleSaveVariant()}
+                      className="items-center justify-center active:opacity-80"
+                      style={{ height: 48, borderRadius: 999, backgroundColor: FYLL_LIME, flex: isMobile ? undefined : 1 }}
+                    >
+                      <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 14 }}>Save changes</MoneyText>
+                    </Pressable>
+                  </View>
                 </ScrollView>
               </View>
             </View>

@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Check, CreditCard, Edit2, Landmark, MoreVertical, Plus, ShieldCheck, Star, Trash2, X } from 'lucide-react-native';
+import { ArrowLeft, Check, CreditCard, Edit2, Globe2, Landmark, MoreVertical, Plus, ShieldCheck, Star, Trash2, X } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFonts, BricolageGrotesque_700Bold, BricolageGrotesque_800ExtraBold } from '@expo-google-fonts/bricolage-grotesque';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
@@ -26,6 +26,16 @@ import { getSettingsWebPanelStyles, isFromSettingsRoute } from '@/lib/settings-w
 import { useSettingsBack } from '@/lib/useSettingsBack';
 import type { BankAccount } from '@/lib/state/fyll-store';
 import { InternalSettingsHeader } from '@/components/settings/InternalSettingsHeader';
+import { useBusinessSettings } from '@/hooks/useBusinessSettings';
+import {
+  bankAccountFormIsComplete,
+  bankAccountFromForm,
+  bankAccountToForm,
+  emptyBankAccountForm,
+  getBankAccountRegion,
+  getBankAccountTransferFields,
+  type BankAccountForm,
+} from '@/lib/bank-account-regions';
 
 type PaymentAccountsScreenProps = {
   embeddedInSettings?: boolean;
@@ -73,7 +83,6 @@ const LIGHT_PALETTE: PaymentPalette = {
   dangerWash: 'rgba(201,87,77,0.10)', dangerBorder: 'rgba(201,87,77,0.22)', overlay: 'rgba(24,25,18,0.46)',
 };
 
-const emptyForm = { bankName: '', accountName: '', accountNumber: '' };
 const webOutlineStyle = Platform.OS === 'web' ? ({ outlineStyle: 'none' } as unknown as TextStyle) : null;
 const innerSettingsFont = (size: number, compact: boolean) => {
   if (!compact) return size;
@@ -130,6 +139,7 @@ export default function PaymentAccountsScreen({ embeddedInSettings = false }: Pa
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
   const currentUserRole = useAuthStore((s) => s.currentUser?.role ?? 'staff');
   const currentUserName = useAuthStore((s) => s.currentUser?.name ?? null);
+  const { country, currency } = useBusinessSettings();
 
   useFonts({ BricolageGrotesque_700Bold, BricolageGrotesque_800ExtraBold });
 
@@ -138,7 +148,7 @@ export default function PaymentAccountsScreen({ embeddedInSettings = false }: Pa
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState<boolean>(false);
-  const [form, setForm] = useState<typeof emptyForm>(emptyForm);
+  const [form, setForm] = useState<BankAccountForm>(() => emptyBankAccountForm(country));
   const [openMenuAccountId, setOpenMenuAccountId] = useState<string | null>(null);
   const [deleteAccount, setDeleteAccount] = useState<BankAccount | null>(null);
   const [feedback, setFeedback] = useState<{ tone: 'error' | 'success'; message: string } | null>(null);
@@ -178,7 +188,7 @@ export default function PaymentAccountsScreen({ embeddedInSettings = false }: Pa
   const openAddForm = () => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setEditingId(null);
-    setForm(emptyForm);
+    setForm(emptyBankAccountForm(country));
     setFeedback(null);
     setShowForm(true);
   };
@@ -187,7 +197,7 @@ export default function PaymentAccountsScreen({ embeddedInSettings = false }: Pa
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setOpenMenuAccountId(null);
     setEditingId(account.id);
-    setForm({ bankName: account.bankName, accountName: account.accountName, accountNumber: account.accountNumber });
+    setForm(bankAccountToForm(account, country));
     setFeedback(null);
     setShowForm(true);
   };
@@ -195,19 +205,18 @@ export default function PaymentAccountsScreen({ embeddedInSettings = false }: Pa
   const closeForm = () => {
     if (isSaving) return;
     setEditingId(null);
-    setForm(emptyForm);
+    setForm(emptyBankAccountForm(country));
     setShowForm(false);
   };
 
   const handleSubmit = async () => {
-    const bankName = form.bankName.trim();
-    const accountName = form.accountName.trim();
-    const accountNumber = form.accountNumber.trim();
-    if (!bankName || !accountName || !accountNumber) return;
+    if (!bankAccountFormIsComplete(form)) return;
 
     const next = editingId
-      ? accounts.map((account) => account.id === editingId ? { ...account, bankName, accountName, accountNumber } : account)
-      : [{ id: `bank-${Date.now()}`, bankName, accountName, accountNumber, isDefault: accounts.length === 0 }, ...accounts];
+      ? accounts.map((account) => account.id === editingId
+        ? bankAccountFromForm({ id: account.id, form, currency, isDefault: account.isDefault })
+        : account)
+      : [bankAccountFromForm({ id: `bank-${Date.now()}`, form, currency, isDefault: accounts.length === 0 }), ...accounts];
     const saved = await persist(next);
     if (saved) {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -237,7 +246,8 @@ export default function PaymentAccountsScreen({ embeddedInSettings = false }: Pa
   };
 
   const contentMaxWidth = isEmbeddedWeb ? 1120 : isDesktop || openedFromSettings ? 720 : 520;
-  const formComplete = Boolean(form.bankName.trim() && form.accountName.trim() && form.accountNumber.trim());
+  const formComplete = bankAccountFormIsComplete(form);
+  const formRegion = getBankAccountRegion(form.countryCode);
   const defaultAccount = accounts.find((account) => account.isDefault) ?? accounts[0] ?? null;
   const cardStyle: ViewStyle = { borderRadius: 26, borderWidth: 1, borderColor: palette.edge, backgroundColor: palette.surface };
 
@@ -324,9 +334,47 @@ export default function PaymentAccountsScreen({ embeddedInSettings = false }: Pa
             <>
               <SectionLabel palette={palette}>{editingId ? 'Edit account' : 'New account'}</SectionLabel>
               <View style={[cardStyle, { padding: 18, gap: 15, marginBottom: 26 }]}>
-                <BankField palette={palette} compact={compactTypography} label="Bank name" value={form.bankName} onChangeText={(value) => setForm((current) => ({ ...current, bankName: value }))} placeholder="e.g. GTBank" />
-                <BankField palette={palette} compact={compactTypography} label="Account name" value={form.accountName} onChangeText={(value) => setForm((current) => ({ ...current, accountName: value }))} placeholder="Name on the account" />
-                <BankField palette={palette} compact={compactTypography} label="Account number" value={form.accountNumber} onChangeText={(value) => setForm((current) => ({ ...current, accountNumber: value }))} placeholder="Enter account number" keyboardType="number-pad" />
+                <View style={{ padding: 13, borderRadius: 16, borderWidth: 1, borderColor: palette.limeBorder, backgroundColor: palette.limeWash, flexDirection: 'row', alignItems: 'center', gap: 11 }}>
+                  <View style={{ width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.limeWashStrong }}>
+                    <Globe2 size={17} color={palette.limeInk} strokeWidth={2.1} />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                    <Text style={{ color: palette.ink, fontSize: 13, fontWeight: '600' }}>{formRegion.countryName} payout details</Text>
+                    <Text style={{ color: palette.muted, fontSize: 11.5, lineHeight: 16 }}>Region and currency are pulled from Business details · {currency}</Text>
+                  </View>
+                </View>
+                {formRegion.fields.map((field) => field.options ? (
+                  <View key={field.key} style={{ gap: 7 }}>
+                    <Text style={{ color: palette.muted, fontSize: 12, fontWeight: '500' }}>{field.label}</Text>
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      {field.options.map((option) => {
+                        const selected = form[field.key] === option;
+                        return (
+                          <Pressable
+                            key={option}
+                            accessibilityRole="radio"
+                            accessibilityState={{ selected }}
+                            onPress={() => setForm((current) => ({ ...current, [field.key]: option }))}
+                            style={({ pressed }) => ({ flex: 1, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: selected ? palette.limeBorder : palette.edgeStrong, backgroundColor: selected ? palette.limeWashStrong : palette.surface, opacity: pressed ? 0.72 : 1 })}
+                          >
+                            <Text style={{ color: selected ? palette.limeInk : palette.ink, fontSize: 13, fontWeight: '600' }}>{option}</Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
+                ) : (
+                  <BankField
+                    key={field.key}
+                    palette={palette}
+                    compact={compactTypography}
+                    label={`${field.label}${field.required === false ? ' (optional)' : ''}`}
+                    value={form[field.key]}
+                    onChangeText={(value) => setForm((current) => ({ ...current, [field.key]: value }))}
+                    placeholder={field.placeholder}
+                    keyboardType={field.keyboardType}
+                  />
+                ))}
                 <View style={{ flexDirection: 'row', gap: 10, marginTop: 3 }}>
                   <Pressable onPress={closeForm} disabled={isSaving || accounts.length === 0} style={({ pressed }) => ({ flex: 1, height: 48, borderRadius: 999, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: palette.edgeStrong, opacity: accounts.length === 0 ? 0.4 : pressed ? 0.7 : 1 })}><Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: 14 }}>Cancel</Text></Pressable>
                   <Pressable onPress={handleSubmit} disabled={isSaving || !formComplete} style={({ pressed }) => ({ flex: 1.4, height: 48, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.lime, opacity: isSaving || !formComplete ? 0.45 : pressed ? 0.78 : 1 })}>
@@ -356,7 +404,12 @@ export default function PaymentAccountsScreen({ embeddedInSettings = false }: Pa
                       <Text numberOfLines={1} style={{ flexShrink: 1, color: palette.ink, fontSize: 14, lineHeight: 20, fontWeight: '600' }}>{account.bankName}</Text>
                       {account.isDefault ? <View style={{ height: 23, paddingHorizontal: 8, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: palette.limeWashStrong }}><Check size={11} color={palette.limeInk} strokeWidth={3} /><Text style={{ color: palette.limeInk, fontSize: 9.5, fontWeight: '700', letterSpacing: 0.55, textTransform: 'uppercase' }}>Default</Text></View> : null}
                     </View>
-                    <Text numberOfLines={1} style={{ color: palette.muted, fontSize: 12, lineHeight: 16, marginTop: 2 }}>{account.accountName} · {account.accountNumber}</Text>
+                    <Text numberOfLines={1} style={{ color: palette.muted, fontSize: 12, lineHeight: 16, marginTop: 2 }}>
+                      {[account.accountName, ...getBankAccountTransferFields(account).slice(0, 2).map((field) => `${field.label}: ${field.value}`)].filter(Boolean).join(' · ')}
+                    </Text>
+                    <Text numberOfLines={1} style={{ color: palette.faint, fontSize: 10, lineHeight: 14, marginTop: 2 }}>
+                      {getBankAccountRegion(account.countryCode ?? country).countryName} · {account.currency ?? currency}
+                    </Text>
                   </View>
                   <Pressable onPress={(event) => { event.stopPropagation(); setOpenMenuAccountId((current) => current === account.id ? null : account.id); }} accessibilityRole="button" accessibilityLabel={`Actions for ${account.bankName}`} hitSlop={5} style={({ pressed }) => ({ width: 32, height: 36, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.5 : 1 })}><MoreVertical size={17} color={palette.faint} strokeWidth={2.2} /></Pressable>
                   {openMenuAccountId === account.id ? (

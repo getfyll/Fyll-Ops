@@ -8,6 +8,7 @@ import { useThemeColors } from '@/lib/theme';
 import { DetailSection, DetailImagePreview, DetailActionButton } from './SplitViewLayout';
 import * as Haptics from 'expo-haptics';
 import { normalizeProductType } from '@/lib/product-utils';
+import { useBusinessCurrency } from '@/hooks/useBusinessCurrency';
 
 interface ProductDetailPanelProps {
   productId: string;
@@ -18,6 +19,7 @@ export function ProductDetailPanel({ productId, onClose }: ProductDetailPanelPro
   const colors = useThemeColors();
   const router = useRouter();
   const isDark = colors.bg.primary === '#111111';
+  const { currency } = useBusinessCurrency();
 
   const products = useFyllStore((s) => s.products);
   const updateProduct = useFyllStore((s) => s.updateProduct);
@@ -339,7 +341,7 @@ export function ProductDetailPanel({ productId, onClose }: ProductDetailPanelPro
             {isService ? 'Service Price' : 'Stock Value'}
           </Text>
           <Text style={{ color: '#10B981', fontSize: 24, fontWeight: '700', marginTop: 4 }}>
-            {formatCurrency(isService ? servicePrice : totalValue)}
+            {formatCurrency(isService ? servicePrice : totalValue, currency)}
           </Text>
           <Text style={{ color: colors.text.muted, fontSize: 11, marginTop: 6 }}>
             {isService ? 'default charge' : 'at retail price'}
@@ -458,7 +460,7 @@ export function ProductDetailPanel({ productId, onClose }: ProductDetailPanelPro
               {isOwner && (
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.border.light }}>
                   <Text style={{ color: colors.text.tertiary, fontSize: 13 }}>Sale Price</Text>
-                  <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }}>{formatCurrency(variant.sellingPrice)}</Text>
+                  <Text style={{ color: colors.text.primary, fontSize: 13, fontWeight: '600' }}>{formatCurrency(variant.sellingPrice, currency)}</Text>
                 </View>
               )}
             </View>

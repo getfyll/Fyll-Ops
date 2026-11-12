@@ -66,7 +66,7 @@ export default function OrderLabelPreviewScreen() {
         customerName: order.customerName,
         customerEmail: order.customerEmail,
         customerPhone: order.customerPhone,
-        deliveryAddress: order.deliveryAddress,
+        deliveryAddress: [order.deliveryAddress, order.deliveryPostcode].filter(Boolean).join(', '),
         deliveryState: order.deliveryState,
         itemCount: (order.items ?? []).reduce((sum, item) => sum + (item.quantity || 0), 0),
         logistics: {
@@ -147,7 +147,7 @@ export default function OrderLabelPreviewScreen() {
 
   const courier = carrierNameOverride || order.logistics?.carrierName || 'Fyll Dispatch';
   const isPickup = isPickupOrder(order);
-  const addressText = formatAddressValue([order.deliveryAddress, order.deliveryState].filter(Boolean).join(', '));
+  const addressText = formatAddressValue([order.deliveryAddress, order.deliveryPostcode, order.deliveryState].filter(Boolean).join(', '));
   const lineItems = (order.items ?? []).map((item) => {
     const product = products.find((entry) => entry.id === item.productId);
     const variant = product?.variants.find((entry) => entry.id === item.variantId);

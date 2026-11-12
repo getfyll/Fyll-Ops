@@ -13,6 +13,7 @@ import { useRouter } from 'expo-router';
 import { compressImage } from '@/lib/image-compression';
 
 interface PrescriptionSectionProps {
+  title?: string;
   prescription?: PrescriptionInfo;
   onUpdate: (prescription: PrescriptionInfo | undefined) => void;
   editable?: boolean;
@@ -22,7 +23,7 @@ interface PrescriptionSectionProps {
   stepNumber?: number;
 }
 
-export function PrescriptionSection({ prescription, onUpdate, editable = true, staffName, containerClassName, stepNumber }: PrescriptionSectionProps) {
+export function PrescriptionSection({ title = 'Customer notes', prescription, onUpdate, editable = true, staffName, containerClassName, stepNumber }: PrescriptionSectionProps) {
   const colors = useThemeColors();
   const palette = usePaymentsPalette();
   const [noteFocused, setNoteFocused] = useState<boolean>(false);
@@ -215,7 +216,7 @@ export function PrescriptionSection({ prescription, onUpdate, editable = true, s
                 <Text style={{ color: palette.limeOnSurface, fontSize: 13, fontWeight: '700' }}>{stepNumber}</Text>
               </View>
             ) : null}
-            <Text style={{ color: palette.text, fontSize: isMobile ? 14 : 16, fontWeight: '500' }}>Customer notes</Text>
+            <Text style={{ color: palette.text, fontSize: isMobile ? 14 : 16, lineHeight: isMobile ? 18 : 20, fontWeight: '600' }}>{title}</Text>
           </View>
           {editable && (
             <Pressable

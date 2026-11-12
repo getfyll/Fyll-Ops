@@ -280,24 +280,27 @@ function PendingRequestBanners({ inset = true }: { inset?: boolean }) {
   const requests = usePendingRequests();
   if (requests.length === 0) return null;
 
-  const content = (
-    <View style={{ gap: 10 }}>
-      {requests.map((request) => (
-        <PendingExpenseBanner
-          key={request.id}
-          count={request.count}
-          boldText={request.boldText}
-          restText={request.restText}
-          actionLabel={request.actionLabel}
-          onPress={() => router.push(request.route as never)}
-        />
-      ))}
-    </View>
+  // One banner per request, spaced exactly like every other Home banner: the phone layout gives each its own
+  // top padding, the wide layout lets the parent's gap space them (so the amber strips are evenly apart).
+  return (
+    <>
+      {requests.map((request) => {
+        const banner = (
+          <PendingExpenseBanner
+            key={request.id}
+            count={request.count}
+            boldText={request.boldText}
+            restText={request.restText}
+            actionLabel={request.actionLabel}
+            onPress={() => router.push(request.route as never)}
+          />
+        );
+        return inset ? (
+          <View key={request.id} className="px-5 pt-4">{banner}</View>
+        ) : banner;
+      })}
+    </>
   );
-
-  if (!inset) return content;
-
-  return <View className="px-5 pt-4">{content}</View>;
 }
 
 // Notification Bell Component

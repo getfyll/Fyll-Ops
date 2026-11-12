@@ -1,6 +1,35 @@
 {
   "releases": [
     {
+      "version": "2.10.0",
+      "date": "2026-11-12T12:00:00Z",
+      "features": [
+        {
+          "icon": "sparkles",
+          "title": "Edit variants on your phone",
+          "body": "Every variant now has a small menu button. Tap it to edit the variant's image, name, SKU, price and stock, restock it, print its label or delete it."
+        },
+        {
+          "icon": "package",
+          "title": "Product and variant editors, in the new look",
+          "body": "Edit product, Add variant and Edit variant now fill the screen on a phone with the Fyll styling and new on/off switches."
+        },
+        {
+          "icon": "share",
+          "title": "Payment pages that fit your country",
+          "body": "Bank account details and public payment links now follow your business region, and customers can add an optional postcode at checkout."
+        },
+        {
+          "icon": "home",
+          "title": "Prices in your own currency",
+          "body": "Orders, products, quotes and checkout now show amounts in your business currency."
+        }
+      ],
+      "fixes": [
+        "Notices on Home that need your approval are now evenly spaced."
+      ]
+    },
+    {
       "version": "2.9.0",
       "date": "2026-11-03T18:00:00Z",
       "features": [

@@ -41,10 +41,39 @@ export function OrderFulfillmentSection({
   const orderStatuses = useFyllStore((s) => s.orderStatuses);
   const snapshot = getFulfillmentSnapshot(order, new Date(), orderStatuses);
   const activeStage = snapshot.stage;
-  const steps = useMemo(
-    () => sortOrderStatusesForFulfillment(orderStatuses).filter((status) => !/cancel/i.test(status.name) && orderStatusAppliesToOrder(status, isPickupOrder(order), order.status)),
-    [order, orderStatuses]
+  const resolvedTimeline = useMemo(
+    () => resolveOrderTimeline(
+      {
+        orderTypeId: order.orderTypeId,
+        orderTypeName: order.orderTypeName,
+        deliveryState: order.deliveryState,
+        fulfillmentMethod: isPickupOrder(order) ? 'pickup' : order.fulfillmentMethod,
+      },
+      orderTimelineSettings
+    ),
+    [order.deliveryState, order.fulfillmentMethod, order.fulfillmentType, order.shippingOptionId, order.orderTypeId, order.orderTypeName, orderTimelineSettings]
   );
+  const steps = useMemo(() => {
+    const isPickup = isPickupOrder(order);
+    const isApplicable = (status: (typeof orderStatuses)[number]) => (
+      !/cancel/i.test(status.name)
+      && orderStatusAppliesToOrder(status, isPickup, order.status)
+    );
+    const configuredStatusIds = resolvedTimeline.orderType.workflowStatusIds ?? [];
+
+    if (configuredStatusIds.length > 0) {
+      const statusById = new Map(orderStatuses.map((status) => [status.id, status] as const));
+      const configuredSteps = configuredStatusIds
+        .map((statusId) => statusById.get(statusId))
+        .filter((status): status is (typeof orderStatuses)[number] => Boolean(status && isApplicable(status)));
+
+      // A timeline may reference a status that was later deleted. Keep using
+      // the surviving configured steps, and only fall back when none remain.
+      if (configuredSteps.length > 0) return configuredSteps;
+    }
+
+    return sortOrderStatusesForFulfillment(orderStatuses).filter(isApplicable);
+  }, [order, orderStatuses, resolvedTimeline.orderType.workflowStatusIds]);
   const isCancelled = activeStage === 'cancelled';
   const stepIndex = steps.findIndex((status) => status.name === order.status);
   const nextStep = stepIndex >= 0 ? steps[stepIndex + 1] : undefined;
@@ -58,18 +87,6 @@ export function OrderFulfillmentSection({
     : stepIndex < 0
       ? 'Not started'
       : `Step ${stepIndex + 1} of ${steps.length}`;
-  const resolvedTimeline = useMemo(
-    () => resolveOrderTimeline(
-      {
-        orderTypeId: order.orderTypeId,
-        orderTypeName: order.orderTypeName,
-        deliveryState: order.deliveryState,
-        fulfillmentMethod: isPickupOrder(order) ? 'pickup' : order.fulfillmentMethod,
-      },
-      orderTimelineSettings
-    ),
-    [order.deliveryState, order.fulfillmentMethod, order.fulfillmentType, order.shippingOptionId, order.orderTypeId, order.orderTypeName, orderTimelineSettings]
-  );
   const timelineChip = useMemo(() => {
     if (snapshot.statusMeta.label.toLowerCase().includes('cancel')) {
       return { label: 'Cancelled', bg: 'rgba(220,38,38,0.14)', text: '#DC2626' };
@@ -130,7 +147,7 @@ export function OrderFulfillmentSection({
   return (
     <View style={{ gap: 18 }}>
       {title ? (
-        <Text style={{ color: palette.text, fontSize: isMobile ? 14 : 16, fontWeight: '600' }} numberOfLines={1}>{title}</Text>
+        <Text style={{ color: palette.text, fontSize: isMobile ? 14 : 16, lineHeight: isMobile ? 18 : 20, fontWeight: '600' }} numberOfLines={1}>{title}</Text>
       ) : null}
 
       <View style={{ gap: 10 }}>

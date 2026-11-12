@@ -4,21 +4,26 @@
 // table itself has no anon grants at all.
 import { supabase } from '../supabase';
 import { resolveBusinessAssetUrl } from '@/lib/storage-attachments';
+import type { BankAccountSnapshot } from '@/lib/state/fyll-store';
+import { normalizeCountry, normalizeCurrency, type CurrencyCode } from '@/lib/locale';
 
 export interface PublicSocialCheckoutDraft {
   businessId: string;
   businessName: string;
   businessLogo: string | null;
+  country: string;
+  currency: CurrencyCode;
   status: 'awaiting_payment' | 'payment_submitted' | 'verified' | 'rejected' | 'cancelled' | 'expired';
   amount: number;
   billNote: string;
-  bankAccount: { bankName: string; accountName: string; accountNumber: string };
+  bankAccount: BankAccountSnapshot;
   expiresAt: string;
   customerName?: string;
   customerPhone?: string;
   customerEmail?: string;
   deliveryAddress?: string;
   deliveryState?: string;
+  deliveryPostcode?: string;
 }
 
 const normalizeDraftPayload = (value: unknown): PublicSocialCheckoutDraft | null => {
@@ -32,6 +37,8 @@ const normalizeDraftPayload = (value: unknown): PublicSocialCheckoutDraft | null
     businessId,
     businessName: typeof next.businessName === 'string' && next.businessName.trim() ? next.businessName.trim() : 'Fyll',
     businessLogo: resolveBusinessAssetUrl(typeof next.businessLogo === 'string' && next.businessLogo.trim() ? next.businessLogo.trim() : null),
+    country: normalizeCountry(next.country),
+    currency: normalizeCurrency(next.currency),
     status: status as PublicSocialCheckoutDraft['status'],
     amount: Number(next.amount) || 0,
     billNote: typeof next.billNote === 'string' ? next.billNote : '',
@@ -44,6 +51,7 @@ const normalizeDraftPayload = (value: unknown): PublicSocialCheckoutDraft | null
     customerEmail: typeof next.customerEmail === 'string' ? next.customerEmail : '',
     deliveryAddress: typeof next.deliveryAddress === 'string' ? next.deliveryAddress : '',
     deliveryState: typeof next.deliveryState === 'string' ? next.deliveryState : '',
+    deliveryPostcode: typeof next.deliveryPostcode === 'string' ? next.deliveryPostcode : '',
   };
 };
 
@@ -60,6 +68,7 @@ export const submitSocialCheckoutPayment = async ({
   customerEmail,
   deliveryAddress,
   deliveryState,
+  deliveryPostcode,
   proofImageUrl,
 }: {
   code: string;
@@ -68,6 +77,7 @@ export const submitSocialCheckoutPayment = async ({
   customerEmail: string;
   deliveryAddress: string;
   deliveryState: string;
+  deliveryPostcode: string;
   proofImageUrl: string;
 }) => {
   const { data, error } = await supabase.rpc('submit_social_checkout_payment', {
@@ -77,6 +87,7 @@ export const submitSocialCheckoutPayment = async ({
     customer_email_input: customerEmail,
     delivery_address_input: deliveryAddress,
     delivery_state_input: deliveryState,
+    delivery_postcode_input: deliveryPostcode,
     proof_image_url_input: proofImageUrl,
   });
   if (error) throw error;
@@ -93,6 +104,7 @@ export const saveSocialCheckoutDetails = async ({
   customerEmail,
   deliveryAddress,
   deliveryState,
+  deliveryPostcode,
 }: {
   code: string;
   customerName: string;
@@ -100,6 +112,7 @@ export const saveSocialCheckoutDetails = async ({
   customerEmail: string;
   deliveryAddress: string;
   deliveryState: string;
+  deliveryPostcode: string;
 }) => {
   const { data, error } = await supabase.rpc('save_social_checkout_details', {
     code_input: code.trim().toUpperCase(),
@@ -108,6 +121,7 @@ export const saveSocialCheckoutDetails = async ({
     customer_email_input: customerEmail,
     delivery_address_input: deliveryAddress,
     delivery_state_input: deliveryState,
+    delivery_postcode_input: deliveryPostcode,
   });
   if (error) throw error;
   return data as { ok: boolean; error?: string };

@@ -21,6 +21,7 @@ import { prepareProductMediaForPersistence } from '@/lib/product-media';
 import { ResolvedAttachmentImage } from '@/components/ResolvedAttachmentImage';
 import { ServiceDetailPanel } from '@/components/ServiceDetailPanel';
 import { BackButton, FYLL_LIME, FYLL_LIME_INK, usePaymentsPalette } from '@/components/payments/payments-ui';
+import { useBusinessCurrency } from '@/hooks/useBusinessCurrency';
 
 const VARIABLE_TYPES: ServiceVariableType[] = ['Select', 'Number', 'Toggle', 'Text'];
 const FIELD_TYPES: ServiceFieldType[] = ['Text', 'Date', 'Time', 'Number', 'Price', 'Select'];
@@ -41,6 +42,7 @@ export default function ServiceDetailScreen() {
   const router = useRouter();
   const colors = useThemeColors();
   const palette = usePaymentsPalette();
+  const { currencySymbol } = useBusinessCurrency();
   const { isMobile, isDesktop, width } = useBreakpoint();
   const isWebDesktop = Platform.OS === 'web' && isDesktop;
   const isMobileWeb = Platform.OS === 'web' && isMobile;
@@ -714,7 +716,7 @@ export default function ServiceDetailScreen() {
                   <TextInput
                     value={price}
                     onChangeText={setPrice}
-                    placeholder="₦0"
+                    placeholder={`${currencySymbol}0`}
                     placeholderTextColor={colors.text.muted}
                     keyboardType="numeric"
                     style={{

@@ -45,6 +45,7 @@ import { getTeamThreadChannelById, getTeamThreadDisplayNameFromEntityId, isTeamT
 import { supabaseData } from '@/lib/supabase/data';
 import { createWooCommerceOrderFromFyll, fetchWooCommerceOrder } from '@/lib/woocommerce';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
+import { useBusinessCurrency } from '@/hooks/useBusinessCurrency';
 import { useWooCommerceAvailable } from '@/hooks/useWooCommerceAvailable';
 import { FYLL_LIME, FYLL_LIME_INK, MoneyText } from '@/components/payments/payments-ui';
 import { formatPickupHours, isPickupOrder, normalizePickupSettings, orderStatusAppliesToOrder } from '@/lib/pickup';
@@ -194,6 +195,7 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
   const isOfflineMode = useAuthStore((s) => s.isOfflineMode);
   const wooAvailable = useWooCommerceAvailable();
   const { woocommerceStoreUrl, woocommerceConsumerKey, woocommerceConsumerSecret, hasWooCommerceConnection, pickupSettings: businessPickupSettings } = useBusinessSettings();
+  const { currencySymbol } = useBusinessCurrency();
   const [pendingCancelOrder, setPendingCancelOrder] = useState(false);
   const [pendingDeleteOrder, setPendingDeleteOrder] = useState(false);
   const [showStatusModal, setShowStatusModal] = useState(false);
@@ -1771,7 +1773,7 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
                   style={{ marginTop: 10, height: 44, borderRadius: 999, backgroundColor: '#DCEB45', alignItems: 'center', justifyContent: 'center', flexDirection: 'row', opacity: isSendingToWoo ? 0.65 : 1 }}
                 >
                   {isSendingToWoo ? <ActivityIndicator size="small" color="#17190B" /> : <Send size={16} color="#17190B" strokeWidth={2.3} />}
-                  <Text style={{ color: '#17190B', fontSize: 13, fontWeight: '600', marginLeft: 8 }}>{isSendingToWoo ? 'Sending…' : 'Send to Woo'}</Text>
+                  <Text style={{ color: '#17190B', fontSize: 14, fontWeight: '600', marginLeft: 8 }}>{isSendingToWoo ? 'Sending…' : 'Send to Woo'}</Text>
                 </Pressable>
               </View>
             ) : null}
@@ -2205,7 +2207,7 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
                 <View className="mb-4">
                   <Text style={{ color: colors.text.primary }} className="text-sm font-medium mb-2">Refund Amount *</Text>
                   <View className="rounded-xl px-4 flex-row items-center" style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.input.border, height: 52 }}>
-                    <Text style={{ color: colors.input.placeholder, fontSize: 14, marginRight: 4 }}>₦</Text>
+                    <Text style={{ color: colors.input.placeholder, fontSize: 14, marginRight: 4 }}>{currencySymbol}</Text>
                     <TextInput
                       placeholder="0"
                       placeholderTextColor={colors.input.placeholder}
@@ -2494,7 +2496,7 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
                 <View className="mb-4">
                   <Text style={{ color: colors.text.primary }} className="text-sm font-medium mb-2">Refund Amount *</Text>
                   <View className="rounded-xl px-4 flex-row items-center" style={{ backgroundColor: colors.input.bg, borderWidth: 1, borderColor: colors.input.border, height: 52 }}>
-                    <Text style={{ color: colors.input.placeholder, fontSize: 14, marginRight: 4 }}>₦</Text>
+                    <Text style={{ color: colors.input.placeholder, fontSize: 14, marginRight: 4 }}>{currencySymbol}</Text>
                     <TextInput
                       placeholder="0"
                       placeholderTextColor={colors.input.placeholder}
