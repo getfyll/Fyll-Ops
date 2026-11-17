@@ -200,7 +200,9 @@ const normalizeCategoryToken = (value?: string | null): string => (
 );
 
 export function getOrderClassification(order: Order): OrderClassification {
+  if (order.replacementFor?.caseId) return 'Replacement';
   const explicit = normalizeCategoryToken(order.orderClassification);
+  if (explicit === 'replacement') return 'Replacement';
   if (explicit === 'sale') return 'Sale';
   if (explicit === 'pr' || explicit === 'press') return 'PR';
   if (explicit === 'gift' || explicit === 'gifting') return 'Gift';
@@ -227,7 +229,7 @@ export function getOrderCategoryBreakdown(orders: Order[]): CategoryBreakdown[] 
     counts.set(category, (counts.get(category) ?? 0) + 1);
   });
   const total = orders.length;
-  return (['Sale', 'PR', 'Gift'] as OrderClassification[])
+  return (['Sale', 'PR', 'Gift', 'Replacement'] as OrderClassification[])
     .map((label) => ({
       label,
       value: counts.get(label) ?? 0,
@@ -243,7 +245,7 @@ export function getRevenueByOrderCategory(orders: Order[]): CategoryBreakdown[] 
     totals.set(category, (totals.get(category) ?? 0) + order.totalAmount);
   });
   const totalRevenue = orders.reduce((sum, order) => sum + order.totalAmount, 0);
-  return (['Sale', 'PR', 'Gift'] as OrderClassification[])
+  return (['Sale', 'PR', 'Gift', 'Replacement'] as OrderClassification[])
     .map((label) => ({
       label,
       value: totals.get(label) ?? 0,

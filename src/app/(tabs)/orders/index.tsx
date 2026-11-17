@@ -15,6 +15,7 @@ import { usePageHeadingStyle } from '@/lib/page-heading';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { MOBILE_FILTER_SHEET } from '@/lib/mobile-filter-sheet';
 import { FilterButton } from '@/components/filter-ui';
+import { OrderCaseChip, buildOrderCaseStates, type OrderCaseState } from '@/components/OrderCaseChip';
 import { useTabBarHeight } from '@/lib/useTabBarHeight';
 import { getActiveSplitCardStyle } from '@/lib/selection-style';
 import { SplitViewLayout } from '@/components/SplitViewLayout';
@@ -199,6 +200,7 @@ interface OrderCardProps {
   unreadCount?: number;
   isFirstInGroup?: boolean;
   isLastInGroup?: boolean;
+  caseState?: OrderCaseState;
 }
 
 const getOrderDate = (order: Order) => new Date(order.orderDate ?? order.createdAt);
@@ -253,7 +255,7 @@ const formatOrderItemSummary = (order: Order, products: Product[]) => {
   return `${productName}${details ? ` - ${details}` : ''}${suffix}`;
 };
 
-function OrderCard({ order, products, statusColor, onPress, isSelected, showSplitView, separatorColor, unreadCount, isFirstInGroup, isLastInGroup }: OrderCardProps) {
+function OrderCard({ order, products, statusColor, onPress, isSelected, showSplitView, separatorColor, unreadCount, isFirstInGroup, isLastInGroup, caseState }: OrderCardProps) {
   const colors = useThemeColors();
   const isDark = colors.bg.primary === '#111111';
   const statusDisplay = getOrderStatusDisplay(order.status);
@@ -308,6 +310,7 @@ function OrderCard({ order, products, statusColor, onPress, isSelected, showSpli
               <View className="flex-row items-center" style={{ gap: 5, minWidth: 0 }}>
                 <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: chipTextColor }} />
                 <Text style={{ color: chipTextColor, fontSize: 10, fontWeight: '600' }} numberOfLines={1}>{statusDisplay.label}</Text>
+                <OrderCaseChip state={caseState} size="xs" />
               </View>
               {timelineMeta ? <View className="flex-row items-center" style={{ gap: 5 }}>{TimelineIcon ? <TimelineIcon size={11} color={timelineMeta.text} strokeWidth={2.2} /> : null}<Text style={{ color: timelineMeta.text, fontSize: 10 }} numberOfLines={1}>{timelineMeta.dayLabel ? `${timelineMeta.dayLabel} · ` : ''}{timelineMeta.label}</Text></View> : null}
             </View>
@@ -328,6 +331,7 @@ function OrderRowWeb({
   separatorColor,
   isLast,
   unreadCount,
+  caseState,
 }: {
   order: Order;
   products: Product[];
@@ -338,6 +342,7 @@ function OrderRowWeb({
   separatorColor: string;
   isLast?: boolean;
   unreadCount?: number;
+  caseState?: OrderCaseState;
 }) {
   const colors = useThemeColors();
   const isDark = colors.bg.primary === '#111111';
@@ -377,6 +382,7 @@ function OrderRowWeb({
           {order.flagNote && (
             <Flag size={12} color={colors.accent.warning} fill={colors.accent.warning} strokeWidth={2} />
           )}
+          <OrderCaseChip state={caseState} />
           {(unreadCount ?? 0) > 0 && (
             <View style={{
               backgroundColor: '#DC2626',
@@ -454,6 +460,9 @@ export default function OrdersScreen() {
   const contentMaxWidth = isWebDesktop ? 1456 : isDesktop ? 980 : undefined;
 
   const orders = useFyllStore((s) => s.orders);
+  const cases = useFyllStore((s) => s.cases);
+  const orderCaseStates = useMemo(() => buildOrderCaseStates(cases), [cases]);
+  const openCaseOrderCount = useMemo(() => Object.values(orderCaseStates).filter((state) => state === 'open').length, [orderCaseStates]);
   const products = useFyllStore((s) => s.products);
   const orderStatuses = useFyllStore((s) => s.orderStatuses);
   const lastDataSyncAt = useFyllStore((s) => s.lastDataSyncAt);
@@ -486,6 +495,7 @@ export default function OrdersScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
   const [selectedSource, setSelectedSource] = useState<string | null>(null);
+  const [onlyOpenCases, setOnlyOpenCases] = useState<boolean>(false);
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   const [showFyllAiModal, setShowFyllAiModal] = useState(false);
   const [aiTextFocused, setAiTextFocused] = useState<boolean>(false);
@@ -543,6 +553,10 @@ export default function OrdersScreen() {
       result = result.filter((o) => o.source === selectedSource);
     }
 
+    if (onlyOpenCases) {
+      result = result.filter((o) => orderCaseStates[o.id] === 'open');
+    }
+
     // Apply sorting
     result = result.sort((a, b) => {
       switch (sortBy) {
@@ -564,7 +578,7 @@ export default function OrdersScreen() {
     });
 
     return result;
-  }, [orders, products, searchQuery, selectedStatus, selectedSource, sortBy]);
+  }, [orders, products, searchQuery, selectedStatus, selectedSource, onlyOpenCases, orderCaseStates, sortBy]);
 
   const visibleOrders = useMemo(
     () => filteredOrders.slice(0, visibleOrdersCount),
@@ -719,7 +733,7 @@ export default function OrdersScreen() {
     return counts;
   }, {}), [orders]);
 
-  const activeFilterCount = (selectedStatus ? 1 : 0) + (selectedSource ? 1 : 0) + (sortBy !== 'newest' ? 1 : 0);
+  const activeFilterCount = (selectedStatus ? 1 : 0) + (selectedSource ? 1 : 0) + (onlyOpenCases ? 1 : 0) + (sortBy !== 'newest' ? 1 : 0);
   const unlinkedVerifiedPayments = useMemo(() => (paymentsQuery.data ?? []).filter((payment) => {
     const status = normalizeOrderStatusLabel(payment.status);
     if (!['verified', 'confirmed', 'payment confirmed', 'paid'].includes(status)) return false;
@@ -731,7 +745,7 @@ export default function OrdersScreen() {
     ));
   }), [orders, paymentsQuery.data]);
   const firstUnlinkedPayment = unlinkedVerifiedPayments[0];
-  const hasOrderFilters = Boolean(searchQuery.trim() || selectedStatus || selectedSource);
+  const hasOrderFilters = Boolean(searchQuery.trim() || selectedStatus || selectedSource || onlyOpenCases);
 
   const handleEmptyStateAction = () => {
     if (orders.length === 0) {
@@ -741,6 +755,7 @@ export default function OrdersScreen() {
     setSearchQuery('');
     setSelectedStatus(null);
     setSelectedSource(null);
+    setOnlyOpenCases(false);
     setSortBy('newest');
   };
 
@@ -946,13 +961,13 @@ export default function OrdersScreen() {
               <View>
                 {isFirstInGroup ? <View style={{ paddingHorizontal: 22, paddingTop: 10, paddingBottom: 8, backgroundColor: isDark ? '#101010' : '#F7F7F7', borderLeftWidth: 1, borderRightWidth: 1, borderBottomWidth: 1, borderColor: separatorColor }}><Text style={{ color: colors.text.secondary, fontSize: 10, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{groupLabel}</Text></View> : null}
                 <View style={{ borderLeftWidth: 1, borderRightWidth: 1, borderBottomWidth: isLast ? 1 : 0, borderColor: separatorColor, borderBottomLeftRadius: isLast ? 18 : 0, borderBottomRightRadius: isLast ? 18 : 0, overflow: 'hidden', backgroundColor: colors.bg.card }}>
-                  <OrderRowWeb order={order} products={products} statusColor={getOrderStatusColor(order.status, statusColorMap, '#888888')} isSelected={selectedOrderId === order.id} onPress={() => handleOrderSelect(order.id)} separatorColor={separatorColor} isLast={isLast} unreadCount={unreadCounts[order.id] ?? 0} />
+                  <OrderRowWeb order={order} products={products} statusColor={getOrderStatusColor(order.status, statusColorMap, '#888888')} isSelected={selectedOrderId === order.id} onPress={() => handleOrderSelect(order.id)} separatorColor={separatorColor} isLast={isLast} unreadCount={unreadCounts[order.id] ?? 0} caseState={orderCaseStates[order.id]} />
                 </View>
               </View>
             ) : (
               <View style={{ marginTop: isFirstInGroup && index > 0 ? 18 : 0 }}>
                 {isFirstInGroup ? <Text style={{ color: colors.text.muted, fontSize: 10, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase', paddingHorizontal: 4, marginBottom: 8 }}>{groupLabel}</Text> : null}
-                <OrderCard order={order} products={products} statusColor={getOrderStatusColor(order.status, statusColorMap, '#888888')} isSelected={selectedOrderId === order.id} showSplitView={showSplitView} onPress={() => handleOrderSelect(order.id)} separatorColor={separatorColor} unreadCount={unreadCounts[order.id] ?? 0} isFirstInGroup={isFirstInGroup} isLastInGroup={isLastInGroup} />
+                <OrderCard order={order} products={products} statusColor={getOrderStatusColor(order.status, statusColorMap, '#888888')} isSelected={selectedOrderId === order.id} showSplitView={showSplitView} onPress={() => handleOrderSelect(order.id)} separatorColor={separatorColor} unreadCount={unreadCounts[order.id] ?? 0} isFirstInGroup={isFirstInGroup} isLastInGroup={isLastInGroup} caseState={orderCaseStates[order.id]} />
               </View>
             );
           }}
@@ -1163,6 +1178,29 @@ export default function OrdersScreen() {
                     ))}
                   </View>
                 )}
+
+                {/* Filter by Cases */}
+                <View className="px-5 pt-4" style={{ borderTopWidth: 0.5, borderTopColor: separatorColor, marginTop: 8 }}>
+                  <Text style={{ color: colors.text.muted }} className="text-xs font-semibold uppercase tracking-wider mb-3">Cases</Text>
+                  <Pressable
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setOnlyOpenCases((prev) => !prev);
+                    }}
+                    className="flex-row items-center py-3 active:opacity-70"
+                  >
+                    <View className="w-3 h-3 rounded-full mr-3" style={{ backgroundColor: '#D97706' }} />
+                    <View className="flex-1">
+                      <Text style={{ color: colors.text.primary }} className="font-medium text-sm">Has open case</Text>
+                    </View>
+                    <Text style={{ color: colors.text.muted, fontSize: 12, marginRight: 10 }}>{openCaseOrderCount}</Text>
+                    {onlyOpenCases && (
+                      <View className="w-5 h-5 rounded-full items-center justify-center" style={{ backgroundColor: FYLL_LIME }}>
+                        <Check size={12} color={FYLL_LIME_INK} strokeWidth={3} />
+                      </View>
+                    )}
+                  </Pressable>
+                </View>
 
                 {/* Sort Section */}
                 <View className="px-5 pt-4 pb-2" style={{ borderTopWidth: 0.5, borderTopColor: separatorColor, marginTop: 8 }}>

@@ -53,6 +53,7 @@ import { collaborationData } from '@/lib/supabase/collaboration';
 import { supabase } from '@/lib/supabase';
 import { inferRefundRequestType } from '@/lib/refund-requests';
 import { sendThreadNotification } from '@/hooks/useWebPushNotifications';
+import { createReplacementOrder, describeOrderItem, getReplaceableItems } from '@/lib/replacement';
 
 // Get icon for case type
 const getCaseTypeIcon = (type: CaseType, color: string, size: number = 20) => {
@@ -815,6 +816,21 @@ export function CaseDetailPanel({
       || member.email.toLowerCase().includes(query)
     );
   }, [assigneeQuery, assignableMembers]);
+
+  // Replacement order form state (kept above the early return so hooks always run in the same order).
+  const [replacementPicks, setReplacementPicks] = useState<Record<number, boolean>>({});
+  const [showReplacementForm, setShowReplacementForm] = useState<boolean>(false);
+  const replacementMutation = useMutation({
+    mutationFn: createReplacementOrder,
+    onSuccess: () => {
+      setShowReplacementForm(false);
+      setReplacementPicks({});
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    },
+    onError: () => {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    },
+  });
 
   if (!caseItem) {
     return (
@@ -1616,6 +1632,136 @@ export function CaseDetailPanel({
     </View>
   );
 
+  // Replacement: resend items as a free order that goes through fulfilment but never counts as a sale.
+  const replaceableItems = linkedOrder ? getReplaceableItems(linkedOrder) : [];
+  const replacementOrders = (caseItem.replacementOrders ?? []).map((entry) => ({
+    ...entry,
+    order: orders.find((order) => order.id === entry.orderId) ?? null,
+  }));
+  const isPicked = (index: number) => replacementPicks[index] ?? true;
+  const openOrder = (orderId: string) => {
+    Haptics.selectionAsync();
+    if (onNavigateToOrder) onNavigateToOrder(orderId);
+    else router.push(`/order/${orderId}`);
+  };
+  const pickedCount = replaceableItems.filter((_, index) => isPicked(index)).length;
+
+  const replacementSection = linkedOrder && (replaceableItems.length > 0 || replacementOrders.length > 0) ? (
+    <View
+      className="p-4 rounded-[26px] mt-4"
+      style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}
+    >
+      <Text style={{ color: palette.faint, fontSize: 10 }} className="font-bold uppercase tracking-widest mb-2">
+        Replacement
+      </Text>
+
+      {replacementOrders.map((entry) => (
+        <Pressable
+          key={entry.orderId}
+          onPress={() => openOrder(entry.orderId)}
+          className="flex-row items-center rounded-[18px] p-3 mb-2 active:opacity-80"
+          style={{ backgroundColor: palette.nudgeBg, borderWidth: 1, borderColor: 'rgba(91,106,14,0.25)' }}
+        >
+          <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: FYLL_LIME, alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+            <RefreshCcw size={15} color={FYLL_LIME_INK} strokeWidth={2} />
+          </View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ color: palette.text }} className="text-xs font-bold">Replacement sent · {entry.orderNumber}</Text>
+            <Text style={{ color: palette.muted, fontSize: 12 }} numberOfLines={1}>
+              {entry.order?.status ?? 'Order'} · {formatCurrency(0)} · not a sale
+            </Text>
+          </View>
+          <ExternalLink size={14} color={palette.faint} strokeWidth={2} />
+        </Pressable>
+      ))}
+
+      {replaceableItems.length > 0 && !showReplacementForm ? (
+        <>
+          {replacementOrders.length === 0 ? (
+            <Text style={{ color: palette.muted }} className="text-xs mb-3">
+              Send the customer new items as a free order. It goes through fulfilment and takes stock, but isn't counted as a sale.
+            </Text>
+          ) : null}
+          <Pressable
+            onPress={() => { Haptics.selectionAsync(); setShowReplacementForm(true); }}
+            className="rounded-full px-4 py-3 flex-row items-center justify-center active:opacity-80"
+            style={{ backgroundColor: replacementOrders.length > 0 ? palette.softFill : FYLL_LIME, borderWidth: replacementOrders.length > 0 ? 1 : 0, borderColor: palette.border }}
+          >
+            <RefreshCcw size={15} color={replacementOrders.length > 0 ? palette.text : FYLL_LIME_INK} strokeWidth={2} />
+            <MoneyText style={{ marginLeft: 6, fontSize: 14, color: replacementOrders.length > 0 ? palette.text : FYLL_LIME_INK }}>
+              {replacementOrders.length > 0 ? 'Send another replacement' : 'Send replacement'}
+            </MoneyText>
+          </Pressable>
+        </>
+      ) : null}
+
+      {showReplacementForm ? (
+        <View className="gap-2">
+          <Text style={{ color: palette.muted }} className="text-xs mb-1">
+            Items to resend from {linkedOrder.orderNumber}. Same customer and address, {formatCurrency(0)}, free delivery.
+          </Text>
+          {replaceableItems.map((item, index) => {
+            const picked = isPicked(index);
+            return (
+              <Pressable
+                key={`${item.productId}-${item.variantId}-${index}`}
+                onPress={() => setReplacementPicks((prev) => ({ ...prev, [index]: !picked }))}
+                className="flex-row items-center rounded-[18px] p-3 active:opacity-80"
+                style={{ backgroundColor: palette.softFill, borderWidth: 1, borderColor: picked ? palette.limeOnSurface : palette.border }}
+              >
+                <View style={{ width: 20, height: 20, borderRadius: 6, marginRight: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: picked ? FYLL_LIME : 'transparent', borderWidth: picked ? 0 : 1.5, borderColor: palette.faint }}>
+                  {picked ? <Check size={13} color={FYLL_LIME_INK} strokeWidth={3} /> : null}
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ color: palette.text }} className="text-xs font-semibold" numberOfLines={1}>
+                    {(() => {
+                      const { productName, variantName } = describeOrderItem(item);
+                      return variantName ? `${productName} · ${variantName}` : productName;
+                    })()}
+                  </Text>
+                  <Text style={{ color: palette.faint, fontSize: 11 }}>Qty {item.quantity}</Text>
+                </View>
+              </Pressable>
+            );
+          })}
+          {replacementMutation.error ? (
+            <Text style={{ color: palette.danger, fontSize: 12 }}>
+              {replacementMutation.error instanceof Error ? replacementMutation.error.message : 'Could not create the replacement order.'}
+            </Text>
+          ) : null}
+          <View className="flex-row gap-2 mt-1">
+            <Pressable
+              onPress={() => { setShowReplacementForm(false); replacementMutation.reset(); }}
+              className="flex-1 rounded-full py-3 items-center active:opacity-80"
+              style={{ backgroundColor: palette.softFill, borderWidth: 1, borderColor: palette.border }}
+            >
+              <Text style={{ color: palette.muted }} className="text-xs font-semibold">Cancel</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                if (!linkedOrder) return;
+                replacementMutation.mutate({
+                  caseItem,
+                  originalOrder: linkedOrder,
+                  lines: replaceableItems.map((item, index) => ({ item, quantity: isPicked(index) ? item.quantity : 0 })),
+                  staffName: userName,
+                  businessId,
+                });
+              }}
+              disabled={pickedCount === 0 || replacementMutation.isPending}
+              className="flex-[2] rounded-full py-3 items-center active:opacity-80"
+              style={{ backgroundColor: pickedCount === 0 ? palette.softFill : FYLL_LIME, opacity: replacementMutation.isPending ? 0.6 : 1 }}
+            >
+              <MoneyText style={{ fontSize: 14, color: pickedCount === 0 ? palette.faint : FYLL_LIME_INK }}>
+                {replacementMutation.isPending ? 'Creating…' : 'Create replacement order'}
+              </MoneyText>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
+    </View>
+  ) : null;
+
   const caseTypeSection = (
     <View
       className="p-4 rounded-[26px] mt-4"
@@ -2190,15 +2336,16 @@ export function CaseDetailPanel({
             <View style={{ flex: 1, minWidth: 0 }}>
               {caseDetailsSection}
               {linkedOrderSection}
+              {replacementSection}
               {caseTypeSection}
               {issueSummarySection}
               {originalMessageSection}
               {commentsSection}
-              {resolutionSection}
             </View>
             {/* Right Column */}
             <View style={{ width: rightRailWidth, maxWidth: rightRailWidth, flexShrink: 0 }}>
               {updateStatusSection}
+              {resolutionSection}
               {activitySection}
             </View>
           </View>
@@ -2613,6 +2760,8 @@ export function CaseDetailPanel({
                 </View>
               ) : null}
             </View>
+
+            {replacementSection}
 
             {/* Case Type Section */}
             <View

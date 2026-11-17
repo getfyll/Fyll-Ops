@@ -13,6 +13,7 @@ import useFyllStore, { formatCurrency, type Order } from '@/lib/state/fyll-store
 import useAuthStore from '@/lib/state/auth-store';
 import { findOrderTrackingStageByName } from '@/lib/order-status';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
+import { usePublicBusinessCurrency } from '@/hooks/usePublicBusinessCurrency';
 import {
   getCustomerTrackingCode,
   getFulfillmentDayMetrics,
@@ -1805,6 +1806,13 @@ export default function TrackOrderScreen() {
   });
   const runLookup = lookupMutation.mutate;
   const resetLookup = lookupMutation.reset;
+
+  // Show amounts in the currency of the business the customer paid, not the
+  // viewer's default (customers aren't signed in, so it'd fall back to ₦).
+  usePublicBusinessCurrency({
+    businessId: lookupMutation.data?.businessId ?? publicBusinessQuery.data?.businessId ?? null,
+    businessSlug: lookupMutation.data?.businessSlug ?? pickedBusiness?.slug ?? businessSlugParam,
+  });
 
   const resultOrder = lookupMutation.data?.order ?? null;
   const resultOrderStatuses = lookupMutation.data?.orderStatuses?.length ? lookupMutation.data.orderStatuses : orderStatuses;

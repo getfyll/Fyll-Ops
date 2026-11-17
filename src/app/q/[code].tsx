@@ -10,6 +10,7 @@ import * as Clipboard from 'expo-clipboard';
 import { Check, ChevronLeft, Lock, Upload, X } from 'lucide-react-native';
 import { useFonts, BricolageGrotesque_800ExtraBold } from '@expo-google-fonts/bricolage-grotesque';
 import { formatCurrency } from '@/lib/state/fyll-store';
+import { usePublicBusinessCurrency } from '@/hooks/usePublicBusinessCurrency';
 import { getQuotePublic, respondToQuote, submitQuoteProof, type PublicQuote } from '@/lib/supabase/quote-public';
 import { uploadSocialCheckoutProof } from '@/lib/storage-attachments';
 import { buildWhatsAppUrl, formatQuoteDate } from '@/lib/quotes';
@@ -404,6 +405,7 @@ function QuotePublicInner() {
   const [proofName, setProofName] = useState<string>('payment-screenshot.jpg');
   const [actionError, setActionError] = useState<string>('');
 
+  usePublicBusinessCurrency({ quoteCode: code });
   const quoteQuery = useQuery({
     queryKey: ['quote-public', code],
     enabled: Boolean(code),

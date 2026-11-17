@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, ScrollView, Pressable, Linking, Alert, Modal, TextInput, KeyboardAvoidingView, Platform, Image, Switch, ActivityIndicator } from 'react-native';
+import { ReplacementBanner, CaseReplacementRows } from '@/components/ReplacementLinks';
+import { OrderCaseChip, isCaseOpen, type OrderCaseState } from '@/components/OrderCaseChip';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
@@ -240,6 +242,14 @@ export default function OrderDetailScreen() {
     marginTop: isWebDesktop ? 18 : 14,
     marginHorizontal: isWebDesktop ? 0 : 16,
   };
+  // Same spacing and shape as the other cards, so the banner lines up with them.
+  const replacementBannerStyle = {
+    borderRadius: sectionCardStyle.borderRadius,
+    paddingHorizontal: sectionCardStyle.paddingHorizontal,
+    paddingVertical: isWebDesktop ? 18 : 14,
+    marginTop: sectionCardStyle.marginTop,
+    marginHorizontal: sectionCardStyle.marginHorizontal,
+  };
   const sectionTitleStyle = {
     color: palette.text,
     fontSize: isWebDesktop ? 16 : 14,
@@ -472,6 +482,10 @@ export default function OrderDetailScreen() {
   const orderCases = useMemo(() => {
     return cases.filter((caseItem) => caseItem.orderId === order?.id);
   }, [cases, order?.id]);
+
+  // "Case open" / "Case resolved" chip in the header; tapping opens the open case (or the latest one).
+  const headerCase = orderCases.find((caseItem) => isCaseOpen(caseItem)) ?? orderCases[orderCases.length - 1] ?? null;
+  const headerCaseState: OrderCaseState | null = headerCase ? (isCaseOpen(headerCase) ? 'open' : 'resolved') : null;
 
   const orderPartnerJobs = useMemo(() => {
     return partnerJobs.filter((job) => job.orderId === order?.id);
@@ -2506,8 +2520,8 @@ export default function OrderDetailScreen() {
       {orderCases.length > 0 ? (
         <View className="gap-2">
           {orderCases.map((caseItem) => (
+            <View key={caseItem.id} style={{ gap: 6 }}>
             <Pressable
-              key={caseItem.id}
               onPress={() => router.push(`/case/${caseItem.id}`)}
               className="flex-row items-center justify-between rounded-2xl px-4 py-3"
               style={{ backgroundColor: colors.bg.primary, borderWidth: 1, borderColor: colors.border.light }}
@@ -2515,6 +2529,8 @@ export default function OrderDetailScreen() {
               <Text style={{ color: colors.text.primary, fontSize: isWebDesktop ? 12 : 14, fontWeight: '600' }}>{caseItem.caseNumber}</Text>
               <ChevronRight size={18} color={colors.text.tertiary} strokeWidth={2} />
             </Pressable>
+              <CaseReplacementRows caseItem={caseItem} />
+            </View>
           ))}
         </View>
       ) : (
@@ -2805,6 +2821,7 @@ export default function OrderDetailScreen() {
                       >
                         {React.createElement(getStatusIcon(displayStatus), { size: 16, color: activeStatusDisplay.color, strokeWidth: 2.4 })}
                       </Pressable>
+                      <OrderCaseChip state={headerCaseState} size="md" onPress={headerCase ? () => router.push(`/case/${headerCase.id}`) : undefined} />
                     </View>
                     <Text style={{ color: palette.faint, fontSize: 13.5 }} numberOfLines={1}>{headerSubtitle}</Text>
                   </View>
@@ -2838,22 +2855,20 @@ export default function OrderDetailScreen() {
                     </View>
                   ) : null}
 
-                  <Button bricolage
+                  <Pressable
                     onPress={handleSaveAll}
                     disabled={!hasUnsavedChanges}
-                    fullWidth={false}
-                    size="sm"
-                    variant={isDark ? (hasUnsavedChanges ? 'secondary' : 'ghost') : 'primary'}
-                    icon={
-                      <Save
-                        size={16}
-                        color={isDark ? (hasUnsavedChanges ? '#111111' : '#E5E7EB') : '#FFFFFF'}
-                        strokeWidth={2.5}
-                      />
-                    }
+                    accessibilityRole="button"
+                    accessibilityLabel="Save changes"
+                    className="active:opacity-80"
+                    style={{
+                      ...ghostPillStyle,
+                      ...(hasUnsavedChanges ? { borderWidth: 0, backgroundColor: FYLL_LIME } : null),
+                    }}
                   >
-                    Save Changes
-                  </Button>
+                    <Save size={16} color={hasUnsavedChanges ? FYLL_LIME_INK : palette.muted} strokeWidth={2.5} />
+                    <Text style={{ color: hasUnsavedChanges ? FYLL_LIME_INK : palette.muted, fontSize: 14, fontWeight: '700' }}>Save Changes</Text>
+                  </Pressable>
 
                   <Pressable onPress={handleOpenEdit} accessibilityLabel="Edit order" className="active:opacity-80" style={iconButtonStyle}>
                     <Edit2 size={16} color={palette.text} strokeWidth={2.15} />
@@ -2895,9 +2910,9 @@ export default function OrderDetailScreen() {
                     />
                   </Pressable>
 
-                  <Pressable onPress={handlePrintLabel} accessibilityRole="button" accessibilityLabel="Print shipping label" className="active:opacity-80" style={{ ...ghostPillStyle, borderWidth: 0, backgroundColor: FYLL_LIME }}>
-                    <Printer size={15} color={FYLL_LIME_INK} strokeWidth={2.2} />
-                    <Text style={{ color: FYLL_LIME_INK, fontSize: isWebDesktop ? 14 : 14, fontWeight: '700' }}>Shipping label</Text>
+                  <Pressable onPress={handlePrintLabel} accessibilityRole="button" accessibilityLabel="Print shipping label" className="active:opacity-80" style={ghostPillStyle}>
+                    <Printer size={15} color={palette.text} strokeWidth={2.2} />
+                    <Text style={{ color: palette.text, fontSize: 14, fontWeight: '700' }}>Shipping label</Text>
                   </Pressable>
 
                   <Pressable
@@ -2934,6 +2949,7 @@ export default function OrderDetailScreen() {
                 >
                   {React.createElement(getStatusIcon(displayStatus), { size: 15, color: activeStatusDisplay.color, strokeWidth: 2.4 })}
                 </Pressable>
+                <OrderCaseChip state={headerCaseState} size="sm" onPress={headerCase ? () => router.push(`/case/${headerCase.id}`) : undefined} />
               </View>
               <Pressable
                 onPress={() => {
@@ -2988,6 +3004,7 @@ export default function OrderDetailScreen() {
           {isWebDesktop ? (
             <View style={{ flexDirection: 'row', gap: 18, alignItems: 'flex-start' }}>
               <View style={{ flex: 1, minWidth: 0 }}>
+                <ReplacementBanner order={order} style={replacementBannerStyle} />
                 {itemsSection}
                 {customerSection}
                 {sourcePaymentSection}
@@ -3010,6 +3027,7 @@ export default function OrderDetailScreen() {
             <>
               {updateStatusSection}
               {printLabelSection}
+              <ReplacementBanner order={order} style={replacementBannerStyle} />
               {itemsSection}
               {sourcePaymentSection}
               {wooCommerceSection}
@@ -4797,12 +4815,15 @@ export default function OrderDetailScreen() {
         >
           <View
             className="flex-row items-center px-5 py-4 rounded-xl"
-            style={{ backgroundColor: toast.type === 'success' ? '#111111' : '#EF4444' }}
+            style={{ backgroundColor: toast.type === 'success' ? FYLL_LIME : '#EF4444' }}
           >
-            <View className="w-8 h-8 rounded-full items-center justify-center mr-3 bg-white">
-              <Check size={18} color={toast.type === 'success' ? '#111111' : '#EF4444'} strokeWidth={2.5} />
+            <View
+              className="w-8 h-8 rounded-full items-center justify-center mr-3"
+              style={{ backgroundColor: toast.type === 'success' ? FYLL_LIME_INK : '#FFFFFF' }}
+            >
+              <Check size={18} color={toast.type === 'success' ? FYLL_LIME : '#EF4444'} strokeWidth={2.5} />
             </View>
-            <Text className="text-white font-semibold text-sm">{toast.message}</Text>
+            <Text className="font-semibold text-sm" style={{ color: toast.type === 'success' ? FYLL_LIME_INK : '#FFFFFF' }}>{toast.message}</Text>
           </View>
         </View>
       )}

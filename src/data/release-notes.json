@@ -1,6 +1,32 @@
 {
   "releases": [
     {
+      "version": "2.11.0",
+      "date": "2026-11-17T18:00:00Z",
+      "features": [
+        {
+          "icon": "package",
+          "title": "Send a replacement from a case",
+          "body": "When an item arrives damaged, open the case and tap Send replacement. Fyll creates a free order with the same customer and address, takes the items from stock and links it to the case and the original order. Replacements never count as sales."
+        },
+        {
+          "icon": "sparkles",
+          "title": "See which orders have a case",
+          "body": "Orders with an open case now show a Case open chip in the list and on the order page, and you can filter the list to Has open case. The order keeps its own status."
+        },
+        {
+          "icon": "share",
+          "title": "Your currency on customer pages",
+          "body": "Tracking and quote pages now show amounts in your business's currency, not just Naira."
+        }
+      ],
+      "fixes": [
+        "Save Changes on an order turns lime when you have unsaved changes, and Shipping label is now an outlined button.",
+        "Order update messages now show in Fyll lime.",
+        "On web, Add Resolution on a case now sits in the right column under the status."
+      ]
+    },
+    {
       "version": "2.10.1",
       "date": "2026-11-12T20:00:00Z",
       "features": [

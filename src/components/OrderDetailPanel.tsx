@@ -13,6 +13,8 @@ import {
   Switch,
   ActivityIndicator,
 } from 'react-native';
+import { ReplacementBanner, CaseReplacementRows } from '@/components/ReplacementLinks';
+import { OrderCaseChip, isCaseOpen, type OrderCaseState } from '@/components/OrderCaseChip';
 import { useQuery } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -268,6 +270,10 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
   const orderCases = useMemo(() => {
     return cases.filter((caseItem) => caseItem.orderId === order?.id);
   }, [cases, order?.id]);
+
+  // "Case open" / "Case resolved" chip in the header; tapping opens the open case (or the latest one).
+  const headerCase = orderCases.find((caseItem) => isCaseOpen(caseItem)) ?? orderCases[orderCases.length - 1] ?? null;
+  const headerCaseState: OrderCaseState | null = headerCase ? (isCaseOpen(headerCase) ? 'open' : 'resolved') : null;
 
   const latestRefundRequest = useMemo(() => {
     const matchingRequests = refundRequests
@@ -1328,6 +1334,7 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
                   {displayStatus}
                 </Text>
               </Pressable>
+              <OrderCaseChip state={headerCaseState} size="md" onPress={headerCase ? () => router.push(`/case/${headerCase.id}`) : undefined} />
             </View>
             <Text style={{ color: colors.text.muted, fontSize: 13, marginTop: 4 }}>{orderDate}</Text>
           </View>
@@ -1418,6 +1425,11 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
       </View>
 
       {/* Customer Info */}
+      {order.replacementFor?.caseId ? (
+        <View style={{ paddingHorizontal: 20, paddingTop: 16 }}>
+          <ReplacementBanner order={order} />
+        </View>
+      ) : null}
       <DetailSection title="Customer">
         <Text style={{ color: colors.text.primary, fontSize: 17, fontWeight: '600', marginBottom: 8 }}>
           {order.customerName}
@@ -2699,8 +2711,8 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
         {orderCases.length > 0 ? (
           <View className="gap-2">
             {orderCases.map((caseItem) => (
+              <View key={caseItem.id} style={{ gap: 6 }}>
               <Pressable
-                key={caseItem.id}
                 onPress={() => router.push(`/case/${caseItem.id}`)}
                 className="flex-row items-center justify-between rounded-2xl px-4 py-3"
                 style={{ backgroundColor: colors.bg.secondary }}
@@ -2708,6 +2720,8 @@ export function OrderDetailPanel({ orderId, onClose, disableRootFlex = false }: 
                 <Text style={{ color: colors.text.primary, fontWeight: '600' }}>{caseItem.caseNumber}</Text>
                 <ChevronRight size={18} color={colors.text.tertiary} strokeWidth={2} />
               </Pressable>
+                <CaseReplacementRows caseItem={caseItem} />
+              </View>
             ))}
           </View>
         ) : (

@@ -226,7 +226,9 @@ export interface PaymentMethod {
   name: string;
 }
 
-export type OrderClassification = 'Sale' | 'PR' | 'Gift';
+// 'Replacement' = a free resend for a case (e.g. damaged on arrival). It goes through fulfilment and takes stock,
+// but is never counted as a sale. Only created from a case, so it is not in the pickers below.
+export type OrderClassification = 'Sale' | 'PR' | 'Gift' | 'Replacement';
 
 export const ORDER_CLASSIFICATIONS: OrderClassification[] = ['Sale', 'PR', 'Gift'];
 
@@ -444,6 +446,13 @@ export interface Order {
   discountAmount?: number; // Discount amount
   paymentMethod: string;
   orderClassification?: OrderClassification;
+  // Set on a replacement order: the order and case it replaces items for.
+  replacementFor?: {
+    orderId?: string;
+    orderNumber?: string;
+    caseId: string;
+    caseNumber: string;
+  };
   logistics?: LogisticsInfo;
   tracking?: {
     trackingStage?: OrderTrackingStage;
@@ -1046,6 +1055,8 @@ export interface Case {
   issueSummary: string; // Short description
   originalCustomerMessage?: string; // Full customer complaint/message
   resolution?: CaseResolution;
+  // Replacement orders sent out from this case (free resends that go through fulfilment).
+  replacementOrders?: { orderId: string; orderNumber: string; createdAt: string; createdBy?: string }[];
   attachments?: CaseAttachment[];
   timeline?: CaseTimelineEntry[]; // Audit history of all actions
   createdAt: string;
