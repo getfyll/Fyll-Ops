@@ -1057,6 +1057,9 @@ export interface Case {
   resolution?: CaseResolution;
   // Replacement orders sent out from this case (free resends that go through fulfilment).
   replacementOrders?: { orderId: string; orderNumber: string; createdAt: string; createdBy?: string }[];
+  // Customer emails sent about this case (case opened, replacement, refund, resolved). Off when emailCustomer is false.
+  emailCustomer?: boolean;
+  customerEmails?: { type: string; sentAt: string; to?: string; sentBy?: string; ref?: string }[];
   attachments?: CaseAttachment[];
   timeline?: CaseTimelineEntry[]; // Audit history of all actions
   createdAt: string;

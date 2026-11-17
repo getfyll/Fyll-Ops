@@ -142,9 +142,10 @@ export async function createReplacementOrder({
       ...(caseItem.replacementOrders ?? []),
       { orderId: id, orderNumber, createdAt: nowIso, createdBy: staffName },
     ],
+    // Newest first, like the rest of the case timeline.
     timeline: [
-      ...(caseItem.timeline ?? []),
       { id: Math.random().toString(36).substring(2, 12), date: nowIso, action: `Replacement order ${orderNumber} created (${summary})`, user: staffName },
+      ...(caseItem.timeline ?? []),
     ],
     updatedAt: nowIso,
     updatedBy: staffName,

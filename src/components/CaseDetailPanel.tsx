@@ -54,6 +54,7 @@ import { supabase } from '@/lib/supabase';
 import { inferRefundRequestType } from '@/lib/refund-requests';
 import { sendThreadNotification } from '@/hooks/useWebPushNotifications';
 import { createReplacementOrder, describeOrderItem, getReplaceableItems } from '@/lib/replacement';
+import { CASE_EMAIL_LABELS, caseEmailTypeForResolution, getCaseCustomerEmail, isCaseEmailOn, sendCaseEmail } from '@/lib/supabase/case-emails';
 
 // Get icon for case type
 const getCaseTypeIcon = (type: CaseType, color: string, size: number = 20) => {
@@ -89,11 +90,30 @@ interface CaseDetailPanelProps {
   showBackButton?: boolean;
 }
 
+// Each teammate gets a steady colour from their name, so people are easy to tell apart in lists and comments.
+const AVATAR_TONES: { dark: string; light: string }[] = [
+  { dark: '#D5E057', light: '#5B6A0E' }, // lime
+  { dark: '#7CB4FF', light: '#1D5FBF' }, // blue
+  { dark: '#F5B041', light: '#A5650C' }, // amber
+  { dark: '#F48FB1', light: '#B4235F' }, // pink
+  { dark: '#5ED6C0', light: '#0F7A68' }, // teal
+  { dark: '#B39DFF', light: '#5B3FC4' }, // violet
+  { dark: '#FF8A7A', light: '#B3392A' }, // coral
+];
+
+const avatarToneFor = (name: string) => {
+  let hash = 0;
+  for (let i = 0; i < name.length; i += 1) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  return AVATAR_TONES[hash % AVATAR_TONES.length];
+};
+
 function CaseCommentAvatar({ member, size = 28 }: { member?: TeamMember; size?: number }) {
   const brand = usePaymentsPalette();
   const name = member?.name?.trim() ?? 'T';
   const initial = name.charAt(0).toUpperCase();
-  const bg = brand.avatarBg;
+  const tone = avatarToneFor((member?.email || name).toLowerCase());
+  const ink = brand.isDark ? tone.dark : tone.light;
+  const bg = `${ink}${brand.isDark ? '2E' : '22'}`;
 
   return (
     <View
@@ -106,7 +126,7 @@ function CaseCommentAvatar({ member, size = 28 }: { member?: TeamMember; size?: 
         backgroundColor: bg,
       }}
     >
-      <Text style={{ color: brand.avatarText, fontSize: size <= 24 ? 10 : 12, fontWeight: '700' }}>{initial}</Text>
+      <Text style={{ color: ink, fontSize: size <= 24 ? 10 : 12, fontWeight: '700' }}>{initial}</Text>
     </View>
   );
 }
@@ -820,14 +840,59 @@ export function CaseDetailPanel({
   // Replacement order form state (kept above the early return so hooks always run in the same order).
   const [replacementPicks, setReplacementPicks] = useState<Record<number, boolean>>({});
   const [showReplacementForm, setShowReplacementForm] = useState<boolean>(false);
+  const [emailReplacement, setEmailReplacement] = useState<boolean>(true);
+  const [replacementEmailNote, setReplacementEmailNote] = useState<string>('');
   const replacementMutation = useMutation({
-    mutationFn: createReplacementOrder,
-    onSuccess: () => {
+    mutationFn: async (vars: Parameters<typeof createReplacementOrder>[0] & { notify: boolean; note: string }) => {
+      const { notify, note, ...input } = vars;
+      const order = await createReplacementOrder(input);
+      let emailError = '';
+      if (notify) {
+        try {
+          const result = await sendCaseEmail({
+            caseId: input.caseItem.id,
+            type: 'replacement_sent',
+            businessId: input.businessId,
+            staffName: input.staffName,
+            message: note,
+            replacementOrderId: order.id,
+            replacementOrderNumber: order.orderNumber,
+          });
+          if (!result.sent) emailError = result.reason ?? 'Email not sent.';
+        } catch (error) {
+          emailError = error instanceof Error ? error.message : 'Email not sent.';
+        }
+      }
+      return { order, emailError };
+    },
+    onSuccess: ({ emailError }) => {
+      setReplacementEmailNote('');
+      setCaseEmailNotice(emailError ? `Replacement created, but the email wasn't sent: ${emailError}` : '');
       setShowReplacementForm(false);
       setReplacementPicks({});
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     },
     onError: () => {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    },
+  });
+
+  // Customer emails about the case.
+  const [caseEmailNotice, setCaseEmailNotice] = useState<string>('');
+  const [openedSummaryDraft, setOpenedSummaryDraft] = useState<string | null>(null);
+  const [emailOnResolve, setEmailOnResolve] = useState<boolean>(true);
+  const [resolutionCustomerMessage, setResolutionCustomerMessage] = useState<string>('');
+  const openedEmailMutation = useMutation({
+    mutationFn: sendCaseEmail,
+    onSuccess: (result) => {
+      setCaseEmailNotice(result.sent ? '' : (result.reason ?? 'Email not sent.'));
+      if (result.sent) {
+        setOpenedSummaryDraft(null);
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    },
+    onError: (error) => {
+      setCaseEmailNotice(error instanceof Error ? error.message : 'Email not sent.');
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     },
   });
@@ -867,6 +932,11 @@ export function CaseDetailPanel({
   const linkedOrder = caseItem.orderId
     ? (orders.find((order) => order.id === caseItem.orderId) ?? null)
     : null;
+  const caseCustomerEmail = getCaseCustomerEmail(caseItem);
+  const caseEmailsOn = isCaseEmailOn(caseItem);
+  const canEmailCustomer = Boolean(caseCustomerEmail) && caseEmailsOn;
+  const sentCaseEmails = caseItem.customerEmails ?? [];
+  const openedEmailSent = sentCaseEmails.find((entry) => entry.type === 'case_opened');
   const linkedReturn = caseItem.returnId
     ? (returns.find((item) => item.id === caseItem.returnId) ?? null)
     : returns.find((item) => item.caseId === caseItem.id) ?? null;
@@ -1024,10 +1094,30 @@ export function CaseDetailPanel({
       },
       businessId
     );
+    const resolutionEmailType = caseEmailTypeForResolution(resolutionType);
+    const shouldEmail = canEmailCustomer && emailOnResolve && resolutionEmailType !== null;
+    const customerMessage = resolutionCustomerMessage;
+    const parsedValue = resolutionValue ? parseFloat(resolutionValue) : undefined;
     setResolutionType('No Action Required');
     setResolutionNotes('');
     setResolutionValue('');
+    setResolutionCustomerMessage('');
     setShowResolutionModal(false);
+    if (shouldEmail && resolutionEmailType) {
+      try {
+        const result = await sendCaseEmail({
+          caseId: caseItem.id,
+          type: resolutionEmailType,
+          businessId,
+          staffName: userName,
+          message: customerMessage,
+          amount: parsedValue,
+        });
+        setCaseEmailNotice(result.sent ? '' : `Resolution saved, but the email wasn't sent: ${result.reason ?? ''}`);
+      } catch (error) {
+        setCaseEmailNotice(`Resolution saved, but the email wasn't sent: ${error instanceof Error ? error.message : ''}`);
+      }
+    }
   };
 
   const handleAssignCase = async (assigneeNames?: string[]) => {
@@ -1648,7 +1738,7 @@ export function CaseDetailPanel({
 
   const replacementSection = linkedOrder && (replaceableItems.length > 0 || replacementOrders.length > 0) ? (
     <View
-      className="p-4 rounded-[26px] mt-4"
+      className="p-4 rounded-[26px]"
       style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}
     >
       <Text style={{ color: palette.faint, fontSize: 10 }} className="font-bold uppercase tracking-widest mb-2">
@@ -1713,17 +1803,45 @@ export function CaseDetailPanel({
                   {picked ? <Check size={13} color={FYLL_LIME_INK} strokeWidth={3} /> : null}
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={{ color: palette.text }} className="text-xs font-semibold" numberOfLines={1}>
+                  <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>
                     {(() => {
                       const { productName, variantName } = describeOrderItem(item);
                       return variantName ? `${productName} · ${variantName}` : productName;
                     })()}
                   </Text>
-                  <Text style={{ color: palette.faint, fontSize: 11 }}>Qty {item.quantity}</Text>
+                  <Text style={{ color: palette.faint, fontSize: 10, marginTop: 2 }}>Qty {item.quantity}</Text>
                 </View>
               </Pressable>
             );
           })}
+          {canEmailCustomer ? (
+            <>
+          <Pressable
+            onPress={() => { Haptics.selectionAsync(); setEmailReplacement((prev) => !prev); }}
+            className="flex-row items-center rounded-[18px] p-3 active:opacity-80"
+            style={{ backgroundColor: palette.softFill, borderWidth: 1, borderColor: palette.border, gap: 10 }}
+          >
+            <View style={{ width: 20, height: 20, borderRadius: 6, alignItems: 'center', justifyContent: 'center', backgroundColor: emailReplacement ? FYLL_LIME : 'transparent', borderWidth: emailReplacement ? 0 : 1.5, borderColor: palette.faint }}>
+              {emailReplacement ? <Check size={13} color={FYLL_LIME_INK} strokeWidth={3} /> : null}
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={{ color: palette.text }} className="text-xs font-semibold">Email the customer with the tracking link</Text>
+              <Text style={{ color: palette.faint, fontSize: 11 }} numberOfLines={1}>To {caseCustomerEmail}</Text>
+            </View>
+          </Pressable>
+              {emailReplacement ? (
+                <FocusTextInput
+                  value={replacementEmailNote}
+                  onChangeText={setReplacementEmailNote}
+                  placeholder="Optional note to the customer, e.g. Sorry about the scratches!"
+                  placeholderTextColor={palette.faint}
+                  multiline
+                  className="rounded-[18px] p-3 text-xs"
+                  style={{ backgroundColor: palette.softFill, color: palette.text, borderWidth: 1, borderColor: palette.border, minHeight: 56, textAlignVertical: 'top' }}
+                />
+              ) : null}
+            </>
+          ) : null}
           {replacementMutation.error ? (
             <Text style={{ color: palette.danger, fontSize: 12 }}>
               {replacementMutation.error instanceof Error ? replacementMutation.error.message : 'Could not create the replacement order.'}
@@ -1735,7 +1853,7 @@ export function CaseDetailPanel({
               className="flex-1 rounded-full py-3 items-center active:opacity-80"
               style={{ backgroundColor: palette.softFill, borderWidth: 1, borderColor: palette.border }}
             >
-              <Text style={{ color: palette.muted }} className="text-xs font-semibold">Cancel</Text>
+              <MoneyText style={{ color: palette.muted, fontSize: 14 }}>Cancel</MoneyText>
             </Pressable>
             <Pressable
               onPress={() => {
@@ -1746,6 +1864,8 @@ export function CaseDetailPanel({
                   lines: replaceableItems.map((item, index) => ({ item, quantity: isPicked(index) ? item.quantity : 0 })),
                   staffName: userName,
                   businessId,
+                  notify: canEmailCustomer && emailReplacement,
+                  note: replacementEmailNote,
                 });
               }}
               disabled={pickedCount === 0 || replacementMutation.isPending}
@@ -1761,6 +1881,113 @@ export function CaseDetailPanel({
       ) : null}
     </View>
   ) : null;
+
+  const caseOpenedSummary = openedSummaryDraft ?? (caseItem.issueSummary ?? '');
+  const customerUpdatesSection = (
+    <View
+      className="p-4 rounded-[26px]"
+      style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}
+    >
+      <View className="flex-row items-center justify-between mb-2">
+        <Text style={{ color: palette.faint, fontSize: 10 }} className="font-bold uppercase tracking-widest">
+          Customer updates
+        </Text>
+        {caseCustomerEmail ? (
+          <Pressable
+            onPress={() => {
+              Haptics.selectionAsync();
+              void updateCase(caseItem.id, { emailCustomer: !caseEmailsOn, updatedBy: userName || undefined }, businessId);
+            }}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: caseEmailsOn }}
+            className="flex-row items-center active:opacity-80"
+            style={{ gap: 6 }}
+          >
+            <Text style={{ color: palette.muted, fontSize: 12 }}>Email customer</Text>
+            <View style={{ width: 34, height: 20, borderRadius: 10, padding: 2, backgroundColor: caseEmailsOn ? FYLL_LIME : palette.softFill, borderWidth: caseEmailsOn ? 0 : 1, borderColor: palette.border, alignItems: caseEmailsOn ? 'flex-end' : 'flex-start' }}>
+              <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: caseEmailsOn ? FYLL_LIME_INK : palette.faint }} />
+            </View>
+          </Pressable>
+        ) : null}
+      </View>
+
+      {!caseCustomerEmail ? (
+        <Text style={{ color: palette.muted }} className="text-xs">
+          No email address for this customer. Add one to the order or customer to send case updates.
+        </Text>
+      ) : !caseEmailsOn ? (
+        <Text style={{ color: palette.muted }} className="text-xs">
+          Emails are off for this case, so the customer won't get updates. Turn it on to send them.
+        </Text>
+      ) : (
+        <View style={{ gap: 10 }}>
+          <Text style={{ color: palette.muted }} className="text-xs">
+            Sent to {caseCustomerEmail}. Only the summary and resolution are shared, never internal notes.
+          </Text>
+          {!openedEmailSent ? (
+            <View style={{ gap: 8 }}>
+              <Text style={{ color: palette.faint, fontSize: 10 }} className="font-bold uppercase tracking-widest">
+                Summary for the customer
+              </Text>
+              <FocusTextInput
+                value={caseOpenedSummary}
+                onChangeText={setOpenedSummaryDraft}
+                placeholder="e.g. Your glasses arrived with scratches on the left lens."
+                placeholderTextColor={palette.faint}
+                multiline
+                className="rounded-[18px] p-3 text-xs"
+                style={{ backgroundColor: palette.softFill, color: palette.text, borderWidth: 1, borderColor: palette.border, minHeight: 64, textAlignVertical: 'top' }}
+              />
+              <Pressable
+                onPress={() => openedEmailMutation.mutate({
+                  caseId: caseItem.id,
+                  type: 'case_opened',
+                  businessId,
+                  staffName: userName,
+                  message: caseOpenedSummary,
+                })}
+                disabled={openedEmailMutation.isPending || !caseOpenedSummary.trim()}
+                className="rounded-full px-4 py-3 flex-row items-center justify-center active:opacity-80"
+                style={{ backgroundColor: caseOpenedSummary.trim() ? FYLL_LIME : palette.softFill, opacity: openedEmailMutation.isPending ? 0.6 : 1 }}
+              >
+                <Mail size={15} color={caseOpenedSummary.trim() ? FYLL_LIME_INK : palette.faint} strokeWidth={2} />
+                <MoneyText style={{ marginLeft: 6, fontSize: 14, color: caseOpenedSummary.trim() ? FYLL_LIME_INK : palette.faint }}>
+                  {openedEmailMutation.isPending ? 'Sending…' : 'Send "case opened" email'}
+                </MoneyText>
+              </Pressable>
+              <Text style={{ color: palette.faint, fontSize: 11 }}>
+                Tells the customer we're looking into it and will update them within 1–2 business days.
+              </Text>
+            </View>
+          ) : null}
+        </View>
+      )}
+
+      {caseEmailNotice ? (
+        <Text style={{ color: palette.danger, fontSize: 12, marginTop: 10 }}>{caseEmailNotice}</Text>
+      ) : null}
+
+      {sentCaseEmails.length > 0 ? (
+        <View className="mt-3 pt-3" style={{ borderTopWidth: 1, borderTopColor: palette.border, gap: 8 }}>
+          {sentCaseEmails.slice().reverse().map((entry) => (
+            <View key={`${entry.type}-${entry.sentAt}`} className="flex-row items-center" style={{ gap: 8 }}>
+              <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: palette.nudgeBg, alignItems: 'center', justifyContent: 'center' }}>
+                <Check size={12} color={palette.limeOnSurface} strokeWidth={3} />
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ color: palette.text }} className="text-xs font-semibold" numberOfLines={1}>
+                  {CASE_EMAIL_LABELS[entry.type as keyof typeof CASE_EMAIL_LABELS] ?? entry.type}{entry.ref ? ` · ${entry.ref}` : ''}
+                </Text>
+                <Text style={{ color: palette.faint, fontSize: 11 }} numberOfLines={1}>
+                  {new Date(entry.sentAt).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}{entry.sentBy ? ` · ${entry.sentBy}` : ''}
+                </Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
 
   const caseTypeSection = (
     <View
@@ -2336,7 +2563,7 @@ export function CaseDetailPanel({
             <View style={{ flex: 1, minWidth: 0 }}>
               {caseDetailsSection}
               {linkedOrderSection}
-              {replacementSection}
+              {replacementSection ? <View className="mt-4">{replacementSection}</View> : null}
               {caseTypeSection}
               {issueSummarySection}
               {originalMessageSection}
@@ -2346,6 +2573,7 @@ export function CaseDetailPanel({
             <View style={{ width: rightRailWidth, maxWidth: rightRailWidth, flexShrink: 0 }}>
               {updateStatusSection}
               {resolutionSection}
+              <View className="mt-4">{customerUpdatesSection}</View>
               {activitySection}
             </View>
           </View>
@@ -2429,18 +2657,18 @@ export function CaseDetailPanel({
                   Status
                 </Text>
                 <View
-                  className="self-start px-3.5 py-2 rounded-full flex-row items-center gap-2"
+                  className="self-start px-2.5 py-1.5 rounded-full flex-row items-center gap-1.5"
                   style={{ backgroundColor: statusColor + '20', borderWidth: 1, borderColor: statusColor + '35' }}
                 >
                   <View
                     style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: 4,
+                      width: 6,
+                      height: 6,
+                      borderRadius: 3,
                       backgroundColor: statusColor,
                     }}
                   />
-                  <Text style={{ color: statusColor, fontSize: 12 }} className="font-bold uppercase tracking-wider" numberOfLines={1}>
+                  <Text style={{ color: statusColor, fontSize: 10 }} className="font-bold uppercase tracking-wider" numberOfLines={1}>
                     {caseItem.status}
                   </Text>
                 </View>
@@ -2761,7 +2989,8 @@ export function CaseDetailPanel({
               ) : null}
             </View>
 
-            {replacementSection}
+            {replacementSection ? <View className="mb-4">{replacementSection}</View> : null}
+            <View className="mb-4">{customerUpdatesSection}</View>
 
             {/* Case Type Section */}
             <View
@@ -3372,6 +3601,36 @@ export function CaseDetailPanel({
                 textAlignVertical: 'top',
               }}
             />
+
+            {canEmailCustomer && caseEmailTypeForResolution(resolutionType) ? (
+              <View className="mb-5" style={{ gap: 8 }}>
+              <Pressable
+                onPress={() => { Haptics.selectionAsync(); setEmailOnResolve((prev) => !prev); }}
+                className="flex-row items-center rounded-[18px] p-3 active:opacity-80"
+                style={{ backgroundColor: palette.softFill, borderWidth: 1, borderColor: palette.border, gap: 10 }}
+              >
+                <View style={{ width: 20, height: 20, borderRadius: 6, alignItems: 'center', justifyContent: 'center', backgroundColor: emailOnResolve ? FYLL_LIME : 'transparent', borderWidth: emailOnResolve ? 0 : 1.5, borderColor: palette.faint }}>
+                  {emailOnResolve ? <Check size={13} color={FYLL_LIME_INK} strokeWidth={3} /> : null}
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ color: palette.text }} className="text-xs font-semibold">Email the customer: {CASE_EMAIL_LABELS[caseEmailTypeForResolution(resolutionType) ?? 'resolved']}</Text>
+                  <Text style={{ color: palette.faint, fontSize: 11 }} numberOfLines={1}>To {caseCustomerEmail}</Text>
+                </View>
+              </Pressable>
+                {emailOnResolve ? (
+                  <FocusTextInput
+                    value={resolutionCustomerMessage}
+                    onChangeText={setResolutionCustomerMessage}
+                    placeholder={caseEmailTypeForResolution(resolutionType) === 'refund' ? 'Message to the customer, e.g. Sent to your bank account ending 4521.' : 'Message to the customer, e.g. We have repaired your frames and sent them back.'}
+                    placeholderTextColor={palette.faint}
+                    multiline
+                    className="rounded-xl p-3 text-sm"
+                    style={{ backgroundColor: palette.softFill, color: palette.text, borderWidth: 1, borderColor: palette.border, minHeight: 64, textAlignVertical: 'top' }}
+                  />
+                ) : null}
+                <Text style={{ color: palette.faint, fontSize: 11 }}>Resolution notes above stay internal. Only this message is emailed.</Text>
+              </View>
+            ) : null}
 
             <View className="flex-row gap-3">
               <Pressable
