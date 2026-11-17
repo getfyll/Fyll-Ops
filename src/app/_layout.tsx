@@ -41,6 +41,7 @@ import { RootErrorBoundary } from '@/components/RootErrorBoundary';
 import { useBreakpoint } from '@/lib/useBreakpoint';
 import { useThemeColors } from '@/lib/theme';
 import { FocusBottomNav } from '@/components/FocusBottomNav';
+import { DesktopSidebar } from '@/components/DesktopSidebar';
 import { useBusinessNavItems } from '@/lib/useBusinessNavItems';
 import { usePartnerNavItems, type PartnerNavKey } from '@/lib/usePartnerNavItems';
 import { useBusinessSettings } from '@/hooks/useBusinessSettings';
@@ -104,6 +105,18 @@ const ROUTE_FEATURES: Record<string, BusinessFeatureKey> = {
 };
 
 // Pages that are a task of their own (Fyll Print) show a smaller nav: a round Home button, then the other main places.
+const GLOBAL_SIDEBAR_ROUTES = new Set([
+  'order/[id]',
+  'product/[id]',
+  'customer/[id]',
+  'expense/[id]',
+  'procurement/[id]',
+  'task/[id]',
+  'team',
+  'restock',
+  'fulfillment-pipeline',
+]);
+
 function RootMobileBottomNav({ visible, variant = 'full' }: { visible: boolean; variant?: 'full' | 'focus' | 'business' | 'partners' }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -393,7 +406,11 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
     && isAuthenticated
     && !inPublicRoute
     && firstSegment !== '(tabs)'
-    && !isBottomActionRoute;
+    && !isBottomActionRoute
+    // Returns draws its own Cases / Returns nav.
+    && firstSegment !== 'returns'
+    && firstSegment !== 'replacements'
+    && firstSegment !== 'case-refunds';
 
   // A business disabled from the Fyll console: send everyone signed in to it to the disabled screen.
   useEffect(() => {
@@ -674,6 +691,16 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
     return null;
   }
 
+  // Detail pages outside the tabs keep the web side menu, like every other page. Pages that draw their own
+  // sidebar (Returns, Cases area lists, case/return detail, new order…) are not listed here.
+  const withGlobalSidebar = (routeName: string) => (
+    Platform.OS === 'web'
+    && isDesktop
+    && isAuthenticated
+    && !inPublicRoute
+    && (GLOBAL_SIDEBAR_ROUTES.has(routeName) || (routeName.startsWith('insights/') && routeName !== 'insights/partner-jobs'))
+  );
+
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <RootErrorBoundary>
@@ -683,7 +710,12 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
               ? <View style={{ flex: 1, backgroundColor: colors.bg.primary, alignItems: 'center', justifyContent: 'center' }}>
                   {isSwitchingBusiness && <Text style={{ color: colors.text.primary }}>Switching business…</Text>}
                 </View>
-              : children
+              : withGlobalSidebar(route.name)
+                ? <View style={{ flex: 1, flexDirection: 'row', backgroundColor: colors.bg.primary }}>
+                    <DesktopSidebar />
+                    <View style={{ flex: 1 }}>{children}</View>
+                  </View>
+                : children
           }
           screenOptions={{
             animation: 'none',
@@ -746,6 +778,8 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
           <Stack.Screen name="partner-login" options={{ headerShown: false }} />
           <Stack.Screen name="partner-invite/[code]" options={{ headerShown: false }} />
           <Stack.Screen name="returns" options={{ headerShown: false }} />
+          <Stack.Screen name="replacements" options={{ headerShown: false }} />
+          <Stack.Screen name="case-refunds" options={{ headerShown: false }} />
           <Stack.Screen name="return/[id]" options={{ headerShown: false }} />
           <Stack.Screen name="fulfillment-pipeline" options={{ headerShown: false }} />
           <Stack.Screen name="order-label-preview" options={{ headerShown: false }} />

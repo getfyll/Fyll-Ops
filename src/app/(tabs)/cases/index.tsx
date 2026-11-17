@@ -3,7 +3,9 @@ import { View, Text, TextInput, Pressable, ScrollView, Platform, Modal, Activity
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { Search, FileText, Plus, ChevronLeft, LayoutDashboard, Filter, Check, X, AlertCircle, ImagePlus, Trash2, Sparkles } from 'lucide-react-native';
+import { Search, FileText, Plus, ChevronLeft, LayoutDashboard, Filter, Check, X, AlertCircle, ImagePlus, Trash2, Sparkles, RotateCcw } from 'lucide-react-native';
+import { FocusBottomNav } from '@/components/FocusBottomNav';
+import { useCaseNavItems } from '@/lib/useCaseNavItems';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { useFonts, BricolageGrotesque_700Bold } from '@expo-google-fonts/bricolage-grotesque';
@@ -69,10 +71,12 @@ const withMutedAlpha = (hex: string, alpha = 0.12) => {
   return `rgba(${red},${green},${blue},${alpha})`;
 };
 
+
 export default function CasesScreen() {
   const [bricolageLoaded] = useFonts({ BricolageGrotesque_700Bold });
   const colors = useThemeColors();
   const router = useRouter();
+  const caseNavItems = useCaseNavItems('cases');
   const { from } = useLocalSearchParams<{ from?: string }>();
   const { isDesktop, isMobile } = useBreakpoint();
   const insets = useSafeAreaInsets();
@@ -747,36 +751,7 @@ export default function CasesScreen() {
         <Stack.Screen options={{ headerShown: false, title: '' }} />
         {masterContent}
         {isMobile ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Home"
-            onPress={handleGoHome}
-            style={(state) => [
-              {
-                position: 'absolute',
-                left: 14,
-                // Same round Home button as the Fyll Print nav, centred on the + button's row.
-                bottom: homeBottom,
-                width: homeSize,
-                height: homeSize,
-                borderRadius: homeSize / 2,
-                alignItems: 'center',
-                justifyContent: 'center',
-                overflow: 'hidden',
-                borderWidth: 1,
-                borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.72)',
-                backgroundColor: isDark ? 'rgba(24,24,24,0.9)' : 'rgba(255,255,255,0.9)',
-                opacity: state.pressed ? 0.85 : 1,
-                zIndex: 40,
-              },
-              Platform.OS === 'web'
-                ? ({ boxShadow: '0 10px 28px rgba(0,0,0,0.35)' } as object)
-                : { shadowColor: '#000000', shadowOpacity: 0.3, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
-            ]}
-          >
-            <LayoutDashboard size={23} color={colors.tabBar.inactive} strokeWidth={2} />
-            <Text style={{ color: colors.tabBar.inactive, fontSize: 10, fontWeight: '600', lineHeight: 12, marginTop: 3 }}>Home</Text>
-          </Pressable>
+          <FocusBottomNav onHome={handleGoHome} items={caseNavItems} />
         ) : null}
         {isMobile ? (
           <Pressable
@@ -787,8 +762,8 @@ export default function CasesScreen() {
               {
                 position: 'absolute',
                 right: 20,
-                // Centred on the Home button's row.
-                bottom: homeBottom + (homeSize - 56) / 2,
+                // Sits just above the bottom nav.
+                bottom: homeBottom + homeSize + 14,
                 width: 56,
                 height: 56,
                 borderRadius: 28,

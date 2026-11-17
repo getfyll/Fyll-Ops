@@ -937,6 +937,16 @@ export function CaseDetailPanel({
   const canEmailCustomer = Boolean(caseCustomerEmail) && caseEmailsOn;
   const sentCaseEmails = caseItem.customerEmails ?? [];
   const openedEmailSent = sentCaseEmails.find((entry) => entry.type === 'case_opened');
+  // Activity shows the case history plus every email sent to the customer, newest first.
+  const activityEntries: CaseTimelineEntry[] = [
+    ...(caseItem.timeline ?? []),
+    ...sentCaseEmails.map((entry) => ({
+      id: `email-${entry.type}-${entry.sentAt}`,
+      date: entry.sentAt,
+      action: `Email sent: ${CASE_EMAIL_LABELS[entry.type as keyof typeof CASE_EMAIL_LABELS] ?? entry.type}${entry.ref ? ` · ${entry.ref}` : ''}`,
+      user: entry.sentBy ?? 'Fyll',
+    })),
+  ].sort((x, y) => (y.date ?? '').localeCompare(x.date ?? ''));
   const linkedReturn = caseItem.returnId
     ? (returns.find((item) => item.id === caseItem.returnId) ?? null)
     : returns.find((item) => item.caseId === caseItem.id) ?? null;
@@ -1903,7 +1913,7 @@ export function CaseDetailPanel({
             className="flex-row items-center active:opacity-80"
             style={{ gap: 6 }}
           >
-            <Text style={{ color: palette.muted, fontSize: 12 }}>Email customer</Text>
+            <Text style={{ color: palette.faint, fontSize: 11 }}>{caseEmailsOn ? 'On' : 'Off'}</Text>
             <View style={{ width: 34, height: 20, borderRadius: 10, padding: 2, backgroundColor: caseEmailsOn ? FYLL_LIME : palette.softFill, borderWidth: caseEmailsOn ? 0 : 1, borderColor: palette.border, alignItems: caseEmailsOn ? 'flex-end' : 'flex-start' }}>
               <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: caseEmailsOn ? FYLL_LIME_INK : palette.faint }} />
             </View>
@@ -1921,8 +1931,12 @@ export function CaseDetailPanel({
         </Text>
       ) : (
         <View style={{ gap: 10 }}>
-          <Text style={{ color: palette.muted }} className="text-xs">
-            Sent to {caseCustomerEmail}. Only the summary and resolution are shared, never internal notes.
+          <View className="flex-row items-center" style={{ gap: 8 }}>
+            <Mail size={14} color={palette.faint} strokeWidth={2} />
+            <Text style={{ color: palette.text, fontSize: 12, fontWeight: '500', flex: 1 }} numberOfLines={1}>{caseCustomerEmail}</Text>
+          </View>
+          <Text style={{ color: palette.faint, fontSize: 10, lineHeight: 14, marginTop: -4 }}>
+            Internal notes are never shared.
           </Text>
           {!openedEmailSent ? (
             <View style={{ gap: 8 }}>
@@ -1967,25 +1981,6 @@ export function CaseDetailPanel({
         <Text style={{ color: palette.danger, fontSize: 12, marginTop: 10 }}>{caseEmailNotice}</Text>
       ) : null}
 
-      {sentCaseEmails.length > 0 ? (
-        <View className="mt-3 pt-3" style={{ borderTopWidth: 1, borderTopColor: palette.border, gap: 8 }}>
-          {sentCaseEmails.slice().reverse().map((entry) => (
-            <View key={`${entry.type}-${entry.sentAt}`} className="flex-row items-center" style={{ gap: 8 }}>
-              <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: palette.nudgeBg, alignItems: 'center', justifyContent: 'center' }}>
-                <Check size={12} color={palette.limeOnSurface} strokeWidth={3} />
-              </View>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ color: palette.text }} className="text-xs font-semibold" numberOfLines={1}>
-                  {CASE_EMAIL_LABELS[entry.type as keyof typeof CASE_EMAIL_LABELS] ?? entry.type}{entry.ref ? ` · ${entry.ref}` : ''}
-                </Text>
-                <Text style={{ color: palette.faint, fontSize: 11 }} numberOfLines={1}>
-                  {new Date(entry.sentAt).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}{entry.sentBy ? ` · ${entry.sentBy}` : ''}
-                </Text>
-              </View>
-            </View>
-          ))}
-        </View>
-      ) : null}
     </View>
   );
 
@@ -2206,12 +2201,13 @@ export function CaseDetailPanel({
     if (action.startsWith('Resolution') || action.includes('Resolution added')) return { label: 'Resolved', color: '#10B981' };
     if (action.startsWith('Assigned') || action.includes('Assigned to')) return { label: 'Assigned', color: '#6366F1' };
     if (action.includes('Priority →')) return { label: 'Priority', color: '#EF4444' };
+    if (action.startsWith('Email sent:')) return { label: 'Email', color: '#0EA5E9' };
     if (action === 'Case Created') return { label: 'Created', color: '#8B5CF6' };
     if (action.includes('Type →') || action.includes('Source →') || action.includes('summary')) return { label: 'Edited', color: '#6B7280' };
     return { label: 'Update', color: palette.faint };
   };
 
-  const activitySection = (caseItem.timeline && caseItem.timeline.length > 0) ? (
+  const activitySection = (activityEntries.length > 0) ? (
     <View
       className="p-4 rounded-[26px] mt-4"
       style={{ backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}
@@ -2222,11 +2218,11 @@ export function CaseDetailPanel({
           Activity
         </Text>
         <Text style={{ color: palette.faint }} className="text-xs ml-auto">
-          {caseItem.timeline.length} {caseItem.timeline.length === 1 ? 'entry' : 'entries'}
+          {activityEntries.length} {activityEntries.length === 1 ? 'entry' : 'entries'}
         </Text>
       </View>
       <View className="gap-3">
-        {caseItem.timeline.slice(0, 8).map((entry, index) => {
+        {activityEntries.slice(0, 8).map((entry, index) => {
           const isNote = entry.action.startsWith('Note added:');
           const noteContent = isNote ? entry.action.replace('Note added: ', '') : entry.action;
           const entryDate = new Date(entry.date);
@@ -3182,16 +3178,16 @@ export function CaseDetailPanel({
             )}
 
             {/* Audit history, in the same card style as Activity on other detail pages */}
-            {(caseItem.timeline && caseItem.timeline.length > 0) && (
+            {(activityEntries.length > 0) && (
               <View style={{ borderRadius: 26, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 16, marginBottom: 16 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                   <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.1 }}>Audit history</Text>
                   <Text style={{ color: palette.faint, fontSize: 12 }}>
-                    {caseItem.timeline.length} {caseItem.timeline.length === 1 ? 'event' : 'events'}
+                    {activityEntries.length} {activityEntries.length === 1 ? 'event' : 'events'}
                   </Text>
                 </View>
                 <View style={{ gap: 14 }}>
-                  {caseItem.timeline.map((entry, index) => {
+                  {activityEntries.map((entry, index) => {
                     const entryDate = new Date(entry.date);
                     const when = Number.isFinite(entryDate.getTime())
                       ? entryDate.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
@@ -3200,7 +3196,7 @@ export function CaseDetailPanel({
                       <View key={entry.id} style={{ flexDirection: 'row', gap: 12 }}>
                         <View style={{ alignItems: 'center' }}>
                           <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: index === 0 ? palette.limeOnSurface : palette.outline, marginTop: 4 }} />
-                          {index < (caseItem.timeline?.length ?? 0) - 1 ? (
+                          {index < (activityEntries.length ?? 0) - 1 ? (
                             <View style={{ width: 1, flex: 1, backgroundColor: palette.hairline, marginTop: 6, minHeight: 28 }} />
                           ) : null}
                         </View>

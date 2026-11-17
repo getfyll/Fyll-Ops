@@ -2,8 +2,11 @@ import React, { useMemo, useState } from 'react';
 import { Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { FocusBottomNav } from '@/components/FocusBottomNav';
+import { CaseAreaStats } from '@/components/CaseAreaShell';
+import { useCaseNavItems } from '@/lib/useCaseNavItems';
 import { useRouter } from 'expo-router';
-import { ArrowDownUp, ChevronRight, Filter, Plus, RotateCcw, Search, X } from 'lucide-react-native';
+import { ArrowDownUp, ChevronRight, FileText, Filter, Plus, RotateCcw, Search, X } from 'lucide-react-native';
 import { CaseForm, type CaseReturnDetails } from '@/components/CaseForm';
 import { DesktopSidebar } from '@/components/DesktopSidebar';
 import { useBreakpoint } from '@/lib/useBreakpoint';
@@ -77,8 +80,10 @@ const statusColors: Record<ReturnStatus, { bg: string; text: string; border: str
   processed: { bg: 'rgba(34,197,94,0.14)', text: '#16A34A', border: 'rgba(34,197,94,0.22)' },
 };
 
+
 export default function ReturnsScreen() {
   const router = useRouter();
+  const caseNavItems = useCaseNavItems('returns');
   const colors = useThemeColors();
   const { isDesktop, isMobile } = useBreakpoint();
   const tabBarHeight = useTabBarHeight();
@@ -254,7 +259,7 @@ export default function ReturnsScreen() {
     );
   };
 
-  const contentPaddingBottom = (isDesktop ? 32 : 24) + tabBarHeight;
+  const contentPaddingBottom = (isDesktop ? 32 : 24) + tabBarHeight + (isMobile ? 120 : 0);
   const contentMaxWidth = isDesktop ? 1400 : undefined;
   const separatorColor = colors.border.light;
   const isDark = colors.bg.primary === '#111111';
@@ -381,9 +386,11 @@ export default function ReturnsScreen() {
             <Text style={[headingStyle, { color: colors.text.primary }]}>
               Returns
             </Text>
-            <Text style={{ color: colors.text.muted, fontSize: isMobile ? 13 : 14, fontWeight: '400', marginTop: 4, lineHeight: 20, maxWidth: 520 }} numberOfLines={isMobile ? 2 : undefined}>
-              Track return cases, customer shipping responsibility, and refund or exchange progress.
-            </Text>
+            {!isMobile ? (
+              <Text style={{ color: colors.text.muted, fontSize: 14, fontWeight: '400', marginTop: 4, lineHeight: 20 }} numberOfLines={1}>
+                Track returns, who pays shipping, and refund or exchange progress.
+              </Text>
+            ) : null}
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <Pressable
@@ -462,39 +469,14 @@ export default function ReturnsScreen() {
               })}
             </View>
 
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -6, marginBottom: 12 }}>
-              {stats.map((item) => (
-                <View
-                  key={item.key}
-                  style={{
-                    width: isDesktop ? '25%' : '50%',
-                    paddingHorizontal: 6,
-                    marginBottom: 12,
-                  }}
-                >
-                  <View
-                    style={{
-                      backgroundColor: colors.bg.card,
-                      borderWidth: 1,
-                      borderColor: colors.border.light,
-                      borderRadius: 20,
-                      padding: isMobile ? 14 : 18,
-                      minHeight: isMobile ? 96 : 116,
-                    }}
-                  >
-                    <Text style={{ color: colors.text.tertiary, fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 1 }}>
-                      {item.label}
-                    </Text>
-                    <Text style={{ color: colors.text.primary, fontSize: isMobile ? 22 : 26, fontWeight: '700', marginTop: 8 }}>
-                      {item.value}
-                    </Text>
-                    <Text style={{ color: colors.text.muted, fontSize: isMobile ? 10 : 12, fontWeight: '400', lineHeight: isMobile ? 14 : 18, marginTop: isMobile ? 4 : 6 }}>
-                      {item.caption}
-                    </Text>
-                  </View>
-                </View>
-              ))}
-            </View>
+            <CaseAreaStats
+              hero={{ label: stats[1].label, value: stats[1].value, hint: stats[1].caption }}
+              stats={[
+                { label: stats[0].label, value: stats[0].value, hint: isMobile ? undefined : stats[0].caption, dot: '#9CA3AF' },
+                { label: stats[2].label, value: stats[2].value, hint: isMobile ? undefined : stats[2].caption, dot: '#F59E0B' },
+                { label: stats[3].label, value: stats[3].value, hint: isMobile ? undefined : stats[3].caption, dot: '#16A34A' },
+              ]}
+            />
 
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 }}>
               <View
@@ -641,6 +623,9 @@ export default function ReturnsScreen() {
           </View>
         </View>
       </ScrollView>
+      {isMobile ? (
+        <FocusBottomNav onHome={() => router.navigate('/(tabs)' as never)} items={caseNavItems} />
+      ) : null}
     </SafeAreaView>
     {toastMessage ? (
       <View

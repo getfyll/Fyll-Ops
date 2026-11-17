@@ -20,6 +20,8 @@ import { getOrderActorLabel, resolveOrderItemVariant } from '@/lib/order-item-pr
 import { StockStatusLabel, formatNaira, getVariantStatus } from '@/components/inventory/inventory-ui';
 import { parseCurrencyInput } from '@/lib/money-input';
 import { useBusinessCurrency } from '@/hooks/useBusinessCurrency';
+import { useRestockRequestActions } from '@/lib/restock-requests';
+import { RestockModal } from '@/components/RestockModal';
 
 const buildProcurementVariantImageMap = (procurements: Procurement[]) => {
   const imageByProductVariant = new Map<string, string>();
@@ -73,6 +75,9 @@ export default function ProductDetailScreen() {
   const { currency, currencySymbol } = useBusinessCurrency();
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
   const currentUserRole = useAuthStore((s) => s.currentUser?.role ?? null);
+  const currentUserName = useAuthStore((s) => s.currentUser?.name ?? '');
+  const { addAsks: requestRestock } = useRestockRequestActions(businessId);
+  const [restockTarget, setRestockTarget] = useState<{ variantId: string | null } | null>(null);
 
   const product = useMemo(() => products.find((p) => p.id === id), [products, id]);
   const isOwner = userRole === 'owner' && currentUserRole !== 'staff';
@@ -929,7 +934,25 @@ export default function ProductDetailScreen() {
   const goRestock = (variantId?: string) => {
     releaseWebFocus();
     if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    router.push({ pathname: '/restock', params: variantId ? { productId: product.id, variantId } : { productId: product.id } });
+    setRestockTarget({ variantId: variantId ?? null });
+  };
+  // Adds straight to the team's restock list and stays on this page, so more items can be requested quickly.
+  const goRequestRestock = (variantId?: string) => {
+    releaseWebFocus();
+    if (requestRestock.isPending) return;
+    const variant = variantId ? product.variants.find((v) => v.id === variantId) : undefined;
+    const variantLabel = variant ? Object.values(variant.variableValues ?? {}).filter(Boolean).join(' / ') : '';
+    requestRestock.mutate(
+      [{ productId: product.id, variantId: variant?.id, itemName: product.name, variantLabel: variantLabel || undefined, by: currentUserName }],
+      {
+        onSuccess: ({ stackedCount }) => {
+          if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          const name = variantLabel ? `${product.name} (${variantLabel})` : product.name;
+          showToast('success', stackedCount ? `${name} was already requested, added your vote.` : `${name} added to restock requests.`);
+        },
+        onError: () => showToast('error', 'Could not request restock. Try again.'),
+      },
+    );
   };
   const goPrintLabels = () => {
     releaseWebFocus();
@@ -1057,12 +1080,14 @@ export default function ProductDetailScreen() {
 
   const productMenuItems = [
     { key: 'edit', label: 'Edit details', onPress: handleOpenEdit },
+    { key: 'request', label: 'Request restock', onPress: () => goRequestRestock() },
     ...(!isWebDesktop ? [{ key: 'labels', label: 'Print labels', onPress: goPrintLabels }] : []),
     { key: 'delete', label: 'Move to Recycle Bin', danger: true, onPress: handleDelete },
   ];
   const variantMenuItems = (variant: ProductVariant) => [
     ...(canManageVariants ? [{ key: 'edit', label: 'Edit variant', onPress: () => handleOpenEditVariant(variant) }] : []),
     { key: 'restock', label: 'Restock', onPress: () => goRestock(variant.id) },
+    { key: 'request', label: 'Request restock', onPress: () => goRequestRestock(variant.id) },
     { key: 'label', label: 'Print label', onPress: () => router.push({ pathname: '/label-print', params: { productId: product.id, variantId: variant.id } }) },
     ...(canManageVariants ? [
       { key: 'delete', label: 'Delete variant', danger: true, onPress: () => handleDeleteVariant(variant.id, variantDisplayName(variant)) },
@@ -2719,6 +2744,13 @@ export default function ProductDetailScreen() {
 
         {toastView}
       </SafeAreaView>
+      <RestockModal
+        visible={Boolean(restockTarget)}
+        productId={product.id}
+        variantId={restockTarget?.variantId}
+        onClose={() => setRestockTarget(null)}
+        onDone={(message) => showToast('success', message)}
+      />
     </View>
   );
 }

@@ -1,6 +1,6 @@
 // The actions behind Home's plus button, and who gets which. Kept free of React so the rules can be tested.
 
-export type QuickActionKey = 'order' | 'payment' | 'scan' | 'product' | 'expense' | 'refund' | 'procurement' | 'ai';
+export type QuickActionKey = 'order' | 'payment' | 'scan' | 'product' | 'expense' | 'refund' | 'procurement' | 'ai' | 'request';
 
 export type QuickActionDef = {
   key: QuickActionKey;
@@ -17,6 +17,7 @@ export const getQuickActionDefs = ({ role, financeEnabled }: { role?: string | n
     { key: 'order', title: 'New order', subtitle: 'Create a customer order', route: '/new-order', primary: true },
     { key: 'payment', title: 'New payment', subtitle: 'Send a payment link', route: '/social-checkout/new' },
     { key: 'scan', title: 'Scan item', subtitle: 'Sell or restock with the camera', route: '/scan' },
+    { key: 'request', title: 'Request restock', subtitle: 'Add an item to the buying list', route: '/restock-requests' },
   ];
   if (canManage) actions.push({ key: 'product', title: 'Add product', subtitle: 'Add something to your inventory', route: '/new-product' });
   if (canManage && financeEnabled) actions.push({ key: 'expense', title: 'New expense', subtitle: 'Record money you spent', route: '/(tabs)/finance?section=expenses' });

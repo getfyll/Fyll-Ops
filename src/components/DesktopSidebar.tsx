@@ -3,7 +3,7 @@ import { POLL_MS } from '@/lib/polling';
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, ScrollView, Platform } from 'react-native';
 import { useGlobalSearchParams, usePathname, useRouter, useSegments } from 'expo-router';
-import { LayoutDashboard, Package, ShoppingCart, MoreHorizontal, BarChart3, Users, LogOut, FileText, Briefcase, MessageSquare, ChevronsLeft, ChevronsRight, TrendingUp, TrendingDown, ChevronDown, ChevronUp, Receipt, Truck, Calculator, Settings, ListTodo, User, Banknote, Boxes, Megaphone, Printer, RotateCcw, Wallet, Link2, ClipboardCheck, Building2, AlertTriangle } from 'lucide-react-native';
+import { LayoutDashboard, Package, ShoppingCart, MoreHorizontal, BarChart3, Users, LogOut, FileText, Briefcase, MessageSquare, ChevronsLeft, ChevronsRight, TrendingUp, TrendingDown, ChevronDown, ChevronUp, Receipt, Truck, Calculator, Settings, ListTodo, User, Banknote, Boxes, Megaphone, Printer, RotateCcw, Wallet, Link2, ClipboardCheck, ClipboardList, Building2, AlertTriangle, Repeat } from 'lucide-react-native';
 import { useThemeColors } from '@/lib/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import useAuthStore, { ROLE_PERMISSIONS } from '@/lib/state/auth-store';
@@ -41,9 +41,9 @@ type FinanceSubItem = {
 };
 
 type InventorySubItem = {
-  key: 'inventory-home' | 'warehouse' | 'linking' | 'audit';
+  key: 'inventory-home' | 'warehouse' | 'linking' | 'audit' | 'requests';
   label: string;
-  href: '/inventory' | '/inventory/warehouse' | '/inventory/linking' | '/inventory-audit';
+  href: '/inventory' | '/inventory/warehouse' | '/inventory/linking' | '/inventory-audit' | '/restock-requests';
   icon: typeof LayoutDashboard;
   requiresWooCommerce?: boolean;
 };
@@ -81,10 +81,10 @@ const navItems: NavItem[] = [
   { name: 'Orders', href: '/orders', icon: ShoppingCart },
   { name: 'Payments', href: '/payments', icon: Wallet },
   { name: 'Cases', href: '/cases', icon: FileText },
+  { name: 'Returns', href: '/returns', icon: RotateCcw },
   { name: 'Threads', href: '/threads', icon: MessageSquare },
   { name: 'Delivery', href: '/deliveries', icon: Truck },
   { name: 'Partners', href: '/partners', icon: Building2 },
-  { name: 'Returns', href: '/returns', icon: RotateCcw },
   { name: 'Fyll Print', href: '/fyll-print', icon: Printer },
   { name: 'Announcements', href: '/announcements', icon: Megaphone },
   { name: 'Tasks', href: '/tasks', icon: ListTodo },
@@ -115,6 +115,14 @@ const inventorySubItems: InventorySubItem[] = [
   { key: 'linking', label: 'Linking', href: '/inventory/linking', icon: Link2, requiresWooCommerce: true },
   { key: 'warehouse', label: 'Warehouse', href: '/inventory/warehouse', icon: Boxes },
   { key: 'audit', label: 'Audit', href: '/inventory-audit', icon: ClipboardCheck },
+  { key: 'requests', label: 'Requests', href: '/restock-requests', icon: ClipboardList },
+];
+
+const caseSubItems: { key: 'cases' | 'returns' | 'replacements' | 'refunds'; label: string; href: '/cases' | '/returns' | '/replacements' | '/case-refunds'; icon: typeof LayoutDashboard }[] = [
+  { key: 'cases', label: 'All cases', href: '/cases', icon: FileText },
+  { key: 'returns', label: 'Returns', href: '/returns', icon: RotateCcw },
+  { key: 'replacements', label: 'Replacements', href: '/replacements', icon: Repeat },
+  { key: 'refunds', label: 'Refunds', href: '/case-refunds', icon: Banknote },
 ];
 
 const announcementSubItems: AnnouncementSubItem[] = [
@@ -161,6 +169,7 @@ export function DesktopSidebar() {
   const [isInventoryMenuOpen, setIsInventoryMenuOpen] = useState(false);
   const [isAnnouncementMenuOpen, setIsAnnouncementMenuOpen] = useState(false);
   const [isPartnerMenuOpen, setIsPartnerMenuOpen] = useState(false);
+  const [isCaseMenuOpen, setIsCaseMenuOpen] = useState(false);
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
   const isOfflineMode = useAuthStore((s) => s.isOfflineMode);
   const logout = useAuthStore((s) => s.logout);
@@ -227,6 +236,9 @@ export function DesktopSidebar() {
     }
     if (pathname.includes('announcements')) {
       setIsAnnouncementMenuOpen(true);
+    }
+    if (/\/(cases?|returns?|replacements|case-refunds)(\/|$)/.test(pathname.replace('/(tabs)', ''))) {
+      setIsCaseMenuOpen(true);
     }
     if (pathname.includes('partners') || pathname.includes('partner-bills')) {
       setIsPartnerMenuOpen(true);
@@ -317,6 +329,8 @@ export function DesktopSidebar() {
   const inventoryPathname = pathname.replace('/(tabs)', '');
   const activeInventorySubKey: InventorySubItem['key'] = inventoryPathname.includes('/inventory-audit')
     ? 'audit'
+    : inventoryPathname.includes('/restock-requests')
+    ? 'requests'
     : inventoryPathname.includes('/inventory/warehouse')
     ? 'warehouse'
     : inventoryPathname.includes('/inventory/linking')
@@ -347,6 +361,7 @@ export function DesktopSidebar() {
       '/inventory/warehouse': '/(tabs)/inventory/warehouse',
       '/inventory/linking': '/(tabs)/inventory/linking',
       '/inventory-audit': '/(tabs)/inventory-audit',
+      '/restock-requests': '/(tabs)/restock-requests',
       '/services': '/(tabs)/services',
       '/orders': '/(tabs)/orders',
       '/payments': '/(tabs)/payments',
@@ -545,6 +560,10 @@ export function DesktopSidebar() {
             if (!hasPermission) return null;
           }
 
+          const casesOn = isBusinessFeatureEnabled(featureAccess, 'cases');
+          const returnsOn = isBusinessFeatureEnabled(featureAccess, 'returns');
+          // Returns lives under Cases in the open sidebar (it stays its own icon when collapsed or if Cases is off).
+          if (item.href === '/returns' && casesOn && !isCollapsed) return null;
           const active = isActive(item.href) || (item.href === '/finance' && pathname.includes('calculator'));
           const Icon = item.icon;
           const activeBg = navPalette.nudgeBg;
@@ -733,6 +752,121 @@ export function DesktopSidebar() {
                     {announcementSubItems.map((subItem) => {
                       const SubIcon = subItem.icon;
                       const isSubActive = active && subItem.key === activeAnnouncementSubKey;
+
+                      return (
+                        <Pressable
+                          key={subItem.key}
+                          onPress={() => handleNavigation(subItem.href)}
+                          style={{
+                            position: 'relative',
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            paddingHorizontal: 12,
+                            paddingVertical: 8,
+                            marginBottom: 2,
+                            borderRadius: 10,
+                            backgroundColor: isSubActive ? colors.bg.secondary : 'transparent',
+                          }}
+                        >
+                          <SubIcon
+                            size={16}
+                            color={isSubActive ? navPalette.limeOnSurface : colors.text.tertiary}
+                            strokeWidth={isSubActive ? 2.4 : 2}
+                          />
+                          <Text
+                            style={{
+                              fontSize: 13,
+                              fontWeight: isSubActive ? '700' : '500',
+                              color: isSubActive ? navPalette.limeOnSurface : colors.text.secondary,
+                              marginLeft: 10,
+                            }}
+                          >
+                            {subItem.label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                ) : null}
+              </View>
+            );
+          }
+
+          if (item.href === '/cases' && !isCollapsed) {
+            const casePath = pathname.replace('/(tabs)', '');
+            const onReturns = /\/returns?(\/|$)/.test(casePath);
+            const onReplacements = casePath.startsWith('/replacements');
+            const onRefunds = casePath.startsWith('/case-refunds');
+            const caseActive = (active && !onRefunds) || onReturns || onReplacements || onRefunds;
+            const activeCaseSubKey = onReturns ? 'returns' : onReplacements ? 'replacements' : onRefunds ? 'refunds' : 'cases';
+            return (
+              <View key={item.href} style={{ marginHorizontal: 12, marginVertical: 2 }}>
+                <Pressable
+                  onPress={() => {
+                    if (caseActive) {
+                      if (activeCaseSubKey !== 'cases') {
+                        setIsCaseMenuOpen(true);
+                        handleNavigation('/cases');
+                        return;
+                      }
+                      setIsCaseMenuOpen((previous) => !previous);
+                      return;
+                    }
+                    setIsCaseMenuOpen(true);
+                    handleNavigation('/cases');
+                  }}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                    borderRadius: 12,
+                    backgroundColor: caseActive ? navPalette.nudgeBg : 'transparent',
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 22,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginRight: 12,
+                    }}
+                  >
+                    <Icon
+                      size={17}
+                      color={caseActive ? navPalette.limeOnSurface : colors.text.tertiary}
+                      strokeWidth={caseActive ? 2.2 : 1.9}
+                    />
+                  </View>
+                  <Text
+                    style={{
+                      fontSize: 14,
+                      fontWeight: caseActive ? '600' : '500',
+                      color: caseActive ? navPalette.limeOnSurface : colors.text.secondary,
+                    }}
+                  >
+                    {item.name}
+                  </Text>
+                  {isCaseMenuOpen ? (
+                    <ChevronUp size={18} color={colors.text.tertiary} strokeWidth={2.4} style={{ marginLeft: 'auto' }} />
+                  ) : (
+                    <ChevronDown size={18} color={colors.text.tertiary} strokeWidth={2.4} style={{ marginLeft: 'auto' }} />
+                  )}
+                </Pressable>
+
+                {isCaseMenuOpen ? (
+                  <View
+                    style={{
+                      marginTop: 8,
+                      marginLeft: 18,
+                      paddingLeft: 12,
+                      borderLeftWidth: 1,
+                      borderLeftColor: colors.border.light,
+                    }}
+                  >
+                    {caseSubItems.filter((subItem) => subItem.key !== 'returns' || returnsOn).map((subItem) => {
+                      const SubIcon = subItem.icon;
+                      const isSubActive = caseActive && subItem.key === activeCaseSubKey;
 
                       return (
                         <Pressable

@@ -431,6 +431,13 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="restock-requests"
+        options={{
+          href: null,
+          headerShown: false,
+        }}
+      />
+      <Tabs.Screen
         name="tasks"
         options={{
           title: 'Tasks',

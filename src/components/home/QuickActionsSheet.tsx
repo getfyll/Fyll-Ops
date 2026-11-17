@@ -11,7 +11,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { ChevronRight, Package, Plus, Receipt, RotateCcw, Scan, ShoppingCart, Sparkles, Truck, Wallet } from 'lucide-react-native';
+import { ChevronRight, ClipboardList, Package, Plus, Receipt, RotateCcw, Scan, ShoppingCart, Sparkles, Truck, Wallet } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
 import { BricolageGrotesque_600SemiBold, useFonts } from '@expo-google-fonts/bricolage-grotesque';
 import { FYLL_LIME, FYLL_LIME_INK, isHovered, usePaymentsPalette } from '@/components/payments/payments-ui';
@@ -26,6 +26,7 @@ const ICONS: Record<QuickActionKey, LucideIcon> = {
   refund: RotateCcw,
   procurement: Truck,
   ai: Sparkles,
+  request: ClipboardList,
 };
 
 const OPEN = { duration: 300, easing: Easing.out(Easing.cubic) } as const;

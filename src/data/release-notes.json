@@ -1,6 +1,29 @@
 {
   "releases": [
     {
+      "version": "2.13.0",
+      "date": "2026-11-17T23:30:00Z",
+      "features": [
+        {
+          "icon": "package",
+          "title": "Restock requests",
+          "body": "Your team can now ask for items to be restocked, or for new items to buy, from Inventory, a product page or the plus button. Repeat asks stack on the same request, and the list shows what to buy, what's ordered and what's arrived."
+        },
+        {
+          "icon": "sparkles",
+          "title": "Replacements and Refunds pages",
+          "body": "Cases now has Replacements and Refunds pages next to Returns, with date filters, search and lists grouped by day. On phones, Cases, Returns, Replacements and Refunds share one bottom bar."
+        }
+      ],
+      "fixes": [
+        "Restock a variant from the product page in a pop-up, without leaving the page.",
+        "Returns sits under Cases in the web side menu.",
+        "The web side menu now stays on order, product, customer and other detail pages.",
+        "Case emails now show in the case Activity, and the Customer updates card is tidier.",
+        "Returns has the new summary card style."
+      ]
+    },
+    {
       "version": "2.12.0",
       "date": "2026-11-17T22:00:00Z",
       "features": [

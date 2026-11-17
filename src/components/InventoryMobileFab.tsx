@@ -12,7 +12,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
-import { Box, Briefcase, Check, ClipboardCheck, Menu, Package, X } from 'lucide-react-native';
+import { Box, Briefcase, Check, ClipboardCheck, ClipboardList, Menu, Package, X } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { BricolageGrotesque_600SemiBold, useFonts } from '@expo-google-fonts/bricolage-grotesque';
@@ -20,7 +20,7 @@ import { useTabBarHeight } from '@/lib/useTabBarHeight';
 import { FYLL_LIME, FYLL_LIME_INK, isHovered, usePaymentsPalette } from '@/components/payments/payments-ui';
 
 type InventorySection = 'products' | 'services' | 'warehouse';
-type InventoryMenuOption = InventorySection | 'audit';
+type InventoryMenuOption = InventorySection | 'audit' | 'requests';
 
 type InventoryMobileFabProps = {
   currentSection: InventorySection;
@@ -40,6 +40,7 @@ const OPTIONS: { key: InventoryMenuOption; label: string; subtitle: string; icon
   { key: 'services', label: 'Services', subtitle: 'Work you do for customers', icon: Briefcase },
   { key: 'warehouse', label: 'Warehouse', subtitle: 'Where your stock is kept', icon: Box },
   { key: 'audit', label: 'Audit', subtitle: 'Count stock and fix differences', icon: ClipboardCheck },
+  { key: 'requests', label: 'Restock requests', subtitle: 'What the team wants us to buy next', icon: ClipboardList },
 ];
 
 // The Inventory menu button. It shares the motion of Home's plus-button sheet: the sheet rises and the actions glide
@@ -133,6 +134,11 @@ export function InventoryMobileFab({
 
     if (section === 'audit') {
       router.push('/inventory-audit');
+      return;
+    }
+
+    if (section === 'requests') {
+      router.push('/restock-requests');
       return;
     }
 
