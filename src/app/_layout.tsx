@@ -76,6 +76,7 @@ const ROUTE_FEATURES: Record<string, BusinessFeatureKey> = {
   'social-checkout': 'socialCheckout',
   quote: 'socialCheckout',
   'payment-accounts': 'socialCheckout',
+  'fyll-pay-qr': 'socialCheckout',
   threads: 'threads',
   cases: 'cases',
   case: 'cases',
@@ -115,6 +116,7 @@ const GLOBAL_SIDEBAR_ROUTES = new Set([
   'team',
   'restock',
   'fulfillment-pipeline',
+  'fyll-pay-qr',
 ]);
 
 function RootMobileBottomNav({ visible, variant = 'full' }: { visible: boolean; variant?: 'full' | 'focus' | 'business' | 'partners' }) {
@@ -342,6 +344,7 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
     || secondSegment === 'track'
     || secondSegment === 'checkout'
     || secondSegment === 'bill'
+    || secondSegment === 'pay'
     || secondSegment === 'quote'
     || secondSegment === 'quotes';
   const inPublicRoute = PUBLIC_ROUTE_SEGMENTS.has(firstSegment)
@@ -351,6 +354,7 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
     || secondSegment === 'track'
     || secondSegment === 'checkout'
     || secondSegment === 'bill'
+    || secondSegment === 'pay'
     || secondSegment === 'quote'
     || secondSegment === 'quotes'
     || isCustomerPortalHost
@@ -401,7 +405,8 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
     || firstSegment === 'social-checkout'
     || firstSegment === 'quote'
     || firstSegment === 'storefront-payment'
-    || firstSegment === 'payment-accounts';
+    || firstSegment === 'payment-accounts'
+    || firstSegment === 'fyll-pay-qr';
   const showRootMobileBottomNav = isMobile
     && isAuthenticated
     && !inPublicRoute
@@ -743,6 +748,7 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
           <Stack.Screen name="account-disabled" options={{ headerShown: false }} />
           <Stack.Screen name="[businessSlug]/checkout/[code]" options={{ headerShown: false }} />
           <Stack.Screen name="[businessSlug]/bill/[code]" options={{ headerShown: false }} />
+          <Stack.Screen name="[businessSlug]/pay" options={{ headerShown: false }} />
           <Stack.Screen name="social-checkout/new" options={{ headerShown: false, presentation: 'transparentModal', animation: 'fade', contentStyle: { backgroundColor: 'transparent' } }} />
           <Stack.Screen name="social-checkout/[id]" options={{ headerShown: false }} />
           <Stack.Screen name="quote/new" options={{ headerShown: false }} />
@@ -753,6 +759,7 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
           <Stack.Screen name="[businessSlug]/quote/[code]" options={{ headerShown: false }} />
           <Stack.Screen name="storefront-payment/[id]" options={{ headerShown: false }} />
           <Stack.Screen name="payment-accounts" options={{ headerShown: false }} />
+          <Stack.Screen name="fyll-pay-qr" options={{ headerShown: false }} />
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
           <Stack.Screen name="new-order" options={{ headerShown: false }} />

@@ -308,9 +308,11 @@ export interface BankAccount {
   bsb?: string;
   ifsc?: string;
   isDefault?: boolean;
+  // The one account customers see on the business's Fyll Pay QR page (payment.fyll.app/<business>/pay).
+  fyllPayQr?: boolean;
 }
 
-export type BankAccountSnapshot = Omit<BankAccount, 'id' | 'isDefault'>;
+export type BankAccountSnapshot = Omit<BankAccount, 'id' | 'isDefault' | 'fyllPayQr'>;
 
 // A Social Checkout draft — a lightweight, pre-product "checkout link" staff
 // generate for DM orders (WhatsApp/Instagram). Can't reuse Order/OrderItem
@@ -366,6 +368,8 @@ export interface SocialCheckoutDraft {
   submittedAt?: string;
 
   resolvedItems?: SocialCheckoutResolvedItem[];
+  // 'fyll_pay_qr' when the customer paid from the business's Fyll Pay QR page.
+  source?: 'fyll_pay_qr';
   // True when staff confirmed the money themselves because the customer never submitted a receipt.
   manuallyConfirmed?: boolean;
   reviewedBy?: string;

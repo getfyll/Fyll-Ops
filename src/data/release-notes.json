@@ -1,6 +1,27 @@
 {
   "releases": [
     {
+      "version": "2.14.0",
+      "date": "2026-11-24T18:00:00Z",
+      "features": [
+        {
+          "icon": "zap",
+          "title": "Fyll Pay QR",
+          "body": "Let customers scan to pay you by bank transfer. Choose the account in Payments, then Payment QR, and print a branded counter card in A4 or A5, in colour or black and white. Every scan opens payment.fyll.app/your-business, where customers see your account, upload their receipt, and the payment lands in Payments for you to approve."
+        },
+        {
+          "icon": "sparkles",
+          "title": "Payments in the side menu",
+          "body": "On the web, Payments now opens to All payments and Payment QR, so your QR is always one click away."
+        }
+      ],
+      "fixes": [
+        "Only admins can turn Fyll Pay on or off and change the account it shows.",
+        "Payment QR shows today's QR payments, with their status.",
+        "Saved QR images include Scan to pay and your business name."
+      ]
+    },
+    {
       "version": "2.13.0",
       "date": "2026-11-17T23:30:00Z",
       "features": [

@@ -3,7 +3,7 @@ import { POLL_MS } from '@/lib/polling';
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, ScrollView, Platform } from 'react-native';
 import { useGlobalSearchParams, usePathname, useRouter, useSegments } from 'expo-router';
-import { LayoutDashboard, Package, ShoppingCart, MoreHorizontal, BarChart3, Users, LogOut, FileText, Briefcase, MessageSquare, ChevronsLeft, ChevronsRight, TrendingUp, TrendingDown, ChevronDown, ChevronUp, Receipt, Truck, Calculator, Settings, ListTodo, User, Banknote, Boxes, Megaphone, Printer, RotateCcw, Wallet, Link2, ClipboardCheck, ClipboardList, Building2, AlertTriangle, Repeat } from 'lucide-react-native';
+import { LayoutDashboard, Package, ShoppingCart, MoreHorizontal, BarChart3, Users, LogOut, FileText, Briefcase, MessageSquare, ChevronsLeft, ChevronsRight, TrendingUp, TrendingDown, ChevronDown, ChevronUp, Receipt, Truck, Calculator, Settings, ListTodo, User, Banknote, Boxes, Megaphone, Printer, RotateCcw, Wallet, Link2, ClipboardCheck, ClipboardList, Building2, AlertTriangle, Repeat, QrCode } from 'lucide-react-native';
 import { useThemeColors } from '@/lib/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import useAuthStore, { ROLE_PERMISSIONS } from '@/lib/state/auth-store';
@@ -125,6 +125,11 @@ const caseSubItems: { key: 'cases' | 'returns' | 'replacements' | 'refunds'; lab
   { key: 'refunds', label: 'Refunds', href: '/case-refunds', icon: Banknote },
 ];
 
+const paymentSubItems: { key: 'all' | 'qr'; label: string; href: '/payments' | '/fyll-pay-qr'; icon: typeof LayoutDashboard }[] = [
+  { key: 'all', label: 'All payments', href: '/payments', icon: Wallet },
+  { key: 'qr', label: 'Payment QR', href: '/fyll-pay-qr', icon: QrCode },
+];
+
 const announcementSubItems: AnnouncementSubItem[] = [
   { key: 'compose', label: 'Compose', href: '/announcements', icon: Megaphone },
   { key: 'setup', label: 'Setup', href: '/announcements/setup', icon: Settings },
@@ -170,6 +175,7 @@ export function DesktopSidebar() {
   const [isAnnouncementMenuOpen, setIsAnnouncementMenuOpen] = useState(false);
   const [isPartnerMenuOpen, setIsPartnerMenuOpen] = useState(false);
   const [isCaseMenuOpen, setIsCaseMenuOpen] = useState(false);
+  const [isPaymentsMenuOpen, setIsPaymentsMenuOpen] = useState(false);
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);
   const isOfflineMode = useAuthStore((s) => s.isOfflineMode);
   const logout = useAuthStore((s) => s.logout);
@@ -239,6 +245,9 @@ export function DesktopSidebar() {
     }
     if (/\/(cases?|returns?|replacements|case-refunds)(\/|$)/.test(pathname.replace('/(tabs)', ''))) {
       setIsCaseMenuOpen(true);
+    }
+    if (/\/(payments|fyll-pay-qr)(\/|$)/.test(pathname.replace('/(tabs)', ''))) {
+      setIsPaymentsMenuOpen(true);
     }
     if (pathname.includes('partners') || pathname.includes('partner-bills')) {
       setIsPartnerMenuOpen(true);
@@ -564,7 +573,9 @@ export function DesktopSidebar() {
           const returnsOn = isBusinessFeatureEnabled(featureAccess, 'returns');
           // Returns lives under Cases in the open sidebar (it stays its own icon when collapsed or if Cases is off).
           if (item.href === '/returns' && casesOn && !isCollapsed) return null;
-          const active = isActive(item.href) || (item.href === '/finance' && pathname.includes('calculator'));
+          const active = isActive(item.href)
+            || (item.href === '/finance' && pathname.includes('calculator'))
+            || (item.href === '/payments' && pathname.startsWith('/fyll-pay-qr'));
           const Icon = item.icon;
           const activeBg = navPalette.nudgeBg;
           const activeFg = navPalette.limeOnSurface;
@@ -781,6 +792,81 @@ export function DesktopSidebar() {
                               marginLeft: 10,
                             }}
                           >
+                            {subItem.label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                ) : null}
+              </View>
+            );
+          }
+
+          if (item.href === '/payments' && !isCollapsed) {
+            const onQr = pathname.replace('/(tabs)', '').startsWith('/fyll-pay-qr');
+            const paymentsActive = active || onQr;
+            const activePaymentSubKey = onQr ? 'qr' : 'all';
+            return (
+              <View key={item.href} style={{ marginHorizontal: 12, marginVertical: 2 }}>
+                <Pressable
+                  onPress={() => {
+                    if (paymentsActive) {
+                      if (activePaymentSubKey !== 'all') {
+                        setIsPaymentsMenuOpen(true);
+                        handleNavigation('/payments');
+                        return;
+                      }
+                      setIsPaymentsMenuOpen((previous) => !previous);
+                      return;
+                    }
+                    setIsPaymentsMenuOpen(true);
+                    handleNavigation('/payments');
+                  }}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                    borderRadius: 12,
+                    backgroundColor: paymentsActive ? navPalette.nudgeBg : 'transparent',
+                  }}
+                >
+                  <View style={{ width: 22, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                    <Icon size={17} color={paymentsActive ? navPalette.limeOnSurface : colors.text.tertiary} strokeWidth={paymentsActive ? 2.2 : 1.9} />
+                  </View>
+                  <Text style={{ fontSize: 14, fontWeight: paymentsActive ? '600' : '500', color: paymentsActive ? navPalette.limeOnSurface : colors.text.secondary }}>
+                    {item.name}
+                  </Text>
+                  {isPaymentsMenuOpen ? (
+                    <ChevronUp size={18} color={colors.text.tertiary} strokeWidth={2.4} style={{ marginLeft: 'auto' }} />
+                  ) : (
+                    <ChevronDown size={18} color={colors.text.tertiary} strokeWidth={2.4} style={{ marginLeft: 'auto' }} />
+                  )}
+                </Pressable>
+
+                {isPaymentsMenuOpen ? (
+                  <View style={{ marginTop: 8, marginLeft: 18, paddingLeft: 12, borderLeftWidth: 1, borderLeftColor: colors.border.light }}>
+                    {paymentSubItems.map((subItem) => {
+                      const SubIcon = subItem.icon;
+                      const isSubActive = paymentsActive && subItem.key === activePaymentSubKey;
+                      return (
+                        <Pressable
+                          key={subItem.key}
+                          onPress={() => handleNavigation(subItem.href)}
+                          style={{
+                            position: 'relative',
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            paddingHorizontal: 12,
+                            paddingVertical: 8,
+                            marginBottom: 2,
+                            borderRadius: 10,
+                            backgroundColor: isSubActive ? colors.bg.secondary : 'transparent',
+                          }}
+                        >
+                          <SubIcon size={16} color={isSubActive ? navPalette.limeOnSurface : colors.text.tertiary} strokeWidth={isSubActive ? 2.4 : 2} />
+                          <Text style={{ fontSize: 13, fontWeight: isSubActive ? '700' : '500', color: isSubActive ? navPalette.limeOnSurface : colors.text.secondary, marginLeft: 10 }}>
                             {subItem.label}
                           </Text>
                         </Pressable>

@@ -150,6 +150,6 @@ export const getBankAccountTransferFields = (account: Pick<BankAccount, BankAcco
 };
 
 export const bankAccountSnapshot = (account: BankAccount): BankAccountSnapshot => {
-  const { id: _id, isDefault: _isDefault, ...snapshot } = account;
+  const { id: _id, isDefault: _isDefault, fyllPayQr: _fyllPayQr, ...snapshot } = account;
   return snapshot;
 };

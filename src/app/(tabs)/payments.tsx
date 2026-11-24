@@ -1727,6 +1727,7 @@ export default function PaymentsScreen() {
           onClose={() => setCreateMenuOpen(false)}
           onNewQuote={() => router.push('/quote/new' as never)}
           onNewBill={handleNewLink}
+          onPaymentQr={() => router.push('/fyll-pay-qr' as never)}
           placement={isMobile
             ? { right: 20, bottom: Math.max(96, tabBarHeight - 48) + 68 }
             : { right: horizontalPadding, top: isWebDesktop ? 76 : 64 }}

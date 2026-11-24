@@ -1,6 +1,6 @@
 import React from 'react';
 import { Platform, Pressable, Text, View } from 'react-native';
-import { FileText, Link2 } from 'lucide-react-native';
+import { FileText, Link2, QrCode } from 'lucide-react-native';
 import { FYLL_LIME, isHovered, usePaymentsPalette } from '@/components/payments/payments-ui';
 
 // The "create" menu on Payments: a quote (price it first, get approval) or a bill (ask for payment
@@ -11,12 +11,14 @@ export function PaymentsCreateMenu({
   onClose,
   onNewQuote,
   onNewBill,
+  onPaymentQr,
   placement,
 }: {
   open: boolean;
   onClose: () => void;
   onNewQuote: () => void;
   onNewBill: () => void;
+  onPaymentQr?: () => void;
   placement: { top?: number; bottom?: number; right: number };
 }) {
   const palette = usePaymentsPalette();
@@ -29,6 +31,7 @@ export function PaymentsCreateMenu({
   const rows = [
     { key: 'bill', title: 'New bill', caption: 'Ask for payment now', icon: Link2, lime: true, onPress: choose(onNewBill) },
     { key: 'quote', title: 'New quote', caption: 'Price it first, get approval', icon: FileText, lime: false, onPress: choose(onNewQuote) },
+    ...(onPaymentQr ? [{ key: 'qr', title: 'Payment QR', caption: 'Let customers scan to pay you', icon: QrCode, lime: false, onPress: choose(onPaymentQr) }] : []),
   ];
 
   return (

@@ -48,7 +48,7 @@ const CUSTOMER_PORTAL_ROUTES = new Set([
 
 // payment.fyll.app only serves public payment and quote pages.
 const PAYMENT_PORTAL_ROUTES = new Set([
-  'checkout', '[businessSlug]/[code]', '[businessSlug]/checkout/[code]',
+  'checkout', '[businessSlug]/[code]', '[businessSlug]/checkout/[code]', '[businessSlug]/pay', '[businessSlug]/index',
   '[businessSlug]/bill/[code]', 'q/[code]', '[businessSlug]/quote/[code]',
 ]);
 

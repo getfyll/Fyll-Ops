@@ -23,6 +23,12 @@ select {
   }
 }
 
+/* Fyll Pay amount: big on purpose (40px, larger than 16px, so iOS still won't zoom). */
+input#fyll-pay-amount {
+  font-size: 40px !important;
+  line-height: 48px;
+}
+
 input:focus,
 textarea:focus,
 select:focus,
