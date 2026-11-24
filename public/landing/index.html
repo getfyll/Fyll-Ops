@@ -1,635 +1,2063 @@
-<!doctype html>
-<html lang="en">
-<head>
-<title>Fyll</title>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#141414">
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Fyll: your whole back office, in one app</title>
+<meta name="theme-color" content="#ffffff">
 <link rel="icon" type="image/png" href="/favicon-32.png">
-<meta property="og:title" content="Fyll: run your whole business from one place">
-<meta property="og:description" content="The operations app for Nigerian businesses: orders, payments, delivery, stock, finance and your team in one place.">
-<meta property="og:image" content="https://fyll.app/landing/field.jpg">
+<meta name="description" content="Fyll is the operations app for growing African businesses: orders, payments, deliveries, stock, money and your team in one place.">
+<meta property="og:title" content="Fyll: your whole back office, in one app">
+<meta property="og:description" content="Orders, payments, deliveries, stock, money and your team in one place. Built for the future of African businesses.">
+<meta property="og:image" content="https://fyll.app/landing/img/field.jpg">
 <meta property="og:url" content="https://fyll.app/">
-<meta name="description" content="Fyll is the operations app for Nigerian businesses: orders, payments, delivery, stock, finance and your team in one place.">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,800&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=JetBrains+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600&family=Public+Sans:wght@400;500;600;700;800&display=swap">
 <style>
-/* Layout: the Field glows behind the hero; everything below sits on Ground in frosted Panes.
-   One lime action per view. Dark by choice (Fyll Lit Glass customer look). */
+/* Layout: airy white page, one rounded photo hero, sections separated by space instead of lines; UI mockups float as white cards. Single light look by choice. */
 :root {
-  --ground: #141414;
-  --ground-raised: #1e1e1e;
-  --pane: rgba(34, 36, 26, 0.55);
-  --pane-edge: rgba(255, 255, 255, 0.12);
-  --pane-wash: rgba(255, 255, 255, 0.05);
-  --ink: #f4f4ef;
-  --ink-muted: rgba(255, 255, 255, 0.92);
-  --ink-faint: rgba(255, 255, 255, 0.82);
-  --signal: #d5e057;
-  --signal-wash: rgba(213, 224, 87, 0.14);
-  --on-signal: #1e1e1e;
-  --field-deep: #3f4a08;
-  --warn: #f5b041;
-  --warn-wash: rgba(245, 176, 65, 0.14);
-  --font-display: "Bricolage Grotesque", "DM Sans", system-ui, sans-serif;
-  --font-sans: "DM Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
-  --radius-pane: 26px;
-  --radius-pane-lg: 30px;
-  --shadow-pane: 0 30px 60px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.12);
-  --shadow-signal: 0 8px 24px rgba(213, 224, 87, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.5);
-  --max: 1500px;
-  color-scheme: dark;
+  --paper: #ffffff;
+  --mist: #f3f4ee;          /* olive-biased near white for panels */
+  --ink: #141414;
+  --ink-2: #565a4c;
+  --ink-3: #8b8e82;
+  --line: #e4e6dc;
+  --lime: #d5e057;          /* Fyll signal */
+  --olive: #3f4a08;         /* field deep */
+  --forest: #2c3407;        /* story cards */
+  --good: #10b981;
+  --warn: #f59e0b;
+  --display: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --sans: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --btn-font: "Bricolage Grotesque", "Public Sans", system-ui, sans-serif;  /* buttons only */
+  --r-xl: 32px;
+  --r-lg: 22px;
+  --r-md: 16px;
+  --shadow: 0 1px 2px rgba(20,20,20,.04), 0 12px 32px -8px rgba(30,36,6,.14);
+  --shadow-lg: 0 2px 4px rgba(20,20,20,.04), 0 30px 60px -16px rgba(30,36,6,.22);
+  color-scheme: light;
 }
 * { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
-@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } * { animation: none !important; transition: none !important; } }
-body {
-  margin: 0;
-  background: var(--ground);
-  color: var(--ink);
-  font: 400 16px/1.6 var(--font-sans);
-  -webkit-font-smoothing: antialiased;
-}
+body { background: var(--paper); color: var(--ink); font-family: var(--sans); font-size: 16px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+img { display: block; max-width: 100%; }
 a { color: inherit; text-decoration: none; }
-a:focus-visible, button:focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; border-radius: 999px; }
-.wrap {
-  max-width: var(--max);
-  margin: 0 auto;
-  padding-left: max(16px, env(safe-area-inset-left, 0px));
-  padding-right: max(16px, env(safe-area-inset-right, 0px));
-}
-h1, h2, h3 { font-family: var(--font-display); font-weight: 600; margin: 0; text-wrap: balance; letter-spacing: -0.02em; }
+h1, h2, h3 { font-family: var(--display); font-weight: 600; letter-spacing: -0.025em; line-height: 1.04; margin: 0; text-wrap: balance; }
 p { margin: 0; }
-.label { font: 700 11px/14px var(--font-sans); letter-spacing: 1.4px; text-transform: uppercase; color: var(--ink-faint); }
-.mono { font-family: var(--font-mono); font-size: 0.9em; }
+.wrap { max-width: 1920px; margin: 0 auto; padding-left: max(clamp(16px, 2.5vw, 48px), env(safe-area-inset-left, 0px)); padding-right: max(clamp(16px, 2.5vw, 48px), env(safe-area-inset-right, 0px)); }
+section { padding-block: clamp(88px, 12vw, 168px); }
+.eyebrow { font-size: 13px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--olive); }
+.lede { font-size: clamp(17px, 1.6vw, 20px); color: var(--ink-2); max-width: 34em; }
 .num { font-variant-numeric: tabular-nums; }
+.btn { display: inline-flex; align-items: center; gap: 8px; height: 52px; padding: 0 26px; border-radius: 999px; font-family: var(--btn-font); font-weight: 600; font-size: 16px; transition: transform .2s ease, background .2s ease; white-space: nowrap; }
+.btn:hover { transform: translateY(-1px); }
+.btn:focus-visible, a:focus-visible { outline: 2px solid var(--olive); outline-offset: 3px; }
+.btn-ink { background: var(--ink); color: #fff; }
+.btn-white { background: #fff; color: var(--ink); }
+.btn-glass { background: rgba(255,255,255,.14); color: #fff; border: 1px solid rgba(255,255,255,.35); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.btn-line { border: 1px solid var(--line); color: var(--ink); }
+.link-arrow { font-weight: 600; display: inline-flex; gap: 6px; align-items: center; }
+.link-arrow::after { content: "→"; transition: transform .2s; }
+.link-arrow:hover::after { transform: translateX(3px); }
+.tag { display: inline-block; font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 8px; }
+.mock-flag { position: absolute; top: 14px; right: 14px; z-index: 3; font-size: 11px; font-weight: 600; letter-spacing: .04em; padding: 4px 9px; border-radius: 999px; background: rgba(255,255,255,.9); color: var(--ink-2); border: 1px dashed var(--ink-3); }
 
-/* Buttons: one lime per view */
-.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 46px; padding: 0 22px; border-radius: 999px; font: 700 14px/1 var(--font-sans); white-space: nowrap; transition: transform .15s ease, background .15s ease; }
-.btn-signal { background: var(--signal); color: var(--on-signal); box-shadow: var(--shadow-signal); }
-.btn-signal:hover { transform: translateY(-1px); }
-.btn-ghost { border: 1px solid var(--pane-edge); background: var(--pane-wash); color: var(--ink); }
-.btn-ghost:hover { background: rgba(255,255,255,0.09); }
+/* ---------- NAV ---------- */
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 60; background: var(--paper); }
+.nav { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 50; padding-top: 16px; }
+.nav-bar { display: flex; align-items: center; gap: 24px; height: 68px; padding: 0 12px 0 24px; background: rgba(255,255,255,.88); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-radius: 20px; border: 1px solid var(--line); box-shadow: 0 8px 30px -12px rgba(20,20,20,.12); }
+.nav-bar img { height: 30px; width: auto; }
+.nav-links { display: flex; gap: 30px; margin: 0 auto; font-weight: 500; font-size: 15px; color: var(--ink-2); }
+.nav-links a:hover { color: var(--ink); }
+.nav-right { display: flex; align-items: center; gap: 18px; font-weight: 600; font-size: 15px; }
+.nav-right .btn { height: 46px; padding: 0 22px; font-size: 15px; }
 
+/* ---------- HERO ---------- */
+.hero-card { position: relative; border-radius: var(--r-xl); overflow: hidden; min-height: clamp(600px, 52vw, 820px); display: grid; align-items: end; background: #2a2a22; }
+.hero-card > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 18%; }
+.hero-copy { position: relative; z-index: 2; padding: clamp(28px, 5vw, 64px); max-width: 720px; color: #fff; display: grid; gap: 24px; }
+.hero-copy .eyebrow { color: var(--lime); }
+.hero h2 { font-size: clamp(40px, 5.6vw, 80px); }
+.hero h2 em { font-style: normal; color: var(--lime); }
+.hero-copy p { font-size: clamp(17px, 1.5vw, 20px); color: rgba(255,255,255,.88); max-width: 30em; }
+.hero-cta { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.hero-note { font-size: 14px; color: rgba(255,255,255,.75); }
+.hero-note a { color: #fff; text-decoration: underline; text-underline-offset: 3px; }
+.hero-float { position: absolute; z-index: 2; right: clamp(20px, 4vw, 56px); top: 50%; transform: translateY(-50%); width: 320px; display: grid; gap: 12px; }
 
-/* Header: fixed, clear over the Field, frosted glass once the page scrolls */
-.navbar { position: fixed; top: 0; left: 0; right: 0; z-index: 30; padding-top: env(safe-area-inset-top, 0px); border-bottom: 1px solid transparent; transition: background .25s ease, border-color .25s ease, backdrop-filter .25s ease; }
-.navbar.scrolled { background: rgba(20, 20, 20, 0.5); border-bottom-color: rgba(255, 255, 255, 0.08); backdrop-filter: blur(18px) saturate(140%); -webkit-backdrop-filter: blur(18px) saturate(140%); }
-.navbar nav.top { padding-block: 16px; }
-.nav-links a.link.active { color: var(--ink); background: var(--pane-wash); }
-.hero { padding-top: calc(78px + env(safe-area-inset-top, 0px)); }
-[id] { scroll-margin-top: 96px; }
+/* shared UI card bits */
+.ui { background: #fff; border-radius: var(--r-lg); box-shadow: var(--shadow-lg); color: var(--ink); }
+.ui-pad { padding: 20px; }
+.ui-label { font-size: 12px; font-weight: 600; color: var(--ink-3); letter-spacing: .02em; }
+.ui-big { font-family: var(--display); font-size: 38px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.1; }
+.up { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 700; color: #0b7a55; background: #e3f7ee; padding: 3px 8px; border-radius: 999px; }
+.row { display: flex; align-items: center; gap: 10px; }
+.row + .row { margin-top: 12px; }
+.av { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; flex: none; }
+.row .who { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; line-height: 1.25; }
+.row .who small { display: block; font-weight: 500; color: var(--ink-3); font-size: 12px; }
+.row .amt { font-size: 14px; font-weight: 700; }
+.pill { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; white-space: nowrap; }
+.p-paid { background: #e3f7ee; color: #0b7a55; }
+.p-wait { background: #fff3dc; color: #96600a; }
+.p-lime { background: var(--lime); color: var(--ink); }
+.p-ink { background: var(--ink); color: #fff; }
+.bar { height: 6px; border-radius: 999px; background: var(--mist); overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--olive); border-radius: inherit; }
 
-/* Hero on the Field */
-.hero { position: relative; overflow: hidden; isolation: isolate; }
-.hero::before {
-  content: ""; position: absolute; inset: 0 0 auto; height: 760px; z-index: -1;
-  /* Dark veil over the Field so white text and the lime accent stay readable */
-  background:
-    linear-gradient(to bottom, rgba(14, 16, 6, 0.5), rgba(14, 16, 6, 0.38) 55%, rgba(14, 16, 6, 0.2)),
-    var(--field-deep) url("/landing/field.jpg") center top / cover no-repeat;
-  -webkit-mask-image: linear-gradient(to bottom, #000 45%, transparent 100%);
-          mask-image: linear-gradient(to bottom, #000 45%, transparent 100%);
+/* ---------- TRUST ---------- */
+.trust { padding-block: 0; }
+.trust-in { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 28px 40px; }
+.trust p { font-size: 15px; color: var(--ink-2); max-width: 15em; }
+.logos { display: flex; flex-wrap: wrap; gap: 14px; }
+.logo { display: flex; align-items: center; gap: 10px; padding: 8px 16px 8px 8px; border-radius: 999px; border: 1px solid var(--line); font-size: 14px; font-weight: 600; transition: border-color .2s; }
+.logo:hover { border-color: var(--ink-3); }
+.logo img { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; }
+
+/* ---------- SHOWCASE (floating screens) ---------- */
+.showcase { position: relative; overflow: hidden; }
+.showcase::before { content: ""; position: absolute; inset: 0; background: url(/landing/img/field.jpg) center/cover; opacity: .16; -webkit-mask-image: radial-gradient(ellipse 60% 50% at 50% 50%, #000, transparent 75%); mask-image: radial-gradient(ellipse 60% 50% at 50% 50%, #000, transparent 75%); }
+.show-grid { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px 48px; align-items: start; }
+.show-head { grid-column: 1 / -1; text-align: center; padding-block: 56px; display: grid; justify-items: center; gap: 20px; }
+.show-head h1 { font-size: clamp(44px, 6.4vw, 104px); max-width: 12em; }
+.show-head p { color: var(--ink-2); font-size: clamp(17px, 1.5vw, 20px); max-width: 32em; }
+.show-head .show-note { font-size: 14px; color: var(--ink-3); }
+.show-note a { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+.shot { justify-self: center; width: 100%; max-width: 400px; }
+.shot:nth-child(1) { margin-top: 48px; }
+.shot:nth-child(3) { margin-top: 24px; }
+.shot:nth-child(5) { margin-top: 0; }
+.shot:nth-child(6) { margin-top: 40px; }
+.shot:nth-child(7) { margin-top: -10px; }
+.shot-cap { font-size: 13px; font-weight: 600; color: var(--ink-3); margin-top: 12px; padding-left: 6px; }
+
+/* ---------- SPLIT PANEL (devices) ---------- */
+.panel { background: var(--mist); border-radius: var(--r-xl); padding: clamp(36px, 6vw, 88px); display: grid; grid-template-columns: 1fr 1.15fr; gap: 48px; align-items: center; overflow: hidden; }
+.panel h2 { font-size: clamp(34px, 4.2vw, 56px); font-weight: 500; }
+.panel h2 b { font-weight: 600; color: var(--olive); background: linear-gradient(transparent 62%, rgba(213,224,87,.7) 62%); }
+.panel .lede { margin-top: 24px; }
+.devices { position: relative; height: 520px; }
+.tablet { position: absolute; right: -120px; top: 20px; width: 600px; height: 440px; border-radius: 30px; background: #1b1b1b; padding: 14px; box-shadow: var(--shadow-lg); transform: rotate(-2deg); }
+.tablet-screen { width: 100%; height: 100%; border-radius: 18px; background: #fafaf7; display: grid; grid-template-columns: 130px 1fr; overflow: hidden; font-size: 12px; }
+.t-side { background: #fff; border-right: 1px solid var(--line); padding: 16px 12px; display: grid; align-content: start; gap: 4px; }
+.t-side img { height: 18px; width: auto; margin: 0 0 14px 6px; }
+.t-side span { padding: 7px 10px; border-radius: 10px; color: var(--ink-2); font-weight: 500; }
+.t-side span.on { background: var(--ink); color: #fff; }
+.t-main { padding: 18px; display: grid; gap: 12px; align-content: start; }
+.t-main h4 { margin: 0; font-family: var(--display); font-size: 18px; font-weight: 600; }
+.t-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.t-kpis div { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 10px; }
+.t-kpis b { display: block; font-family: var(--display); font-size: 17px; }
+.t-kpis small { color: var(--ink-3); }
+.t-table { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 4px 10px; }
+.t-table div { display: grid; grid-template-columns: 56px 1fr 70px 64px; gap: 6px; padding: 8px 0; border-bottom: 1px solid var(--mist); align-items: center; }
+.t-table div:last-child { border: 0; }
+.phone { position: absolute; width: 250px; border-radius: 40px; background: #141414; padding: 10px; box-shadow: var(--shadow-lg); }
+.phone-screen { border-radius: 31px; background: #fff; overflow: hidden; position: relative; }
+.phone-screen::before { content: ""; position: absolute; top: 9px; left: 50%; translate: -50% 0; width: 76px; height: 22px; border-radius: 999px; background: #141414; z-index: 2; }
+.devices .phone { left: 0; bottom: 0; transform: rotate(3deg); }
+.ps { padding: 44px 16px 18px; font-size: 13px; display: grid; gap: 12px; }
+.ps h5 { margin: 0; font-family: var(--display); font-size: 20px; font-weight: 600; }
+.chips { display: flex; gap: 6px; }
+.chips span { font-size: 11px; font-weight: 600; padding: 5px 10px; border-radius: 999px; background: var(--mist); color: var(--ink-2); }
+.chips span.on { background: var(--ink); color: #fff; }
+.ocard { border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; display: grid; gap: 4px; }
+.ocard .top { display: flex; justify-content: space-between; font-weight: 700; }
+.ocard .sub { display: flex; justify-content: space-between; align-items: center; color: var(--ink-3); font-size: 12px; }
+
+/* ---------- HUMAN SPLIT ---------- */
+.human { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(40px, 7vw, 112px); align-items: center; }
+.photo { position: relative; border-radius: var(--r-xl); overflow: hidden; aspect-ratio: 4 / 5; max-width: 100%; }
+.photo > img { width: 100%; height: 100%; object-fit: cover; }
+.toast { position: absolute; left: 20px; right: 20px; display: flex; gap: 12px; align-items: center; padding: 14px 16px; border-radius: 20px; background: rgba(255,255,255,.92); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: var(--shadow); font-size: 14px; }
+.toast .ic { width: 38px; height: 38px; border-radius: 11px; background: var(--ink); display: grid; place-items: center; flex: none; }
+.toast .ic img { width: 24px; filter: invert(1); }
+.toast b { display: block; }
+.toast span { color: var(--ink-2); font-size: 13px; }
+.toast time { margin-left: auto; align-self: start; font-size: 12px; color: var(--ink-3); }
+.t1 { top: 22px; animation: drop .6s .3s both cubic-bezier(.2,.8,.2,1); }
+.t2 { top: 106px; left: 44px; right: 0; animation: drop .6s .6s both cubic-bezier(.2,.8,.2,1); }
+@keyframes drop { from { transform: translateY(-14px); opacity: .0001; } }
+.human h2 { font-size: clamp(36px, 4.4vw, 60px); }
+.human .lede { margin-top: 24px; }
+.ticks { list-style: none; padding: 0; margin: 36px 0 0; display: grid; gap: 18px; }
+.ticks li { display: flex; gap: 14px; font-size: 17px; }
+.ticks li::before { content: ""; flex: none; width: 24px; height: 24px; border-radius: 50%; margin-top: 2px; background: var(--lime) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23141414' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 12.5l4 4 8-9'/%3E%3C/svg%3E") center/14px no-repeat; }
+
+/* ---------- FEATURE RAIL ---------- */
+.rail-head { display: flex; justify-content: space-between; align-items: end; gap: 24px; flex-wrap: wrap; }
+.rail-head h2 { font-size: clamp(36px, 4.6vw, 64px); max-width: 11em; }
+.rail-head h2 i { font-family: var(--display); font-weight: 500; font-style: normal; color: var(--ink-3); }
+.rail { margin-top: 56px; display: grid; grid-auto-flow: column; grid-auto-columns: 340px; gap: 20px; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 20px; scrollbar-width: thin; }
+.fcard { scroll-snap-align: start; border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; background: #fff; display: grid; grid-template-rows: 260px auto; transition: transform .25s ease, box-shadow .25s ease; }
+.fcard:hover { transform: translateY(-4px); box-shadow: var(--shadow); }
+.fimg { position: relative; display: grid; place-items: center; padding: 24px; background: url(/landing/img/field.jpg) var(--pos, center)/cover; }
+.fimg.photo-bg { background-image: url(/landing/img/people-shop.jpg); background-position: 50% 20%; }
+.fimg .ui { width: 100%; max-width: 250px; font-size: 13px; }
+.fbody { padding: 20px 22px 24px; display: grid; gap: 10px; justify-items: start; }
+.fbody h3 { font-family: var(--sans); font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
+.fbody p { color: var(--ink-2); font-size: 15px; }
+.t-ord { background: #e9ecff; color: #3a49b8; }
+.t-pay { background: #e3f7ee; color: #0b7a55; }
+.t-shop { background: #fde9f3; color: #a4316f; }
+.t-del { background: #fff3dc; color: #96600a; }
+.t-stk { background: #eef2c4; color: var(--olive); }
+.t-fin { background: #e6f3fb; color: #1e6c97; }
+.t-ai { background: #f0e8ff; color: #6a3fbf; }
+
+/* ---------- STEPS ---------- */
+.steps-wrap { background: var(--mist); }
+.steps-head { display: grid; gap: 20px; max-width: 760px; }
+.steps-head h2 { font-size: clamp(34px, 4.4vw, 58px); }
+.steps { list-style: none; padding: 0; margin: 72px 0 0; display: grid; grid-template-columns: repeat(5, 1fr); gap: 20px; counter-reset: s; position: relative; }
+.steps::before { content: ""; position: absolute; top: 22px; left: 22px; right: 22px; height: 2px; background: repeating-linear-gradient(90deg, var(--ink-3) 0 6px, transparent 6px 12px); opacity: .5; }
+.steps li { counter-increment: s; position: relative; display: grid; gap: 12px; align-content: start; }
+.steps li::before { content: counter(s); width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; background: #fff; border: 1px solid var(--line); font-weight: 700; font-family: var(--display); font-size: 18px; position: relative; }
+.steps li:last-child::before { background: var(--lime); border-color: var(--lime); }
+.steps h3 { font-family: var(--sans); font-size: 18px; font-weight: 700; letter-spacing: -0.01em; margin-top: 8px; }
+.steps p { color: var(--ink-2); font-size: 15px; }
+
+/* ---------- CUSTOMERS SEE ---------- */
+.cust { display: grid; grid-template-columns: 1.05fr 1fr; gap: clamp(40px, 7vw, 112px); align-items: center; }
+.cust-stage { position: relative; border-radius: var(--r-xl); background: url(/landing/img/field.jpg) 30% 40%/cover; aspect-ratio: 1 / 1; max-width: 100%; display: grid; place-items: center; overflow: hidden; }
+.cust-stage .phone { position: relative; transform: rotate(-3deg); }
+.track-steps { display: grid; gap: 0; }
+.track-steps div { display: grid; grid-template-columns: 22px 1fr; gap: 10px; padding-bottom: 14px; position: relative; }
+.track-steps div::before { content: ""; width: 14px; height: 14px; border-radius: 50%; background: var(--olive); margin: 3px 0 0 4px; }
+.track-steps div.next::before { background: #fff; border: 2px solid var(--line); }
+.track-steps div:not(:last-child)::after { content: ""; position: absolute; left: 10px; top: 20px; bottom: 2px; width: 2px; background: var(--line); }
+.track-steps b { display: block; font-size: 13px; }
+.track-steps span { color: var(--ink-3); font-size: 12px; }
+.cust h2 { font-size: clamp(36px, 4.4vw, 60px); }
+.cust .lede { margin-top: 24px; }
+
+/* ---------- STORIES ---------- */
+.stories-head { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: end; }
+.stories-head h2 { font-size: clamp(38px, 5vw, 68px); font-weight: 500; }
+.stories-head .note { display: grid; gap: 10px; justify-items: start; color: var(--ink-2); }
+.stories-head .note strong { font-family: var(--display); font-size: 24px; color: var(--olive); }
+.stories { margin-top: 64px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+.story { position: relative; border-radius: var(--r-lg); min-height: 520px; padding: 36px; display: grid; align-content: space-between; gap: 28px; overflow: hidden; }
+.story.green { background: var(--forest); color: #fff; }
+.story blockquote { margin: 0; font-family: var(--display); font-weight: 500; font-size: clamp(26px, 2.4vw, 34px); line-height: 1.15; letter-spacing: -0.02em; }
+.story cite { font-style: normal; font-size: 15px; color: rgba(255,255,255,.8); }
+.story cite b { color: #fff; }
+.story .link-arrow { color: #fff; }
+.story.pic { color: #fff; padding: 20px; align-content: end; }
+.story.pic > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 15%; }
+.story.pic .glass { position: relative; padding: 20px 22px; border-radius: 16px; background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.3); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); font-weight: 600; font-size: 18px; line-height: 1.35; }
+.story .stat { font-family: var(--display); font-size: clamp(64px, 6vw, 92px); font-weight: 500; letter-spacing: -0.04em; line-height: 1; color: var(--lime); }
+.story .stat-sub { font-size: 18px; color: rgba(255,255,255,.85); margin-top: 8px; }
+
+/* ---------- NIGERIA ---------- */
+.ng { display: grid; grid-template-columns: repeat(3, 1fr); gap: 48px; margin-top: 72px; }
+.ng div { display: grid; gap: 14px; align-content: start; padding-top: 28px; border-top: 1px solid var(--line); }
+.ng b { font-family: var(--display); font-size: clamp(48px, 5vw, 72px); font-weight: 500; letter-spacing: -0.04em; line-height: 1; }
+.ng p { color: var(--ink-2); max-width: 22em; }
+.ng-head h2 { font-size: clamp(36px, 4.6vw, 64px); max-width: 14em; }
+
+/* ---------- CTA ---------- */
+.cta-card { position: relative; border-radius: var(--r-xl); overflow: hidden; background: url(/landing/img/field.jpg) center 35%/cover; padding: clamp(56px, 9vw, 128px) clamp(24px, 6vw, 80px); display: grid; place-items: center; text-align: center; }
+.cta-glass { display: grid; gap: 22px; justify-items: center; max-width: 720px; padding: clamp(32px, 5vw, 56px); border-radius: 28px; background: rgba(20,22,10,.42); border: 1px solid rgba(255,255,255,.18); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); color: #fff; }
+.cta-glass h2 { font-size: clamp(36px, 5vw, 64px); }
+.cta-glass p { color: rgba(255,255,255,.85); font-size: 18px; }
+.cta-glass .hero-cta { justify-content: center; }
+
+/* longer real testimonial: smaller type so it fits the card */
+.story blockquote.long-quote { font-size: clamp(15px, 1.1vw, 17px); line-height: 1.55; letter-spacing: 0; font-weight: 400; }
+.story.green:has(.long-quote) { min-height: 0; }
+
+/* coming soon */
+.soon { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: 6px 12px; border-radius: 999px; background: var(--lime); color: var(--ink); }
+.soon-float { position: absolute; top: 18px; left: 18px; z-index: 3; }
+.btn-soon { border: 1px dashed var(--ink-3); color: var(--ink-2); cursor: default; }
+.btn-soon:hover { transform: none; }
+
+/* app store badges (coming soon, not links) */
+.stores { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+.store { display: inline-flex; align-items: center; gap: 10px; height: 52px; padding: 0 18px 0 14px; border-radius: 14px; background: #141414; color: #fff; border: 1px solid #141414; cursor: default; }
+.store svg { width: 24px; height: 24px; flex: none; }
+.store > span { display: grid; line-height: 1.1; text-align: left; }
+.store small { font-size: 10.5px; font-weight: 500; color: rgba(255,255,255,.72); }
+.store b { font-size: 16px; font-weight: 700; letter-spacing: -.01em; }
+.stores-foot { justify-content: flex-start; }
+.stores-foot .store { background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.18); }
+
+/* ---------- FOOTER ---------- */
+footer { padding-block: 96px 48px; }
+.foot { display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 40px; }
+.foot img { height: 34px; width: auto; }
+.foot p { color: var(--ink-2); margin-top: 18px; max-width: 22em; }
+.foot h4 { margin: 0 0 14px; font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
+.foot ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.foot a:hover { color: var(--olive); }
+.foot-base { margin-top: 72px; padding-top: 24px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; color: var(--ink-3); font-size: 14px; }
+
+/* ---------- MOTION SYSTEM ---------- */
+:root { --ease: cubic-bezier(.16, 1, .3, 1); --spring: cubic-bezier(.34, 1.56, .64, 1); }
+html.lenis, html.lenis body { height: auto; }
+.lenis.lenis-smooth { scroll-behavior: auto !important; }
+@media (prefers-reduced-motion: no-preference) { html:not(.lenis) { scroll-behavior: smooth; } }
+section[id] { scroll-margin-top: 110px; }
+
+/* nav */
+.nav-bar { transition: height .5s var(--ease), box-shadow .5s var(--ease), background .4s; }
+.nav.scrolled .nav-bar { height: 58px; background: rgba(255,255,255,.95); box-shadow: 0 14px 40px -16px rgba(20,20,20,.22); }
+.nav-links { position: relative; gap: 2px; }
+.nav-links a { position: relative; z-index: 1; padding: 8px 14px; border-radius: 999px; transition: color .3s; }
+.nav-links a.on { color: var(--ink); }
+.nav-ind { position: absolute; z-index: 0; top: 0; left: 0; height: 100%; width: 0; border-radius: 999px; background: var(--mist); opacity: 0; transition: transform .55s var(--ease), width .55s var(--ease), opacity .3s; }
+
+/* buttons */
+.btn { transition: translate .55s var(--spring), scale .25s var(--ease), background .25s, box-shadow .4s var(--ease), border-color .25s; }
+.btn:hover { transform: none; }
+.btn:active { scale: .96; }
+.btn-ink:hover { background: #000; box-shadow: 0 14px 30px -12px rgba(20,20,20,.55); }
+.btn-line:hover { border-color: var(--ink); }
+.btn-white:hover { box-shadow: 0 14px 30px -12px rgba(0,0,0,.4); }
+
+/* hero load sequence */
+.w { display: inline-block; overflow: hidden; vertical-align: top; padding-bottom: .1em; margin-bottom: -.1em; }
+.w > span { display: inline-block; }
+.shot > .ui { transition: scale .7s var(--spring), box-shadow .5s var(--ease); }
+.shot:hover > .ui { scale: 1.035; box-shadow: 0 2px 4px rgba(20,20,20,.04), 0 44px 80px -24px rgba(30,36,6,.34); }
+@media (prefers-reduced-motion: no-preference) {
+  .show-head > :not(h1) { animation: rise 1s var(--ease) both; }
+  .show-head > :nth-child(1) { animation-delay: .05s; }
+  .show-head > :nth-child(3) { animation-delay: .5s; }
+  .show-head > :nth-child(4) { animation-delay: .6s; }
+  .show-head > :nth-child(5) { animation-delay: .7s; }
+  .w > span { animation: wordup 1.1s var(--ease) both; animation-delay: calc(.12s + var(--wi) * 70ms); }
+  .shot { animation: shotin 1.4s var(--ease) both; }
+  .shot:nth-child(1) { animation-delay: .35s; } .shot:nth-child(2) { animation-delay: .5s; } .shot:nth-child(3) { animation-delay: .42s; }
+  .shot:nth-child(5) { animation-delay: .6s; } .shot:nth-child(6) { animation-delay: .7s; } .shot:nth-child(7) { animation-delay: .55s; }
+  .shot > .ui { animation: bob 8s ease-in-out infinite; }
+  .shot:nth-child(2) > .ui { animation-duration: 9s; animation-delay: -3s; }
+  .shot:nth-child(3) > .ui { animation-duration: 7.5s; animation-delay: -5s; }
+  .shot:nth-child(5) > .ui { animation-duration: 8.5s; animation-delay: -1s; }
+  .shot:nth-child(6) > .ui { animation-duration: 9.5s; animation-delay: -6s; }
+  .shot:nth-child(7) > .ui { animation-duration: 7s; animation-delay: -2s; }
+  .show-grid .bar i { transform-origin: left; animation: bargrow 1.6s var(--ease) both 1s; }
 }
-nav.top { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-block: 22px; }
-nav.top img { height: 30px; width: auto; display: block; }
-.nav-links { display: flex; align-items: center; gap: 6px; }
-.nav-links a.link { padding: 10px 14px; border-radius: 999px; color: var(--ink-muted); font-weight: 500; font-size: 15px; }
-.nav-links a.link:hover { color: var(--ink); background: var(--pane-wash); }
-.nav-links .btn { height: 42px; padding: 0 18px; font-size: 14px; }
-@media (max-width: 720px) { .nav-links a.link.hide-sm { display: none; } }
+@keyframes rise { from { opacity: 0; translate: 0 18px; filter: blur(6px); } }
+@keyframes wordup { from { translate: 0 110%; } }
+@keyframes shotin { from { opacity: 0; translate: 0 56px; scale: .9; } }
+@keyframes bob { 50% { transform: translateY(-9px); } }
+@keyframes bargrow { from { scale: 0 1; } }
 
-.hero-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr); gap: 48px; align-items: center; padding-block: 56px 96px; }
-@media (max-width: 1024px) { .hero-grid { gap: 28px; padding-block: 36px 72px; } }
-@media (max-width: 700px) { .hero-grid { grid-template-columns: minmax(0, 1fr); gap: 40px; padding-block: 28px 64px; } }
-.chip { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px; border-radius: 999px; background: rgba(20,20,20,0.45); border: 1px solid var(--pane-edge); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); font-size: 13px; font-weight: 500; color: var(--ink); }
-.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--signal); box-shadow: 0 0 0 5px rgba(213, 224, 87, 0.14); }
-.hero h1 { font-size: clamp(44px, 7vw, 84px); line-height: 0.95; margin-top: 22px; }
-.hero h1 em { font-style: normal; color: var(--signal); }
-.hero h1, .hero .lede, .hero .fine { text-shadow: 0 1px 18px rgba(0, 0, 0, 0.25); }
-.hero .lede { margin-top: 22px; font-size: clamp(17px, 2vw, 19px); line-height: 1.55; color: var(--ink-muted); max-width: 33em; }
-.hero .ctas { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
-.hero .fine { margin-top: 16px; font-size: 13px; color: var(--ink-faint); }
-
-/* Panes */
-.pane { background: var(--pane); border: 1px solid var(--pane-edge); border-radius: var(--radius-pane); box-shadow: var(--shadow-pane); backdrop-filter: blur(22px) saturate(140%); -webkit-backdrop-filter: blur(22px) saturate(140%); }
-.hero-pane { border-radius: var(--radius-pane-lg); padding: 26px; display: grid; gap: 18px; }
-.figure { font: 800 clamp(40px, 5.4vw, 58px)/1 var(--font-display); letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
-.figure-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.trend { font-size: 13px; font-weight: 700; color: var(--signal); }
-.bar { height: 8px; border-radius: 999px; background: var(--pane-wash); overflow: hidden; }
-.bar span { display: block; height: 100%; width: 72%; border-radius: inherit; background: var(--signal); }
-.rows { display: grid; gap: 8px; }
-.row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; padding: 12px 14px; border-radius: 16px; background: var(--pane-wash); border: 1px solid rgba(255,255,255,0.06); }
-.row .who { font-weight: 700; font-size: 15px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.row .amt { font-weight: 700; font-variant-numeric: tabular-nums; justify-self: end; text-align: right; }
-.row .meta { font-size: 12.5px; color: var(--ink-faint); }
-.status { display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; justify-self: end; }
-.s-live { color: var(--signal); background: var(--signal-wash); }
-.s-warn { color: var(--warn); background: var(--warn-wash); }
-.s-done { color: var(--ink-muted); background: var(--pane-wash); }
-
-/* Sections */
-section.band { padding-block: 88px; }
-@media (max-width: 720px) { section.band { padding-block: 64px; } }
-.head { display: grid; gap: 14px; max-width: 44em; margin-bottom: 40px; }
-.head h2 { font-size: clamp(32px, 4.4vw, 50px); line-height: 1.02; }
-.head p { color: var(--ink-muted); font-size: 17px; max-width: 36em; }
-
-/* Channels */
-.channels { display: flex; flex-wrap: wrap; gap: 10px; }
-.channel { display: inline-flex; align-items: center; gap: 10px; height: 48px; padding: 0 18px; border-radius: 999px; border: 1px solid var(--pane-edge); background: var(--pane-wash); font-weight: 500; }
-.channel svg { width: 20px; height: 20px; stroke: var(--ink); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-
-/* Feature grid */
-.features { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
-@media (max-width: 1024px) { .features { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 560px) { .features { grid-template-columns: minmax(0, 1fr); } }
-.feature { padding: 24px; border-radius: 22px; background: var(--ground-raised); border: 1px solid rgba(255,255,255,0.07); display: grid; gap: 12px; align-content: start; }
-.feature .ic { width: 44px; height: 44px; border-radius: 13px; background: var(--signal-wash); display: grid; place-items: center; }
-.feature .ic svg { width: 22px; height: 22px; stroke: var(--signal); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.feature h3 { font-size: 21px; line-height: 1.15; font-weight: 500; letter-spacing: -0.01em; }
-.feature p { color: var(--ink-muted); font-size: 15px; line-height: 1.55; }
-.feature .addr { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-faint); overflow-wrap: anywhere; }
-
-/* Order journey: a real sequence, so it is numbered */
-.journey { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0; position: relative; }
-.journey::before { content: ""; position: absolute; left: 22px; right: 22px; top: 21px; height: 2px; background: linear-gradient(to right, var(--signal) 0 60%, rgba(255,255,255,0.12) 60% 100%); }
-.step { position: relative; display: grid; gap: 10px; padding-right: 16px; align-content: start; }
-.step .n { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; font: 800 16px/1 var(--font-display); background: var(--ground-raised); border: 1px solid var(--pane-edge); color: var(--ink-muted); position: relative; }
-.step.done .n { background: var(--signal); color: var(--on-signal); border-color: transparent; }
-.step.now .n { background: var(--ground); color: var(--signal); border: 2px solid var(--signal); box-shadow: 0 0 0 6px rgba(213, 224, 87, 0.14); }
-.step h3 { font-size: 18px; font-weight: 500; letter-spacing: -0.01em; }
-.step p { font-size: 14px; color: var(--ink-muted); line-height: 1.5; }
-@media (max-width: 860px) {
-  .journey { grid-template-columns: minmax(0, 1fr); gap: 22px; }
-  .journey::before { left: 21px; right: auto; top: 22px; bottom: 22px; width: 2px; height: auto; background: linear-gradient(to bottom, var(--signal) 0 60%, rgba(255,255,255,0.12) 60% 100%); }
-  .step { grid-template-columns: 44px minmax(0, 1fr); column-gap: 16px; padding-right: 0; }
-  .step .n { grid-row: span 2; }
-}
-
-/* People photos */
-.photo { margin: 0; position: relative; overflow: hidden; border-radius: var(--radius-pane-lg); border: 1px solid var(--pane-edge); box-shadow: var(--shadow-pane); background: var(--ground-raised); }
-.photo img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.photo.tall { aspect-ratio: 4 / 5; max-width: 480px; width: 100%; justify-self: center; }
-.photo.tall img { object-position: 50% 30%; }
-.photo.wide { aspect-ratio: 16 / 9; margin-bottom: 14px; }
-.photo.wide img { object-position: 50% 14%; }
-@media (max-width: 700px) { .photo.wide { aspect-ratio: 4 / 5; } }
-
-/* Customer side */
-.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 48px; align-items: center; }
-@media (max-width: 700px) { .split { grid-template-columns: minmax(0, 1fr); gap: 32px; } }
-.track { padding: 24px; display: grid; gap: 16px; max-width: 440px; width: 100%; justify-self: center; }
-.track .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-.track .big { font: 800 34px/1.05 var(--font-display); letter-spacing: -0.02em; }
-.track .powered { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12px; color: var(--ink-faint); }
-.track .powered img { height: 14px; width: auto; }
-.ticks { display: grid; gap: 12px; padding: 0; margin: 0; list-style: none; }
-.ticks li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 12px; align-items: start; color: var(--ink-muted); }
-.ticks svg { width: 22px; height: 22px; stroke: var(--signal); fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; margin-top: 2px; }
-.ticks b { color: var(--ink); font-weight: 700; }
-
-/* Local facts */
-.facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
-@media (max-width: 1024px) { .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 700px) { .facts { grid-template-columns: minmax(0, 1fr); } }
-.fact { padding: 24px; border-radius: 22px; border: 1px solid rgba(255,255,255,0.07); display: grid; gap: 8px; }
-.fact .big { font: 800 40px/1 var(--font-display); letter-spacing: -0.03em; color: var(--signal); font-variant-numeric: tabular-nums; }
-.fact p { color: var(--ink-muted); font-size: 15px; }
-
-
-/* Businesses on Fyll: names set as type, since we only use real marks */
-.brands { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
-@media (max-width: 1024px) { .brands { grid-template-columns: repeat(2, minmax(0, 1fr)); } .brands .brand-tile:last-child { grid-column: 1 / -1; } }
-/* Phone: a swipeable row, so five tiles never leave one stranded on its own line */
-@media (max-width: 560px) {
-  .brands {
-    display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    margin-left: calc(-1 * max(16px, env(safe-area-inset-left, 0px)));
-    margin-right: calc(-1 * max(16px, env(safe-area-inset-right, 0px)));
-    padding-left: max(16px, env(safe-area-inset-left, 0px));
-    padding-right: max(16px, env(safe-area-inset-right, 0px));
-    scroll-padding-left: max(16px, env(safe-area-inset-left, 0px));
+/* scroll-driven reveals: progressive, only where the browser supports them */
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .trust-in, .panel, .human > *, .rail-head, .rail, .flow-grid > *, .cust > *, .stories-head, .story, .ng-head, .ng > div, .faq > *, .cta-glass, .foot {
+      animation: reveal linear both; animation-timeline: view(); animation-range: entry 0% entry 85%;
+    }
+    .story:nth-child(2), .ng > div:nth-child(2) { animation-range: entry 8% entry 95%; }
+    .story:nth-child(3), .ng > div:nth-child(3) { animation-range: entry 16% entry 100%; }
+    .hero-card, .cta-card { animation: widen linear both; animation-timeline: view(); animation-range: entry 0% cover 45%; }
+    .hero-card > img { animation: zoomout linear both; animation-timeline: view(); animation-range: entry 0% exit 100%; }
+    .tablet { animation: drift-up linear both; animation-timeline: view(); }
+    .devices .phone { animation: drift-down linear both; animation-timeline: view(); }
+    .cust-stage .phone { animation: tilt linear both; animation-timeline: view(); animation-range: entry 0% cover 50%; }
+    .toast.t1 { animation: drop linear both; animation-timeline: view(); animation-range: entry 40% cover 40%; }
+    .toast.t2 { animation: drop linear both; animation-timeline: view(); animation-range: entry 65% cover 50%; }
+    .bar i { transform-origin: left; animation: bargrow linear both; animation-timeline: view(); animation-range: entry 20% cover 40%; }
+    .show-grid .bar i { animation: bargrow 1.6s var(--ease) both 1s; animation-timeline: auto; }
   }
-  .brands::-webkit-scrollbar { display: none; }
 }
-.brand-tile { min-height: 96px; padding: 20px 14px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.08); background: var(--ground-raised); display: grid; align-content: center; justify-items: center; gap: 6px; text-align: center; transition: border-color .15s ease, background .15s ease; }
-a.brand-tile:hover { border-color: rgba(213, 224, 87, 0.5); background: rgba(213, 224, 87, 0.06); }
-.brand-tile .name { font: 500 19px/1.15 var(--font-display); letter-spacing: -0.01em; }
-.brand-tile .where { font-size: 12.5px; color: var(--ink-faint); }
-.brand-tile .logo { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; background: #ffffff; border: 2px solid rgba(213, 224, 87, 0.6); }
+@keyframes reveal { from { opacity: 0; translate: 0 64px; } }
+@keyframes widen { from { clip-path: inset(0 7% round 48px); } to { clip-path: inset(0 0 round 32px); } }
+@keyframes zoomout { from { scale: 1.18; } to { scale: 1; } }
+@keyframes drift-up { from { translate: 0 90px; } to { translate: 0 -60px; } }
+@keyframes drift-down { from { translate: 0 -30px; } to { translate: 0 60px; } }
+@keyframes tilt { from { rotate: 9deg; translate: 0 70px; } to { rotate: 0deg; translate: 0 0; } }
 
-/* More from Fyll */
-.tools { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-@media (max-width: 560px) { .tools { grid-template-columns: minmax(0, 1fr); } }
-.tool { padding: 28px; display: grid; gap: 12px; align-content: start; }
-.tool .tag { justify-self: start; }
-.tool h3 { font-size: 26px; line-height: 1.1; }
-.tool p { color: var(--ink-muted); font-size: 15.5px; }
+/* logo marquee */
+.trust-in { flex-wrap: nowrap; }
+.logos { flex: 1 1 420px; min-width: 0; overflow: hidden; flex-wrap: nowrap; -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent); mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent); }
+.logos-track { display: flex; width: max-content; padding-block: 4px; }
+.logos-track .logo { margin-right: 14px; transition: border-color .3s, translate .5s var(--spring); }
+.logos-track .logo:hover { translate: 0 -3px; }
+@media (prefers-reduced-motion: no-preference) {
+  .logos-track.go { animation: marquee 42s linear infinite; }
+  .logos:hover .logos-track { animation-play-state: paused; }
+}
+@keyframes marquee { to { translate: -33.3333% 0; } }
 
-/* Phone: calmer heading sizes */
-@media (max-width: 600px) {
-  .hero h1 { font-size: 38px; line-height: 1.02; }
-  .hero .lede { font-size: 16px; }
-  .head h2 { font-size: 27px; line-height: 1.1; }
-  #brands-h { font-size: 22px !important; }
-  .closing h2 { font-size: 29px; }
-  .figure { font-size: 36px; }
-  .track .big { font-size: 26px; }
-  .tool h3 { font-size: 21px; }
-  .feature h3 { font-size: 19px; }
-  .fact .big { font-size: 32px; }
+/* devices panel: live order feed */
+.devices .phone-screen { height: 480px; }
+.ocard { transition: background-color 1.2s; }
+.ocard.new { animation: cardin .8s var(--ease) both, flash 2.4s ease-out both; }
+.ocard.out { opacity: 0; transition: opacity .4s; }
+@keyframes cardin { from { opacity: 0; margin-top: -70px; scale: .96; } }
+@keyframes flash { from { background-color: rgba(213,224,87,.45); border-color: rgba(213,224,87,.9); } }
+
+/* feature rail */
+.rail-head { align-items: end; }
+.rail-ctrl { display: flex; align-items: center; gap: 10px; }
+.rail-ctrl .link-arrow { margin-right: 14px; }
+.rbtn { width: 52px; height: 52px; border-radius: 50%; border: 1px solid var(--line); background: #fff; color: var(--ink); display: grid; place-items: center; cursor: pointer; padding: 0; transition: background .25s, color .25s, border-color .25s, scale .25s var(--ease), opacity .3s; }
+.rbtn:hover { background: var(--ink); color: #fff; border-color: var(--ink); }
+.rbtn:active { scale: .9; }
+.rbtn:disabled { opacity: .3; pointer-events: none; }
+.rbtn:focus-visible { outline: 2px solid var(--olive); outline-offset: 3px; }
+.rbtn svg { width: 20px; height: 20px; }
+.rail { scrollbar-width: none; cursor: grab; padding-bottom: 8px; overscroll-behavior-x: contain; user-select: none; -webkit-user-select: none; }
+.rail::-webkit-scrollbar { display: none; }
+.rail img { -webkit-user-drag: none; }
+.rail.dragging { cursor: grabbing; scroll-snap-type: none; }
+.rail.dragging .fcard { pointer-events: none; }
+.rail-prog { margin-top: 28px; height: 3px; border-radius: 3px; background: var(--mist); overflow: hidden; }
+.rail-prog i { display: block; height: 100%; width: 30%; background: var(--ink); border-radius: inherit; transition: transform .2s linear, width .3s var(--ease); }
+.fcard { transition: transform .6s var(--ease), box-shadow .6s var(--ease), border-color .3s; }
+.fcard:hover { transform: translateY(-6px); box-shadow: 0 30px 60px -28px rgba(30,36,6,.35); border-color: transparent; }
+.fimg { background-size: 120%; transition: background-size 1.2s var(--ease); }
+.fcard:hover .fimg { background-size: 135%; }
+.fimg.photo-bg { background-size: cover; }
+.fimg .ui { transition: translate .7s var(--spring), box-shadow .6s var(--ease); }
+.fcard:hover .fimg .ui { translate: 0 -10px; box-shadow: 0 40px 70px -20px rgba(0,0,0,.45); }
+
+/* stories */
+.story.pic > img { transition: scale 1.4s var(--ease); }
+.story.pic:hover > img { scale: 1.06; }
+.story .link-arrow::after { transition: translate .4s var(--spring); }
+.story:hover .link-arrow::after { translate: 4px 0; }
+
+/* ---------- FLOW (dark, interactive) ---------- */
+.flow { position: relative; background: #141414; color: #fff; overflow: hidden; }
+.flow::before { content: ""; position: absolute; inset: 0 0 auto; height: 460px; background: url(/landing/img/field.jpg) center 30%/cover; opacity: .55; -webkit-mask-image: linear-gradient(#000, transparent); mask-image: linear-gradient(#000, transparent); }
+.flow-grid { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: clamp(40px, 7vw, 120px); align-items: center; }
+.flow-title { font-size: clamp(34px, 4.2vw, 58px); margin-top: 18px; max-width: 13em; }
+.flow-list { list-style: none; padding: 0; margin: 48px 0 0; display: grid; gap: 4px; }
+.flow-list li { position: relative; padding-left: 28px; display: grid; grid-template-rows: auto 0fr; transition: grid-template-rows .7s var(--ease); }
+.flow-list li.on { grid-template-rows: auto 1fr; }
+.flow-list button { all: unset; cursor: pointer; display: block; font-family: var(--display); font-size: clamp(26px, 2.6vw, 38px); font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; color: rgba(255,255,255,.3); padding-block: 8px; transition: color .4s, translate .6s var(--ease); }
+.flow-list button:hover { color: rgba(255,255,255,.65); translate: 6px 0; }
+.flow-list li.on button { color: #fff; translate: 0 0; }
+.flow-list button:focus-visible { outline: 2px solid var(--lime); outline-offset: 4px; border-radius: 6px; }
+.flow-list .fb { overflow: hidden; min-height: 0; }
+.flow-list .fb p { color: rgba(255,255,255,.75); max-width: 30em; padding-block: 6px 18px; opacity: 0; translate: 0 -8px; transition: opacity .35s, translate .7s var(--ease); }
+.flow-list li.on .fb p { opacity: 1; translate: 0 0; transition-delay: .12s; }
+.flow-prog { position: absolute; left: 0; top: 12px; bottom: 12px; width: 2px; border-radius: 2px; background: rgba(255,255,255,.12); overflow: hidden; }
+.flow-prog i { display: block; width: 100%; height: 0; background: var(--lime); border-radius: inherit; }
+.flow-list li.on .flow-prog i { animation: flowprog 6s linear forwards; }
+.flow:not(.inview) .flow-list li.on .flow-prog i, .flow-list:hover li.on .flow-prog i { animation-play-state: paused; }
+.flow.paused .flow-list li.on .flow-prog i { animation: none; height: 100%; }
+@keyframes flowprog { to { height: 100%; } }
+.flow-stage { position: relative; display: grid; place-items: center; min-height: 640px; }
+.flow-stage::before { content: ""; position: absolute; width: 460px; height: 460px; max-width: 100%; border-radius: 50%; background: radial-gradient(circle, rgba(213,224,87,.22), transparent 65%); }
+.flow-stage .phone { position: relative; width: 290px; box-shadow: 0 50px 90px -24px rgba(0,0,0,.7); }
+.flow-stage .phone-screen { display: grid; min-height: 580px; }
+.screen-panel { grid-area: 1 / 1; display: grid; align-content: start; opacity: 0; translate: 0 18px; filter: blur(6px); pointer-events: none; transition: opacity .45s var(--ease), translate .8s var(--ease), filter .5s var(--ease); }
+.screen-panel.on { opacity: 1; translate: 0 0; filter: blur(0); pointer-events: auto; transition-delay: .1s; }
+.flow-count { position: absolute; top: 40px; right: 0; padding: 8px 14px; border-radius: 999px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); font-size: 13px; font-weight: 600; color: rgba(255,255,255,.8); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.flow-count b { color: var(--lime); }
+
+/* ---------- FAQ ---------- */
+.faq { display: grid; grid-template-columns: 1fr 1.6fr; gap: 48px clamp(40px, 7vw, 120px); align-items: start; }
+.faq h2 { font-size: clamp(34px, 4.2vw, 58px); }
+.faq-side { position: sticky; top: 120px; display: grid; gap: 32px; align-content: start; }
+.faq-contact { border-radius: var(--r-lg); background: var(--mist); padding: 28px; display: grid; gap: 12px; justify-items: start; }
+.faq-contact h3 { font-size: 22px; letter-spacing: -0.015em; }
+.faq-contact p { color: var(--ink-2); }
+.copy { display: inline-flex; align-items: center; gap: 12px; max-width: 100%; height: 50px; padding: 0 7px 0 18px; border-radius: 999px; background: #fff; border: 1px solid var(--line); font-weight: 600; }
+.copy span { min-width: 0; overflow: hidden; text-overflow: ellipsis; user-select: all; }
+.copy button { all: unset; flex: none; cursor: pointer; height: 36px; padding: 0 16px; border-radius: 999px; background: var(--ink); color: #fff; font-family: var(--btn-font); font-size: 14px; font-weight: 600; display: inline-flex; align-items: center; transition: background .3s, scale .2s var(--ease); }
+.copy button:active { scale: .94; }
+.copy button.done { background: var(--olive); }
+.copy button:focus-visible { outline: 2px solid var(--olive); outline-offset: 2px; }
+.faq-tabs { position: relative; display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 5px; border-radius: 26px; background: var(--mist); margin-bottom: 28px; max-width: 100%; }
+.faq-tabs button { all: unset; position: relative; z-index: 1; cursor: pointer; padding: 10px 18px; border-radius: 999px; font-size: 14px; font-weight: 600; color: var(--ink-2); transition: color .35s; }
+.faq-tabs button:hover { color: var(--ink); }
+.faq-tabs button[aria-pressed="true"] { color: var(--ink); background: #fff; }
+.faq-tabs.ready button[aria-pressed="true"] { color: #fff; background: transparent; }
+.faq-tabs button:focus-visible { outline: 2px solid var(--olive); outline-offset: 2px; }
+.faq-ind { position: absolute; z-index: 0; top: 0; left: 0; width: 0; height: 0; border-radius: 999px; background: var(--ink); transition: transform .55s var(--ease), width .55s var(--ease), height .55s var(--ease); }
+.faq-items { border-top: 1px solid var(--line); }
+.qa { border-bottom: 1px solid var(--line); }
+.qa h3 { margin: 0; font: inherit; letter-spacing: normal; }
+.qa h3 button { all: unset; box-sizing: border-box; width: 100%; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding-block: 26px; font-size: clamp(18px, 1.5vw, 22px); font-weight: 600; letter-spacing: -0.01em; line-height: 1.3; transition: padding .6s var(--ease); }
+.qa h3 button:hover { padding-left: 10px; }
+.qa h3 button:focus-visible { outline: 2px solid var(--olive); outline-offset: 2px; border-radius: 8px; }
+.qi { position: relative; flex: none; width: 42px; height: 42px; border-radius: 50%; border: 1px solid var(--line); transition: background .45s var(--ease), border-color .45s, rotate .6s var(--ease); }
+.qi::before, .qi::after { content: ""; position: absolute; left: 50%; top: 50%; width: 14px; height: 2px; margin: -1px 0 0 -7px; border-radius: 2px; background: var(--ink); transition: rotate .6s var(--ease), background .3s; }
+.qi::after { rotate: 90deg; }
+.qa h3 button:hover .qi { border-color: var(--ink); }
+.qa.open .qi { background: var(--ink); border-color: var(--ink); rotate: 180deg; }
+.qa.open .qi::before, .qa.open .qi::after { background: #fff; }
+.qa.open .qi::after { rotate: 0deg; }
+.qa-p { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .65s var(--ease); }
+.qa.open .qa-p { grid-template-rows: 1fr; }
+.qa-p > div { overflow: hidden; min-height: 0; }
+.qa-p p { padding: 0 66px 28px 0; color: var(--ink-2); font-size: 17px; max-width: 46em; opacity: 0; translate: 0 -8px; transition: opacity .35s, translate .7s var(--ease); }
+.qa.open .qa-p p { opacity: 1; translate: 0 0; transition-delay: .12s; }
+.qa-p a { color: var(--ink); font-weight: 600; text-decoration: underline; text-decoration-color: var(--lime); text-decoration-thickness: 2px; text-underline-offset: 4px; transition: text-decoration-color .25s; }
+.qa-p a:hover { text-decoration-color: var(--ink); }
+@media (prefers-reduced-motion: no-preference) {
+  .faq-items.swap .qa:not([hidden]) { animation: rise .6s var(--ease) both; animation-delay: calc(var(--k, 0) * 55ms); }
 }
-@media (max-width: 600px) {
-  .hero-pane { padding: 20px; gap: 14px; }
-  .hero-pane .row .who, .hero-pane .row .amt { font-size: 14px; }
-  .hero-pane .row .meta, .hero-pane .trend, .hero-pane .meta { font-size: 12px !important; }
-  .hero-pane .status, .track .status { font-size: 10px !important; height: 20px; padding: 0 8px; }
-  .hero-pane .label { font-size: 12px; }
+@media (max-width: 860px) {
+  .flow-grid, .faq { grid-template-columns: 1fr; }
+  .flow-stage { min-height: 0; }
+  .flow-count { top: 0; }
+  .faq-side { position: static; }
+  .trust-in { flex-wrap: wrap; }
+  .qa-p p { padding-right: 0; }
 }
-/* Phone and tablet: every supporting line at 12px, every button at 14px */
-@media (max-width: 1024px) {
-  .hero .lede, .hero .fine, .head p, .feature p, .feature .addr, .tool p, .tool a,
-  .step p, .fact p, .ticks li, .track p, .closing p, footer p, footer li, .legal,
-  .channel, .chip { font-size: 12px !important; line-height: 1.55; }
-  .btn, .nav-links .btn { font-size: 14px !important; }
+
+/* ---------- LAYOUT VARIETY ---------- */
+.wrap.mid { max-width: 1480px; }
+.wrap.narrow { max-width: 1200px; }
+.rail-head { padding-left: clamp(0px, 6vw, 120px); }
+.ng-head { text-align: center; display: grid; justify-items: center; }
+.ng-head h2 { max-width: 13em; }
+.ng { text-align: center; }
+.ng div { justify-items: center; }
+
+/* ---------- TRUST (roomier) ---------- */
+.trust { padding-block: 8px 0; }
+.trust-in { gap: 32px 56px; }
+.logos-track { padding-block: 10px; }
+.logos-track .logo { flex: none; white-space: nowrap; margin-right: 20px; padding: 10px 24px 10px 10px; gap: 12px; font-size: 15px; background: #fff; }
+.logos-track .logo img { width: 38px; height: 38px; }
+
+/* ---------- PEOPLE BAND ---------- */
+.people-sec { padding-block: clamp(72px, 9vw, 128px) 0; }
+.people { display: flex; height: clamp(420px, 44vw, 720px); }
+.pp { position: relative; flex: 1 1 0; min-width: 0; margin: 0; overflow: hidden; transition: flex-grow .9s var(--ease); outline: none; }
+.pp img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: scale 1.4s var(--ease), filter .6s; }
+.people:hover .pp, .people:focus-within .pp { flex-grow: .8; }
+.people .pp:is(:hover, :focus-visible) { flex-grow: 1.9; }
+.pp:is(:hover, :focus-visible) img { scale: 1.04; }
+.pp:focus-visible { box-shadow: inset 0 0 0 3px var(--lime); }
+.pp-tag { position: absolute; left: 20px; bottom: 20px; padding: 9px 16px; border-radius: 999px; background: rgba(255,255,255,.9); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); font-size: 14px; font-weight: 600; white-space: nowrap; }
+.pp-ui { position: absolute; top: 20px; left: 20px; width: min(270px, calc(100% - 40px)); font-size: 13px; opacity: 0; translate: 0 -14px; scale: .96; transition: opacity .4s var(--ease), translate .7s var(--spring), scale .7s var(--spring); }
+.pp:is(:hover, :focus-visible) .pp-ui { opacity: 1; translate: 0 0; scale: 1; transition-delay: .15s; }
+
+/* ---------- NOTIFICATIONS ---------- */
+.notifs { position: absolute; top: 22px; left: 22px; right: 22px; display: grid; gap: 10px; max-width: 440px; }
+.notif { display: flex; gap: 12px; align-items: center; padding: 13px 16px; border-radius: 22px; background: rgba(255,255,255,.84); backdrop-filter: blur(20px) saturate(1.6); -webkit-backdrop-filter: blur(20px) saturate(1.6); box-shadow: 0 12px 30px -12px rgba(0,0,0,.35); font-size: 14px; transform-origin: top center; }
+.notif .ic { width: 38px; height: 38px; border-radius: 11px; background: var(--ink); display: grid; place-items: center; flex: none; }
+.notif .ic img { width: 24px; filter: invert(1); }
+.notif div { min-width: 0; }
+.notif b { display: block; }
+.notif span { color: var(--ink-2); font-size: 13px; }
+.notif time { margin-left: auto; align-self: start; font-size: 12px; color: var(--ink-3); flex: none; }
+.notif:nth-child(2) { opacity: .92; }
+.notif:nth-child(3) { opacity: .8; }
+.notif.pop { animation: notifpop .75s var(--spring) both; }
+.notif.leave { animation: notifleave .45s var(--ease) forwards; }
+@keyframes notifpop { from { opacity: 0; translate: 0 -26px; scale: .88; } }
+@keyframes notifleave { to { opacity: 0; scale: .9; translate: 0 12px; } }
+
+/* ---------- PRODUCTS ---------- */
+.prod-head { display: flex; justify-content: space-between; align-items: end; gap: 24px 64px; flex-wrap: wrap; }
+.prod-head h2 { font-size: clamp(36px, 4.6vw, 64px); margin-top: 18px; max-width: 12em; }
+.prod-head .lede { max-width: 26em; }
+.prods { margin-top: 56px; display: grid; grid-template-columns: 1.2fr 1fr; gap: 24px; }
+.prod { position: relative; border-radius: var(--r-xl); overflow: hidden; display: grid; gap: 28px; padding: clamp(28px, 3vw, 44px); align-content: space-between; min-width: 0; }
+.p-store { grid-row: span 2; background: var(--mist); }
+.p-check { background: #141414; color: #fff; grid-template-columns: 1fr 1fr; align-items: center; }
+.p-rev { background: var(--forest); color: #fff; grid-template-columns: 1fr 1fr; align-items: center; }
+.prod-copy { display: grid; gap: 14px; justify-items: start; align-content: start; min-width: 0; }
+.prod-name { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; padding: 7px 14px 7px 12px; border-radius: 999px; background: #fff; }
+.prod-name img { height: 16px; width: auto; }
+.prod-name.light { background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.16); }
+.prod-name.light img { filter: invert(1); }
+.prod h3 { font-size: clamp(24px, 2.2vw, 34px); letter-spacing: -0.025em; line-height: 1.1; }
+.prod p { color: var(--ink-2); max-width: 30em; }
+.p-check p, .p-rev p { color: rgba(255,255,255,.75); }
+.p-check .link-arrow, .p-rev .link-arrow { color: var(--lime); }
+.prod-vis { position: relative; min-width: 0; }
+.p-store .prod-vis { border-radius: 22px; background: url(/landing/img/field.jpg) center/cover; padding: clamp(20px, 3vw, 48px); padding-bottom: 0; display: grid; overflow: hidden; }
+.browser { position: relative; background: #fff; border-radius: 16px 16px 0 0; box-shadow: var(--shadow-lg); transition: translate .8s var(--spring); }
+.p-store:hover .browser { translate: 0 -8px; }
+.b-bar { display: flex; align-items: center; gap: 6px; padding: 12px 14px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--ink-3); }
+.b-bar i { width: 10px; height: 10px; border-radius: 50%; background: var(--line); }
+.b-bar span { margin-left: 10px; padding: 4px 12px; border-radius: 999px; background: var(--mist); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.b-body { padding: 18px; display: grid; gap: 16px; }
+.shop-head { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+.shop-head img { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; }
+.shop-head .bag { margin-left: auto; font-size: 12px; font-weight: 700; padding: 5px 12px; border-radius: 999px; background: var(--ink); color: #fff; }
+.shop-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.prd { display: grid; gap: 4px; font-size: 12px; min-width: 0; }
+.prd b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.prd span { color: var(--ink-3); }
+.prd-img { aspect-ratio: 4 / 5; max-width: 100%; border-radius: 12px; background: var(--t); display: grid; place-items: center; margin-bottom: 4px; transition: scale .6s var(--spring); }
+.prd:hover .prd-img { scale: 1.04; }
+.bottle { position: relative; width: 34%; height: 46%; border-radius: 12px 12px 16px 16px; background: var(--b, #c9a46a); box-shadow: inset -6px 0 0 rgba(0,0,0,.08), inset 6px 0 0 rgba(255,255,255,.25); }
+.bottle::before { content: ""; position: absolute; left: 30%; right: 30%; top: -22%; height: 24%; border-radius: 4px; background: #2a2a22; }
+.added { position: absolute; left: 50%; bottom: 22px; translate: -50% 0; display: flex; align-items: center; gap: 10px; padding: 10px 16px 10px 10px; border-radius: 999px; background: var(--ink); color: #fff; font-size: 13px; font-weight: 600; white-space: nowrap; box-shadow: 0 14px 30px -10px rgba(0,0,0,.5); }
+.added .tick { width: 24px; height: 24px; border-radius: 50%; background: var(--lime); color: var(--ink); display: grid; place-items: center; font-size: 13px; }
+.paycard { background: #fff; color: var(--ink); border-radius: 20px; padding: 20px; display: grid; gap: 10px; box-shadow: 0 30px 60px -20px rgba(0,0,0,.6); rotate: 2deg; transition: rotate .8s var(--spring), translate .8s var(--spring); }
+.p-check:hover .paycard { rotate: 0deg; translate: 0 -6px; }
+.acct { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 12px; padding: 12px; border-radius: 12px; background: var(--mist); }
+.acct span { color: var(--ink-3); }
+.acct b { text-align: right; }
+.upload { display: grid; gap: 8px; font-size: 12px; color: var(--ink-2); padding: 12px; border-radius: 12px; border: 1px dashed var(--line); }
+.stamp { justify-self: start; font-size: 12px; font-weight: 700; padding: 6px 12px; border-radius: 999px; background: #e3f7ee; color: #0b7a55; }
+.rev { background: #fff; color: var(--ink); border-radius: 18px; padding: 16px 18px; display: grid; gap: 6px; font-size: 13px; box-shadow: 0 24px 50px -20px rgba(0,0,0,.5); transition: rotate .8s var(--spring), translate .8s var(--spring); }
+.rev p { color: var(--ink) !important; font-weight: 500; }
+.rev span { color: var(--ink-3); font-size: 12px; }
+.stars { color: #d9a400; letter-spacing: 2px; font-size: 14px; }
+.r1 { rotate: -3deg; }
+.r2 { rotate: 2deg; margin: -8px -6px 0 26px; }
+.p-rev:hover .r1 { rotate: -1deg; translate: 0 -4px; }
+.p-rev:hover .r2 { rotate: 0deg; translate: 0 -8px; }
+@media (prefers-reduced-motion: no-preference) {
+  .added { animation: added 5s var(--ease) infinite; }
+  .up-fill { transform-origin: left; animation: upfill 5s var(--ease) infinite; }
+  .stamp { animation: stamp 5s var(--spring) infinite; }
+}
+@keyframes added { 0%, 18% { opacity: 0; translate: -50% 20px; scale: .9; } 28%, 82% { opacity: 1; translate: -50% 0; scale: 1; } 92%, 100% { opacity: 0; translate: -50% 10px; scale: .96; } }
+@keyframes upfill { 0%, 10% { scale: 0 1; } 50%, 100% { scale: 1 1; } }
+@keyframes stamp { 0%, 52% { opacity: 0; scale: .7; } 62%, 92% { opacity: 1; scale: 1; } 100% { opacity: 0; scale: 1; } }
+
+/* ---------- BIG FOOTER ---------- */
+.bigfoot { padding-block: 0; position: relative; background: #141414; color: #fff; border-radius: 40px 40px 0 0; overflow: hidden; margin-top: clamp(64px, 8vw, 120px); }
+.bf-field { position: relative; background: url(/landing/img/field.jpg) center 40%/cover; }
+.bf-field::before { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, rgba(16,18,6,.55) 0%, rgba(16,18,6,.28) 50%, rgba(16,18,6,.18) 100%); pointer-events: none; }
+.bf-field::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(20,20,20,0) 40%, #141414 100%); pointer-events: none; }
+.bf-top { position: relative; z-index: 1; display: grid; grid-template-columns: 1.5fr 1fr; gap: 40px clamp(40px, 6vw, 120px); align-items: end; padding-block: clamp(96px, 11vw, 168px) clamp(120px, 12vw, 190px); }
+.bf-title { font-size: clamp(40px, 5.4vw, 96px); font-weight: 700; letter-spacing: -0.04em; line-height: 1; color: #fff; text-shadow: 0 2px 40px rgba(0,0,0,.18); }
+.bf-title span { display: block; }
+.bf-cta { display: grid; gap: 24px; justify-items: start; color: #fff; padding-bottom: .4em; }
+.bf-cta p { font-size: clamp(17px, 1.3vw, 19px); line-height: 1.5; color: rgba(255,255,255,.9); max-width: 24em; text-shadow: 0 1px 20px rgba(0,0,0,.2); }
+.btn-field { border: 1px solid rgba(255,255,255,.5); color: #fff; }
+.btn-field:hover { border-color: #fff; background: rgba(255,255,255,.12); }
+.bf-main { display: grid; grid-template-columns: 1.1fr 1.4fr; gap: 56px clamp(40px, 6vw, 120px); padding-block: 24px 72px; }
+.bf-brand { display: grid; gap: 24px; align-content: start; justify-items: start; }
+.bf-logo { height: 26px; width: auto; filter: invert(1); }
+.socials { display: flex; gap: 10px; }
+.socials a { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.16); color: #fff; transition: background .3s, color .3s, border-color .3s, scale .3s var(--spring); }
+.socials a:hover { background: var(--lime); color: var(--ink); border-color: var(--lime); scale: 1.08; }
+.socials svg { width: 20px; height: 20px; }
+.bf-brand > p { color: rgba(255,255,255,.7); max-width: 34em; }
+.bf-brand > p b { color: #fff; }
+.nl { display: grid; gap: 12px; width: 100%; max-width: 460px; }
+.nl label { font-weight: 600; }
+.nl-row { display: flex; gap: 6px; padding: 6px; border-radius: 999px; background: #fff; }
+.nl-row input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; padding: 0 16px; font: inherit; font-size: 15px; color: var(--ink); }
+.nl-row .btn { height: 44px; padding: 0 20px; font-size: 15px; }
+.nl-row:focus-within { box-shadow: 0 0 0 3px var(--lime); }
+.nl-msg { min-height: 1.4em; font-size: 14px; color: var(--lime); }
+.bf-cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; }
+.bf-cols h4 { margin: 0 0 18px; font-size: 15px; font-weight: 700; }
+.bf-cols ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.bf-cols a, .bf-cols span { color: rgba(255,255,255,.65); transition: color .25s; }
+.bf-cols a:hover { color: var(--lime); }
+.bf-base { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding-block: 28px calc(28px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid rgba(255,255,255,.1); color: rgba(255,255,255,.55); font-size: 14px; }
+.totop { color: #fff; font-weight: 600; display: inline-flex; gap: 8px; }
+.totop span { transition: translate .4s var(--spring); }
+.totop:hover span { translate: 0 -3px; }
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .people { animation: reveal linear both; animation-timeline: view(); animation-range: entry 0% entry 70%; }
+    .prod-head, .prod { animation: reveal linear both; animation-timeline: view(); animation-range: entry 0% entry 80%; }
+    .bf-title span { animation: titlein linear both; animation-timeline: view(); animation-range: entry 10% cover 40%; }
+    .bf-title span:nth-child(2) { animation-range: entry 25% cover 50%; }
+    .bf-field { animation: fieldpan linear both; animation-timeline: view(); }
+  }
+}
+@keyframes titlein { from { opacity: 0; translate: 0 80px; } }
+@keyframes fieldpan { from { background-position: center 10%; } to { background-position: center 70%; } }
+@media (max-width: 1080px) {
+  .prods { grid-template-columns: 1fr; }
+  .p-store { grid-row: auto; }
+  .bf-top, .bf-main { grid-template-columns: 1fr; }
+}
+@media (max-width: 860px) {
+  .people { flex-wrap: wrap; height: auto; }
+  .pp { flex: 1 1 50%; aspect-ratio: 3 / 4; max-width: 50%; }
+  .people:hover .pp, .people .pp:is(:hover, :focus-visible) { flex-grow: 1; }
+  .pp-ui { display: none; }
+  .rail-head { padding-left: 0; }
+  .p-check, .p-rev { grid-template-columns: 1fr; }
+  .bf-cols { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 560px) {
-  .brand-tile { flex: 0 0 38%; scroll-snap-align: start; min-height: 0; padding: 14px 8px; gap: 4px; }
-  .brand-tile .name { font-size: 13px; line-height: 1.2; }
-  .brand-tile .where { font-size: 11px; }
-  .brand-tile .logo { width: 44px; height: 44px; }
+  .pp-tag { left: 10px; bottom: 10px; font-size: 12px; padding: 7px 12px; }
+  .shop-grid { grid-template-columns: repeat(2, 1fr); }
+  .shop-grid .prd:nth-child(3) { display: none; }
+  .bf-cols { grid-template-columns: 1fr; }
+  .notifs { top: 12px; left: 12px; right: 12px; }
+  .r2 { margin-left: 10px; }
 }
 
-/* Tablet: card titles at 20px */
-@media (min-width: 601px) and (max-width: 1024px) {
-  .feature h3, .tool h3 { font-size: 20px; }
-  .brand-tile .name { font-size: 15px; }
-  .brand-tile .where { font-size: 12px; }
+/* ---------- PRODUCTS v2 (real screenshots) ---------- */
+.prods { grid-template-columns: 1.3fr 1fr; }
+.p-store { grid-row: auto; grid-column: 1 / -1; grid-template-columns: minmax(0, .75fr) minmax(0, 1.6fr); align-items: center; gap: clamp(28px, 4vw, 64px); }
+.p-store .prod-copy .link-arrow + .link-arrow { margin-top: -6px; }
+.p-store .prod-vis { padding: clamp(20px, 3.5vw, 56px) clamp(20px, 3.5vw, 56px) 0; }
+.b-shot { overflow: hidden; border-radius: 0; }
+.b-shot img { width: 100%; height: auto; transition: translate 1.6s var(--ease); }
+.p-store:hover .b-shot img { translate: 0 -4%; }
+.p-check { grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); align-items: stretch; padding-bottom: 0; }
+.p-check .prod-copy { align-self: center; padding-bottom: clamp(28px, 3vw, 44px); }
+.p-check .prod-vis { align-self: end; }
+.mini-steps { list-style: none; margin: 4px 0; padding: 0; display: grid; gap: 10px; counter-reset: ms; font-size: 15px; color: rgba(255,255,255,.85); }
+.mini-steps li { counter-increment: ms; display: flex; align-items: center; gap: 10px; }
+.mini-steps li::before { content: counter(ms); width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,.4); display: grid; place-items: center; font-size: 12px; font-weight: 700; flex: none; }
+.checkout-shot { position: relative; margin-bottom: -14%; rotate: -2deg; translate: 0 24px; transition: rotate .9s var(--spring), translate .9s var(--spring); }
+.checkout-shot img { width: 100%; height: auto; border-radius: 22px; box-shadow: 0 40px 90px -20px rgba(0,0,0,.75); }
+.p-check:hover .checkout-shot { rotate: 0deg; translate: 0 0; }
+.stamp-pop { position: absolute; left: 50%; top: 66%; translate: -50% 0; display: flex; align-items: center; gap: 10px; padding: 10px 16px 10px 10px; border-radius: 999px; background: var(--ink); color: #fff; font-size: 13px; font-weight: 600; white-space: nowrap; box-shadow: 0 16px 34px -10px rgba(0,0,0,.6); }
+.stamp-pop .tick { width: 24px; height: 24px; border-radius: 50%; background: var(--lime); color: var(--ink); display: grid; place-items: center; font-size: 13px; }
+.p-rev { grid-template-columns: 1fr; }
+.p-rev .prod-vis { padding-inline: 8px; }
+@media (prefers-reduced-motion: no-preference) {
+  .stamp-pop { animation: stampin 5.5s var(--spring) infinite; }
+}
+@keyframes stampin { 0%, 25% { opacity: 0; scale: .8; translate: -50% 14px; } 35%, 85% { opacity: 1; scale: 1; translate: -50% 0; } 95%, 100% { opacity: 0; scale: .96; translate: -50% 6px; } }
+@media (max-width: 1080px) {
+  .prods { grid-template-columns: 1fr; }
+  .p-store { grid-template-columns: 1fr; }
+}
+@media (max-width: 860px) {
+  .p-check { grid-template-columns: 1fr; }
+  .checkout-shot { margin-bottom: -10%; }
+}
+@media (max-width: 560px) {
+  .stamp-pop, .added { font-size: 11px; }
 }
 
-/* Closing */
-.closing { border-radius: var(--radius-pane-lg); padding: clamp(28px, 6vw, 64px); display: grid; gap: 22px; justify-items: start; position: relative; overflow: hidden; isolation: isolate; background: var(--field-deep); }
-.closing::before { content: ""; position: absolute; inset: 0; z-index: -1; background: url("/landing/field.jpg") center / cover no-repeat; opacity: 0.9; }
-.closing h2 { font-size: clamp(34px, 5vw, 58px); line-height: 1; max-width: 13em; }
-.closing p { color: var(--ink); max-width: 34em; font-size: 17px; }
-.closing .ctas { display: flex; flex-wrap: wrap; gap: 12px; }
-.closing .btn-ghost { background: rgba(20,20,20,0.45); }
+/* ---------- CURRENCIES ---------- */
+.ng-head .lede { margin-inline: auto; }
+.fx { margin: 64px auto 0; display: grid; justify-items: center; gap: 24px; max-width: 680px; }
+.fx-chips { position: relative; display: inline-flex; flex-wrap: wrap; justify-content: center; gap: 4px; padding: 5px; border-radius: 26px; background: var(--mist); max-width: 100%; }
+.fx-chips button { all: unset; position: relative; z-index: 1; cursor: pointer; padding: 10px 18px; border-radius: 999px; font-size: 15px; font-weight: 600; color: var(--ink-2); transition: color .35s; white-space: nowrap; }
+.fx-chips button:hover { color: var(--ink); }
+.fx-chips button[aria-pressed="true"] { color: var(--ink); background: #fff; }
+.fx-chips.ready button[aria-pressed="true"] { color: #fff; background: transparent; }
+.fx-chips button:focus-visible { outline: 2px solid var(--olive); outline-offset: 2px; }
+.fx-ind { position: absolute; z-index: 0; top: 0; left: 0; width: 0; height: 0; border-radius: 999px; background: var(--ink); transition: transform .55s var(--ease), width .55s var(--ease), height .55s var(--ease); }
+.fx-card { width: 100%; padding: clamp(24px, 3vw, 36px); display: grid; gap: 18px; border: 1px solid var(--line); }
+.fx-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.fx-amt { overflow: hidden; font-size: clamp(48px, 7vw, 92px); font-weight: 700; letter-spacing: -0.04em; line-height: 1.08; padding-bottom: .04em; }
+.fx-val { display: inline-block; transition: translate .5s var(--ease), opacity .35s, filter .4s; }
+.fx-val.out { translate: 0 -60%; opacity: 0; filter: blur(6px); }
+.fx-val.in { translate: 0 60%; opacity: 0; filter: blur(6px); transition: none; }
+.fx-rows { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.fx-rows div { display: grid; gap: 4px; padding: 14px 16px; border-radius: 14px; background: var(--mist); min-width: 0; }
+.fx-rows span { font-size: 13px; color: var(--ink-3); }
+.fx-rows b { font-size: 18px; transition: opacity .3s; }
+.fx-rows.swap b { opacity: 0; }
+.fx-note { font-size: 12px; color: var(--ink-3); }
+.ng b { font-size: clamp(40px, 4.2vw, 64px); }
+@media (max-width: 560px) { .fx-rows { grid-template-columns: 1fr; } .fx-chips button { padding: 9px 13px; font-size: 14px; } }
+@media (prefers-reduced-motion: reduce) { .fx-val, .fx-val.out, .fx-val.in { translate: none; filter: none; } }
 
-footer { padding-block: 56px 40px; color: var(--ink-faint); font-size: 14px; }
-.foot { display: grid; grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(0, 1fr)); gap: 32px; }
-@media (max-width: 820px) { .foot { grid-template-columns: repeat(2, minmax(0, 1fr)); } .foot .brand { grid-column: 1 / -1; } }
-.foot img { height: 26px; width: auto; }
-.foot h4 { margin: 0 0 12px; }
-.foot ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; }
-.foot a:hover { color: var(--ink); }
-.legal { margin-top: 40px; padding-top: 22px; border-top: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+/* ---------- CURRENCY STATS (aligned) ---------- */
+.ng { text-align: left; gap: clamp(24px, 4vw, 56px); margin-top: 88px; }
+.ng div { justify-items: start; align-content: start; gap: 12px; padding-top: 24px; min-width: 0; }
+.ng div::before { content: ""; width: 28px; height: 4px; border-radius: 4px; background: var(--lime); margin-bottom: 4px; }
+.ng b { font-size: clamp(28px, 2.7vw, 42px); font-weight: 700; letter-spacing: -0.03em; line-height: 1.1; white-space: nowrap; }
+.ng p { max-width: 24em; }
+
+/* ---------- BUILDERS CIRCLE ---------- */
+.wrap.wide { max-width: 1720px; }
+.circle-head { display: grid; gap: 18px; }
+.circle-head h2 { font-size: clamp(34px, 4.2vw, 68px); font-weight: 600; }
+@media (min-width: 861px) { .circle-head h2 span { display: block; white-space: nowrap; } }
+.stories { margin-top: 64px; }
+.story.pic .glass { display: grid; gap: 10px; }
+.ep { display: inline-flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 600; color: rgba(255,255,255,.85); }
+.play { position: relative; width: 30px; height: 30px; border-radius: 50%; background: var(--lime); flex: none; transition: scale .5s var(--spring); }
+.play::after { content: ""; position: absolute; left: 11px; top: 9px; border-left: 10px solid var(--ink); border-top: 6px solid transparent; border-bottom: 6px solid transparent; }
+.story.pic:hover .play { scale: 1.15; }
+.story.circle { background: var(--mist); color: var(--ink); justify-items: start; }
+.story.circle h3 { font-size: clamp(30px, 2.6vw, 40px); font-weight: 700; letter-spacing: -0.03em; }
+.story.circle p { color: var(--ink-2); font-size: 17px; max-width: 26em; }
+.avatars { display: flex; align-items: center; }
+.avatars img, .avatars span { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; border: 3px solid var(--mist); margin-left: -14px; transition: translate .5s var(--spring); }
+.avatars img:first-child { margin-left: 0; }
+.avatars span { display: grid; place-items: center; background: var(--lime); font-size: 22px; font-weight: 700; }
+.story.circle:hover .avatars img:nth-child(2) { translate: 4px 0; }
+.story.circle:hover .avatars img:nth-child(3) { translate: 8px 0; }
+.story.circle:hover .avatars img:nth-child(4) { translate: 12px 0; }
+.story.circle:hover .avatars span { translate: 16px 0; }
+
+/* ---------- FLOW: BOTH SIDES ---------- */
+.flow-grid { grid-template-columns: minmax(0, .85fr) minmax(0, 1.25fr); }
+.flow-sub { color: rgba(255,255,255,.72); font-size: clamp(16px, 1.3vw, 18px); max-width: 30em; margin-top: 20px; }
+.flow-stage { min-height: 0; padding-top: 56px; }
+.flow-stage::before { width: 640px; height: 640px; }
+.duo { position: relative; display: flex; gap: clamp(16px, 2.4vw, 36px); align-items: flex-start; }
+.side { display: grid; gap: 14px; justify-items: center; }
+.cust-side { margin-top: 48px; }
+.side-tag { display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border-radius: 999px; font-size: 13px; font-weight: 600; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.16); color: #fff; }
+.side-tag img { height: 13px; width: auto; filter: invert(1); }
+.side-tag img.round { height: 20px; width: 20px; border-radius: 50%; object-fit: cover; filter: none; }
+.side-tag.light { background: var(--lime); color: var(--ink); border-color: var(--lime); }
+.duo .phone { position: relative; width: clamp(230px, 18vw, 272px); box-shadow: 0 50px 90px -24px rgba(0,0,0,.7); }
+.duo .phone-screen { display: grid; min-height: 540px; }
+.phone-light { background: #e9eae2; }
+.phone-light .phone-screen::before { background: #e9eae2; }
+.flow-count { top: 0; right: auto; left: 0; }
+.cp { font-size: 13px; }
+.c-brand { display: flex; align-items: center; gap: 8px; padding-bottom: 10px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.c-brand img { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; }
+.c-p { color: var(--ink-2); font-size: 13px; }
+.c-foot { text-align: center; font-size: 11px; color: var(--ink-3); }
+.c-upload { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 12px; border: 1px dashed var(--line); font-size: 12px; }
+.c-upload b { display: block; }
+.c-upload span:not(.c-ic) { color: var(--ink-3); }
+.c-ic { width: 32px; height: 32px; border-radius: 10px; background: #eef2c4; display: grid; place-items: center; font-weight: 700; flex: none; }
+.c-seg { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.c-seg i { height: 6px; border-radius: 6px; background: var(--olive); }
+.c-seg i.half { background: linear-gradient(90deg, var(--olive) 40%, var(--mist) 40%); }
+.c-done { width: 52px; height: 52px; border-radius: 50%; background: var(--lime); display: grid; place-items: center; font-size: 24px; font-weight: 700; margin-top: 8px; }
+.c-rate { display: grid; gap: 4px; padding: 12px; border-radius: 14px; background: var(--mist); }
+.c-stars { color: #d9a400; font-size: 22px; letter-spacing: 3px; }
+.c-verified { font-size: 11px; color: var(--ink-3); }
+.c-link { font-size: 12px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.touch { position: relative; margin-top: clamp(64px, 8vw, 112px); display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; border-radius: 24px; overflow: hidden; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.1); }
+.touch div { display: grid; gap: 8px; align-content: start; padding: 28px; background: #141414; transition: background .4s; }
+.touch div:hover { background: #1c1d16; }
+.touch b { font-size: 17px; }
+.touch span:not(.t-ic) { color: rgba(255,255,255,.62); font-size: 15px; }
+.t-ic { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: rgba(213,224,87,.14); color: var(--lime); font-size: 18px; margin-bottom: 6px; }
+@media (max-width: 1080px) {
+  .flow-grid { grid-template-columns: 1fr; }
+  .touch { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 600px) {
+  .duo { zoom: .66; }
+  .cust-side { margin-top: 32px; }
+  .touch { grid-template-columns: 1fr; }
+}
+
+.flow .phone-screen { color: var(--ink); }
+
+/* ---------- REAL APP SCREENS ---------- */
+.duo .phone-screen.shots { min-height: 0; aspect-ratio: 390 / 844; max-width: 100%; display: grid; background: #fff; }
+.shot-panel { grid-area: 1 / 1; width: 100%; height: 100%; object-fit: cover; object-position: top; display: block; filter: none; }
+.screen-panel.shot-panel { filter: blur(0); }
+.screen-panel.shot-panel:not(.on) { filter: blur(4px); }
+.cust-dot { width: 18px; height: 18px; border-radius: 50%; background: var(--ink); box-shadow: inset 0 0 0 5px var(--lime); }
+.duo-note { position: relative; text-align: center; font-size: 13px; color: rgba(255,255,255,.5); margin-top: 22px; }
+
+.duo .phone-screen.shots::before { display: none; }
+
+.rail-prog { display: none; }
+.rail { margin-right: calc(-1 * max(clamp(16px, 2.5vw, 48px), env(safe-area-inset-right, 0px))); padding-left: clamp(0px, 6vw, 120px); padding-right: clamp(16px, 2.5vw, 48px); scroll-padding-left: clamp(0px, 6vw, 120px); }
+@media (max-width: 860px) { .rail { padding-left: 0; scroll-padding-left: 0; } }
+
+.fcard:hover { transform: none; box-shadow: none; border-color: var(--ink-3); }
+.rail { padding-top: 4px; }
+
+.human .photo { aspect-ratio: 1 / 1; }
+
+/* rail aligned with tools: same left edge, bleeds to the right edge */
+.rail-head { padding-left: 0; }
+.rail { padding-left: 0; scroll-padding-left: 0; margin-right: calc(50% - 50vw); padding-right: clamp(16px, 2.5vw, 48px); }
+
+/* ---------- WHEREVER YOU SELL ---------- */
+.sell-head h2 { font-size: clamp(36px, 4.6vw, 64px); max-width: 14em; }
+.sell-head h2 span { color: var(--ink-3); }
+.sell { margin-top: 56px; display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(0, 1fr); gap: 24px; }
+.sell-card { margin: 0; display: grid; gap: 22px; align-content: start; min-width: 0; }
+.sell-vis { position: relative; border-radius: var(--r-xl); overflow: hidden; height: clamp(440px, 40vw, 640px); }
+.sell-wide .sell-vis > img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 30%; transition: scale 1.4s var(--ease); }
+.sell-wide:hover .sell-vis > img { scale: 1.03; }
+.sell-wide .sell-vis::after { content: ""; position: absolute; inset: 0; background: linear-gradient(0deg, rgba(14,14,10,.55), rgba(14,14,10,0) 55%); pointer-events: none; }
+.chan { position: absolute; z-index: 1; left: clamp(16px, 3vw, 40px); right: clamp(16px, 3vw, 40px); bottom: clamp(16px, 3vw, 40px); display: grid; gap: 14px; justify-items: start; }
+.chan-pills { display: flex; flex-wrap: wrap; gap: 8px; }
+.chan-pills span { padding: 8px 14px; border-radius: 999px; font-size: 13px; font-weight: 600; color: #fff; background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.28); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); transition: background .4s, color .4s, border-color .4s, scale .5s var(--spring); }
+.chan-pills span.on { background: var(--lime); color: var(--ink); border-color: var(--lime); scale: 1.06; }
+.chan-card { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 22px; width: min(440px, 100%); font-size: 14px; }
+.chan-card .ic { width: 40px; height: 40px; border-radius: 12px; background: var(--ink); display: grid; place-items: center; flex: none; }
+.chan-card .ic img { width: 25px; filter: invert(1); }
+.chan-card div { min-width: 0; }
+.chan-card b { display: block; }
+.chan-card div span { color: var(--ink-2); font-size: 13px; }
+.chan-card time { margin-left: auto; align-self: start; font-size: 12px; color: var(--ink-3); }
+.chan-card.pop { animation: notifpop .7s var(--spring) both; }
+.slim-vis { background: url(/landing/img/field.jpg) 70% 40%/cover; display: grid; place-items: center; }
+.mint-phone { position: relative; width: min(250px, 72%); border-radius: 38px; background: #141414; padding: 9px; box-shadow: 0 40px 70px -24px rgba(20,22,6,.55); transition: translate .8s var(--spring), rotate .8s var(--spring); rotate: -3deg; }
+.sell-slim:hover .mint-phone { rotate: 0deg; translate: 0 -6px; }
+.mint-screen { border-radius: 30px; overflow: hidden; aspect-ratio: 390 / 780; max-width: 100%; background: #f6f6f6; }
+.mint-screen::before { display: none; }
+.mint-screen img { width: 100%; height: auto; display: block; }
+@media (prefers-reduced-motion: no-preference) {
+  .mint-screen img { animation: mintscroll 14s ease-in-out infinite alternate; }
+}
+@keyframes mintscroll { 0%, 12% { translate: 0 0; } 88%, 100% { translate: 0 calc(-100% + 100cqh); } }
+.mint-screen { container-type: size; }
+.live-tag { position: absolute; top: 18px; left: 18px; display: inline-flex; align-items: center; gap: 8px; padding: 7px 13px; border-radius: 999px; background: rgba(255,255,255,.88); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); font-size: 13px; font-weight: 600; }
+.live-tag i { width: 8px; height: 8px; border-radius: 50%; background: #10b981; box-shadow: 0 0 0 4px rgba(16,185,129,.2); }
+.sell-card figcaption { display: grid; gap: 6px; padding-inline: 4px; }
+.sell-card figcaption b { font-size: 20px; letter-spacing: -0.01em; }
+.sell-card figcaption span { color: var(--ink-2); max-width: 34em; }
+.sell-card figcaption a { color: var(--ink); font-weight: 600; text-decoration: underline; text-decoration-color: var(--lime); text-decoration-thickness: 2px; text-underline-offset: 4px; }
+@media (max-width: 860px) {
+  .sell { grid-template-columns: 1fr; }
+  .sell-vis { height: auto; aspect-ratio: 4 / 5; max-width: 100%; }
+  .slim-vis { aspect-ratio: 1 / 1.1; }
+}
+
+/* ---------- USER PHOTOS ---------- */
+.human .photo { aspect-ratio: 2000 / 1334; }
+.photo > img.phone-overlay { position: absolute; left: 68.25%; top: 50.07%; width: 9.85%; height: 31.03%; object-fit: cover; object-position: top; border-radius: 12% / 6%; box-shadow: 0 0 0 1px rgba(0,0,0,.08); }
+.human .notifs { left: auto; right: 18px; top: 18px; width: min(380px, 44%); }
+.human .notif:nth-child(n+3) { display: none; }
+.fimg.photo-bg { background-position: 50% 30%; }
+.story.pic > img { object-position: 50% 30%; }
+@media (max-width: 560px) { .human .notifs { width: calc(100% - 24px); right: 12px; } .human .notif:nth-child(n+2) { display: none; } }
+
+.human .photo { aspect-ratio: 4 / 5; }
+.human .photo > img { object-position: 50% 40%; }
+.fcard .fimg.inv-bg { place-items: end center; }
+.fcard .fimg.photo-bg:has(.ui) .ui { max-width: 240px; }
+
+/* people strip: per-photo framing */
+.people .pp:nth-child(1) img { object-position: 45% 78%; transform: translate(-13%, -22%) scale(1.6); transform-origin: 76% 47%; }
+.people .pp:nth-child(2) img { object-position: 62% 30%; transform: scale(1.12); transform-origin: 60% 30%; }
+.people .pp:nth-child(3) img { object-position: 56% 35%; transform: scale(1.04); transform-origin: 58% 35%; }
+.people .pp:nth-child(4) img { object-position: 74% 25%; transform: scale(1.25); transform-origin: 72% 22%; }
+
+.brand-story { color: #fff; text-decoration: none; }
+.story.pic.brand-story > img { object-position: 50% 40%; }
+.brand-chip { position: absolute; top: 20px; left: 20px; z-index: 2; display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px 6px 6px; border-radius: 999px; background: rgba(255,255,255,.92); color: var(--ink); font-size: 14px; font-weight: 600; }
+.brand-chip img { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; }
+.brand-story:focus-visible { outline: 2px solid var(--olive); outline-offset: 3px; }
+
+.fcard .fimg.mai-bg { place-items: end center; }
+
+/* ---------- FREE TOOLS ---------- */
+.free-head { display: flex; justify-content: space-between; align-items: end; gap: 16px 40px; flex-wrap: wrap; }
+.free-head h2 { font-size: clamp(36px, 4.6vw, 64px); max-width: 15em; }
+.free-head h2 span { color: var(--ink-3); }
+.free { margin-top: 56px; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.free-card { border-radius: var(--r-xl); padding: clamp(28px, 3vw, 44px); display: grid; gap: 28px; align-content: space-between; min-width: 0; overflow: hidden; }
+.free-inv { background: var(--mist); grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; align-content: center; }
+.free-calc { background: #141414; color: #fff; }
+.free-copy { display: grid; gap: 14px; justify-items: start; align-content: start; }
+.free-copy h3 { font-size: clamp(26px, 2.4vw, 36px); letter-spacing: -0.03em; }
+.free-copy p { color: var(--ink-2); max-width: 26em; }
+.free-calc .free-copy p { color: rgba(255,255,255,.72); }
+.free-badge { font-size: 12px; font-weight: 700; letter-spacing: .02em; padding: 6px 12px; border-radius: 999px; background: var(--lime); color: var(--ink); }
+.free-copy .btn { margin-top: 6px; }
+.inv-vis { display: grid; place-items: center; }
+.invoice { width: min(300px, 100%); background: #fff; border-radius: 18px; padding: 20px; display: grid; gap: 14px; font-size: 13px; box-shadow: var(--shadow-lg); rotate: 3deg; transition: rotate .8s var(--spring), translate .8s var(--spring); }
+.free-inv:hover .invoice { rotate: 0deg; translate: 0 -6px; }
+.inv-top { display: flex; gap: 10px; align-items: center; }
+.inv-top b { display: block; font-size: 16px; }
+.inv-top span { color: var(--ink-3); font-size: 12px; }
+.inv-logo { width: 38px; height: 38px; border-radius: 10px; background: var(--ink); color: var(--lime); display: grid; place-items: center; font-weight: 800; font-size: 13px; }
+.inv-to span { display: block; color: var(--ink-3); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+.inv-lines { display: grid; gap: 8px; padding-block: 12px; border-block: 1px solid var(--line); }
+.inv-lines div, .inv-total { display: flex; justify-content: space-between; gap: 10px; }
+.inv-lines span { color: var(--ink-2); }
+.inv-total b { font-size: 18px; }
+.inv-bank { font-size: 11px; color: var(--ink-3); padding: 8px 10px; border-radius: 10px; background: var(--mist); }
+.calc { display: grid; gap: 16px; }
+.calc-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.calc label { font-size: 13px; color: rgba(255,255,255,.65); font-weight: 500; }
+.calc select, .calc input { font: inherit; font-size: 16px; color: #fff; background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.14); border-radius: 14px; padding: 12px 14px; width: 100%; min-width: 0; transition: border-color .25s, background .25s; color-scheme: dark; }
+.calc select { width: auto; -webkit-appearance: none; appearance: none; padding: 12px 44px 12px 18px; border-radius: 999px; cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 16px center; background-size: 16px; }
+.calc select option { color: #141414; }
+.calc input:focus, .calc select:focus { outline: none; border-color: var(--lime); background: rgba(213,224,87,.08); }
+.calc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.calc-f { display: grid; gap: 6px; min-width: 0; }
+.calc-out { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; border-radius: 18px; overflow: hidden; background: rgba(255,255,255,.1); }
+.calc-out div { display: grid; gap: 4px; padding: 16px; background: #1c1d16; }
+.calc-out .big { grid-column: 1 / -1; background: var(--lime); color: var(--ink); }
+.calc-out span { font-size: 13px; color: rgba(255,255,255,.6); }
+.calc-out .big span { color: rgba(20,20,20,.7); }
+.calc-out b { font-size: 22px; letter-spacing: -0.02em; }
+.calc-out .big b { font-size: clamp(30px, 3vw, 40px); }
+.calc-out b.neg { color: #ff8a80; }
+.calc-out .big b.neg { color: #b42318; }
+@media (max-width: 1080px) { .free { grid-template-columns: 1fr; } }
+@media (max-width: 560px) {
+  .free { margin-top: 32px; }
+  .free-inv { grid-template-columns: 1fr; }
+  .free-card { padding: 24px; gap: 22px; }
+  .free-head h2 { font-size: clamp(30px, 8.4vw, 38px); }
+  .calc-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+}
+
+/* ---------- RESPONSIVE ---------- */
+
+
+
+
+@media (max-width: 1080px) {
+  .hero-float { display: none; }
+  .panel { grid-template-columns: 1fr; }
+  .devices { height: 480px; }
+  .tablet { right: -200px; }
+  .steps { grid-template-columns: repeat(2, 1fr); row-gap: 48px; }
+  .steps::before { display: none; }
+  .stories { grid-template-columns: 1fr 1fr; }
+  .story:nth-child(3) { grid-column: 1 / -1; min-height: 360px; }
+}
+@media (max-width: 860px) {
+  .nav-links { display: none; }
+  .nav-right { margin-left: auto; }
+  .show-grid { grid-template-columns: 1fr 1fr; gap: 28px; }
+  .shot { margin-top: 0 !important; }
+  .show-head { order: -1; padding-block: 8px 24px; }
+  .human, .cust, .stories-head { grid-template-columns: 1fr; }
+  .ng { grid-template-columns: 1fr; gap: 32px; }
+  .foot { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 560px) {
+  .nav-bar { padding: 0 8px 0 16px; gap: 12px; height: 60px; }
+  .nav-bar img { height: 24px; }
+  .nav-right .login { display: none; }
+  .nav-right .btn { height: 42px; padding: 0 18px; }
+  .hero-card { min-height: 420px; }
+  .show-grid { grid-template-columns: 1fr; }
+  .shot:nth-child(n+5) { display: none; }
+  .devices { height: 440px; }
+  .devices .phone { left: 50%; translate: -50% 0; }
+  .tablet { display: none; }
+  .rail { grid-auto-columns: 82%; }
+  .steps { grid-template-columns: 1fr; }
+  .stories { grid-template-columns: 1fr; }
+  .story:nth-child(3) { grid-column: auto; }
+  .story { min-height: 420px; padding: 28px; }
+  .foot { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* ---------- MOBILE CLEAN-UP (one rhythm: 72px between sections, 32px heading to content) ---------- */
+@media (max-width: 560px) {
+  section { padding-block: 72px; }
+  .people-sec { padding-block: 56px 0; }
+  .sell, .prods, .rail, .stories, .fx, .touch { margin-top: 32px; }
+  .ng { margin-top: 48px; gap: 28px; }
+  .flow-list { margin-top: 32px; }
+  .flow-stage { padding-top: 48px; }
+  .trust { padding-block: 0; }
+  .trust-in { gap: 16px; }
+  .show-head { padding-block: 0 16px; gap: 16px; }
+  .show-grid { gap: 20px; }
+  .shot-cap { margin-top: 8px; }
+  /* cards: let content set height */
+  .story { min-height: 0; gap: 24px; padding: 24px; }
+  .story.pic { min-height: 380px; padding: 16px; }
+  .story.circle { min-height: 0; }
+  .prod { gap: 20px; padding: 24px; align-content: start; }
+  .p-check { padding-bottom: 0; }
+  .p-check .prod-copy { padding-bottom: 0; }
+  .checkout-shot { margin-bottom: -18%; translate: 0 0; rotate: -1.5deg; }
+  .sell-vis { aspect-ratio: 4 / 5; }
+  .slim-vis { aspect-ratio: 1 / 1; }
+  .faq { gap: 32px; }
+  .faq-side { gap: 24px; }
+  .faq-contact { padding: 22px; }
+  .qa h3 button { padding-block: 20px; font-size: 17px; }
+  .qi { width: 36px; height: 36px; }
+  /* footer */
+  .bigfoot { margin-top: 24px; border-radius: 28px 28px 0 0; }
+  .bf-top { padding-block: 64px 72px; gap: 24px; }
+  .bf-title { font-size: clamp(34px, 10vw, 44px); }
+  .bf-main { padding-block: 8px 48px; gap: 40px; }
+  .bf-cols { grid-template-columns: 1fr 1fr; gap: 32px 20px; }
+  .bf-cols > div:last-child { grid-column: 1 / -1; }
+  .bf-base { flex-direction: column; align-items: flex-start; }
+  /* type rhythm */
+  .sell-head h2, .rail-head h2, .prod-head h2, .circle-head h2, .flow-title, .faq h2, .ng-head h2 { font-size: clamp(30px, 8.4vw, 38px); }
+  .lede { font-size: 16px; }
+  .rail-head { gap: 16px; }
+  .rail-ctrl .rbtn { width: 44px; height: 44px; }
+}
+
+/* ---------- MOBILE: checklist card + swipeable chip rows ---------- */
+@media (max-width: 560px) {
+  .human { gap: 28px; }
+  .human .lede { margin-top: 16px; }
+  .ticks { margin-top: 24px; gap: 0; padding: 4px 18px; border-radius: 20px; background: var(--mist); }
+  .ticks li { font-size: 15px; line-height: 1.4; gap: 12px; padding-block: 14px; align-items: center; }
+  .ticks li + li { border-top: 1px solid var(--line); }
+  .ticks li::before { width: 22px; height: 22px; margin-top: 0; background-size: 12px; }
+
+  .fx { justify-items: stretch; }
+  .fx-chips, .faq-tabs { display: flex; flex-wrap: nowrap; justify-content: flex-start; width: 100%; max-width: 100%; overflow-x: auto; border-radius: 999px; scrollbar-width: none; -webkit-mask-image: linear-gradient(90deg, #000 82%, transparent); mask-image: linear-gradient(90deg, #000 82%, transparent); scroll-behavior: smooth; }
+  .fx-chips::-webkit-scrollbar, .faq-tabs::-webkit-scrollbar { display: none; }
+  .fx-chips button, .faq-tabs button { flex: none; }
+  .fx-chips.at-end, .faq-tabs.at-end { -webkit-mask-image: none; mask-image: none; }
+  .faq > div, .fx > *, .fx { min-width: 0; max-width: 100%; }
+  .fx-card { gap: 16px; padding: 22px; }
+  .fx-amt { font-size: clamp(40px, 12vw, 52px); }
+  .fx-rows { grid-template-columns: 1fr; gap: 0; padding: 2px 16px; border-radius: 14px; background: var(--mist); }
+  .fx-rows div { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; background: none; border-radius: 0; }
+  .fx-rows div + div { border-top: 1px solid var(--line); }
+  .fx-rows b { font-size: 16px; }
+  .fx-note { text-align: center; }
+}
 </style>
-</head>
-<body>
-<div class="navbar" id="navbar">
+
+<!-- NAV -->
+<header class="nav">
   <div class="wrap">
-    <nav class="top" aria-label="Main">
-      <a href="#top" aria-label="Fyll home"><img src="/landing/wordmark-light.svg" alt="fyll"></a>
+    <nav class="nav-bar" aria-label="Main">
+      <a href="#top" aria-label="Fyll home"><img src="/landing/img/wordmark.svg" alt="Fyll"></a>
       <div class="nav-links">
-        <a class="link hide-sm" href="#features">Features</a>
-        <a class="link hide-sm" href="#tools">Tools</a>
-        <a class="link hide-sm" href="#how">How it works</a>
-        <a class="link" href="https://dashboard.fyll.app/login">Log in</a>
-        <a class="btn btn-ghost" href="https://dashboard.fyll.app/request-invite">Get started</a>
+        <span class="nav-ind" aria-hidden="true"></span>
+        <a href="#features">Features</a>
+        <a href="#how">How it works</a>
+        <a href="#stories">Builders Circle</a>
+        <a href="/tools/">Free tools</a>
+        <a href="#faq">FAQ</a>
+      </div>
+      <div class="nav-right">
+        <a class="login" href="https://dashboard.fyll.app/login">Log in</a>
+        <a class="btn btn-ink" href="https://dashboard.fyll.app/request-invite">Get started</a>
       </div>
     </nav>
   </div>
+</header>
+
+<main id="top">
+<!-- SHOWCASE: floating app screens -->
+<section class="showcase" id="hero" style="padding-top:clamp(48px,6vw,96px)">
+  <div class="wrap show-grid">
+    <div class="shot">
+      <div class="ui ui-pad">
+        <div class="ui-label">Payment proof · Fyll payment link</div>
+        <div class="row" style="margin-top:12px"><span class="av" style="background:#e6f3fb">TB</span><span class="who">Tunde Bakare<small>Bank transfer · GTBank</small></span><span class="amt num">₦38,000</span></div>
+        <div style="display:flex;gap:8px;margin-top:16px"><span class="btn btn-ink" style="height:38px;padding:0 16px;font-size:13px;flex:1;justify-content:center">Approve</span><span class="btn btn-line" style="height:38px;padding:0 16px;font-size:13px">View proof</span></div>
+      </div>
+      <div class="shot-cap">Approve a transfer in one tap</div>
+    </div>
+    <div class="shot">
+      <div class="ui ui-pad">
+        <div class="ui-label">Low stock</div>
+        <div class="row" style="margin-top:12px"><span class="who">Rose Oud 50ml<small>Lekki warehouse</small></span><span class="pill p-wait">3 left</span></div>
+        <div class="bar" style="margin-top:10px"><i style="width:12%;background:var(--warn)"></i></div>
+        <div class="row" style="margin-top:14px"><span class="who">Vitamin C serum<small>Ikeja store</small></span><span class="pill p-paid">42 left</span></div>
+      </div>
+      <div class="shot-cap">Stock across every location</div>
+    </div>
+    <div class="shot">
+      <div class="ui ui-pad">
+        <div class="ui-label">Delivery · Order #1038</div>
+        <div style="font-family:var(--display);font-size:22px;font-weight:600;margin-top:6px">Picked up by courier</div>
+        <div style="display:flex;gap:6px;margin-top:14px"><span class="bar" style="flex:1"><i style="width:100%"></i></span><span class="bar" style="flex:1"><i style="width:100%"></i></span><span class="bar" style="flex:1"><i style="width:40%"></i></span><span class="bar" style="flex:1"></span></div>
+        <div style="font-size:12px;color:var(--ink-3);margin-top:10px">Day 3 of 6 · On track</div>
+      </div>
+      <div class="shot-cap">Customers track it themselves</div>
+    </div>
+
+    <div class="show-head">
+      <span class="eyebrow">The operations app for growing businesses</span>
+      <h1>Your whole back office, in one app.</h1>
+      <p>Orders, payments, deliveries, stock, money and your team. Built with business owners who used to run things across social media, chats, notebooks and spreadsheets.</p>
+      <div class="hero-cta" style="justify-content:center">
+        <a class="btn btn-ink" href="https://dashboard.fyll.app/request-invite">Get started</a>
+        <a class="btn btn-line" href="#features">Explore features</a>
+      </div>
+      <div class="stores stores-hero" aria-label="Fyll mobile apps are coming soon">
+        <span class="store"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16.37 12.6c-.02-2.2 1.8-3.26 1.88-3.31-1.03-1.5-2.62-1.7-3.18-1.73-1.35-.14-2.64.8-3.33.8-.69 0-1.74-.78-2.87-.76-1.47.02-2.83.86-3.59 2.18-1.53 2.66-.39 6.6 1.1 8.76.73 1.05 1.6 2.24 2.73 2.2 1.1-.05 1.51-.71 2.84-.71 1.32 0 1.7.71 2.86.69 1.18-.02 1.93-1.07 2.65-2.13.84-1.22 1.18-2.4 1.2-2.46-.03-.01-2.3-.88-2.32-3.5zM14.2 6.13c.6-.73 1.01-1.75.9-2.76-.87.04-1.92.58-2.54 1.31-.56.65-1.05 1.69-.92 2.68.97.08 1.96-.49 2.56-1.23z"/></svg><span><small>Coming soon on the</small><b>App Store</b></span></span>
+        <span class="store"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#34A853" d="M3.6 2.3c-.2.2-.3.6-.3 1v17.4c0 .4.1.8.3 1l9.4-9.7z"/><path fill="#FBBC04" d="M16.2 15.2 13 12l3.2-3.2 3.8 2.2c1.1.6 1.1 1.6 0 2.2z"/><path fill="#EA4335" d="M16.2 15.2 13 12 3.6 21.7c.4.4.9.4 1.6.1z"/><path fill="#4285F4" d="M16.2 8.8 5.2 2.2c-.7-.4-1.2-.3-1.6.1L13 12z"/></svg><span><small>Coming soon on</small><b>Google Play</b></span></span>
+      </div>
+      <p class="show-note">Fyll is invite-only for now. Have a code? <a href="https://dashboard.fyll.app/login?signup=1">Sign up with your code</a></p>
+    </div>
+
+    <div class="shot">
+      <div class="ui ui-pad">
+        <div class="ui-label">This month · Finance</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
+          <div><div style="font-size:12px;color:var(--ink-3)">Money in</div><div class="num" style="font-weight:700;font-size:20px">₦2.4m</div></div>
+          <div><div style="font-size:12px;color:var(--ink-3)">Money out</div><div class="num" style="font-weight:700;font-size:20px">₦910k</div></div>
+        </div>
+        <div style="display:flex;align-items:end;gap:6px;height:56px;margin-top:14px">
+          <i style="flex:1;height:40%;background:var(--mist);border-radius:6px"></i><i style="flex:1;height:55%;background:var(--mist);border-radius:6px"></i><i style="flex:1;height:48%;background:var(--mist);border-radius:6px"></i><i style="flex:1;height:72%;background:var(--mist);border-radius:6px"></i><i style="flex:1;height:64%;background:var(--mist);border-radius:6px"></i><i style="flex:1;height:100%;background:var(--olive);border-radius:6px"></i>
+        </div>
+      </div>
+      <div class="shot-cap">Money in, out and left, in your currency</div>
+    </div>
+    <div class="shot">
+      <div class="ui ui-pad">
+        <div class="row"><span class="av" style="background:var(--lime)">✦</span><span class="who">Fyll AI drafted a case<small>From 3 WhatsApp screenshots</small></span></div>
+        <div style="margin-top:14px;padding:12px;border-radius:12px;background:var(--mist);font-size:13px;color:var(--ink-2)">Customer received size 40 instead of 42. Wants an exchange before Saturday.</div>
+        <div style="display:flex;gap:6px;margin-top:12px"><span class="pill p-ink">Exchange</span><span class="pill p-wait">High priority</span></div>
+      </div>
+      <div class="shot-cap">Complaints become cases</div>
+    </div>
+    <div class="shot">
+      <div class="ui ui-pad">
+        <div class="ui-label">Partner job · Tailor</div>
+        <div class="row" style="margin-top:12px"><span class="av" style="background:#fde9f3">KS</span><span class="who">Kemi's Stitches<small>12 kaftans · Due Fri</small></span><span class="pill p-lime">In progress</span></div>
+        <div class="bar" style="margin-top:14px"><i style="width:62%"></i></div>
+      </div>
+      <div class="shot-cap">Vendors update you directly</div>
+    </div>
+  </div>
+</section>
+
+<!-- TRUST -->
+<div class="trust">
+  <div class="wrap mid trust-in">
+    <p>Already trusted by growing Nigerian brands.</p>
+    <div class="logos"><div class="logos-track">
+      <a class="logo" href="https://minteyewear.fyll.store"><img src="/landing/img/brands/minteyewear.png" alt="">Mint Eyewear</a>
+      <a class="logo" href="https://mymaiskin.fyll.store"><img src="/landing/img/brands/mymaiskin.jpg" alt="">My Mai Skin</a>
+      <a class="logo" href="https://perfumeelysium.fyll.store"><img src="/landing/img/brands/perfumeelysium.jpg" alt="">Perfume Elysium</a>
+      <a class="logo" href="https://hausofkorey.fyll.store"><img src="/landing/img/brands/hausofkorey.jpg" alt="">Haus of Korey</a>
+      <a class="logo" href="https://ijekujebustop.fyll.store"><img src="/landing/img/brands/ijekujebustop.jpg" alt="">Ijekuje Bustop</a>
+    </div></div>
+  </div>
 </div>
 
-<header class="hero">
-  <div class="wrap">
+<!-- PEOPLE BAND -->
+<section class="people-sec" aria-label="Businesses that run on chats, shops and stalls">
+  <div class="people">
+    <figure class="pp" tabindex="0">
+      <img src="/landing/img/u/fashion.jpg" alt="A fashion store owner smiling with her phone at the counter">
+      <div class="ui ui-pad pp-ui"><div class="ui-label">Partner job</div><div class="row" style="margin-top:8px"><span class="who">12 kaftans<small>Due Friday</small></span><span class="pill p-lime">In progress</span></div></div>
+      <figcaption class="pp-tag">Fashion &amp; boutiques</figcaption>
+    </figure>
+    <figure class="pp" tabindex="0">
+      <img src="/landing/img/u/shop.jpg" alt="A store owner checking stock on a tablet">
+      <div class="ui ui-pad pp-ui"><div class="ui-label">Walk-in sale</div><div class="row" style="margin-top:8px"><span class="who">#1046 · In store<small>Stock updated</small></span><span class="amt num">₦9,500</span></div></div>
+      <figcaption class="pp-tag">Shops &amp; stores</figcaption>
+    </figure>
+    <figure class="pp" tabindex="0">
+      <img src="/landing/img/u/packing.jpg" alt="Two founders packing an order together">
+      <div class="ui ui-pad pp-ui"><div class="ui-label">Order #1043</div><div class="row" style="margin-top:8px"><span class="who">Packed<small>Label ready to print</small></span><span class="pill p-paid">Ready</span></div></div>
+      <figcaption class="pp-tag">Makers &amp; brands</figcaption>
+    </figure>
+    <figure class="pp" tabindex="0">
+      <img src="/landing/img/u/baker.jpg" alt="A smiling baker in his bakery">
+      <div class="ui ui-pad pp-ui"><div class="ui-label">Transfer received</div><div class="row" style="margin-top:8px"><span class="who">Paid via transfer<small>Approved in one tap</small></span><span class="amt num">₦7,800</span></div></div>
+      <figcaption class="pp-tag">Food &amp; bakeries</figcaption>
+    </figure>
+  </div>
+</section>
 
-    <div class="hero-grid" id="top">
-      <div>
-        <span class="chip"><span class="dot" aria-hidden="true"></span>The operations app for Nigerian businesses</span>
-        <h1>Run your whole business from <em>one place.</em></h1>
-        <p class="lede">Fyll brings your orders, payments, deliveries, stock, money and team into one app. Sell online, on social or in store, and run everything behind the sale without the spreadsheets.</p>
-        <div class="ctas">
-          <a class="btn btn-signal" href="https://dashboard.fyll.app/request-invite">Get started</a>
-          <a class="btn btn-ghost" href="https://dashboard.fyll.app/login">Log in</a>
+<!-- WHEREVER YOU SELL -->
+<section id="channels">
+  <div class="wrap mid">
+    <div class="sell-head">
+      <h2>Wherever you sell, <span>it lands in Fyll.</span></h2>
+    </div>
+    <div class="sell">
+      <figure class="sell-card sell-wide">
+        <div class="sell-vis">
+          <img src="/landing/img/u/boutique.jpg" alt="A boutique owner smiling at an order on her phone">
+          <div class="chan" aria-hidden="true">
+            <div class="chan-pills">
+              <span class="on" data-c="0">Instagram</span><span data-c="1">WhatsApp</span><span data-c="2">Storefront</span><span data-c="3">Walk-in</span><span data-c="4">WooCommerce</span>
+            </div>
+            <div class="chan-card ui">
+              <span class="ic"><img src="/landing/img/wordmark.svg" alt=""></span>
+              <div><b id="chan-title">New order · ₦42,500</b><span id="chan-sub">Bola Adeyemi ordered from an Instagram DM</span></div>
+              <time>now</time>
+            </div>
+          </div>
         </div>
-        <p class="fine">Fyll is invite-only for now. Request an invite and we'll send you an access code. Already have one? <a href="https://dashboard.fyll.app/login?signup=1" style="text-decoration:underline">Sign up with your code</a>.</p>
+        <figcaption><b>Every channel, one list</b><span>DMs, WhatsApp, your storefront, WooCommerce and walk-ins all arrive in the same place, ready to pack and send.</span></figcaption>
+      </figure>
+      <figure class="sell-card sell-slim">
+        <div class="sell-vis slim-vis">
+          <div class="phone mint-phone">
+            <div class="phone-screen mint-screen"><img src="/landing/img/app/mint-store.jpg" alt="Mint Eyewear's store on Fyll, on a phone"></div>
+          </div>
+          <span class="live-tag"><i></i>Live on Fyll</span>
+        </div>
+        <figcaption><b>Mint Eyewear on Fyll</b><span>A real store running on Fyll Storefront. <a href="https://minteyewear.fyll.store">Visit minteyewear.fyll.store</a></span></figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<!-- HUMAN SPLIT -->
+<section style="padding-top:0">
+  <div class="wrap mid human">
+    <div class="photo">
+      <img src="/landing/img/u/snap.jpg" alt="A seller photographing a jumper on his phone for his store">
+      <div class="notifs" aria-hidden="true">
+        <div class="notif"><span class="ic"><img src="/landing/img/wordmark.svg" alt=""></span><div><b>New order · ₦42,500</b><span>Bola Adeyemi paid via Instagram</span></div><time>now</time></div>
+        <div class="notif"><span class="ic"><img src="/landing/img/wordmark.svg" alt=""></span><div><b>Transfer proof uploaded</b><span>Tap to approve ₦18,000</span></div><time>2m</time></div>
       </div>
+    </div>
+    <div>
+      <span class="eyebrow">Run it from your phone</span>
+      <h2 style="margin-top:18px">Orders land while you get on with your day.</h2>
+      <p class="lede">New orders, payments and delivery updates reach your phone as they happen, and your team sees the same thing.</p>
+      <ul class="ticks">
+        <li>Alerts on every phone for new orders and payments</li>
+        <li>WhatsApp alerts when a push notification can't reach you</li>
+        <li>Approve a customer's transfer in one tap</li>
+      </ul>
+    </div>
+  </div>
+</section>
 
-      <div class="pane hero-pane" aria-label="Example of the Fyll home screen">
-        <div class="figure-row">
-          <div>
-            <div class="label">Collected today</div>
-            <div class="figure">₦184,000</div>
-          </div>
-          <span class="trend">↗ 12% vs yesterday</span>
+<!-- FYLL PRODUCTS -->
+<section id="products" style="padding-top:0">
+  <div class="wrap mid">
+    <div class="prod-head">
+      <div>
+        <span class="eyebrow">More from Fyll</span>
+        <h2>Tools that plug into how you already sell.</h2>
+      </div>
+      <p class="lede">Use them with Fyll or on their own. Every order and payment still lands in one place.</p>
+    </div>
+    <div class="prods">
+      <article class="prod p-store">
+        <div class="prod-copy">
+          <span class="prod-name"><img src="/landing/img/wordmark.svg" alt="Fyll"><span>Storefront</span></span>
+          <h3>Your own shop page, with checkout built in.</h3>
+          <p>Put your products online at yourbusiness.fyll.store. Orders and payments arrive in Fyll the moment a customer buys.</p>
+          <a class="link-arrow" href="https://perfumeelysium.fyll.store">See Perfume Elysium's store</a>
+          <a class="link-arrow" href="https://fyll.store">Visit fyll.store</a>
         </div>
-        <div>
-          <div class="bar" aria-hidden="true"><span></span></div>
-          <p class="meta" style="margin-top:8px;font-size:12.5px;color:var(--ink-faint)">10 orders · 7 paid · 3 waiting for payment</p>
+        <div class="prod-vis" aria-hidden="true">
+          <div class="browser">
+            <div class="b-bar"><i></i><i></i><i></i><span>🔒 perfumeelysium.fyll.store</span></div>
+            <div class="b-shot"><img src="/landing/img/shot-storefront.jpg" alt=""></div>
+            <div class="added"><span class="tick">✓</span>Added to bag · Leen Perfume 100ml</div>
+          </div>
         </div>
-        <div class="rows">
-          <div class="row">
-            <span class="who">Bola Adeyemi</span><span class="amt">₦32,000</span>
-            <span class="meta"><span class="mono">#1043</span> · Fyll Checkout</span><span class="status s-warn">Proof to approve</span>
+      </article>
+
+      <article class="prod p-check">
+        <div class="prod-copy">
+          <span class="prod-name light"><img src="/landing/img/wordmark.svg" alt="Fyll"><span>Checkout</span></span>
+          <h3>Bank transfers your customers trust.</h3>
+          <p>Customers see exactly where to send the money, upload their receipt, and you confirm the order in one tap. Works on WooCommerce too.</p>
+          <ul class="mini-steps"><li>Transfer the amount</li><li>Upload the receipt</li><li>You confirm</li></ul>
+          <a class="link-arrow" href="#faq">How payments work</a>
+        </div>
+        <div class="prod-vis" aria-hidden="true">
+          <div class="checkout-shot">
+            <img src="/landing/img/shot-checkout.jpg" alt="">
+            <div class="stamp-pop"><span class="tick">✓</span>Receipt uploaded · Order confirmed</div>
           </div>
-          <div class="row">
-            <span class="who">Adaeze Okafor</span><span class="amt">₦45,000</span>
-            <span class="meta"><span class="mono">#1042</span> · Instagram</span><span class="status s-live">Payment received</span>
+        </div>
+      </article>
+
+      <article class="prod p-rev">
+        <div class="prod-copy">
+          <span class="prod-name light"><img src="/landing/img/wordmark.svg" alt="Fyll"><span>Reviews</span></span>
+          <h3>Reviews from people who really bought.</h3>
+          <p>Verified buyer reviews for African businesses. Shoppers read real experiences, and you add trusted reviews to your store.</p>
+          <a class="link-arrow" href="https://reviews.fyll.store/">Visit Fyll Reviews</a>
+        </div>
+        <div class="prod-vis" aria-hidden="true">
+          <div class="rev r1"><div class="stars">★★★★★</div><p>Smells exactly like the tester. Arrived in two days.</p><span><b>Adaeze O.</b> · Verified buyer</span></div>
+          <div class="rev r2"><div class="stars">★★★★★</div><p>Easy to pay and I could track it the whole way.</p><span><b>Tunde B.</b> · Verified buyer</span></div>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURE RAIL -->
+<section style="padding-top:0" id="features">
+  <div class="wrap mid">
+    <div class="rail-head">
+      <h2>Everything your business needs, <i>already connected.</i></h2>
+      <div class="rail-ctrl"><a class="link-arrow" href="#how">See how an order moves</a><button class="rbtn" type="button" id="rail-prev" aria-label="Previous features"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button><button class="rbtn" type="button" id="rail-next" aria-label="More features"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button></div>
+    </div>
+    <div class="rail">
+      <article class="fcard">
+        <div class="fimg photo-bg mai-bg" style="background-image:url(/landing/img/u/mai.jpg);background-position:50% 45%"><div class="ui ui-pad"><div class="ui-label">Today</div><div class="ui-big num" style="font-size:30px">24 orders</div><div style="font-size:12px;color:var(--ink-3)">9 to dispatch · 3 awaiting payment</div></div></div>
+        <div class="fbody"><h3>Orders</h3><p>One list across every channel, with what needs attention first.</p><span class="tag t-ord">Orders</span></div>
+      </article>
+      <article class="fcard">
+        <div class="fimg" style="--pos: 60% 20%"><div class="ui ui-pad"><div class="row"><span class="who">Transfer received<small>Proof uploaded by customer</small></span></div><div class="row"><span class="ui-big num" style="font-size:28px">₦38,000</span><span class="pill p-paid">Approve</span></div></div></div>
+        <div class="fbody"><h3>Payment links</h3><p>Customer pays by transfer, uploads proof, you approve.</p><span class="tag t-pay">Fyll payment links</span></div>
+      </article>
+      <article class="fcard">
+        <div class="fimg photo-bg" style="background-image:url(/landing/img/u/bloomingblends.jpg);background-position:40% 50%"><div class="ui ui-pad" style="padding:14px 16px"><div style="font-size:12px;color:var(--ink-3)">🔒 bloomingblends.fyll.store</div><div style="font-weight:700;margin-top:4px">Shop now, pay by transfer</div></div></div>
+        <div class="fbody"><h3>Your own storefront</h3><p>A shop page with checkout built in. Orders arrive in Fyll straight away.</p><span class="tag t-shop">Storefront</span></div>
+      </article>
+      <article class="fcard">
+        <div class="fimg photo-bg" style="background-image:url(/landing/img/u/boxes.jpg)"><div class="ui ui-pad"><div class="ui-label">Status</div><div style="display:grid;gap:8px;margin-top:10px"><span class="pill p-paid" style="justify-self:start">● Delivered</span><span class="pill p-lime" style="justify-self:start">● With courier</span><span class="pill p-wait" style="justify-self:start">● Packing</span></div></div></div>
+        <div class="fbody"><h3>Delivery and tracking</h3><p>Log couriers and give customers a tracking page.</p><span class="tag t-del">Delivery</span></div>
+      </article>
+      <article class="fcard">
+        <div class="fimg photo-bg inv-bg" style="background-image:url(/landing/img/u/inventory-tablet.jpg);background-position:50% 45%"><div class="ui ui-pad"><div class="row"><span class="who">Rose Oud 50ml<small>Low stock alert</small></span><span class="pill p-wait">3 left</span></div><div class="bar" style="margin-top:10px"><i style="width:12%;background:var(--warn)"></i></div></div></div>
+        <div class="fbody"><h3>Inventory</h3><p>Products, variants and stock across warehouses, with monthly audits.</p><span class="tag t-stk">Inventory</span></div>
+      </article>
+      <article class="fcard">
+        <div class="fimg" style="--pos: 75% 10%"><div class="ui ui-pad"><div class="ui-label">Left this month</div><div class="ui-big num" style="font-size:30px">₦1.49m</div><div class="bar" style="margin-top:10px"><i style="width:62%"></i></div></div></div>
+        <div class="fbody"><h3>Finance and expenses</h3><p>Record spending as it happens. See money in, out and left.</p><span class="tag t-fin">Finance</span></div>
+      </article>
+      <article class="fcard">
+        <div class="fimg photo-bg" style="background-image:url(/landing/img/u/voice.jpg)"><div class="ui ui-pad"><div class="row"><span class="av" style="background:var(--lime)">✦</span><span class="who">Case drafted<small>Wrong size delivered</small></span></div></div></div>
+        <div class="fbody"><h3>Cases with Fyll AI</h3><p>Upload complaint screenshots. Fyll AI drafts the case for your team.</p><span class="tag t-ai">Fyll AI</span></div>
+      </article>
+    </div>
+    <div class="rail-prog"><i></i></div>
+  </div>
+</section>
+
+<!-- HOW AN ORDER MOVES (both sides) -->
+<section class="flow" id="how">
+  <div class="wrap flow-grid">
+    <div>
+      <span class="eyebrow" style="color:var(--lime)">How an order moves</span>
+      <h2 class="flow-title">Every order has two sides. Fyll takes care of both.</h2>
+      <p class="flow-sub">While your team packs and ships, your customer hears from you at every turn. So you stop getting "Hi, please any update on my order?"</p>
+      <ol class="flow-list">
+        <li class="on"><button type="button" id="flow-1">Order in</button><div class="flow-prog"><i></i></div><div class="fb"><p>From a DM, your store or your counter, it lands in one list. Your customer has a confirmation before they've closed the chat.</p></div></li>
+        <li><button type="button" id="flow-2">Paid</button><div class="flow-prog"><i></i></div><div class="fb"><p>They send the transfer and upload the receipt. You check it and tap approve. No more receipts lost in a chat.</p></div></li>
+        <li><button type="button" id="flow-3">Packed</button><div class="flow-prog"><i></i></div><div class="fb"><p>Pick, pack, print the label. Your stock counts itself, and your customer knows their order is on the table.</p></div></li>
+        <li><button type="button" id="flow-4">Dispatched</button><div class="flow-prog"><i></i></div><div class="fb"><p>Add your logistics partner and you're done. Your customer watches the order move without calling you.</p></div></li>
+        <li><button type="button" id="flow-5">Delivered</button><div class="flow-prog"><i></i></div><div class="fb"><p>They tap to confirm it arrived. Loved it? They leave a review. Something off? They start a return, no back-and-forth.</p></div></li>
+      </ol>
+    </div>
+    <div class="flow-stage" aria-live="polite">
+      <div class="flow-count">Step <b id="flow-n">1</b> of 5</div>
+      <div class="duo">
+        <div class="side">
+          <div class="side-tag"><img src="/landing/img/wordmark.svg" alt="">Your side</div>
+          <div class="phone">
+            <div class="phone-screen shots">
+              <img class="screen-panel shot-panel on" data-step="0" src="/landing/img/app/y1-orders.jpg" alt="Fyll orders list">
+              <img class="screen-panel shot-panel" data-step="1" src="/landing/img/app/y2-payments.jpg" alt="Payments needing review in Fyll" loading="lazy">
+              <img class="screen-panel shot-panel" data-step="2" src="/landing/img/app/y3-detail.jpg" alt="Order detail with shipping label in Fyll" loading="lazy">
+              <img class="screen-panel shot-panel" data-step="3" src="/landing/img/app/y4-deliveries.jpg" alt="Deliveries in Fyll" loading="lazy">
+              <img class="screen-panel shot-panel" data-step="4" src="/landing/img/app/y5-delivered.jpg" alt="Delivered orders in Fyll" loading="lazy">
+            </div>
           </div>
-          <div class="row">
-            <span class="who">Tunde Bakare</span><span class="amt">₦28,500</span>
-            <span class="meta"><span class="mono">#1041</span> · Storefront</span><span class="status s-warn">Due today</span>
+        </div>
+        <div class="side cust-side">
+          <div class="side-tag light"><span class="cust-dot" aria-hidden="true"></span>Your customer's side</div>
+          <div class="phone phone-light">
+            <div class="phone-screen shots">
+              <img class="screen-panel shot-panel on" data-step="0" src="/landing/img/app/c1-store.jpg" alt="The business storefront">
+              <img class="screen-panel shot-panel" data-step="1" src="/landing/img/app/c2-confirming.jpg" alt="Customer payment page confirming the transfer" loading="lazy">
+              <img class="screen-panel shot-panel" data-step="2" src="/landing/img/app/c3-preparing.jpg" alt="Customer tracking page showing the order being prepared" loading="lazy">
+              <img class="screen-panel shot-panel" data-step="3" src="/landing/img/app/c4-ontheway.jpg" alt="Customer tracking page showing the order on its way" loading="lazy">
+              <img class="screen-panel shot-panel" data-step="4" src="/landing/img/app/c5-confirm.jpg" alt="Customer delivery confirmation page" loading="lazy">
+            </div>
           </div>
-          <div class="row">
-            <span class="who">Chiamaka Eze</span><span class="amt">₦61,200</span>
-            <span class="meta"><span class="mono">#1039</span> · WhatsApp</span><span class="status s-done">Delivered 8 Jul</span>
+        </div>
+      </div>
+      <p class="duo-note">Real Fyll screens, shown with demo data.</p>
+    </div>
+  </div>
+  <div class="wrap">
+    <div class="touch">
+      <div><span class="t-ic">✉</span><b>Updates they don't have to ask for</b><span>An email at every step, with your name at the top.</span></div>
+      <div><span class="t-ic">◎</span><b>Tracking anyone can read</b><span>Where the order is and when it lands. That's it.</span></div>
+      <div><span class="t-ic">↺</span><b>Returns without the drama</b><span>Customers start a return themselves. You choose refund or swap.</span></div>
+      <div><span class="t-ic">★</span><b>Reviews from real buyers</b><span>Only people who actually got the order can review it.</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- BUILDERS CIRCLE -->
+<section id="stories">
+  <div class="wrap wide">
+    <div class="circle-head">
+      <h2><span>Hear from the founders building</span> <span>Africa's next great businesses.</span></h2>
+    </div>
+    <div class="stories">
+      <article class="story green">
+        <blockquote class="long-quote">“Honestly, I’d been looking for something like this for years. We used to juggle spreadsheets, DMs and about three different apps. I tried ClickUp, Airtable, Zoho, everything, and nothing really fit how we work. Now everything’s in Fyll, and the whole team runs from one place. For the first time, our finances and operations actually feel connected.”</blockquote>
+        <div style="display:grid;gap:22px">
+          <cite><b>Shona</b>, Founder, Mint Eyewear</cite>
+          <a class="link-arrow" href="https://minteyewear.fyll.store">Visit Mint Eyewear</a>
+        </div>
+      </article>
+      <article class="story pic">
+        <img src="/landing/img/u/cafe.jpg" alt="Two café owners checking orders on a tablet">
+        <div class="glass">
+          <span class="ep"><span class="play" aria-hidden="true"></span>The Builders Circle podcast · Coming soon</span>
+          Founders on how they run their businesses, day to day.
+        </div>
+      </article>
+      <article class="story circle">
+        <div class="avatars" aria-hidden="true">
+          <img src="/landing/img/u/fashion.jpg" alt=""><img src="/landing/img/u/shop.jpg" alt=""><img src="/landing/img/u/packing.jpg" alt=""><img src="/landing/img/u/baker.jpg" alt=""><span>+</span>
+        </div>
+        <div style="display:grid;gap:16px;justify-items:start">
+          <span class="soon">Coming soon</span>
+          <h3>The Builders Circle</h3>
+          <p>Founders sharing what works. Real stories, playbooks and a podcast about building a business in Africa.</p>
+        </div>
+        <span class="btn btn-soon" aria-disabled="true">Opening soon</span>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- CURRENCIES -->
+<section style="padding-top:0" id="currencies">
+  <div class="wrap narrow">
+    <div class="ng-head">
+      <span class="eyebrow">Made for how Africa does business</span>
+      <h2 style="margin-top:18px">Your money, in your currency.</h2>
+      <p class="lede" style="margin-top:20px">From naira to cedis, shillings and rand, Fyll keeps your prices, payments and reports in the currency your business runs on.</p>
+    </div>
+
+    <div class="fx">
+      <div class="fx-chips" aria-label="Show an example in another currency">
+        <span class="fx-ind" aria-hidden="true"></span>
+        <button type="button" id="fx-ngn" aria-pressed="true" data-i="0">₦ Naira</button>
+        <button type="button" id="fx-ghs" aria-pressed="false" data-i="1">GH₵ Cedi</button>
+        <button type="button" id="fx-kes" aria-pressed="false" data-i="2">KSh Shilling</button>
+        <button type="button" id="fx-zar" aria-pressed="false" data-i="3">R Rand</button>
+        <button type="button" id="fx-usd" aria-pressed="false" data-i="4">$ Dollar</button>
+      </div>
+      <div class="fx-card ui" aria-live="polite">
+        <div class="fx-top"><span class="ui-label">Collected today</span><span class="up">↑ 12% vs yesterday</span></div>
+        <div class="fx-amt num"><span class="fx-val" id="fx-val">₦184,000</span></div>
+        <div class="bar"><i style="width:70%"></i></div>
+        <div class="fx-rows">
+          <div><span>Paid orders</span><b class="num" id="fx-paid">₦141,500</b></div>
+          <div><span>Waiting for payment</span><b class="num" id="fx-wait">₦42,500</b></div>
+          <div><span>Expenses</span><b class="num" id="fx-exp">₦26,000</b></div>
+        </div>
+      </div>
+      <p class="fx-note">Example figures</p>
+    </div>
+
+    <div class="ng">
+      <div><b>Your currency</b><p>Set your business currency once. Prices, payment links, receipts and reports all follow it.</p></div>
+      <div><b>1 tap</b><p>Approving a payment updates the order, the payment and your stock at the same time.</p></div>
+      <div><b>0 spreadsheets</b><p>Orders, payments, deliveries and expenses are recorded as they happen, so your numbers are always ready.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- FREE TOOLS -->
+<section id="free-tools" style="padding-top:0">
+  <div class="wrap wide">
+    <div class="free-head">
+      <h2>Free tools for your business. <span>No sign-up, no catch.</span></h2>
+      <a class="link-arrow" href="/tools/">See all free tools</a>
+    </div>
+    <div class="free">
+      <article class="free-card free-inv">
+        <div class="free-copy">
+          <span class="free-badge">Free · No sign-up</span>
+          <h3>Invoice generator</h3>
+          <p>Add your logo, items and bank details, then download a clean invoice to send in any chat.</p>
+          <a class="btn btn-ink" href="/tools/invoice-generator">Make an invoice</a>
+        </div>
+        <div class="inv-vis" aria-hidden="true">
+          <div class="invoice">
+            <div class="inv-top"><div class="inv-logo">PE</div><div><b>Invoice</b><span>INV-0042 · 22 Nov</span></div></div>
+            <div class="inv-to"><span>Billed to</span><b>Adaeze Okafor</b></div>
+            <div class="inv-lines">
+              <div><span>Rose Oud 50ml × 1</span><b class="num">₦28,000</b></div>
+              <div><span>Body mist × 2</span><b class="num">₦19,000</b></div>
+              <div><span>Delivery</span><b class="num">₦3,500</b></div>
+            </div>
+            <div class="inv-total"><span>Total</span><b class="num">₦50,500</b></div>
+            <div class="inv-bank">Pay to Access Bank · 0123 456 789</div>
           </div>
+        </div>
+      </article>
+
+      <article class="free-card free-calc">
+        <div class="free-copy">
+          <span class="free-badge light">Free · No sign-up</span>
+          <h3>Profit and price calculator</h3>
+          <p>See what you really make on each sale before you set your price.</p>
+        </div>
+        <form class="calc" id="calc" novalidate>
+          <div class="calc-row">
+            <label for="calc-cur">Currency</label>
+            <select id="calc-cur"><option value="₦">₦ Naira</option><option value="GH₵ ">GH₵ Cedi</option><option value="KSh ">KSh Shilling</option><option value="R ">R Rand</option><option value="$">$ Dollar</option></select>
+          </div>
+          <div class="calc-grid">
+            <div class="calc-f"><label for="calc-cost">Cost per item</label><input id="calc-cost" type="number" inputmode="decimal" min="0" value="12000"></div>
+            <div class="calc-f"><label for="calc-price">Selling price</label><input id="calc-price" type="number" inputmode="decimal" min="0" value="20000"></div>
+            <div class="calc-f"><label for="calc-extra">Other costs per item</label><input id="calc-extra" type="number" inputmode="decimal" min="0" value="1500"></div>
+            <div class="calc-f"><label for="calc-qty">Items sold</label><input id="calc-qty" type="number" inputmode="numeric" min="0" value="50"></div>
+          </div>
+          <div class="calc-out" aria-live="polite">
+            <div><span>Profit per item</span><b class="num" id="calc-pp">₦6,500</b></div>
+            <div><span>Margin</span><b class="num" id="calc-m">32.5%</b></div>
+            <div class="big"><span>Total profit</span><b class="num" id="calc-tp">₦325,000</b></div>
+          </div>
+        </form>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section style="padding-top:0" id="faq">
+  <div class="wrap wide faq">
+    <div class="faq-side">
+      <div>
+        <span class="eyebrow">Questions</span>
+        <h2 style="margin-top:18px">Good to know before you start.</h2>
+      </div>
+      <div class="faq-contact">
+        <h3>Still have a question?</h3>
+        <p>Write to the Fyll team and we'll help you get set up.</p>
+        <div class="copy"><span id="faq-email">getfyll@gmail.com</span><button type="button" id="copy-email">Copy</button></div>
+      </div>
+    </div>
+    <div>
+      <div class="faq-tabs" aria-label="Filter questions by topic">
+        <span class="faq-ind" aria-hidden="true"></span>
+        <button type="button" aria-pressed="true" data-cat="all" id="faq-t-all">All</button>
+        <button type="button" aria-pressed="false" data-cat="start" id="faq-t-start">Getting started</button>
+        <button type="button" aria-pressed="false" data-cat="pay" id="faq-t-pay">Payments</button>
+        <button type="button" aria-pressed="false" data-cat="deliver" id="faq-t-deliver">Orders &amp; delivery</button>
+        <button type="button" aria-pressed="false" data-cat="team" id="faq-t-team">Team &amp; stock</button>
+      </div>
+      <div class="faq-items">
+        <div class="qa open" data-cat="start">
+          <h3><button type="button" id="qa-1" aria-expanded="true" aria-controls="qa-1-p">How do I get access to Fyll?<span class="qi" aria-hidden="true"></span></button></h3>
+          <div class="qa-p" id="qa-1-p" role="region" aria-labelledby="qa-1"><div><p>Fyll is invite-only for now. <a href="https://dashboard.fyll.app/request-invite">Request an invite</a> and we'll send you an access code. Then <a href="https://dashboard.fyll.app/login?signup=1">sign up with your code</a> and set up your business in a few minutes.</p></div></div>
+        </div>
+        <div class="qa" data-cat="start">
+          <h3><button type="button" id="qa-2" aria-expanded="false" aria-controls="qa-2-p">Do I need a website to use Fyll?<span class="qi" aria-hidden="true"></span></button></h3>
+          <div class="qa-p" id="qa-2-p" role="region" aria-labelledby="qa-2"><div><p>No. Orders from WhatsApp, Instagram, phone calls and walk-ins all go into Fyll. If you want a shop page, you get your own storefront on <a href="https://fyll.store">fyll.store</a>, at an address like yourbusiness.fyll.store.</p></div></div>
+        </div>
+        <div class="qa" data-cat="start">
+          <h3><button type="button" id="qa-3" aria-expanded="false" aria-controls="qa-3-p">Does it work on my phone?<span class="qi" aria-hidden="true"></span></button></h3>
+          <div class="qa-p" id="qa-3-p" role="region" aria-labelledby="qa-3"><div><p>Yes. Fyll works in the browser on desktop and mobile. New orders and payments reach your phone as alerts, with WhatsApp as a backup when a push notification can't get through.</p></div></div>
+        </div>
+        <div class="qa" data-cat="pay">
+          <h3><button type="button" id="qa-4" aria-expanded="false" aria-controls="qa-4-p">How do my customers pay?<span class="qi" aria-hidden="true"></span></button></h3>
+          <div class="qa-p" id="qa-4-p" role="region" aria-labelledby="qa-4"><div><p>Send a Fyll payment link in the chat. Your customer pays by bank transfer and uploads proof. You approve it in one tap, and the order, payment and stock all update together.</p></div></div>
+        </div>
+        <div class="qa" data-cat="pay">
+          <h3><button type="button" id="qa-5" aria-expanded="false" aria-controls="qa-5-p">I already sell on WooCommerce. Can I keep my site?<span class="qi" aria-hidden="true"></span></button></h3>
+          <div class="qa-p" id="qa-5-p" role="region" aria-labelledby="qa-5"><div><p>Yes. The Fyll Checkout plugin adds bank-transfer checkout to your WooCommerce site, and every order and payment lands in Fyll for you to approve.</p></div></div>
+        </div>
+        <div class="qa" data-cat="deliver">
+          <h3><button type="button" id="qa-6" aria-expanded="false" aria-controls="qa-6-p">How do my customers track their orders?<span class="qi" aria-hidden="true"></span></button></h3>
+          <div class="qa-p" id="qa-6-p" role="region" aria-labelledby="qa-6"><div><p>When you log the courier, your customer gets an email with a track button. They follow the order on a tracking page with your name on it, at <a href="https://track.fyll.app">track.fyll.app</a>, and confirm delivery when it arrives.</p></div></div>
+        </div>
+        <div class="qa" data-cat="deliver">
+          <h3><button type="button" id="qa-7" aria-expanded="false" aria-controls="qa-7-p">What happens when a customer wants to return something?<span class="qi" aria-hidden="true"></span></button></h3>
+          <div class="qa-p" id="qa-7-p" role="region" aria-labelledby="qa-7"><div><p>They start the return themselves at <a href="https://returns.fyll.app">returns.fyll.app</a>. You see the item and the reason in Fyll, then decide on a refund or an exchange.</p></div></div>
+        </div>
+        <div class="qa" data-cat="team">
+          <h3><button type="button" id="qa-8" aria-expanded="false" aria-controls="qa-8-p">Can my team use it too?<span class="qi" aria-hidden="true"></span></button></h3>
+          <div class="qa-p" id="qa-8-p" role="region" aria-labelledby="qa-8"><div><p>Yes. Invite your teammates so everyone works from the same orders, stock and deliveries, and everyone gets the alerts.</p></div></div>
+        </div>
+        <div class="qa" data-cat="team">
+          <h3><button type="button" id="qa-9" aria-expanded="false" aria-controls="qa-9-p">Can I manage stock in more than one location?<span class="qi" aria-hidden="true"></span></button></h3>
+          <div class="qa-p" id="qa-9-p" role="region" aria-labelledby="qa-9"><div><p>Yes. Track products and variants across warehouses and stores, get low-stock alerts, and run a stock audit every month.</p></div></div>
+        </div>
+        <div class="qa" data-cat="team">
+          <h3><button type="button" id="qa-10" aria-expanded="false" aria-controls="qa-10-p">Can I send work to vendors and workshops?<span class="qi" aria-hidden="true"></span></button></h3>
+          <div class="qa-p" id="qa-10-p" role="region" aria-labelledby="qa-10"><div><p>Yes. Send jobs to partners like tailors or printers. They update progress in their own portal and send you bills to approve.</p></div></div>
         </div>
       </div>
     </div>
   </div>
-</header>
+</section>
 
-<main>
-  <section class="band" aria-labelledby="brands-h" style="padding-top:8px;padding-bottom:56px">
-    <div class="wrap">
-      <div class="head" style="margin-bottom:24px">
-        <span class="label">Businesses running on Fyll</span>
-        <h2 id="brands-h" style="font-size:clamp(26px,3.2vw,34px)">Already trusted by growing Nigerian brands.</h2>
-      </div>
-      <div class="brands">
-        <a class="brand-tile" href="https://minteyewear.fyll.store/"><img class="logo" src="/landing/brands/minteyewear.png" alt="" loading="lazy"><span class="name">Mint Eyewear</span><span class="where">Visit store →</span></a>
-        <a class="brand-tile" href="https://mymaiskin.fyll.store/"><img class="logo" src="/landing/brands/mymaiskin.jpg" alt="" loading="lazy"><span class="name">My Mai Skin</span><span class="where">Visit store →</span></a>
-        <a class="brand-tile" href="https://perfumeelysium.fyll.store/"><img class="logo" src="/landing/brands/perfumeelysium.jpg" alt="" loading="lazy"><span class="name">Perfume Elysium</span><span class="where">Visit store →</span></a>
-        <a class="brand-tile" href="https://hausofkorey.fyll.store/"><img class="logo" src="/landing/brands/hausofkorey.jpg" alt="" loading="lazy"><span class="name">Haus of Korey</span><span class="where">Visit store →</span></a>
-        <a class="brand-tile" href="https://ijekujebustop.fyll.store/"><img class="logo" src="/landing/brands/ijekujebustop.jpg" alt="" loading="lazy"><span class="name">Ijekuje Bustop</span><span class="where">Visit store →</span></a>
-      </div>
-    </div>
-  </section>
-
-  <section class="band" aria-labelledby="channels-h" style="padding-top:40px">
-    <div class="wrap">
-      <div class="head">
-        <span class="label">Where orders come from</span>
-        <h2 id="channels-h">However your customers buy, it lands in Fyll.</h2>
-      </div>
-      <div class="channels">
-        <span class="channel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1.3-3.9A8 8 0 1 1 8 19z"/></svg>WhatsApp</span>
-        <span class="channel"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="5"/><circle cx="12" cy="12" r="4"/></svg>Instagram</span>
-        <span class="channel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9l1.5-5h13L20 9M4 9v11h16V9M4 9h16M9 20v-6h6v6"/></svg>Your Fyll storefront</span>
-        <span class="channel"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.6 2.5 14.4 0 17M12 3.5c-2.5 2.6-2.5 14.4 0 17"/></svg>WooCommerce</span>
-        <span class="channel"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>Walk-in and phone orders</span>
-      </div>
-    </div>
-  </section>
-
-  <section class="band" aria-labelledby="phone-h" style="padding-top:24px">
-    <div class="wrap split">
-      <figure class="photo tall">
-        <img src="/landing/people-shop.jpg" width="880" height="1100" loading="lazy" alt="A shop owner smiling as she checks an order on her phone at her desk">
-      </figure>
-      <div class="head" style="margin-bottom:0">
-        <span class="label">Run it from your phone</span>
-        <h2 id="phone-h">Orders land while you get on with your day.</h2>
-        <p>New orders, payments and delivery updates reach your phone the moment they happen, so you can keep selling from wherever you are.</p>
-        <ul class="ticks" style="margin-top:8px">
-          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span><b>Alerts on every phone</b> for new orders and payments.</span></li>
-          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span><b>WhatsApp alerts</b> when a push notification can't reach you.</span></li>
-          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span><b>One tap</b> to approve a customer's transfer.</span></li>
-        </ul>
-      </div>
-    </div>
-  </section>
-
-  <section class="band" id="features" aria-labelledby="features-h">
-    <div class="wrap">
-      <div class="head">
-        <span class="label">What you can do</span>
-        <h2 id="features-h">The whole back office, in one app.</h2>
-        <p>Built with Nigerian business owners who were running things across chats, notebooks and spreadsheets.</p>
-      </div>
-      <div class="features">
-        <article class="feature">
-          <span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h2l2.4 11.2a1 1 0 0 0 1 .8h8.8a1 1 0 0 0 1-.8L20 8H6.2"/><circle cx="9" cy="20" r="1"/><circle cx="17" cy="20" r="1"/></svg></span>
-          <h3>Orders</h3>
-          <p>Every order in one list with its status, items, customer and delivery details. See what needs you today the moment you open the app.</p>
-        </article>
-        <article class="feature">
-          <span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18M7 15h3"/></svg></span>
-          <h3>Fyll Checkout payment links</h3>
-          <p>Send a link, your customer pays by bank transfer and uploads proof. Approve it in one tap and the order moves on.</p>
-          <span class="addr">payment.fyll.app/yourbusiness/…</span>
-        </article>
-        <article class="feature">
-          <span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9l1.5-5h13L20 9M4 9v11h16V9M4 9h16M9 20v-6h6v6"/></svg></span>
-          <h3>Your own storefront</h3>
-          <p>A shop page for your products with checkout built in. Orders and payments arrive in Fyll straight away.</p>
-          <span class="addr">yourbusiness.fyll.store</span>
-        </article>
-        <article class="feature">
-          <span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h11v9H3zM14 10h4l3 3v3h-7"/><circle cx="7" cy="18" r="1.5"/><circle cx="17" cy="18" r="1.5"/></svg></span>
-          <h3>Delivery and tracking</h3>
-          <p>Log each dispatch and courier. Customers follow their order on a tracking page instead of messaging you for updates.</p>
-          <span class="addr">track.fyll.app</span>
-        </article>
-        <article class="feature">
-          <span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.6M4 4v4h4"/></svg></span>
-          <h3>Returns</h3>
-          <p>Customers start a return themselves. You track the item, the reason and the refund or exchange to the end.</p>
-          <span class="addr">returns.fyll.app</span>
-        </article>
-        <article class="feature">
-          <span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7l9-4 9 4v10l-9 4-9-4zM3 7l9 4 9-4M12 11v10"/></svg></span>
-          <h3>Inventory</h3>
-          <p>Products, variants and stock levels across your warehouses, with low-stock alerts and monthly stock audits.</p>
-        </article>
-        <article class="feature">
-          <span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5M4 19h16M8 15l3.5-4 3 2.5L20 7"/></svg></span>
-          <h3>Finance and expenses</h3>
-          <p>Record expenses as they happen and see what came in, what went out and what's left, in naira, without a separate spreadsheet.</p>
-        </article>
-        <article class="feature">
-          <span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h5"/></svg></span>
-          <h3>Procurement</h3>
-          <p>Track what you buy from suppliers, what it cost and when it arrives, and add it straight to your stock.</p>
-        </article>
-        <article class="feature">
-          <span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 20v-1a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v1"/><circle cx="9.5" cy="7.5" r="3.5"/><path d="M21 20v-1a4 4 0 0 0-3-3.9M16 4.1a3.5 3.5 0 0 1 0 6.8"/></svg></span>
-          <h3>Partners</h3>
-          <p>Send jobs to the vendors and workshops you work with. They update progress in their own portal and send bills you can approve.</p>
-        </article>
-        <article class="feature">
-          <span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l1.7 5.3 5.3 1.7-5.3 1.7-1.7 5.3-1.7-5.3-5.3-1.7 5.3-1.7z"/></svg></span>
-          <h3>Cases with Fyll AI</h3>
-          <p>Upload screenshots of a customer complaint and Fyll AI drafts the case for you, ready to assign and resolve.</p>
-        </article>
-        <article class="feature">
-          <span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg></span>
-          <h3>Alerts on every phone</h3>
-          <p>Push notifications for new orders and payments, plus WhatsApp alerts for phones where push doesn't work.</p>
-        </article>
-      </div>
-    </div>
-  </section>
-
-  <section class="band" id="tools" aria-labelledby="tools-h" style="padding-top:0">
-    <div class="wrap">
-      <div class="head">
-        <span class="label">More from Fyll</span>
-        <h2 id="tools-h">Tools that plug into how you already sell.</h2>
-      </div>
-      <div class="tools">
-        <article class="pane tool">
-          <span class="status s-live tag">For WooCommerce stores</span>
-          <h3>Fyll Checkout plugin</h3>
-          <p>Add Fyll's bank-transfer checkout to your WooCommerce website. Customers pay by transfer and upload proof, and the order and payment land in Fyll for you to approve.</p>
-        </article>
-        <article class="pane tool">
-          <span class="status s-live tag">Verified buyer reviews</span>
-          <h3>Fyll Reviews</h3>
-          <p>Verified reviews for African businesses. Shoppers read real buyer reviews before they buy, and you add trusted reviews to your own store.</p>
-          <a href="https://reviews.fyll.store/" style="justify-self:start;font-weight:700;color:var(--signal)">Visit Fyll Reviews →</a>
-        </article>
-      </div>
-    </div>
-  </section>
-
-  <section class="band" id="how" aria-labelledby="how-h">
-    <div class="wrap">
-      <div class="head">
-        <span class="label">How an order moves</span>
-        <h2 id="how-h">From “I want this” to delivered, without the back-and-forth.</h2>
-      </div>
-      <div class="journey">
-        <div class="step done"><span class="n">1</span><h3>Order comes in</h3><p>From your storefront, a chat or a walk-in. Your team gets an alert.</p></div>
-        <div class="step done"><span class="n">2</span><h3>Customer pays</h3><p>Through a payment link. You approve the transfer in one tap.</p></div>
-        <div class="step done"><span class="n">3</span><h3>Prepared</h3><p>Pick, pack and print the label. Stock updates by itself.</p></div>
-        <div class="step now"><span class="n">4</span><h3>On its way</h3><p>Log the courier. The customer follows it on their tracking page.</p></div>
-        <div class="step"><span class="n">5</span><h3>Delivered</h3><p>The customer confirms delivery. If something's wrong, they start a return.</p></div>
-      </div>
-    </div>
-  </section>
-
-  <section class="band" aria-labelledby="customer-h">
-    <div class="wrap split">
-      <div class="head" style="margin-bottom:0">
-        <span class="label">What your customers see</span>
-        <h2 id="customer-h">Fewer “Where is my order?” messages.</h2>
-        <p>Every customer gets clear, branded pages for paying, tracking and returning. Your name stays at the front. Fyll signs off quietly at the bottom.</p>
-        <ul class="ticks" style="margin-top:8px">
-          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span><b>Order emails</b> with a button to track the order.</span></li>
-          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span><b>A tracking page</b> that says what is happening in plain words.</span></li>
-          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span><b>Delivery confirmation</b> and returns they can start without calling you.</span></li>
-        </ul>
-      </div>
-      <div class="pane track" aria-label="Example of a customer tracking page">
-        <div class="top">
-          <span class="label">Order <span class="mono" style="letter-spacing:0">#1042</span></span>
-          <span class="status s-live">Day 3 of 6 · On track</span>
-        </div>
-        <div>
-          <div class="big">Arrives by Wed 1 Oct</div>
-          <p style="color:var(--ink-muted);margin-top:6px;font-size:15px">Your order has left the store and is with the courier.</p>
-        </div>
-        <div class="bar" aria-hidden="true"><span style="width:60%"></span></div>
-        <div class="rows">
-          <div class="row"><span class="who">Prepared</span><span class="meta num">Mon 29 Sep</span></div>
-          <div class="row"><span class="who">Picked up by courier</span><span class="meta num">Tue 30 Sep</span></div>
-        </div>
-        <div class="powered">Tracked by <img src="/landing/wordmark-light.svg" alt="fyll"></div>
-      </div>
-    </div>
-  </section>
-
-  <section class="band" aria-labelledby="local-h">
-    <div class="wrap">
-      <div class="head">
-        <span class="label">Made for how Nigeria does business</span>
-        <h2 id="local-h">Built in Nigeria, for the future of Nigerian business.</h2>
-      </div>
-      <figure class="photo wide">
-        <img src="/landing/people-team.jpg" width="1800" height="2250" loading="lazy" alt="Two Nigerian business owners smiling together in their studio">
-      </figure>
-      <div class="facts">
-        <div class="fact"><span class="big">₦</span><p>Prices, payments and reports in naira, with bank transfer as a first-class way to pay.</p></div>
-        <div class="fact"><span class="big">1 tap</span><p>Approve a customer's transfer and the order, payment and stock all update together.</p></div>
-        <div class="fact"><span class="big">Any phone</span><p>Works in the browser on desktop and mobile, with WhatsApp alerts when push notifications can't reach a phone.</p></div>
-      </div>
-    </div>
-  </section>
-
-  <section class="band" aria-labelledby="close-h" style="padding-top:24px">
-    <div class="wrap">
-      <div class="closing">
-        <h2 id="close-h">Bring your whole operation into Fyll.</h2>
-        <p>Fyll is invite-only while we grow. Request an invite and we'll send you an access code.</p>
-        <div class="ctas">
-          <a class="btn btn-signal" href="https://dashboard.fyll.app/request-invite">Get started</a>
-          <a class="btn btn-ghost" href="https://dashboard.fyll.app/login">Log in</a>
-        </div>
-        <p style="font-size:14px;color:var(--ink-muted)">Already have an access code? <a href="https://dashboard.fyll.app/login?signup=1" style="text-decoration:underline">Sign up with your code</a></p>
-      </div>
-    </div>
-  </section>
 </main>
 
-<footer>
-  <div class="wrap">
-    <div class="foot">
-      <div class="brand" style="display:grid;gap:12px;align-content:start">
-        <img src="/landing/wordmark-light.svg" alt="fyll">
-        <p style="max-width:26em">One app to run your business operations. Built for Africa's next generation of businesses.</p>
-      </div>
-      <div>
-        <h4 class="label">For businesses</h4>
-        <ul>
-          <li><a href="https://dashboard.fyll.app/login">Log in</a></li>
-          <li><a href="https://dashboard.fyll.app/request-invite">Get started</a></li>
-          <li><a href="https://dashboard.fyll.app/login?signup=1">Sign up with a code</a></li>
-          <li><a href="#features">Features</a></li>
-        </ul>
-      </div>
-      <div>
-        <h4 class="label">For customers</h4>
-        <ul>
-          <li><a href="https://track.fyll.app">Track an order</a></li>
-          <li><a href="https://returns.fyll.app">Start a return</a></li>
-        </ul>
-      </div>
-      <div>
-        <h4 class="label">Contact</h4>
-        <ul>
-          <li><span class="mono">getfyll@gmail.com</span></li>
-        </ul>
+<footer class="bigfoot">
+  <div class="bf-field">
+    <div class="wrap bf-top">
+      <h2 class="bf-title"><span>Built for the future</span> <span>of African businesses.</span></h2>
+      <div class="bf-cta">
+        <p>Bring your whole operation into Fyll. Request an invite and we'll send you an access code.</p>
+        <div class="hero-cta">
+          <a class="btn btn-white" href="https://dashboard.fyll.app/request-invite">Get started</a>
+          <a class="btn btn-field" href="https://dashboard.fyll.app/login?signup=1">Sign up with a code</a>
+        </div>
       </div>
     </div>
-    <div class="legal">
-      <span>© 2026 Fyll Technologies</span>
-      <span>Empowering the future of African businesses.</span>
+  </div>
+  <div class="wrap bf-main">
+    <div class="bf-brand">
+      <img src="/landing/img/wordmark.svg" alt="Fyll" class="bf-logo">
+      <div class="socials">
+        <a href="#" aria-label="Fyll on Instagram"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/></svg></a>
+        <a href="#" aria-label="Fyll on X"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 4l14 16M19 4L5 20"/></svg></a>
+        <a href="#" aria-label="Fyll on LinkedIn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M8 10.5V17M8 7.5v.01M12 17v-6.5M12 13.5a2.5 2.5 0 0 1 5 0V17"/></svg></a>
+        <a href="#" aria-label="Fyll on WhatsApp"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M20.5 12a8.5 8.5 0 0 1-12.6 7.4L3.5 20.5l1.1-4.2A8.5 8.5 0 1 1 20.5 12z"/></svg></a>
+      </div>
+      <p><b>Fyll is the operations app for growing African businesses.</b> Orders, payments, deliveries, stock, money and your team in one place, built with the owners who run them.</p>
+      <div class="stores stores-foot" aria-label="Fyll mobile apps are coming soon">
+        <span class="store"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16.37 12.6c-.02-2.2 1.8-3.26 1.88-3.31-1.03-1.5-2.62-1.7-3.18-1.73-1.35-.14-2.64.8-3.33.8-.69 0-1.74-.78-2.87-.76-1.47.02-2.83.86-3.59 2.18-1.53 2.66-.39 6.6 1.1 8.76.73 1.05 1.6 2.24 2.73 2.2 1.1-.05 1.51-.71 2.84-.71 1.32 0 1.7.71 2.86.69 1.18-.02 1.93-1.07 2.65-2.13.84-1.22 1.18-2.4 1.2-2.46-.03-.01-2.3-.88-2.32-3.5zM14.2 6.13c.6-.73 1.01-1.75.9-2.76-.87.04-1.92.58-2.54 1.31-.56.65-1.05 1.69-.92 2.68.97.08 1.96-.49 2.56-1.23z"/></svg><span><small>Coming soon on the</small><b>App Store</b></span></span>
+        <span class="store"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#34A853" d="M3.6 2.3c-.2.2-.3.6-.3 1v17.4c0 .4.1.8.3 1l9.4-9.7z"/><path fill="#FBBC04" d="M16.2 15.2 13 12l3.2-3.2 3.8 2.2c1.1.6 1.1 1.6 0 2.2z"/><path fill="#EA4335" d="M16.2 15.2 13 12 3.6 21.7c.4.4.9.4 1.6.1z"/><path fill="#4285F4" d="M16.2 8.8 5.2 2.2c-.7-.4-1.2-.3-1.6.1L13 12z"/></svg><span><small>Coming soon on</small><b>Google Play</b></span></span>
+      </div>
+      <form class="nl" id="nl-form" novalidate>
+        <label for="nl-email">Get product updates from Fyll.</label>
+        <div class="nl-row"><input id="nl-email" type="email" placeholder="What's your email?" autocomplete="email"><button type="submit" class="btn btn-ink">Subscribe</button></div>
+        <p class="nl-msg" id="nl-msg" aria-live="polite"></p>
+      </form>
     </div>
+    <div class="bf-cols">
+      <div><h4>Products</h4><ul><li><a href="#features">Fyll Ops</a></li><li><a href="https://fyll.store">Fyll Storefront</a></li><li><a href="#products">Fyll Checkout</a></li><li><a href="https://reviews.fyll.store/">Fyll Reviews</a></li></ul></div>
+      <div><h4>For businesses</h4><ul><li><a href="https://dashboard.fyll.app/login">Log in</a></li><li><a href="https://dashboard.fyll.app/request-invite">Get started</a></li><li><a href="https://dashboard.fyll.app/login?signup=1">Sign up with a code</a></li><li><a href="#how">How it works</a></li><li><a href="#faq">FAQ</a></li><li><a href="/tools/">Free tools</a></li></ul></div>
+      <div><h4>For customers</h4><ul><li><a href="https://track.fyll.app">Track an order</a></li><li><a href="https://returns.fyll.app">Start a return</a></li><li><a href="https://fyll.store">Shop Fyll stores</a></li></ul><h4 style="margin-top:32px">Contact</h4><ul><li><span style="user-select:all">getfyll@gmail.com</span></li></ul></div>
+    </div>
+  </div>
+  <div class="wrap bf-base">
+    <span>© 2026 Fyll Technologies. Empowering the future of African businesses.</span>
+    <a href="#top" class="totop">Back to top <span aria-hidden="true">↑</span></a>
   </div>
 </footer>
 
 <script>
-(() => {
-  const bar = document.getElementById('navbar');
-  const links = [...document.querySelectorAll('.nav-links a.link[href^="#"]')];
-  const sections = links.map((a) => document.querySelector(a.getAttribute('href'))).filter(Boolean);
-  const update = () => {
-    bar.classList.toggle('scrolled', window.scrollY > 12);
-    let current = null;
-    for (const section of sections) if (section.getBoundingClientRect().top <= 120) current = section.id;
-    links.forEach((a) => a.classList.toggle('active', a.getAttribute('href') === '#' + current));
+(function () {
+  var mq = function (q) { return window.matchMedia ? window.matchMedia(q).matches : false; };
+  var reduce = mq('(prefers-reduced-motion: reduce)');
+  var fine = mq('(hover: hover) and (pointer: fine)');
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+
+  /* smooth scrolling */
+  var lenis = null;
+  if (window.Lenis && !reduce && fine) {
+    try {
+      lenis = new window.Lenis({ duration: 1.15, smoothWheel: true });
+      var raf = function (t) { lenis.raf(t); requestAnimationFrame(raf); };
+      requestAnimationFrame(raf);
+    } catch (e) { lenis = null; }
+  }
+  $$('a[href^="#"]').forEach(function (a) {
+    a.addEventListener('click', function (e) {
+      var id = a.getAttribute('href').slice(1); var t = id ? document.getElementById(id) : document.body;
+      if (!t) return;
+      e.preventDefault();
+      if (lenis) lenis.scrollTo(t, { offset: -100 });
+      else window.scrollTo({ top: t.getBoundingClientRect().top + window.scrollY - 100, behavior: reduce ? 'auto' : 'smooth' });
+    });
+  });
+
+  /* nav: condense on scroll, sliding active pill */
+  var nav = $('.nav'), ind = $('.nav-ind'), links = $$('.nav-links a'), current = null;
+  var onScroll = function () { nav.classList.toggle('scrolled', window.scrollY > 24); };
+  window.addEventListener('scroll', onScroll, { passive: true }); onScroll();
+  var moveInd = function (a) {
+    if (!a) { ind.style.opacity = 0; return; }
+    ind.style.opacity = 1; ind.style.width = a.offsetWidth + 'px'; ind.style.transform = 'translateX(' + a.offsetLeft + 'px)';
   };
-  window.addEventListener('scroll', update, { passive: true });
-  update();
+  links.forEach(function (a) { a.addEventListener('mouseenter', function () { moveInd(a); }); });
+  $('.nav-links').addEventListener('mouseleave', function () { moveInd(current); });
+  if ('IntersectionObserver' in window) {
+    var map = {}; links.forEach(function (a) { map[a.getAttribute('href').slice(1)] = a; });
+    var io = new IntersectionObserver(function (es) {
+      es.forEach(function (e) {
+        if (!e.isIntersecting) return;
+        current = map[e.target.id] || null;
+        links.forEach(function (l) { l.classList.toggle('on', l === current); });
+        moveInd(current);
+      });
+    }, { rootMargin: '-45% 0px -50% 0px' });
+    $$('main section[id]').forEach(function (s) { io.observe(s); });
+  }
+
+  /* hero headline: words rise in */
+  var h1 = $('.show-head h1');
+  if (h1 && !reduce) {
+    var words = h1.textContent.trim().split(/\s+/);
+    h1.setAttribute('aria-label', words.join(' '));
+    h1.innerHTML = words.map(function (w, i) { return '<span class="w" aria-hidden="true"><span style="--wi:' + i + '">' + w + '</span></span>'; }).join(' ');
+  }
+
+  /* hero cards follow the cursor */
+  var show = $('.showcase');
+  if (show && fine && !reduce) {
+    var uis = $$('.shot > .ui', show), depth = [16, 9, 20, 12, 18, 10];
+    var tx = 0, ty = 0, cx = 0, cy = 0, rid = 0;
+    var tick = function () {
+      cx += (tx - cx) * 0.07; cy += (ty - cy) * 0.07;
+      uis.forEach(function (u, i) { var d = depth[i % depth.length]; u.style.translate = (-cx * d).toFixed(2) + 'px ' + (-cy * d).toFixed(2) + 'px'; });
+      rid = (Math.abs(tx - cx) > 0.001 || Math.abs(ty - cy) > 0.001) ? requestAnimationFrame(tick) : 0;
+    };
+    show.addEventListener('pointermove', function (e) {
+      var r = show.getBoundingClientRect(); tx = ((e.clientX - r.left) / r.width - 0.5) * 2; ty = ((e.clientY - r.top) / r.height - 0.5) * 2;
+      if (!rid) rid = requestAnimationFrame(tick);
+    });
+    show.addEventListener('pointerleave', function () { tx = 0; ty = 0; if (!rid) rid = requestAnimationFrame(tick); });
+  }
+
+  /* magnetic buttons */
+  if (fine && !reduce) $$('a.btn').forEach(function (b) {
+    b.addEventListener('pointermove', function (e) {
+      var r = b.getBoundingClientRect();
+      b.style.translate = ((e.clientX - r.left - r.width / 2) * 0.22).toFixed(1) + 'px ' + ((e.clientY - r.top - r.height / 2) * 0.32).toFixed(1) + 'px';
+    });
+    b.addEventListener('pointerleave', function () { b.style.translate = ''; });
+  });
+
+  /* logo marquee */
+  var track = $('.logos-track');
+  if (track && !reduce) {
+    var n = track.children.length, html = track.innerHTML;
+    track.insertAdjacentHTML('beforeend', html + html);
+    Array.prototype.slice.call(track.children, n).forEach(function (c) { c.setAttribute('aria-hidden', 'true'); c.tabIndex = -1; });
+    track.classList.add('go');
+  }
+
+  /* live order feed in the devices panel */
+  var plist = $('.devices .ps');
+  if (plist && !reduce && 'IntersectionObserver' in window) {
+    var feed = [
+      ['Kunle Adewale', '₦24,000', '#1044 · WhatsApp', 'p-wait', 'Waiting'],
+      ['Zainab Bello', '₦56,300', '#1045 · Storefront', 'p-paid', 'Paid'],
+      ['Walk-in sale', '₦7,800', '#1046 · In store', 'p-paid', 'Paid'],
+      ['Ngozi Obi', '₦31,500', '#1047 · Instagram', 'p-paid', 'Paid'],
+      ['Emeka Uche', '₦15,000', '#1048 · Phone order', 'p-wait', 'Waiting']
+    ];
+    var k = 0, timer = null;
+    var addOrder = function () {
+      var o = feed[k++ % feed.length], d = document.createElement('div');
+      d.className = 'ocard new';
+      d.innerHTML = '<div class="top"><span>' + o[0] + '</span><span class="num">' + o[1] + '</span></div><div class="sub"><span>' + o[2] + '</span><span class="pill ' + o[3] + '">' + o[4] + '</span></div>';
+      $('.chips', plist).after(d);
+      var cards = $$('.ocard', plist);
+      cards.slice(5).forEach(function (c) { c.classList.add('out'); setTimeout(function () { c.remove(); }, 450); });
+    };
+    new IntersectionObserver(function (es) {
+      if (es[0].isIntersecting) { if (!timer) timer = setInterval(addOrder, 3400); }
+      else { clearInterval(timer); timer = null; }
+    }, { threshold: 0.4 }).observe(plist);
+  }
+
+  /* feature rail: arrows, progress, drag with momentum */
+  var rail = $('.rail');
+  if (rail) {
+    var prev = $('#rail-prev'), next = $('#rail-next'), bar = $('.rail-prog i');
+    var stepW = function () { var c = $('.fcard', rail); return c ? c.offsetWidth + 20 : 320; };
+    prev.addEventListener('click', function () { rail.scrollBy({ left: -stepW(), behavior: reduce ? 'auto' : 'smooth' }); });
+    next.addEventListener('click', function () { rail.scrollBy({ left: stepW(), behavior: reduce ? 'auto' : 'smooth' }); });
+    var upd = function () {
+      var max = rail.scrollWidth - rail.clientWidth, p = max > 0 ? rail.scrollLeft / max : 0, vis = Math.min(1, rail.clientWidth / rail.scrollWidth);
+      bar.style.width = (vis * 100) + '%';
+      bar.style.transform = 'translateX(' + (vis < 1 ? p * (1 / vis - 1) * 100 : 0) + '%)';
+      prev.disabled = rail.scrollLeft < 4; next.disabled = rail.scrollLeft > max - 4;
+    };
+    rail.addEventListener('scroll', upd, { passive: true }); window.addEventListener('resize', upd); upd();
+    var down = false, moved = false, sx = 0, sl = 0, lx = 0, v = 0;
+    rail.addEventListener('pointerdown', function (e) { if (e.pointerType !== 'mouse') return; down = true; moved = false; sx = lx = e.clientX; sl = rail.scrollLeft; v = 0; });
+    window.addEventListener('pointermove', function (e) {
+      if (!down) return;
+      var dx = e.clientX - sx;
+      if (!moved && Math.abs(dx) > 5) { moved = true; rail.classList.add('dragging'); }
+      if (moved) { rail.scrollLeft = sl - dx; v = e.clientX - lx; lx = e.clientX; }
+    });
+    window.addEventListener('pointerup', function () {
+      if (!down) return; down = false;
+      if (!moved) return;
+      var glide = function () {
+        v *= 0.93; rail.scrollLeft -= v;
+        if (Math.abs(v) > 0.4 && !reduce) requestAnimationFrame(glide); else rail.classList.remove('dragging');
+      };
+      requestAnimationFrame(glide);
+    });
+  }
+
+  /* order flow: autoplay while visible, click to choose */
+  var flow = $('.flow');
+  if (flow) {
+    var items = $$('.flow-list li', flow), panels = $$('.screen-panel', flow), count = $('#flow-n');
+    if (reduce) flow.classList.add('paused');
+    var showStep = function (i) {
+      items.forEach(function (li, n) { li.classList.toggle('on', n === i); });
+      panels.forEach(function (p) { p.classList.toggle('on', +p.getAttribute('data-step') === i); });
+      if (count) count.textContent = i + 1;
+    };
+    items.forEach(function (li, i) {
+      $('button', li).addEventListener('click', function () { flow.classList.add('paused'); showStep(i); });
+      $('.flow-prog i', li).addEventListener('animationend', function () { if (!flow.classList.contains('paused')) showStep((i + 1) % items.length); });
+    });
+    if ('IntersectionObserver' in window) new IntersectionObserver(function (es) { flow.classList.toggle('inview', es[0].isIntersecting); }, { threshold: 0.35 }).observe(flow);
+    else flow.classList.add('inview');
+  }
+
+  /* FAQ: smooth accordion + topic filter */
+  var faq = $('.faq-items');
+  if (faq) {
+    var qas = $$('.qa', faq);
+    qas.forEach(function (q) {
+      var b = $('h3 button', q);
+      b.addEventListener('click', function () {
+        var open = !q.classList.contains('open');
+        qas.forEach(function (o) { if (o !== q) { o.classList.remove('open'); $('h3 button', o).setAttribute('aria-expanded', 'false'); } });
+        q.classList.toggle('open', open); b.setAttribute('aria-expanded', String(open));
+      });
+    });
+    var tabsWrap = $('.faq-tabs'), tabs = $$('.faq-tabs button'), find = $('.faq-ind');
+    var moveF = function (t) { find.style.width = t.offsetWidth + 'px'; find.style.height = t.offsetHeight + 'px'; find.style.transform = 'translate(' + t.offsetLeft + 'px,' + t.offsetTop + 'px)'; };
+    tabs.forEach(function (t) {
+      t.addEventListener('click', function () {
+        tabs.forEach(function (x) { x.setAttribute('aria-pressed', String(x === t)); });
+        moveF(t);
+        var c = t.getAttribute('data-cat'), i = 0;
+        faq.classList.remove('swap'); void faq.offsetWidth;
+        qas.forEach(function (q) { var on = c === 'all' || q.getAttribute('data-cat') === c; q.hidden = !on; if (on) q.style.setProperty('--k', i++); });
+        faq.classList.add('swap');
+      });
+    });
+    moveF(tabs[0]); tabsWrap.classList.add('ready');
+    window.addEventListener('resize', function () { moveF($('.faq-tabs button[aria-pressed="true"]')); });
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { moveF($('.faq-tabs button[aria-pressed="true"]')); if (current) moveInd(current); });
+  }
+
+  /* copy email */
+  var cb = $('#copy-email');
+  if (cb) cb.addEventListener('click', function () {
+    var el = $('#faq-email');
+    var flash = function (txt, cls) { cb.textContent = txt; if (cls) cb.classList.add(cls); setTimeout(function () { cb.textContent = 'Copy'; cb.classList.remove('done'); }, 1800); };
+    var selectIt = function () { var r = document.createRange(); r.selectNodeContents(el); var s = window.getSelection(); s.removeAllRanges(); s.addRange(r); flash('Selected'); };
+    try { navigator.clipboard.writeText(el.textContent).then(function () { flash('Copied', 'done'); }, selectIt); } catch (e) { selectIt(); }
+  });
 })();
 </script>
-</body>
-</html>
+<script>
+(function () {
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* order notifications pop in, newest on top */
+  var stack = document.querySelector('.notifs');
+  if (stack && !reduce && 'IntersectionObserver' in window) {
+    var feed = [
+      ['New order · ₦24,000', 'Kunle Adewale ordered on WhatsApp', 'now'],
+      ['Low stock', 'Rose Oud 50ml has 3 left', 'now'],
+      ['Delivered · #1038', 'Ifeoma confirmed her delivery', 'now'],
+      ['New order · ₦56,300', 'Zainab Bello paid on your storefront', 'now'],
+      ['Transfer proof uploaded', 'Tap to approve ₦31,500', 'now'],
+      ['Return started · #1029', 'Size 40 sent instead of 42', 'now']
+    ];
+    var k = 0, timer = null;
+    var make = function (o) {
+      var d = document.createElement('div');
+      d.className = 'notif pop';
+      d.innerHTML = '<span class="ic"><img src="/landing/img/wordmark.svg" alt=""></span><div><b>' + o[0] + '</b><span>' + o[1] + '</span></div><time>' + o[2] + '</time>';
+      return d;
+    };
+    var push = function () {
+      var old = Array.prototype.slice.call(stack.children);
+      var first = old.map(function (el) { return el.getBoundingClientRect().top; });
+      old.forEach(function (el) { el.classList.remove('pop'); var t = el.querySelector('time'); if (t && t.textContent === 'now') t.textContent = '1m'; });
+      stack.insertBefore(make(feed[k++ % feed.length]), stack.firstChild);
+      old.forEach(function (el, i) {
+        var dy = first[i] - el.getBoundingClientRect().top;
+        if (!dy) return;
+        el.style.transition = 'none'; el.style.transform = 'translateY(' + dy + 'px)';
+        requestAnimationFrame(function () { requestAnimationFrame(function () { el.style.transition = 'transform .6s cubic-bezier(.16,1,.3,1)'; el.style.transform = ''; }); });
+      });
+      var all = Array.prototype.slice.call(stack.children);
+      all.slice(3).forEach(function (el) { el.classList.add('leave'); setTimeout(function () { el.remove(); }, 450); });
+    };
+    new IntersectionObserver(function (es) {
+      if (es[0].isIntersecting) { if (!timer) { push(); timer = setInterval(push, 2800); } }
+      else { clearInterval(timer); timer = null; }
+    }, { threshold: 0.45 }).observe(stack.parentNode);
+  }
+
+  /* newsletter (mockup: nothing is sent) */
+  var nl = document.getElementById('nl-form');
+  if (nl) nl.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var v = document.getElementById('nl-email').value.trim(), msg = document.getElementById('nl-msg');
+    msg.textContent = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? "Thanks, you're on the list." : 'Enter an email address like name@business.com.';
+  });
+})();
+</script>
+<script>
+(function () {
+  var fx = document.querySelector('.fx');
+  if (!fx) return;
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var data = [
+    ['₦184,000', '₦141,500', '₦42,500', '₦26,000'],
+    ['GH₵ 1,450', 'GH₵ 1,120', 'GH₵ 330', 'GH₵ 210'],
+    ['KSh 15,600', 'KSh 12,000', 'KSh 3,600', 'KSh 2,300'],
+    ['R 2,240', 'R 1,720', 'R 520', 'R 330'],
+    ['$124', '$96', '$28', '$18']
+  ];
+  var chipsWrap = fx.querySelector('.fx-chips'), chips = Array.prototype.slice.call(chipsWrap.querySelectorAll('button'));
+  var ind = fx.querySelector('.fx-ind'), val = document.getElementById('fx-val'), rows = fx.querySelector('.fx-rows');
+  var cur = 0, timer = null, paused = false;
+  var moveInd = function (b) { ind.style.width = b.offsetWidth + 'px'; ind.style.height = b.offsetHeight + 'px'; ind.style.transform = 'translate(' + b.offsetLeft + 'px,' + b.offsetTop + 'px)'; };
+  var set = function (i) {
+    if (i === cur) return;
+    cur = i; var d = data[i];
+    chips.forEach(function (c, n) { c.setAttribute('aria-pressed', String(n === i)); });
+    moveInd(chips[i]);
+    var fill = function () {
+      val.textContent = d[0];
+      document.getElementById('fx-paid').textContent = d[1];
+      document.getElementById('fx-wait').textContent = d[2];
+      document.getElementById('fx-exp').textContent = d[3];
+    };
+    if (reduce) { fill(); return; }
+    val.classList.add('out'); rows.classList.add('swap');
+    setTimeout(function () {
+      fill(); val.classList.remove('out'); val.classList.add('in');
+      void val.offsetWidth; val.classList.remove('in'); rows.classList.remove('swap');
+    }, 320);
+  };
+  chips.forEach(function (c, n) { c.addEventListener('click', function () { paused = true; clearInterval(timer); timer = null; set(n); }); });
+  moveInd(chips[0]); chipsWrap.classList.add('ready');
+  window.addEventListener('resize', function () { moveInd(chips[cur]); });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { moveInd(chips[cur]); });
+  if (!reduce && 'IntersectionObserver' in window) {
+    new IntersectionObserver(function (es) {
+      if (es[0].isIntersecting && !paused) { if (!timer) timer = setInterval(function () { set((cur + 1) % data.length); }, 2600); }
+      else { clearInterval(timer); timer = null; }
+    }, { threshold: 0.5 }).observe(fx);
+  }
+})();
+</script>
+<script>
+(function () {
+  var pills = Array.prototype.slice.call(document.querySelectorAll('.chan-pills span'));
+  var card = document.querySelector('.chan-card');
+  if (!card) return;
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var data = [
+    ['New order · ₦42,500', 'Bola Adeyemi ordered from an Instagram DM'],
+    ['New order · ₦24,000', 'Kunle Adewale ordered on WhatsApp'],
+    ['New order · ₦56,300', 'Zainab Bello paid on your storefront'],
+    ['Walk-in sale · ₦9,500', 'Recorded at the counter, stock updated'],
+    ['New order · ₦31,500', 'Ngozi Obi checked out on your WooCommerce site']
+  ];
+  var i = 0, timer = null;
+  var show = function (n) {
+    i = n;
+    pills.forEach(function (p, k) { p.classList.toggle('on', k === n); });
+    document.getElementById('chan-title').textContent = data[n][0];
+    document.getElementById('chan-sub').textContent = data[n][1];
+    if (!reduce) { card.classList.remove('pop'); void card.offsetWidth; card.classList.add('pop'); }
+  };
+  if (!reduce && 'IntersectionObserver' in window) {
+    new IntersectionObserver(function (es) {
+      if (es[0].isIntersecting) { if (!timer) timer = setInterval(function () { show((i + 1) % data.length); }, 2400); }
+      else { clearInterval(timer); timer = null; }
+    }, { threshold: 0.4 }).observe(card);
+  }
+})();
+</script>
+<script>
+(function () {
+  ['.fx-chips', '.faq-tabs'].forEach(function (sel) {
+    var row = document.querySelector(sel);
+    if (!row) return;
+    var center = function (b) {
+      if (row.scrollWidth <= row.clientWidth) return;
+      row.scrollTo({ left: b.offsetLeft - (row.clientWidth - b.offsetWidth) / 2, behavior: 'smooth' });
+    };
+    var edge = function () { row.classList.toggle('at-end', row.scrollLeft + row.clientWidth >= row.scrollWidth - 4); };
+    row.addEventListener('scroll', edge, { passive: true }); edge();
+    new MutationObserver(function (ms) {
+      ms.forEach(function (m) { if (m.target.getAttribute('aria-pressed') === 'true') center(m.target); });
+    }).observe(row, { attributes: true, subtree: true, attributeFilter: ['aria-pressed'] });
+  });
+})();
+</script>
+<script>
+(function () {
+  var f = document.getElementById('calc');
+  if (!f) return;
+  var $ = function (id) { return document.getElementById(id); };
+  var n = function (id) { var v = parseFloat($(id).value); return isFinite(v) && v >= 0 ? v : 0; };
+  var fmt = function (cur, v) { var sign = v < 0 ? '-' : ''; return sign + cur + Math.abs(Math.round(v)).toLocaleString('en-US'); };
+  var run = function () {
+    var cur = $('calc-cur').value, cost = n('calc-cost'), price = n('calc-price'), extra = n('calc-extra'), qty = n('calc-qty');
+    var pp = price - cost - extra, m = price > 0 ? pp / price * 100 : 0, tp = pp * qty;
+    $('calc-pp').textContent = fmt(cur, pp); $('calc-tp').textContent = fmt(cur, tp);
+    $('calc-m').textContent = (price > 0 ? m.toFixed(1) : '0') + '%';
+    ['calc-pp', 'calc-m', 'calc-tp'].forEach(function (id) { $(id).classList.toggle('neg', pp < 0); });
+  };
+  f.addEventListener('input', run); f.addEventListener('submit', function (e) { e.preventDefault(); }); run();
+})();
+</script>
+
+</body></html>

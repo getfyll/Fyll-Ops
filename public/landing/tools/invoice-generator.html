@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Free Invoice Generator for Nigerian Businesses | Fyll</title>
+<meta name="description" content="Create a free invoice in naira or any currency, with VAT and bank transfer details. Copy it straight into WhatsApp. No sign-up.">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600&family=Public+Sans:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="/landing/tools/tools.css">
+</head>
+<body data-tool="invoice">
+<header class="nav"><div class="wrap"><nav class="nav-bar" aria-label="Main">
+  <a class="logo" href="/tools/"><img src="/landing/tools/img/wordmark.svg" alt="Fyll"><span>Free tools</span></a>
+  <div class="nav-links"><a href="invoice-generator" aria-current="page">Invoice</a><a href="profit-margin-calculator">Profit</a><a href="terms-and-conditions-generator">Terms</a><a href="refund-policy-generator">Refund</a><a href="delivery-policy-generator">Delivery</a><a href="qr-code-generator">QR code</a></div>
+  <div class="nav-right"><a class="login" href="https://dashboard.fyll.app/login">Log in</a><a class="btn btn-ink" href="https://dashboard.fyll.app/request-invite">Get started</a></div>
+</nav></div></header>
+<main>
+<section class="tool-hero"><div class="wrap">
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="/tools/">Free tools</a><span aria-hidden="true">/</span><span>Invoice generator</span></nav>
+  <h1>Free invoice generator</h1>
+  <p class="lede">Pick a template, add your logo and bank details, then copy the invoice into WhatsApp or save it as an image or PDF.</p>
+  <div class="hero-badges"><span class="chip"><i></i>Free</span><span class="chip"><i></i>No sign-up</span><span class="chip"><i></i>Made for Africa</span></div>
+</div></section>
+<section class="work"><div class="wrap work-grid">
+  <form class="panel" onsubmit="return false" novalidate>
+<div class="box"><h2>Template and logo</h2>
+<div class="tpl-pick" role="group" aria-label="Invoice template">
+<button type="button" class="tpl" data-tpl="classic" aria-pressed="true"><span class="th th1"><i></i><i></i><i></i><i></i></span><b>Classic</b><small>Clean and light</small></button>
+<button type="button" class="tpl" data-tpl="bold" aria-pressed="false"><span class="th th2"><i></i><i></i><i></i><i></i></span><b>Bold</b><small>Dark header, lime total</small></button>
+<button type="button" class="tpl" data-tpl="minimal" aria-pressed="false"><span class="th th3"><i></i><i></i><i></i><i></i></span><b>Minimal</b><small>Quiet and editorial</small></button>
+</div>
+<div class="logo-up"><span class="logo-prev" id="logoPrev" aria-hidden="true"></span>
+<div class="logo-txt"><b>Your logo</b><small id="logoHint">Optional. PNG, JPG or SVG. Stays on your device.</small></div>
+<label class="btn btn-line btn-sm" for="logoFile">Upload logo</label><input id="logoFile" type="file" accept="image/*" hidden>
+<button type="button" class="btn btn-line btn-sm" id="logoClear" hidden>Remove</button></div>
+</div>
+<details class="box" open><summary>Your business details <small data-biz-name>Not set yet</small></summary>
+<div class="fields">
+<div class="f full"><label for="bizName">Business name</label><input id="bizName" data-k="bizName" type="text" placeholder="e.g. Perfume Elysium" ></div>
+<div class="f"><label for="bizUrl">Store link</label><input id="bizUrl" data-k="bizUrl" type="text" placeholder="e.g. yourbusiness.fyll.store" ></div>
+<div class="f"><label for="bizEmail">Email</label><input id="bizEmail" data-k="bizEmail" type="email" placeholder="hello@yourbusiness.com" ></div>
+<div class="f"><label for="bizPhone">Phone or WhatsApp</label><input id="bizPhone" data-k="bizPhone" type="tel" placeholder="0803 000 0000" ></div>
+<div class="f"><label for="bizAddress">City or area</label><input id="bizAddress" data-k="bizAddress" type="text" placeholder="e.g. Lekki, Lagos" ></div>
+<div class="f"><label for="bizState">State</label><select id="bizState" data-k="bizState"><option value="Abia">Abia</option><option value="Adamawa">Adamawa</option><option value="Akwa Ibom">Akwa Ibom</option><option value="Anambra">Anambra</option><option value="Bauchi">Bauchi</option><option value="Bayelsa">Bayelsa</option><option value="Benue">Benue</option><option value="Borno">Borno</option><option value="Cross River">Cross River</option><option value="Delta">Delta</option><option value="Ebonyi">Ebonyi</option><option value="Edo">Edo</option><option value="Ekiti">Ekiti</option><option value="Enugu">Enugu</option><option value="FCT">FCT (Abuja)</option><option value="Gombe">Gombe</option><option value="Imo">Imo</option><option value="Jigawa">Jigawa</option><option value="Kaduna">Kaduna</option><option value="Kano">Kano</option><option value="Katsina">Katsina</option><option value="Kebbi">Kebbi</option><option value="Kogi">Kogi</option><option value="Kwara">Kwara</option><option value="Lagos">Lagos</option><option value="Nasarawa">Nasarawa</option><option value="Niger">Niger</option><option value="Ogun">Ogun</option><option value="Ondo">Ondo</option><option value="Osun">Osun</option><option value="Oyo">Oyo</option><option value="Plateau">Plateau</option><option value="Rivers">Rivers</option><option value="Sokoto">Sokoto</option><option value="Taraba">Taraba</option><option value="Yobe">Yobe</option><option value="Zamfara">Zamfara</option></select></div>
+<div class="f"><label for="currency">Currency</label><select id="currency" data-k="currency"><option value="NGN">₦ Naira</option><option value="GHS">GH₵ Cedi</option><option value="KES">KSh Shilling</option><option value="ZAR">R Rand</option><option value="USD">$ US dollar</option></select></div>
+</div><p class="disclaimer">Saved on this device only, and reused on every free tool.</p></details>
+<div class="box"><h2>Invoice details</h2><div class="fields">
+<div class="f full"><label for="invNo">Invoice number</label><input id="invNo" data-k="invNo" type="text" placeholder="INV-0001" ></div>
+<div class="f"><label for="invDate">Issue date</label><input id="invDate" data-k="invDate" type="date" placeholder="" ></div>
+<div class="f"><label for="invDue">Due date</label><input id="invDue" data-k="invDue" type="date" placeholder="" ></div>
+</div></div>
+<div class="box"><h2>Billed to</h2><div class="fields">
+<div class="f full"><label for="clName">Customer name</label><input id="clName" data-k="clName" type="text" placeholder="e.g. Adaeze Okafor" ></div>
+<div class="f"><label for="clPhone">Phone</label><input id="clPhone" data-k="clPhone" type="tel" placeholder="0803 000 0000" ></div>
+<div class="f"><label for="clEmail">Email</label><input id="clEmail" data-k="clEmail" type="email" placeholder="customer@email.com" ></div>
+<div class="f full"><label for="clAddress">Address</label><input id="clAddress" data-k="clAddress" type="text" placeholder="Delivery address (optional)" ></div>
+</div></div>
+<div class="box"><h2>Items</h2><div class="items" id="items"></div><button type="button" class="btn btn-line btn-sm add-row" id="add-item">+ Add item</button>
+<div class="fields"><div class="f"><label for="invDelivery">Delivery fee (<span class="sym">₦</span>)</label><input id="invDelivery" data-k="invDelivery" type="number" placeholder="0" min="0" inputmode="decimal"></div><div class="f"><label for="invDiscount">Discount (<span class="sym">₦</span>)</label><input id="invDiscount" data-k="invDiscount" type="number" placeholder="0" min="0" inputmode="decimal"></div></div>
+<label class="check"><input type="checkbox" id="invVat" data-k="invVat">Add VAT (7.5%)</label></div>
+<div class="box"><h2>Payment details</h2><div class="fields">
+<div class="f"><label for="bankName">Bank</label><input id="bankName" data-k="bankName" type="text" placeholder="e.g. Access Bank" ></div>
+<div class="f"><label for="acctNo">Account number</label><input id="acctNo" data-k="acctNo" type="text" placeholder="0123456789" inputmode="numeric"></div>
+<div class="f full"><label for="acctName">Account name</label><input id="acctName" data-k="acctName" type="text" placeholder="Name on the account" ></div>
+<div class="f full"><label for="invNotes">Note to customer</label><textarea id="invNotes" data-k="invNotes" placeholder="Thank you for your order."></textarea></div>
+</div></div></form>
+  <div class="preview-col">
+<div class="preview-bar"><span class="lbl"><i></i>Live preview</span><div class="preview-actions"><button type="button" class="btn btn-ink btn-sm" data-copy="wa">Copy for WhatsApp</button><button type="button" class="btn btn-line btn-sm" data-copy="text">Copy text</button><button type="button" class="btn btn-lime btn-sm" data-save="png">Save as image</button><button type="button" class="btn btn-lime btn-sm" data-save="pdf">Save as PDF</button></div></div>
+<div class="sheet-wrap"><div class="sheet" id="sheet" aria-live="polite"></div></div>
+</div>
+</div></section>
+<section style="padding-top:0"><div class="wrap about">
+  <div><span class="eyebrow">About this tool</span><h2 style="margin-top:14px">Invoice generator</h2></div>
+  <div><div class="prose"><p>An invoice tells your customer exactly what they are paying for, how much, and where to send the money. It also gives you a record for your books.</p><p>This generator is built for how businesses in Nigeria get paid. Add your bank details so customers can pay by transfer, and ask them to use the invoice number as their narration so you can match the payment quickly.</p><p><b>Tip:</b> keep your invoice numbers in order, like INV-0001, INV-0002, so you can find any sale later.</p></div><div class="faq"><div class="qa"><h3><button type="button" id="invoice-q0" aria-expanded="false" aria-controls="invoice-q0-p">Can I add VAT to my invoice?<span class="qi" aria-hidden="true"></span></button></h3><div class="qa-p" id="invoice-q0-p" role="region" aria-labelledby="invoice-q0"><div><p>Yes. Turn on &quot;Add VAT (7.5%)&quot; and it is added to the total after any discount. 7.5% is the standard VAT rate in Nigeria. Check with your accountant if you are not sure whether you need to charge it.</p></div></div></div><div class="qa"><h3><button type="button" id="invoice-q1" aria-expanded="false" aria-controls="invoice-q1-p">Can I send the invoice on WhatsApp?<span class="qi" aria-hidden="true"></span></button></h3><div class="qa-p" id="invoice-q1-p" role="region" aria-labelledby="invoice-q1"><div><p>Yes. Tap &quot;Copy for WhatsApp&quot; and paste it into any chat. It keeps the bold title and total, and lists every item clearly. You can also save the invoice as an image or PDF and send that instead.</p></div></div></div><div class="qa"><h3><button type="button" id="invoice-q2" aria-expanded="false" aria-controls="invoice-q2-p">Can I use a currency other than naira?<span class="qi" aria-hidden="true"></span></button></h3><div class="qa-p" id="invoice-q2-p" role="region" aria-labelledby="invoice-q2"><div><p>Yes. Change the currency in your business details. You can invoice in naira, cedis, shillings, rand or US dollars.</p></div></div></div><div class="qa"><h3><button type="button" id="invoice-q3" aria-expanded="false" aria-controls="invoice-q3-p">Can I add my logo?<span class="qi" aria-hidden="true"></span></button></h3><div class="qa-p" id="invoice-q3-p" role="region" aria-labelledby="invoice-q3"><div><p>Yes. Choose a template, then tap &quot;Upload logo&quot;. Your logo is saved only on this device. Without one, the invoice shows your business initials.</p></div></div></div></div></div>
+</div></section>
+<section style="padding-top:0"><div class="wrap">
+  <div class="sec-head"><h2 style="font-size:clamp(28px,3vw,40px)">More free tools</h2></div>
+  <div class="related"><a class="tool-card " href="profit-margin-calculator"><span class="tool-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="2" width="16" height="20" rx="3"/><path d="M8 6h8M8 11h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15h.01M8 18.5h8"/></svg></span><h3>Profit margin calculator</h3><p>Find the right selling price from your costs, or check how much you really make on each sale.</p><span class="go">Open tool</span></a><a class="tool-card " href="terms-and-conditions-generator"><span class="tool-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h10a2 2 0 0 1 2 2v16l-3-2-2 2-2-2-2 2-2-2-3 2V5a2 2 0 0 1 2-2z"/><path d="M9 8h6M9 12h6"/></svg></span><h3>Terms and conditions generator</h3><p>Plain-English terms for your online store, Instagram shop or WhatsApp business, written for Nigeria.</p><span class="go">Open tool</span></a><a class="tool-card " href="refund-policy-generator"><span class="tool-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 8v4l3 2"/></svg></span><h3>Refund policy generator</h3><p>Set clear rules for returns, exchanges and refunds so customers know what to expect before they pay.</p><span class="go">Open tool</span></a><a class="tool-card " href="delivery-policy-generator"><span class="tool-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 6h12v10H2zM14 9h4l4 4v3h-8"/><circle cx="6" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg></span><h3>Delivery policy generator</h3><p>Explain where you deliver, how long it takes and what it costs, from same-day in your city to interstate.</p><span class="go">Open tool</span></a><a class="tool-card " href="qr-code-generator"><span class="tool-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 14h3v3M21 14v.01M14 21h.01M17 21h4v-4"/></svg></span><h3>QR code generator</h3><p>Turn your store link, WhatsApp, Instagram or bank details into a QR code for packaging, flyers and your counter.</p><span class="go">Open tool</span></a></div>
+</div></section>
+<section style="padding-top:0"><div class="wrap"><div class="cta">
+  <div><h2>Put your policies to work on a Fyll store.</h2></div>
+  <div class="acts"><p>On Fyll Storefront, your refund and delivery policies show on every product page, and every order lands in one place.</p>
+  <div class="row"><a class="btn btn-white" href="https://dashboard.fyll.app/request-invite">Get started</a><a class="btn btn-ghost" href="https://fyll.store">See Fyll stores</a></div></div>
+</div></div></section>
+</main>
+<footer><div class="wrap foot"><a href="/tools/"><img src="/landing/tools/img/wordmark.svg" alt="Fyll"></a><nav aria-label="Free tools"><a href="invoice-generator">Invoice generator</a><a href="profit-margin-calculator">Profit margin calculator</a><a href="terms-and-conditions-generator">Terms and conditions generator</a><a href="refund-policy-generator">Refund policy generator</a><a href="delivery-policy-generator">Delivery policy generator</a><a href="qr-code-generator">QR code generator</a></nav><span>© 2026 Fyll Technologies</span></div></footer>
+<script src="/landing/tools/tools.js"></script>
+</body>
+</html>

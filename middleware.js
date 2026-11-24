@@ -1,15 +1,29 @@
-// Vercel Routing Middleware: fyll.app and www.fyll.app show the marketing landing page at "/".
-// Every other path on those hosts (tracking, payments, checkout links, dashboard redirects) and every
-// other host (dashboard.fyll.app, track.fyll.app, ...) is untouched and served by the app as before.
-// The page itself is public/landing/, copied to dist/landing/ by expo export (checked in scripts/vercel-build-web.sh).
-export const config = { matcher: '/' };
+// Vercel Routing Middleware: fyll.app and www.fyll.app show the marketing landing page at "/" and the
+// free tools at "/tools/". Every other path on those hosts (tracking, payments, checkout links, dashboard
+// redirects) and every other host (dashboard.fyll.app, track.fyll.app, ...) is untouched and served by the app.
+// The pages live in public/landing/ (free tools in public/landing/tools/), copied to dist/landing/ by expo export.
+export const config = { matcher: ['/', '/tools', '/tools/:path*'] };
 
 const LANDING_HOSTS = new Set(['fyll.app', 'www.fyll.app']);
+
+const rewrite = (request, path) => new Response(null, {
+  headers: { 'x-middleware-rewrite': new URL(path, request.url).toString() },
+});
 
 export default function middleware(request) {
   const host = (request.headers.get('host') ?? '').toLowerCase().split(':')[0];
   if (!LANDING_HOSTS.has(host)) return undefined;
-  return new Response(null, {
-    headers: { 'x-middleware-rewrite': new URL('/landing/index.html', request.url).toString() },
-  });
+
+  const url = new URL(request.url);
+  const path = url.pathname;
+  if (path === '/') return rewrite(request, '/landing/index.html');
+
+  // /tools -> /tools/ so the hub's relative links resolve under /tools/.
+  if (path === '/tools') return Response.redirect(new URL('/tools/' + url.search, request.url), 308);
+  if (path === '/tools/') return rewrite(request, '/landing/tools/index.html');
+
+  // /tools/invoice-generator -> /landing/tools/invoice-generator.html (clean URLs; .html also works).
+  const page = path.slice('/tools/'.length).replace(/\.html$/, '');
+  if (/^[a-z0-9-]+$/.test(page)) return rewrite(request, `/landing/tools/${page}.html`);
+  return undefined;
 }

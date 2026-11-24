@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Free QR Code Generator for African Businesses | Fyll</title>
+<meta name="description" content="Make a free QR code for your store link, WhatsApp chat, Instagram or bank transfer details. Download as PNG or SVG. No sign-up.">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600&family=Public+Sans:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="/landing/tools/tools.css">
+</head>
+<body data-tool="qr">
+<header class="nav"><div class="wrap"><nav class="nav-bar" aria-label="Main">
+  <a class="logo" href="/tools/"><img src="/landing/tools/img/wordmark.svg" alt="Fyll"><span>Free tools</span></a>
+  <div class="nav-links"><a href="invoice-generator">Invoice</a><a href="profit-margin-calculator">Profit</a><a href="terms-and-conditions-generator">Terms</a><a href="refund-policy-generator">Refund</a><a href="delivery-policy-generator">Delivery</a><a href="qr-code-generator" aria-current="page">QR code</a></div>
+  <div class="nav-right"><a class="login" href="https://dashboard.fyll.app/login">Log in</a><a class="btn btn-ink" href="https://dashboard.fyll.app/request-invite">Get started</a></div>
+</nav></div></header>
+<main>
+<section class="tool-hero"><div class="wrap">
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="/tools/">Free tools</a><span aria-hidden="true">/</span><span>QR code generator</span></nav>
+  <h1>Free QR code generator</h1>
+  <p class="lede">Put a QR code on your packaging, flyers, receipts or shop counter. Customers scan it to open your store, start a WhatsApp chat, follow you on Instagram or see your bank details.</p>
+</div></section>
+<section class="work"><div class="wrap work-grid">
+  <form class="panel" onsubmit="return false" novalidate>
+<div class="box"><h2>What should it open?</h2>
+<div class="qtypes" role="group" aria-label="QR code type"><button type="button" data-qtype="link" aria-pressed="false">Store link</button><button type="button" data-qtype="whatsapp" aria-pressed="false">WhatsApp chat</button><button type="button" data-qtype="instagram" aria-pressed="false">Instagram</button><button type="button" data-qtype="payment" aria-pressed="false">Bank details</button><button type="button" data-qtype="call" aria-pressed="false">Phone call</button><button type="button" data-qtype="text" aria-pressed="false">Text</button></div>
+<div class="fields" data-qpanel="link"><div class="f full"><label for="q-url">Link</label><input id="q-url" data-q="url" type="url" placeholder="yourbusiness.fyll.store" inputmode="url"><span class="hint">Your Fyll store, a product page, a payment link or any website.</span></div></div>
+<div class="fields" data-qpanel="whatsapp" hidden><div class="f full"><label for="q-wa">WhatsApp number</label><input id="q-wa" data-q="waPhone" type="tel" placeholder="0803 000 0000"><span class="hint">Nigerian numbers starting with 0 are converted to +234 for you.</span></div><div class="f full"><label for="q-wam">Message they start with</label><textarea id="q-wam" data-q="waMsg" placeholder="Hi, I would like to place an order."></textarea></div></div>
+<div class="fields" data-qpanel="instagram" hidden><div class="f full"><label for="q-ig">Instagram handle</label><input id="q-ig" data-q="ig" type="text" placeholder="@yourbusiness"></div></div>
+<div class="fields" data-qpanel="payment" hidden><div class="f"><label for="q-bank">Bank</label><input id="q-bank" data-q="bank" type="text" placeholder="e.g. Access Bank"></div><div class="f"><label for="q-acct">Account number</label><input id="q-acct" data-q="acct" type="text" inputmode="numeric" placeholder="0123456789"></div><div class="f full"><label for="q-an">Account name</label><input id="q-an" data-q="acctName" type="text" placeholder="Name on the account"></div><div class="f full"><label for="q-amt">Amount (optional, ₦)</label><input id="q-amt" data-q="amount" type="number" min="0" inputmode="decimal" placeholder="Leave blank for any amount"><span class="hint">Scanning shows these details as text, ready to copy into a banking app.</span></div></div>
+<div class="fields" data-qpanel="call" hidden><div class="f full"><label for="q-ph">Phone number</label><input id="q-ph" data-q="phone" type="tel" placeholder="0803 000 0000"></div></div>
+<div class="fields" data-qpanel="text" hidden><div class="f full"><label for="q-tx">Text</label><textarea id="q-tx" data-q="text" placeholder="Anything you want people to read when they scan"></textarea></div></div>
+</div>
+<div class="box"><h2>Design</h2>
+<span class="lbl">Style</span><div class="seg" role="group" aria-label="Dot style"><button type="button" data-qstyle="rounded" aria-pressed="false">Rounded</button><button type="button" data-qstyle="dots" aria-pressed="false">Dots</button><button type="button" data-qstyle="square" aria-pressed="false">Square</button></div>
+<span class="lbl">Colour</span><div class="swatches" role="group" aria-label="QR colour">
+<button type="button" class="sw" data-qcolor="#141414" aria-pressed="false" aria-label="Black" style="--c:#141414"></button>
+<button type="button" class="sw" data-qcolor="#3f4a08" aria-pressed="false" aria-label="Olive" style="--c:#3f4a08"></button>
+<button type="button" class="sw" data-qcolor="#2c3407" aria-pressed="false" aria-label="Forest" style="--c:#2c3407"></button>
+<button type="button" class="sw" data-qcolor="#1d4ed8" aria-pressed="false" aria-label="Blue" style="--c:#1d4ed8"></button>
+<button type="button" class="sw" data-qcolor="#a4316f" aria-pressed="false" aria-label="Berry" style="--c:#a4316f"></button>
+<label class="sw sw-pick" title="Pick any colour"><input type="color" id="qr-color" aria-label="Pick any colour"></label>
+</div>
+<div class="fields"><div class="f full"><label for="qr-caption">Caption under the code</label><input id="qr-caption" data-q="caption" type="text" placeholder="Scan to shop" maxlength="40"><span class="hint">Your business name is added underneath if you have saved it on another tool. Leave the caption blank for just the code.</span></div></div>
+<label class="check" id="qr-logo-row" hidden><input type="checkbox" data-q="useLogo">Add my logo in the middle</label>
+</div>
+</form>
+  <div class="preview-col">
+<div class="preview-bar"><span class="lbl"><i></i>Live preview</span><div class="preview-actions"><button type="button" class="btn btn-lime btn-sm" data-qsave="png" disabled>Save PNG</button><button type="button" class="btn btn-line btn-sm" data-qsave="svg" disabled>Save SVG</button></div></div>
+<div class="sheet-wrap"><div class="sheet qr-sheet"><canvas id="qr-canvas" role="img" aria-label="QR code preview" hidden></canvas><p class="qr-empty" id="qr-empty">Fill in the details on the left and your QR code appears here.</p><div class="qr-pay" id="qr-pay" hidden></div><p class="qr-data" id="qr-data-row"><span>Opens:</span> <span id="qr-data"></span></p></div></div>
+<p class="disclaimer">Test your QR code with your phone camera before printing it. PNG works for WhatsApp and social media. SVG stays sharp at any size for print.</p>
+</div>
+</div></section>
+<section style="padding-top:0"><div class="wrap about">
+  <div><span class="eyebrow">About this tool</span><h2 style="margin-top:14px">QR code generator</h2></div>
+  <div><div class="prose"><p>A QR code saves your customer from typing. One scan opens your store, starts a WhatsApp chat with a message already written, or shows your bank details so they can pay.</p><p>Print it on packaging inserts, flyers, receipts and price tags, or stick it on your shop counter and market stall. Use it in Instagram stories and WhatsApp status too.</p><p><b>Tip:</b> keep at least 2cm of space around a printed code, and print it no smaller than 2.5cm wide so every phone can read it.</p></div>
+  <div class="faq">
+  <div class="qa"><h3><button type="button" id="qr-q0" aria-expanded="false" aria-controls="qr-q0-p">Do these QR codes expire?<span class="qi" aria-hidden="true"></span></button></h3><div class="qa-p" id="qr-q0-p" role="region" aria-labelledby="qr-q0"><div><p>No. The details are stored inside the code itself, so it keeps working forever. If you change your link or number later, make a new code.</p></div></div></div>
+  <div class="qa"><h3><button type="button" id="qr-q1" aria-expanded="false" aria-controls="qr-q1-p">How does the WhatsApp QR code work?<span class="qi" aria-hidden="true"></span></button></h3><div class="qa-p" id="qr-q1-p" role="region" aria-labelledby="qr-q1"><div><p>Scanning it opens a WhatsApp chat with your number and your starting message already typed. The customer just taps send.</p></div></div></div>
+  <div class="qa"><h3><button type="button" id="qr-q2" aria-expanded="false" aria-controls="qr-q2-p">Can customers pay by scanning the bank details code?<span class="qi" aria-hidden="true"></span></button></h3><div class="qa-p" id="qr-q2-p" role="region" aria-labelledby="qr-q2"><div><p>It shows your bank, account number and account name on their phone so they can copy them into their banking app. It does not move money by itself. For tracked payments, use a Fyll payment link and turn that link into a QR code.</p></div></div></div>
+  <div class="qa"><h3><button type="button" id="qr-q3" aria-expanded="false" aria-controls="qr-q3-p">PNG or SVG?<span class="qi" aria-hidden="true"></span></button></h3><div class="qa-p" id="qr-q3-p" role="region" aria-labelledby="qr-q3"><div><p>Use PNG for WhatsApp, Instagram and quick printing. Send SVG to your printer or designer, because it stays sharp at any size.</p></div></div></div>
+  </div></div>
+</div></section>
+<section style="padding-top:0"><div class="wrap">
+  <div class="sec-head"><h2 style="font-size:clamp(28px,3vw,40px)">More free tools</h2></div>
+  <div class="related"><a class="tool-card " href="terms-and-conditions-generator"><span class="tool-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h10a2 2 0 0 1 2 2v16l-3-2-2 2-2-2-2 2-2-2-3 2V5a2 2 0 0 1 2-2z"/><path d="M9 8h6M9 12h6"/></svg></span><h3>Terms and conditions generator</h3><p>Plain-English terms for your online store, Instagram shop or WhatsApp business, written for Nigeria.</p><span class="go">Open tool</span></a><a class="tool-card " href="invoice-generator"><span class="tool-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6M9 13h7M9 17h5"/></svg></span><h3>Invoice generator</h3><p>Create a clean invoice with your bank details for transfer, then send it on WhatsApp or email.</p><span class="go">Open tool</span></a><a class="tool-card " href="profit-margin-calculator"><span class="tool-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="2" width="16" height="20" rx="3"/><path d="M8 6h8M8 11h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15h.01M8 18.5h8"/></svg></span><h3>Profit margin calculator</h3><p>Find the right selling price from your costs, or check how much you really make on each sale.</p><span class="go">Open tool</span></a><a class="tool-card " href="refund-policy-generator"><span class="tool-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 8v4l3 2"/></svg></span><h3>Refund policy generator</h3><p>Set clear rules for returns, exchanges and refunds so customers know what to expect before they pay.</p><span class="go">Open tool</span></a><a class="tool-card " href="delivery-policy-generator"><span class="tool-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 6h12v10H2zM14 9h4l4 4v3h-8"/><circle cx="6" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg></span><h3>Delivery policy generator</h3><p>Explain where you deliver, how long it takes and what it costs, from same-day in your city to interstate.</p><span class="go">Open tool</span></a></div>
+</div></section>
+<section style="padding-top:0"><div class="wrap"><div class="cta">
+  <div><h2>Every scan can land in one place.</h2></div>
+  <div class="acts"><p>Point your QR code at your Fyll store, and every order and payment that follows lands in Fyll.</p>
+  <div class="row"><a class="btn btn-white" href="https://dashboard.fyll.app/request-invite">Get started</a><a class="btn btn-ghost" href="https://fyll.store">See Fyll stores</a></div></div>
+</div></div></section>
+</main>
+<footer><div class="wrap foot"><a href="/tools/"><img src="/landing/tools/img/wordmark.svg" alt="Fyll"></a><nav aria-label="Free tools"><a href="invoice-generator">Invoice generator</a><a href="profit-margin-calculator">Profit margin calculator</a><a href="terms-and-conditions-generator">Terms and conditions generator</a><a href="refund-policy-generator">Refund policy generator</a><a href="delivery-policy-generator">Delivery policy generator</a><a href="qr-code-generator">QR code generator</a></nav><span>© 2026 Fyll Technologies</span></div></footer>
+<script src="/landing/tools/tools.js"></script>
+<script src="/landing/tools/qr.js"></script>
+</body>
+</html>

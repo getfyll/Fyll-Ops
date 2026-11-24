@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Profit Margin and Price Calculator for Nigerian Businesses | Fyll</title>
+<meta name="description" content="Work out your selling price and profit margin, including packaging, delivery and transfer fees. Free, no sign-up.">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600&family=Public+Sans:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="/landing/tools/tools.css">
+</head>
+<body data-tool="profit">
+<header class="nav"><div class="wrap"><nav class="nav-bar" aria-label="Main">
+  <a class="logo" href="/tools/"><img src="/landing/tools/img/wordmark.svg" alt="Fyll"><span>Free tools</span></a>
+  <div class="nav-links"><a href="invoice-generator">Invoice</a><a href="profit-margin-calculator" aria-current="page">Profit</a><a href="terms-and-conditions-generator">Terms</a><a href="refund-policy-generator">Refund</a><a href="delivery-policy-generator">Delivery</a><a href="qr-code-generator">QR code</a></div>
+  <div class="nav-right"><a class="login" href="https://dashboard.fyll.app/login">Log in</a><a class="btn btn-ink" href="https://dashboard.fyll.app/request-invite">Get started</a></div>
+</nav></div></header>
+<main>
+<section class="tool-hero"><div class="wrap">
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="/tools/">Free tools</a><span aria-hidden="true">/</span><span>Profit margin calculator</span></nav>
+  <h1>Profit margin calculator</h1>
+  <p class="lede">Find the right selling price from your costs, or check what you really make on each sale. Packaging, delivery you cover and payment fees are all included.</p>
+  <div class="hero-badges"><span class="chip"><i></i>Free</span><span class="chip"><i></i>No sign-up</span><span class="chip"><i></i>Made for Africa</span></div>
+</div></section>
+<section class="work"><div class="wrap work-grid">
+  <form class="panel" onsubmit="return false" novalidate><details class="box"><summary>Currency <small data-biz-name>Not set yet</small></summary><div class="fields"><div class="f"><label for="currency">Currency</label><select id="currency" data-k="currency"><option value="NGN">₦ Naira</option><option value="GHS">GH₵ Cedi</option><option value="KES">KSh Shilling</option><option value="ZAR">R Rand</option><option value="USD">$ US dollar</option></select></div></div></details>
+<div class="box"><h2>Your costs per item</h2><div class="fields">
+<div class="f"><label for="pCost">What you paid for it (<span class="sym">₦</span>)</label><input id="pCost" data-k="pCost" type="number" placeholder="0" min="0" inputmode="decimal"></div>
+<div class="f"><label for="pPack">Packaging (<span class="sym">₦</span>)</label><input id="pPack" data-k="pPack" type="number" placeholder="0" min="0" inputmode="decimal"></div>
+<div class="f"><label for="pDeliv">Delivery you cover (<span class="sym">₦</span>)</label><input id="pDeliv" data-k="pDeliv" type="number" placeholder="0" min="0" inputmode="decimal"><span class="hint">Leave at 0 if the customer pays delivery.</span></div>
+<div class="f"><label for="pFee">Payment fees (%)</label><input id="pFee" data-k="pFee" type="number" placeholder="0" min="0" max="90" step="0.1" inputmode="decimal"><span class="hint">0% for plain bank transfers.</span></div>
+</div></div>
+<div class="box"><h2>Pricing</h2>
+<div class="seg" role="group" aria-label="Calculator mode"><button type="button" data-mode="price" aria-pressed="true">Find my price</button><button type="button" data-mode="check" aria-pressed="false">Check my profit</button></div>
+<div class="fields">
+<div class="f" data-mode-only="price"><label for="pMargin">Margin you want (%)</label><input id="pMargin" data-k="pMargin" type="number" min="0" max="95" inputmode="decimal"></div>
+<div class="f" data-mode-only="check" hidden><label for="pPrice">Your selling price (<span class="sym">₦</span>)</label><input id="pPrice" data-k="pPrice" type="number" min="0" inputmode="decimal"></div>
+<div class="f"><label for="pQty">Items you sell a month</label><input id="pQty" data-k="pQty" type="number" placeholder="0" min="0" inputmode="numeric"></div>
+</div></div></form>
+  <div class="preview-col">
+<div class="preview-bar"><span class="lbl"><i></i>Live results</span></div>
+<div class="results" aria-live="polite">
+<div class="big"><span id="o-label">Suggested selling price</span><b class="num" id="o-price">₦0</b></div>
+<div><span>Profit per item</span><b class="num" id="o-pp">₦0</b></div>
+<div><span>Margin</span><b class="num" id="o-margin">0%</b></div>
+<div><span>Markup</span><b class="num" id="o-markup">0%</b></div>
+<div><span>Profit a month</span><b class="num" id="o-monthly">₦0</b></div>
+<div><span>Total cost per item</span><b class="num" id="o-cost">₦0</b></div>
+<div><span>Tip</span><b style="font-size:15px;font-weight:600;letter-spacing:0">Margin is profit ÷ price.</b></div>
+</div>
+<div class="box"><h2>Prices at different margins</h2><table class="ladder"><thead><tr><th>Margin</th><th class="r">Selling price</th><th class="r">Profit per item</th></tr></thead><tbody id="ladder"></tbody></table></div>
+</div>
+</div></section>
+<section style="padding-top:0"><div class="wrap about">
+  <div><span class="eyebrow">About this tool</span><h2 style="margin-top:14px">Profit margin calculator</h2></div>
+  <div><div class="prose"><p>Many small businesses price by adding a little on top of what they paid. The problem is that packaging, delivery you cover and payment fees quietly eat into that profit.</p><p>This calculator adds up your real cost per item first. Then it either suggests a price for the margin you want, or shows the margin you get at the price you already charge.</p><p><b>Margin vs markup:</b> margin is profit as a share of your selling price. Markup is profit as a share of your cost. A 50% markup is only a 33% margin.</p></div><div class="faq"><div class="qa"><h3><button type="button" id="profit-q0" aria-expanded="false" aria-controls="profit-q0-p">What is a good profit margin?<span class="qi" aria-hidden="true"></span></button></h3><div class="qa-p" id="profit-q0-p" role="region" aria-labelledby="profit-q0"><div><p>It depends on what you sell and how much you spend on marketing, rent and staff. Use the price table to see what each margin means in real money, then pick one that covers all your running costs.</p></div></div></div><div class="qa"><h3><button type="button" id="profit-q1" aria-expanded="false" aria-controls="profit-q1-p">Should I include delivery in my costs?<span class="qi" aria-hidden="true"></span></button></h3><div class="qa-p" id="profit-q1-p" role="region" aria-labelledby="profit-q1"><div><p>Include any delivery cost you pay yourself, such as free delivery offers. If the customer pays delivery separately, leave it at zero.</p></div></div></div><div class="qa"><h3><button type="button" id="profit-q2" aria-expanded="false" aria-controls="profit-q2-p">What are payment fees?<span class="qi" aria-hidden="true"></span></button></h3><div class="qa-p" id="profit-q2-p" role="region" aria-labelledby="profit-q2"><div><p>Some payment methods take a percentage of each sale. If you only take bank transfers with no charges, leave it at 0%.</p></div></div></div></div></div>
+</div></section>
+<section style="padding-top:0"><div class="wrap">
+  <div class="sec-head"><h2 style="font-size:clamp(28px,3vw,40px)">More free tools</h2></div>
+  <div class="related"><a class="tool-card " href="invoice-generator"><span class="tool-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6M9 13h7M9 17h5"/></svg></span><h3>Invoice generator</h3><p>Create a clean invoice with your bank details for transfer, then send it on WhatsApp or email.</p><span class="go">Open tool</span></a><a class="tool-card " href="terms-and-conditions-generator"><span class="tool-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h10a2 2 0 0 1 2 2v16l-3-2-2 2-2-2-2 2-2-2-3 2V5a2 2 0 0 1 2-2z"/><path d="M9 8h6M9 12h6"/></svg></span><h3>Terms and conditions generator</h3><p>Plain-English terms for your online store, Instagram shop or WhatsApp business, written for Nigeria.</p><span class="go">Open tool</span></a><a class="tool-card " href="refund-policy-generator"><span class="tool-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 8v4l3 2"/></svg></span><h3>Refund policy generator</h3><p>Set clear rules for returns, exchanges and refunds so customers know what to expect before they pay.</p><span class="go">Open tool</span></a><a class="tool-card " href="delivery-policy-generator"><span class="tool-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 6h12v10H2zM14 9h4l4 4v3h-8"/><circle cx="6" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg></span><h3>Delivery policy generator</h3><p>Explain where you deliver, how long it takes and what it costs, from same-day in your city to interstate.</p><span class="go">Open tool</span></a><a class="tool-card " href="qr-code-generator"><span class="tool-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 14h3v3M21 14v.01M14 21h.01M17 21h4v-4"/></svg></span><h3>QR code generator</h3><p>Turn your store link, WhatsApp, Instagram or bank details into a QR code for packaging, flyers and your counter.</p><span class="go">Open tool</span></a></div>
+</div></section>
+<section style="padding-top:0"><div class="wrap"><div class="cta">
+  <div><h2>Put your policies to work on a Fyll store.</h2></div>
+  <div class="acts"><p>On Fyll Storefront, your refund and delivery policies show on every product page, and every order lands in one place.</p>
+  <div class="row"><a class="btn btn-white" href="https://dashboard.fyll.app/request-invite">Get started</a><a class="btn btn-ghost" href="https://fyll.store">See Fyll stores</a></div></div>
+</div></div></section>
+</main>
+<footer><div class="wrap foot"><a href="/tools/"><img src="/landing/tools/img/wordmark.svg" alt="Fyll"></a><nav aria-label="Free tools"><a href="invoice-generator">Invoice generator</a><a href="profit-margin-calculator">Profit margin calculator</a><a href="terms-and-conditions-generator">Terms and conditions generator</a><a href="refund-policy-generator">Refund policy generator</a><a href="delivery-policy-generator">Delivery policy generator</a><a href="qr-code-generator">QR code generator</a></nav><span>© 2026 Fyll Technologies</span></div></footer>
+<script src="/landing/tools/tools.js"></script>
+</body>
+</html>

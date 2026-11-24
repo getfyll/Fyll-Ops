@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Free Delivery and Shipping Policy Generator for Nigerian Businesses | Fyll</title>
+<meta name="description" content="Create a free delivery policy for your Nigerian business: processing times, delivery within your city and interstate, fees and tracking.">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600&family=Public+Sans:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="/landing/tools/tools.css">
+</head>
+<body data-tool="delivery">
+<header class="nav"><div class="wrap"><nav class="nav-bar" aria-label="Main">
+  <a class="logo" href="/tools/"><img src="/landing/tools/img/wordmark.svg" alt="Fyll"><span>Free tools</span></a>
+  <div class="nav-links"><a href="invoice-generator">Invoice</a><a href="profit-margin-calculator">Profit</a><a href="terms-and-conditions-generator">Terms</a><a href="refund-policy-generator">Refund</a><a href="delivery-policy-generator" aria-current="page">Delivery</a><a href="qr-code-generator">QR code</a></div>
+  <div class="nav-right"><a class="login" href="https://dashboard.fyll.app/login">Log in</a><a class="btn btn-ink" href="https://dashboard.fyll.app/request-invite">Get started</a></div>
+</nav></div></header>
+<main>
+<section class="tool-hero"><div class="wrap">
+  <nav class="crumbs" aria-label="Breadcrumb"><a href="/tools/">Free tools</a><span aria-hidden="true">/</span><span>Delivery policy generator</span></nav>
+  <h1>Delivery policy generator</h1>
+  <p class="lede">Tell customers where you deliver, how long it takes and what it costs, from same-day in your city to interstate shipping across Nigeria.</p>
+  <div class="hero-badges"><span class="chip"><i></i>Free</span><span class="chip"><i></i>No sign-up</span><span class="chip"><i></i>Made for Africa</span></div>
+</div></section>
+<section class="work"><div class="wrap work-grid">
+  <form class="panel" onsubmit="return false" novalidate><details class="box" open><summary>Your business details <small data-biz-name>Not set yet</small></summary>
+<div class="fields">
+<div class="f full"><label for="bizName">Business name</label><input id="bizName" data-k="bizName" type="text" placeholder="e.g. Perfume Elysium" ></div>
+<div class="f"><label for="bizUrl">Store link</label><input id="bizUrl" data-k="bizUrl" type="text" placeholder="e.g. yourbusiness.fyll.store" ></div>
+<div class="f"><label for="bizEmail">Email</label><input id="bizEmail" data-k="bizEmail" type="email" placeholder="hello@yourbusiness.com" ></div>
+<div class="f"><label for="bizPhone">Phone or WhatsApp</label><input id="bizPhone" data-k="bizPhone" type="tel" placeholder="0803 000 0000" ></div>
+<div class="f"><label for="bizAddress">City or area</label><input id="bizAddress" data-k="bizAddress" type="text" placeholder="e.g. Lekki, Lagos" ></div>
+<div class="f"><label for="bizState">State</label><select id="bizState" data-k="bizState"><option value="Abia">Abia</option><option value="Adamawa">Adamawa</option><option value="Akwa Ibom">Akwa Ibom</option><option value="Anambra">Anambra</option><option value="Bauchi">Bauchi</option><option value="Bayelsa">Bayelsa</option><option value="Benue">Benue</option><option value="Borno">Borno</option><option value="Cross River">Cross River</option><option value="Delta">Delta</option><option value="Ebonyi">Ebonyi</option><option value="Edo">Edo</option><option value="Ekiti">Ekiti</option><option value="Enugu">Enugu</option><option value="FCT">FCT (Abuja)</option><option value="Gombe">Gombe</option><option value="Imo">Imo</option><option value="Jigawa">Jigawa</option><option value="Kaduna">Kaduna</option><option value="Kano">Kano</option><option value="Katsina">Katsina</option><option value="Kebbi">Kebbi</option><option value="Kogi">Kogi</option><option value="Kwara">Kwara</option><option value="Lagos">Lagos</option><option value="Nasarawa">Nasarawa</option><option value="Niger">Niger</option><option value="Ogun">Ogun</option><option value="Ondo">Ondo</option><option value="Osun">Osun</option><option value="Oyo">Oyo</option><option value="Plateau">Plateau</option><option value="Rivers">Rivers</option><option value="Sokoto">Sokoto</option><option value="Taraba">Taraba</option><option value="Yobe">Yobe</option><option value="Zamfara">Zamfara</option></select></div>
+<div class="f"><label for="currency">Currency</label><select id="currency" data-k="currency"><option value="NGN">₦ Naira</option><option value="GHS">GH₵ Cedi</option><option value="KES">KSh Shilling</option><option value="ZAR">R Rand</option><option value="USD">$ US dollar</option></select></div>
+</div><p class="disclaimer">Saved on this device only, and reused on every free tool.</p></details>
+<div class="box"><h2>Processing</h2><div class="fields">
+<div class="f"><label for="dProc">Business days to prepare orders</label><input id="dProc" data-k="dProc" type="text" placeholder="1 to 2" ></div>
+<div class="f"><label for="dDays">Days you dispatch</label><input id="dDays" data-k="dDays" type="text" placeholder="Monday to Saturday" ></div>
+</div></div>
+<div class="box"><h2>Where you deliver</h2><div class="fields">
+<div class="f full"><label for="dCity">Your city</label><input id="dCity" data-k="dCity" type="text" placeholder="e.g. Lagos" ><span class="hint">Leave blank to use your state.</span></div>
+<div class="f"><label for="dLocalTime">Delivery time in your city</label><input id="dLocalTime" data-k="dLocalTime" type="text" placeholder="1 to 2 business days" ></div>
+<div class="f"><label for="dLocalFee">Starting fee in your city (<span class="sym">₦</span>)</label><input id="dLocalFee" data-k="dLocalFee" type="number" placeholder="0" min="0" inputmode="decimal"></div>
+<div class="f"><label for="dInterTime">Delivery time to other states</label><input id="dInterTime" data-k="dInterTime" type="text" placeholder="2 to 5 business days" ></div>
+<div class="f"><label for="dInterFee">Starting fee to other states (<span class="sym">₦</span>)</label><input id="dInterFee" data-k="dInterFee" type="number" placeholder="0" min="0" inputmode="decimal"></div>
+</div><label class="check"><input type="checkbox" id="dIntl" data-k="dIntl">We also ship outside Nigeria</label>
+<div class="fields"><div class="f full"><label for="dIntlTime">International delivery time</label><input id="dIntlTime" data-k="dIntlTime" type="text" placeholder="7 to 14 business days" ></div></div></div>
+<div class="box"><h2>Options</h2><div class="fields">
+<div class="f full"><label for="dPartners">Logistics partners</label><input id="dPartners" data-k="dPartners" type="text" placeholder="e.g. our own riders and a courier partner" ></div>
+<div class="f"><label for="dRedeliver">If a delivery fails, the rider tries</label><input id="dRedeliver" data-k="dRedeliver" type="text" placeholder="once more the next business day" ></div>
+<div class="f"><label for="dRedeliverFee">Re-delivery fee (<span class="sym">₦</span>)</label><input id="dRedeliverFee" data-k="dRedeliverFee" type="number" placeholder="0" min="0" inputmode="decimal"></div>
+<div class="f full"><label for="dPickupAddr">Pickup address</label><input id="dPickupAddr" data-k="dPickupAddr" type="text" placeholder="Only if you offer pickup" ></div>
+</div><div class="checks"><label class="check"><input type="checkbox" id="dTrack" data-k="dTrack">Send customers a tracking link</label><label class="check"><input type="checkbox" id="dPickup" data-k="dPickup">Customers can pick up orders</label><label class="check"><input type="checkbox" id="dPod" data-k="dPod">Pay on delivery in my city</label></div></div></form>
+  <div class="preview-col">
+<div class="preview-bar"><span class="lbl"><i></i>Live preview</span><div class="preview-actions"><button type="button" class="btn btn-ink btn-sm" data-copy="text">Copy policy</button><button type="button" class="btn btn-line btn-sm" data-reset>Start over</button></div></div>
+<div class="sheet-wrap"><div class="sheet" id="sheet" aria-live="polite"></div></div>
+</div>
+</div></section>
+<section style="padding-top:0"><div class="wrap about">
+  <div><span class="eyebrow">About this tool</span><h2 style="margin-top:14px">Delivery policy generator</h2></div>
+  <div><div class="prose"><p>"How much is delivery to Abuja?" "When will it get to me?" A delivery policy answers these before the customer asks, so you can spend that time packing orders.</p><p>Set your processing time, delivery times and starting fees for your city and other states, and add pickup, pay on delivery or international shipping if you offer them.</p><p><b>Tip:</b> promise times you can meet on a busy week, not a quiet one. Customers forgive slow far more easily than late.</p></div><div class="faq"><div class="qa"><h3><button type="button" id="delivery-q0" aria-expanded="false" aria-controls="delivery-q0-p">How long does delivery take in Nigeria?<span class="qi" aria-hidden="true"></span></button></h3><div class="qa-p" id="delivery-q0-p" role="region" aria-labelledby="delivery-q0"><div><p>It depends on your logistics partner and where the customer is. Same-day or next-day delivery within the same city and 2 to 5 business days to other states are common. Set times you can reliably meet.</p></div></div></div><div class="qa"><h3><button type="button" id="delivery-q1" aria-expanded="false" aria-controls="delivery-q1-p">Should I offer pay on delivery?<span class="qi" aria-hidden="true"></span></button></h3><div class="qa-p" id="delivery-q1-p" role="region" aria-labelledby="delivery-q1"><div><p>Pay on delivery can help first-time customers trust you, but it also leads to more failed deliveries. Many businesses offer it only in their own city, sometimes with a small commitment fee.</p></div></div></div><div class="qa"><h3><button type="button" id="delivery-q2" aria-expanded="false" aria-controls="delivery-q2-p">Can customers track their order?<span class="qi" aria-hidden="true"></span></button></h3><div class="qa-p" id="delivery-q2-p" role="region" aria-labelledby="delivery-q2"><div><p>Yes, if you turn tracking on. Fyll gives every order a tracking page at track.fyll.app that you can share with your customer.</p></div></div></div></div></div>
+</div></section>
+<section style="padding-top:0"><div class="wrap">
+  <div class="sec-head"><h2 style="font-size:clamp(28px,3vw,40px)">More free tools</h2></div>
+  <div class="related"><a class="tool-card " href="invoice-generator"><span class="tool-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6M9 13h7M9 17h5"/></svg></span><h3>Invoice generator</h3><p>Create a clean invoice with your bank details for transfer, then send it on WhatsApp or email.</p><span class="go">Open tool</span></a><a class="tool-card " href="profit-margin-calculator"><span class="tool-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="2" width="16" height="20" rx="3"/><path d="M8 6h8M8 11h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15h.01M8 18.5h8"/></svg></span><h3>Profit margin calculator</h3><p>Find the right selling price from your costs, or check how much you really make on each sale.</p><span class="go">Open tool</span></a><a class="tool-card " href="terms-and-conditions-generator"><span class="tool-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h10a2 2 0 0 1 2 2v16l-3-2-2 2-2-2-2 2-2-2-3 2V5a2 2 0 0 1 2-2z"/><path d="M9 8h6M9 12h6"/></svg></span><h3>Terms and conditions generator</h3><p>Plain-English terms for your online store, Instagram shop or WhatsApp business, written for Nigeria.</p><span class="go">Open tool</span></a><a class="tool-card " href="refund-policy-generator"><span class="tool-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 8v4l3 2"/></svg></span><h3>Refund policy generator</h3><p>Set clear rules for returns, exchanges and refunds so customers know what to expect before they pay.</p><span class="go">Open tool</span></a><a class="tool-card " href="qr-code-generator"><span class="tool-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 14h3v3M21 14v.01M14 21h.01M17 21h4v-4"/></svg></span><h3>QR code generator</h3><p>Turn your store link, WhatsApp, Instagram or bank details into a QR code for packaging, flyers and your counter.</p><span class="go">Open tool</span></a></div>
+</div></section>
+<section style="padding-top:0"><div class="wrap"><div class="cta">
+  <div><h2>Put your policies to work on a Fyll store.</h2></div>
+  <div class="acts"><p>On Fyll Storefront, your refund and delivery policies show on every product page, and every order lands in one place.</p>
+  <div class="row"><a class="btn btn-white" href="https://dashboard.fyll.app/request-invite">Get started</a><a class="btn btn-ghost" href="https://fyll.store">See Fyll stores</a></div></div>
+</div></div></section>
+</main>
+<footer><div class="wrap foot"><a href="/tools/"><img src="/landing/tools/img/wordmark.svg" alt="Fyll"></a><nav aria-label="Free tools"><a href="invoice-generator">Invoice generator</a><a href="profit-margin-calculator">Profit margin calculator</a><a href="terms-and-conditions-generator">Terms and conditions generator</a><a href="refund-policy-generator">Refund policy generator</a><a href="delivery-policy-generator">Delivery policy generator</a><a href="qr-code-generator">QR code generator</a></nav><span>© 2026 Fyll Technologies</span></div></footer>
+<script src="/landing/tools/tools.js"></script>
+</body>
+</html>
