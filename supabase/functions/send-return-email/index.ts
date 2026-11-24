@@ -139,30 +139,61 @@ const renderNote = (value: string) => escapeHtml(value).replace(/\n/g, '<br />')
 
 const reasonLabel = (value: string, otherReason: string) => {
   if (value === 'wrong_item') return 'Wrong item received'
-  if (value === 'damaged') return 'Item arrived damaged'
+  if (value === 'damaged') return 'Damaged or scratched'
+  if (value === 'wrong_size') return 'Wrong size or fit'
+  if (value === 'missing_part') return 'Missing part'
   if (value === 'changed_mind') return 'Changed mind'
   if (value === 'other') return otherReason || 'Other reason'
   return value || 'Return request'
 }
 
 const resolutionLabel = (value: string) => {
+  if (value === 'replacement') return 'Replacement'
   if (value === 'refund') return 'Refund'
   if (value === 'exchange') return 'Exchange'
-  return value || 'Not specified'
+  return value ? value.charAt(0).toUpperCase() + value.slice(1) : 'Not specified'
 }
 
-const shippingPayerLabel = (value: string) => {
-  if (value === 'seller') return 'Business covers return shipping'
-  if (value === 'customer') return 'Customer covers return shipping'
-  return 'Return shipping to be confirmed'
+const shippingPayerLabel = (value: string, brandName: string) => {
+  if (value === 'seller') return `Paid by ${brandName}`
+  if (value === 'customer') return 'Paid by you'
+  return 'To be confirmed'
 }
 
-const renderDetailRow = (label: string, value: string) => `
+// The last step depends on what the customer asked for.
+const finalStep = (resolution: string) => {
+  if (resolution === 'refund') return 'Your refund is sent once the item is back with them.'
+  if (resolution === 'exchange') return 'Your exchange is sent once the item is back with them.'
+  if (resolution === 'replacement') return 'Your replacement is sent once the item is back with them.'
+  return 'They sort it out once the item is back with them.'
+}
+
+const TRACK_ORIGIN = 'https://track.fyll.app'
+const buildTrackUrl = (orderNumber: string, email: string, businessSlug: string) => {
+  if (!orderNumber) return ''
+  const slug = businessSlug.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+  const url = new URL(slug ? `/${slug}/order-tracking/${encodeURIComponent(orderNumber)}` : '/order-tracking', TRACK_ORIGIN)
+  if (!slug) url.searchParams.set('code', orderNumber)
+  if (email) url.searchParams.set('email', email)
+  return url.toString()
+}
+
+// Same layout as the newer Fyll emails (send-case-email), kept plain: black, white and warm grey,
+// set in Public Sans, no lime. The business is the sender, so the header carries its logo and name.
+const FONT = "'Public Sans',-apple-system,'Segoe UI',system-ui,sans-serif"
+const LABEL_STYLE = 'font-size:12.5px;font-weight:600;letter-spacing:0.8px;text-transform:uppercase;color:#6b6c63;'
+
+const renderRows = (rows: { label: string; value: string; html?: boolean }[]) => rows.filter((row) => row.value).map((row, index, list) => `
   <tr>
-    <td style="padding:12px 0;border-bottom:1px solid #e5e7eb;font-size:12px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.08em;vertical-align:top;width:42%;">${escapeHtml(label)}</td>
-    <td style="padding:12px 0;border-bottom:1px solid #e5e7eb;font-size:14px;font-weight:600;color:#111827;line-height:1.45;vertical-align:top;">${escapeHtml(value)}</td>
-  </tr>
-`
+    <td valign="top" style="padding:14px 0;${index < list.length - 1 ? 'border-bottom:1px solid rgba(30,30,30,0.07);' : ''}font-size:14px;color:#6b6c63;width:38%;">${escapeHtml(row.label)}</td>
+    <td valign="top" align="right" style="padding:14px 0;${index < list.length - 1 ? 'border-bottom:1px solid rgba(30,30,30,0.07);' : ''}font-size:15px;color:#1e1e1e;line-height:1.5;text-align:right;">${row.html ? row.value : escapeHtml(row.value)}</td>
+  </tr>`).join('')
+
+const renderPhotos = (urls: string[]) => {
+  if (urls.length === 0) return ''
+  const thumbs = urls.map((url, index) => `<a href="${escapeHtml(url)}" target="_blank" title="Open photo ${index + 1}" style="display:inline-block;margin:0 0 6px 6px;text-decoration:none;"><img src="${escapeHtml(url)}" alt="Photo ${index + 1}" width="56" height="56" style="display:block;width:56px;height:56px;border-radius:12px;object-fit:cover;border:1px solid rgba(30,30,30,0.08);" /></a>`).join('')
+  return `${thumbs}<div style="font-size:12.5px;color:#8c8d84;">Tap a photo to open it</div>`
+}
 
 const renderReturnReceivedEmail = ({
   brandName,
@@ -173,9 +204,11 @@ const renderReturnReceivedEmail = ({
   itemSummary,
   reason,
   resolution,
+  resolutionValue,
   shippingPayer,
   customerMessage,
-  proofCount,
+  photoUrls,
+  trackUrl,
 }: {
   brandName: string
   brandLogoUrl?: string
@@ -185,75 +218,144 @@ const renderReturnReceivedEmail = ({
   itemSummary: string
   reason: string
   resolution: string
+  resolutionValue: string
   shippingPayer: string
   customerMessage: string
-  proofCount: number
+  photoUrls: string[]
+  trackUrl: string
 }) => {
   const firstName = getFirstName(customerName)
-  const preheader = `${brandName} received your return request ${returnRef}.`
+  const safeBrand = escapeHtml(brandName)
+  const heading = firstName && firstName !== 'there' ? `Hi ${firstName}, we've got your return request` : "We've got your return request"
+  const preheader = `${brandName} has your return request ${returnRef}.`
+  const logo = brandLogoUrl
+    ? `<img src="${escapeHtml(brandLogoUrl)}" alt="${safeBrand}" width="44" height="44" style="display:block;width:44px;height:44px;border-radius:50%;object-fit:cover;border:1px solid #e3e3de;" />`
+    : `<span style="display:block;width:44px;height:44px;line-height:44px;border-radius:50%;background:#1e1e1e;color:#ffffff;font-size:19px;font-weight:600;text-align:center;">${escapeHtml(brandName.charAt(0).toUpperCase() || 'F')}</span>`
+  const steps = [
+    `${brandName} checks your request${photoUrls.length ? ' and photos' : ''}.`,
+    `They email you to confirm the ${resolution.toLowerCase()} and how to send the item back.`,
+    finalStep(resolutionValue),
+  ]
+  const helpUrl = APP_BASE_URL ? escapeHtml(new URL('/help', APP_BASE_URL).toString()) : ''
+  const privacyUrl = APP_BASE_URL ? escapeHtml(new URL('/privacy', APP_BASE_URL).toString()) : ''
 
   return `
-    <!DOCTYPE html>
-    <html lang="en">
-      <head>
-        <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Return request received</title>
-      </head>
-      <body style="margin:0;padding:0;background-color:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#111827;-webkit-font-smoothing:antialiased;">
-        <div style="display:none;max-height:0;overflow:hidden;opacity:0;">${escapeHtml(preheader)}</div>
-        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#f9fafb;padding:40px 0;">
-          <tr>
-            <td align="center">
-              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;margin:0 auto;background-color:#ffffff;padding:40px;border:1px solid #e5e7eb;border-radius:12px;">
-                <tr>
-                  <td>
-                    <div style="text-align:left;margin-bottom:28px;">
-                      ${brandLogoUrl
-                        ? `<img src="${brandLogoUrl}" alt="${escapeHtml(brandName)}" style="max-width:140px;max-height:40px;width:auto;height:auto;display:inline-block;border:0;outline:none;text-decoration:none;" />`
-                        : `<div style="font-weight:700;font-size:24px;letter-spacing:-0.03em;color:#111827;">${escapeHtml(brandName)}</div>`
-                      }
-                    </div>
-                    <div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:12px;">Return request received</div>
-                    <h1 style="font-size:26px;font-weight:600;line-height:1.25;margin:0 0 12px 0;color:#111827;letter-spacing:-0.02em;">Hi ${escapeHtml(firstName)}, we received your return request</h1>
-                    <p style="font-size:15px;line-height:1.6;color:#4b5563;margin:0 0 24px 0;">${escapeHtml(brandName)} has received your request and will review the details. We will contact you with the next step once the return is checked.</p>
-                    <div style="background-color:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:20px;margin-bottom:24px;">
-                      <div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px;">Return reference</div>
-                      <div style="font-size:18px;font-weight:700;color:#111827;">${escapeHtml(returnRef)}</div>
-                      <div style="font-size:12px;color:#6b7280;margin-top:6px;">Linked order ${escapeHtml(orderNumber)}</div>
-                    </div>
-                    <div style="background-color:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:20px;margin-bottom:24px;">
-                      <div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px;">Submission details</div>
-                      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
-                        ${renderDetailRow('Item', itemSummary)}
-                        ${renderDetailRow('Reason', reason)}
-                        ${renderDetailRow('Requested outcome', resolution)}
-                        ${renderDetailRow('Return shipping', shippingPayer)}
-                        ${renderDetailRow('Proof attached', `${proofCount} image${proofCount === 1 ? '' : 's'}`)}
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light only" />
+    <meta name="supported-color-schemes" content="light only" />
+    <title>${escapeHtml(heading)}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet" />
+    <style>
+      :root { color-scheme: light only; supported-color-schemes: light only; }
+      body, table, td, a, div, p, span { font-family:${FONT}; }
+      @media only screen and (max-width:640px) {
+        .email-wrap { padding:18px 12px 28px !important; }
+        .email-card { border-radius:22px !important; }
+        .head { padding:24px 22px 0 !important; }
+        .content { padding:20px 22px 30px !important; }
+        .title, .ref-value { font-size:26px !important; letter-spacing:-0.6px !important; }
+        .footer { padding:22px 22px 26px !important; }
+      }
+    </style>
+  </head>
+  <body style="margin:0;padding:0;background:#ffffff;color:#1e1e1e;-webkit-font-smoothing:antialiased;font-family:${FONT};">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${escapeHtml(preheader)}</div>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#ffffff;border-collapse:collapse;">
+      <tr>
+        <td class="email-wrap" align="center" style="padding:32px 20px 40px;">
+          <table role="presentation" class="email-card" width="640" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:640px;background:#ffffff;border:1px solid #e3e3de;border-radius:28px;overflow:hidden;box-shadow:0 20px 50px rgba(30,30,30,0.08);border-collapse:separate;">
+            <tr>
+              <td class="head" style="padding:30px 40px 0;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:collapse;">
+                  <tr>
+                    <td valign="middle">
+                      <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;">
+                        <tr>
+                          <td valign="middle" style="padding-right:12px;">${logo}</td>
+                          <td valign="middle" style="font-size:18px;font-weight:600;color:#1e1e1e;">${safeBrand}</td>
+                        </tr>
                       </table>
-                    </div>
-                    ${customerMessage ? `
-                      <div style="background-color:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:20px;margin-bottom:32px;">
-                        <div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:10px;">Your note</div>
-                        <div style="font-size:14px;line-height:1.65;color:#374151;">${renderNote(customerMessage)}</div>
-                      </div>
-                    ` : ''}
-                    <div style="text-align:left;font-size:11px;color:#9ca3af;border-top:1px solid #e5e7eb;padding-top:24px;line-height:1.6;letter-spacing:0.02em;">
-                      You are receiving this because a return request was submitted for this order.<br />
-                      <div style="margin-top:10px;">
-                        <img src="${FYLL_WORDMARK_URL}" alt="Fyll" style="max-width:92px;max-height:24px;width:auto;height:auto;display:inline-block;border:0;outline:none;text-decoration:none;" />
-                      </div>
-                      <div style="margin-top:6px;">Powered by Fyll</div>
-                    </div>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-        </table>
-      </body>
-    </html>
-  `
+                    </td>
+                    <td align="right" valign="middle">
+                      <span style="display:inline-block;padding:7px 13px;border-radius:999px;background:#f6f6f1;border:1px solid rgba(30,30,30,0.06);color:#55564e;font-size:12.5px;font-weight:600;white-space:nowrap;">Return request</span>
+                    </td>
+                  </tr>
+                </table>
+                <div class="title" style="margin:30px 0 0;font-weight:700;font-size:30px;letter-spacing:-0.8px;color:#1e1e1e;line-height:1.1;">${escapeHtml(heading)}</div>
+              </td>
+            </tr>
+            <tr>
+              <td class="content" style="padding:20px 40px 36px;">
+                <p style="margin:0 0 22px;font-size:16.5px;line-height:1.6;color:#3a3b35;">${safeBrand} will look at it and reply by email with the next step. Please keep the item and its packaging until then.</p>
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;table-layout:fixed;margin:0 0 22px;background:#f6f6f1;border:1px solid rgba(30,30,30,0.06);border-radius:20px;border-collapse:separate;">
+                  <tr>
+                    <td width="62%" valign="middle" style="width:62%;padding:20px 8px 20px 22px;">
+                      <div style="${LABEL_STYLE}margin-bottom:4px;">Return reference</div>
+                      <div class="ref-value" style="font-weight:700;font-size:30px;letter-spacing:-0.8px;line-height:1.1;color:#1e1e1e;word-break:break-all;">${escapeHtml(returnRef)}</div>
+                    </td>
+                    <td width="38%" align="right" valign="middle" style="width:38%;padding:20px 22px 20px 8px;font-size:14px;color:#6b6c63;line-height:1.5;text-align:right;">For order<br />${escapeHtml(orderNumber)}</td>
+                  </tr>
+                </table>
+
+                <div style="${LABEL_STYLE}margin-bottom:10px;">What you sent</div>
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;margin:0 0 22px;border:1px solid rgba(30,30,30,0.08);border-radius:20px;border-collapse:separate;">
+                  <tr><td style="padding:4px 22px;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:collapse;">${renderRows([
+                    { label: 'Item', value: itemSummary },
+                    { label: 'Problem', value: reason },
+                    { label: 'You asked for', value: resolution },
+                    { label: 'Return shipping', value: shippingPayer },
+                    { label: 'Photos', value: renderPhotos(photoUrls), html: true },
+                  ])}</table></td></tr>
+                </table>
+
+                ${customerMessage ? `
+                <div style="${LABEL_STYLE}margin-bottom:10px;">Your note</div>
+                <div style="margin:0 0 22px;border:1px solid rgba(30,30,30,0.08);border-radius:20px;padding:18px 22px;font-size:15px;line-height:1.6;color:#3a3b35;">${renderNote(customerMessage)}</div>` : ''}
+
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;margin:0 0 ${trackUrl ? '22px' : '0'};background:#f6f6f1;border-radius:20px;border-collapse:separate;">
+                  <tr><td colspan="2" style="padding:22px 22px 14px;${LABEL_STYLE}">What happens next</td></tr>
+                  ${steps.map((step, index) => `
+                  <tr>
+                    <td valign="top" style="padding:0 14px ${index === steps.length - 1 ? '22px' : '14px'} 22px;width:28px;"><span style="display:block;width:28px;height:28px;line-height:28px;border-radius:50%;background:${index === 0 ? '#1e1e1e' : 'rgba(30,30,30,0.07)'};color:${index === 0 ? '#ffffff' : '#55564e'};font-size:13px;font-weight:600;text-align:center;">${index + 1}</span></td>
+                    <td valign="top" style="padding:3px 22px ${index === steps.length - 1 ? '22px' : '14px'} 0;font-size:15px;line-height:1.5;color:#3a3b35;">${escapeHtml(step)}</td>
+                  </tr>`).join('')}
+                </table>
+
+                ${trackUrl ? `
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:separate;">
+                  <tr>
+                    <td align="center" bgcolor="#1e1e1e" style="height:56px;border-radius:999px;">
+                      <a href="${escapeHtml(trackUrl)}" style="display:block;padding:16px 20px;color:#ffffff !important;font-size:16px;font-weight:600;text-decoration:none;line-height:24px;">Track my order</a>
+                    </td>
+                  </tr>
+                </table>` : ''}
+                <div style="margin:12px 0 0;text-align:center;font-size:13.5px;color:#6b6c63;line-height:1.45;">Questions? Contact ${safeBrand} and quote ${escapeHtml(returnRef)}.</div>
+              </td>
+            </tr>
+            <tr>
+              <td class="footer" style="padding:22px 40px 28px;border-top:1px solid rgba(30,30,30,0.07);">
+                ${FYLL_WORDMARK_URL ? `
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 10px;border-collapse:collapse;">
+                  <tr>
+                    <td valign="middle" style="padding-right:8px;font-size:13px;color:#6b6c63;">Handled with</td>
+                    <td valign="middle"><img src="${escapeHtml(FYLL_WORDMARK_URL)}" alt="Fyll" width="39" height="22" style="display:block;width:39px;height:22px;border:0;" /></td>
+                  </tr>
+                </table>` : ''}
+                <div style="font-size:12.5px;line-height:1.55;color:#8c8d84;margin-bottom:10px;">You're getting this because a return was started for an order you placed with ${safeBrand}.</div>
+                ${helpUrl ? `<div style="font-size:12.5px;"><a href="${helpUrl}" style="color:#55564e;margin-right:16px;">Help</a><a href="${privacyUrl}" style="color:#55564e;">Privacy</a></div>` : ''}
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`
 }
 
 const sendEmail = async ({
@@ -569,12 +671,19 @@ serve(async (req) => {
     const returnRef = toTrimmedString(returnItem.ref) || returnId
     const orderNumber = toTrimmedString(returnItem.orderNumber) || 'your order'
     const reason = reasonLabel(toTrimmedString(returnItem.reason), toTrimmedString(returnItem.otherReason))
-    const resolution = resolutionLabel(toTrimmedString(returnItem.resolution))
-    const shippingPayer = shippingPayerLabel(toTrimmedString(returnItem.shippingPayer))
-    const proofCount = Array.isArray(returnItem.proofImages) ? returnItem.proofImages.length : 0
+    const resolutionValue = toTrimmedString(returnItem.resolution)
+    const resolution = resolutionLabel(resolutionValue)
+    const shippingPayer = shippingPayerLabel(toTrimmedString(returnItem.shippingPayer), businessName)
+    const photoUrls = (Array.isArray(returnItem.proofImages) ? returnItem.proofImages : [])
+      .map((value: unknown) => toTrimmedString(value))
+      .filter((value: string) => /^https:\/\//i.test(value))
+      .slice(0, 6)
+    const proofCount = photoUrls.length
     const itemSummary = toTrimmedString(returnItem.itemSummary) || 'Order item'
     const customerName = toTrimmedString(returnItem.customerName) || 'there'
     const customerMessage = toTrimmedString(returnItem.customerMessage)
+    const businessSlug = toTrimmedString(businessData.businessSlug) || toTrimmedString(businessData.storefrontSlug)
+    const trackUrl = buildTrackUrl(orderNumber, customerEmail, businessSlug)
 
     const html = renderReturnReceivedEmail({
       brandName: businessName,
@@ -585,9 +694,11 @@ serve(async (req) => {
       itemSummary,
       reason,
       resolution,
+      resolutionValue,
       shippingPayer,
       customerMessage,
-      proofCount,
+      photoUrls,
+      trackUrl,
     })
 
     const text = [
@@ -600,14 +711,15 @@ serve(async (req) => {
       `Reason: ${reason}`,
       `Requested outcome: ${resolution}`,
       `Return shipping: ${shippingPayer}`,
-      `Proof attached: ${proofCount} image${proofCount === 1 ? '' : 's'}`,
+      `Photos: ${proofCount}`,
+      trackUrl ? `Track your order: ${trackUrl}` : '',
       customerMessage ? `Note: ${customerMessage}` : '',
     ].filter(Boolean).join('\n')
 
     await sendEmail({
       toEmail: customerEmail,
       fromName: buildSenderName(businessName),
-      subject: `Return request received - ${returnRef}`,
+      subject: `We've got your return request · ${returnRef}`,
       html,
       text,
     })

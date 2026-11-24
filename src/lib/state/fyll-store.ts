@@ -1081,8 +1081,8 @@ export const CASE_TYPES: CaseType[] = [
   'Other'
 ];
 
-export type ReturnReason = 'wrong_item' | 'damaged' | 'changed_mind' | 'other';
-export type ReturnResolution = 'refund' | 'exchange';
+export type ReturnReason = 'wrong_item' | 'damaged' | 'wrong_size' | 'missing_part' | 'changed_mind' | 'other';
+export type ReturnResolution = 'replacement' | 'exchange' | 'refund';
 export type ReturnStatus = 'initiated' | 'picked_up' | 'received' | 'processed';
 export type ReturnShippingPayer = 'seller' | 'customer';
 
@@ -1100,6 +1100,17 @@ export interface ReturnActivityEntry {
   user: string;
 }
 
+// An item the customer picked when starting a return on returns.fyll.app (copied from the order).
+export interface ReturnItem {
+  productId?: string;
+  variantId?: string;
+  name: string;
+  variantName?: string;
+  quantity: number;
+  unitPrice?: number;
+  imageUrl?: string;
+}
+
 export interface ReturnRequest {
   id: string;
   ref: string;
@@ -1111,6 +1122,7 @@ export interface ReturnRequest {
   customerEmail?: string;
   customerPhone?: string;
   itemSummary?: string;
+  items?: ReturnItem[];
   reason: ReturnReason;
   otherReason?: string;
   resolution: ReturnResolution;
@@ -1131,6 +1143,8 @@ export interface ReturnRequest {
 export const RETURN_REASONS: Array<{ value: ReturnReason; label: string; description: string }> = [
   { value: 'wrong_item', label: 'Wrong item received', description: 'Seller covers return shipping.' },
   { value: 'damaged', label: 'Item arrived damaged', description: 'Seller covers return shipping.' },
+  { value: 'missing_part', label: 'Missing part', description: 'Seller covers return shipping.' },
+  { value: 'wrong_size', label: 'Wrong size or fit', description: 'Customer covers return shipping.' },
   { value: 'changed_mind', label: 'Changed mind', description: 'Customer covers return shipping.' },
   { value: 'other', label: 'Other reason', description: 'Customer covers return shipping.' },
 ];
@@ -1138,6 +1152,7 @@ export const RETURN_REASONS: Array<{ value: ReturnReason; label: string; descrip
 export const RETURN_RESOLUTIONS: Array<{ value: ReturnResolution; label: string }> = [
   { value: 'refund', label: 'Refund' },
   { value: 'exchange', label: 'Exchange' },
+  { value: 'replacement', label: 'Replacement' },
 ];
 
 export const RETURN_STATUSES: Array<{ value: ReturnStatus; label: string }> = [
@@ -1148,7 +1163,7 @@ export const RETURN_STATUSES: Array<{ value: ReturnStatus; label: string }> = [
 ];
 
 export const getReturnShippingPayer = (reason: ReturnReason): ReturnShippingPayer => (
-  reason === 'wrong_item' || reason === 'damaged' ? 'seller' : 'customer'
+  reason === 'wrong_item' || reason === 'damaged' || reason === 'missing_part' ? 'seller' : 'customer'
 );
 
 export const CASE_PRIORITIES: CasePriority[] = ['Critical', 'High', 'Medium', 'Low'];
