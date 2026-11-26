@@ -435,3 +435,46 @@ footer { border-top: 1px solid var(--line); padding-block: 40px calc(40px + env(
 .qp-row span { font-size: 13px; color: var(--ink-2); }
 .qp-row b { font-size: 16px; color: var(--ink); text-align: right; min-width: 0; overflow-wrap: anywhere; }
 .qp-big b { font-size: 22px; letter-spacing: .04em; }
+
+/* ---------- PHONES: smaller type and a calmer hero (matches the fyll.app mobile pass) ---------- */
+@media (max-width: 560px) {
+  body { font-size: 14px; }
+  section { padding-block: 56px; }
+  .eyebrow { font-size: 11px; letter-spacing: .12em; }
+  .hero { padding-block: 40px 48px; }
+  .hero-grid { gap: 28px; }
+  .hero h1 { font-size: clamp(32px, 9vw, 38px); line-height: 1.08; margin-top: 12px; }
+  .tool-hero { padding-block: 32px 20px; }
+  .tool-hero h1 { font-size: clamp(28px, 8vw, 34px); line-height: 1.1; margin-top: 12px; }
+  .lede, .hero .lede { font-size: 14px; line-height: 1.55; margin-top: 12px; }
+  .hero-badges, .tool-hero .hero-badges { margin-top: 16px; gap: 6px; }
+  .hero-vis { aspect-ratio: 4 / 3; }
+  .hero-vis .doc { padding: 12px; font-size: 10px; gap: 6px; border-radius: 14px; }
+  .hero-vis .doc b { font-size: 12px; }
+  .hero-vis .lime b { font-size: 16px; }
+  .sec-head h2, .about h2, .cta h2 { font-size: clamp(24px, 7vw, 30px); }
+  .tool-card h3 { font-size: 18px; }
+  .related .tool-card h3 { font-size: 16px; }
+  .tool-card p, .about p, .steps p, .qa-p p { font-size: 13px; }
+  .qa h3 button { font-size: 15px; padding-block: 16px; }
+}
+
+/* ---------- PHONES: let the photo lead; compact hero buttons ---------- */
+@media (max-width: 560px) {
+  .hero-cta { margin-top: 18px; gap: 8px; flex-wrap: nowrap; }
+  .hero-cta .btn { height: 42px; padding: 0 18px; font-size: 14px; }
+  .hero-vis .d1, .hero-vis .d3 { display: none; }
+  .hero-vis .d2 { left: auto; right: 12px; top: auto; bottom: 12px; width: 150px; padding: 10px 12px; gap: 5px; border-radius: 12px; rotate: 2deg; animation: none; }
+  .hero-vis .d2 b { font-size: 11px; white-space: nowrap; }
+  .hero-vis .d2 .ln { height: 5px; }
+  .hero-vis .d2 .tot { font-size: 11px; padding-top: 4px; gap: 8px; }
+}
+@media (max-width: 560px) {
+  .nav-right .btn { height: 36px; padding: 0 14px; font-size: 13px; }
+  .nav-right .login { display: inline-flex; font-size: 14px; font-weight: 600; }
+  .nav-right { gap: 12px; }
+}
+
+/* hero paragraph: full on computers, one line on phones */
+.p-short { display: none; }
+@media (max-width: 560px) { .p-long { display: none; } .p-short { display: inline; } }

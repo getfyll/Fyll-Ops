@@ -1,5 +1,5 @@
 <!doctype html><html lang="en"><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
-<title>Fyll: your whole back office, in one app</title>
+<title>Fyll: Order, Payment and Stock App for Nigerian and African Businesses</title>
 <meta name="theme-color" content="#ffffff">
 <link rel="icon" type="image/png" href="/favicon-32.png">
 <meta name="description" content="Fyll is the operations app for growing African businesses: orders, payments, deliveries, stock, money and your team in one place.">
@@ -8,7 +8,7 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Fyll">
 <meta property="og:locale" content="en_NG">
-<meta property="og:title" content="Fyll: your whole back office, in one app">
+<meta property="og:title" content="Fyll: Order, Payment and Stock App for Nigerian and African Businesses">
 <meta property="og:description" content="Fyll is the operations app for growing African businesses: orders, payments, deliveries, stock, money and your team in one place.">
 <meta property="og:url" content="https://fyll.app/">
 <meta property="og:image" content="https://fyll.app/landing/og/home.jpg">
@@ -16,7 +16,7 @@
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Fyll: your whole back office, in one app">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Fyll: your whole back office, in one app">
+<meta name="twitter:title" content="Fyll: Order, Payment and Stock App for Nigerian and African Businesses">
 <meta name="twitter:description" content="Fyll is the operations app for growing African businesses: orders, payments, deliveries, stock, money and your team in one place.">
 <meta name="twitter:image" content="https://fyll.app/landing/og/home.jpg">
 <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://fyll.app/#org","name":"Fyll","legalName":"Fyll Technologies","url":"https://fyll.app/","logo":"https://fyll.app/icons/icon-512.png","sameAs":["https://instagram.com/fyll.app"],"email":"getfyll@gmail.com"},{"@type":"WebSite","@id":"https://fyll.app/#site","name":"Fyll","url":"https://fyll.app/","publisher":{"@id":"https://fyll.app/#org"}},{"@type":"SoftwareApplication","name":"Fyll","applicationCategory":"BusinessApplication","operatingSystem":"Web, iOS, Android","url":"https://fyll.app/","description":"Fyll is the operations app for growing African businesses: orders, payments, deliveries, stock, money and your team in one place.","publisher":{"@id":"https://fyll.app/#org"}},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"How do I get access to Fyll?","acceptedAnswer":{"@type":"Answer","text":"Fyll is invite-only for now. Request an invite and we'll send you an access code. Then sign up with your code and set up your business in a few minutes."}},{"@type":"Question","name":"Do I need a website to use Fyll?","acceptedAnswer":{"@type":"Answer","text":"No. Orders from WhatsApp, Instagram, phone calls and walk-ins all go into Fyll. If you want a shop page, you get your own storefront on fyll.store, at an address like yourbusiness.fyll.store."}},{"@type":"Question","name":"Does it work on my phone?","acceptedAnswer":{"@type":"Answer","text":"Yes. Fyll works in the browser on desktop and mobile. New orders and payments reach your phone as alerts, with WhatsApp as a backup when a push notification can't get through."}},{"@type":"Question","name":"How do my customers pay?","acceptedAnswer":{"@type":"Answer","text":"Send a Fyll payment link in the chat. Your customer pays by bank transfer and uploads proof. You approve it in one tap, and the order, payment and stock all update together."}},{"@type":"Question","name":"I already sell on WooCommerce. Can I keep my site?","acceptedAnswer":{"@type":"Answer","text":"Yes. The Fyll Checkout plugin adds bank-transfer checkout to your WooCommerce site, and every order and payment lands in Fyll for you to approve."}},{"@type":"Question","name":"How do my customers track their orders?","acceptedAnswer":{"@type":"Answer","text":"When you log the courier, your customer gets an email with a track button. They follow the order on a tracking page with your name on it, at track.fyll.app, and confirm delivery when it arrives."}},{"@type":"Question","name":"What happens when a customer wants to return something?","acceptedAnswer":{"@type":"Answer","text":"They start the return themselves at returns.fyll.app. You see the item and the reason in Fyll, then decide on a refund or an exchange."}},{"@type":"Question","name":"Can my team use it too?","acceptedAnswer":{"@type":"Answer","text":"Yes. Invite your teammates so everyone works from the same orders, stock and deliveries, and everyone gets the alerts."}},{"@type":"Question","name":"Can I manage stock in more than one location?","acceptedAnswer":{"@type":"Answer","text":"Yes. Track products and variants across warehouses and stores, get low-stock alerts, and run a stock audit every month."}},{"@type":"Question","name":"Can I send work to vendors and workshops?","acceptedAnswer":{"@type":"Answer","text":"Yes. Send jobs to partners like tailors or printers. They update progress in their own portal and send you bills to approve."}}]}]}</script>
@@ -331,12 +331,6 @@ section[id] { scroll-margin-top: 110px; }
 .shot > .ui { transition: scale .7s var(--spring), box-shadow .5s var(--ease); }
 .shot:hover > .ui { scale: 1.035; box-shadow: 0 2px 4px rgba(20,20,20,.04), 0 44px 80px -24px rgba(30,36,6,.34); }
 @media (prefers-reduced-motion: no-preference) {
-  .show-head > :not(h1) { animation: rise 1s var(--ease) both; }
-  .show-head > :nth-child(1) { animation-delay: .05s; }
-  .show-head > :nth-child(3) { animation-delay: .5s; }
-  .show-head > :nth-child(4) { animation-delay: .6s; }
-  .show-head > :nth-child(5) { animation-delay: .7s; }
-  .w > span { animation: wordup 1.1s var(--ease) both; animation-delay: calc(.12s + var(--wi) * 70ms); }
   .shot { animation: shotin 1.4s var(--ease) both; }
   .shot:nth-child(1) { animation-delay: .35s; } .shot:nth-child(2) { animation-delay: .5s; } .shot:nth-child(3) { animation-delay: .42s; }
   .shot:nth-child(5) { animation-delay: .6s; } .shot:nth-child(6) { animation-delay: .7s; } .shot:nth-child(7) { animation-delay: .55s; }
@@ -1105,9 +1099,7 @@ section[id] { scroll-margin-top: 110px; }
 
 /* ---------- MARQUEE: transform keyframes, pause on hover only with a mouse ---------- */
 @keyframes marquee-x { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(-33.3333%, 0, 0); } }
-@media (prefers-reduced-motion: no-preference) {
-  .logos-track.go { animation: marquee-x 42s linear infinite; }
-}
+.logos-track.go { animation: marquee-x 42s linear infinite !important; }
 @media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
   .logos:hover .logos-track { animation-play-state: paused; }
 }
@@ -1243,6 +1235,11 @@ section[id] { scroll-margin-top: 110px; }
   .duo-note { margin-top: 14px; font-size: 12px; }
 }
 @keyframes flowprogx { to { width: 100%; } }
+@media (prefers-reduced-motion: reduce) and (max-width: 560px) {
+  .shot[data-pos] { transition: opacity .5s ease !important; }
+  .shot[data-pos] > .ui > *, .shot[data-pos] .shot-cap { transition: opacity .4s ease !important; }
+  .stack-dots button { transition: width .3s ease !important; }
+}
 .flow-pills { display: none; }
 @media (max-width: 560px) { .flow-pills { display: flex; } }
 
@@ -1281,6 +1278,25 @@ section[id] { scroll-margin-top: 110px; }
   .prods .prod h3 { font-size: 18px; }
   .prods .prod p { font-size: 13px; }
   .prods .prod-vis { height: 160px; }
+}
+
+/* ---------- FEATURE CARDS: smaller pictures and text ---------- */
+.rail { grid-auto-columns: 280px; gap: 16px; }
+.fcard { grid-template-rows: 200px auto; border-radius: 22px; }
+.fimg { padding: 18px; }
+.fimg .ui { scale: .7; }
+.fbody { padding: 16px 18px 18px; gap: 8px; }
+.fbody h3 { font-size: 16px; }
+.rail .fbody p { font-size: 14px; line-height: 1.5; }
+.fbody .tag { font-size: 11px; }
+@media (max-width: 560px) {
+  .rail { grid-auto-columns: 66%; gap: 12px; }
+  .fcard { grid-template-rows: 160px auto; border-radius: 18px; }
+  .fimg { padding: 12px; }
+  .fimg .ui { scale: .58; }
+  .fbody { padding: 12px 14px 14px; gap: 6px; }
+  .fbody h3 { font-size: 15px; }
+  .rail .fbody p { font-size: 12.5px; }
 }
 </style>
 
@@ -1935,13 +1951,6 @@ section[id] { scroll-margin-top: 110px; }
     $$('main section[id]').forEach(function (s) { io.observe(s); });
   }
 
-  /* hero headline: words rise in */
-  var h1 = $('.show-head h1');
-  if (h1 && !reduce) {
-    var words = h1.textContent.trim().split(/\s+/);
-    h1.setAttribute('aria-label', words.join(' '));
-    h1.innerHTML = words.map(function (w, i) { return '<span class="w" aria-hidden="true"><span style="--wi:' + i + '">' + w + '</span></span>'; }).join(' ');
-  }
 
   /* hero cards follow the cursor */
   var show = $('.showcase');
@@ -1971,7 +1980,7 @@ section[id] { scroll-margin-top: 110px; }
 
   /* logo marquee */
   var track = $('.logos-track');
-  if (track && !reduce) {
+  if (track) {
     var n = track.children.length, html = track.innerHTML;
     track.insertAdjacentHTML('beforeend', html + html);
     Array.prototype.slice.call(track.children, n).forEach(function (c) { c.setAttribute('aria-hidden', 'true'); c.tabIndex = -1; });
@@ -2343,7 +2352,7 @@ section[id] { scroll-margin-top: 110px; }
     paint();
     if (leaving !== shots[front]) { leaving.setAttribute('data-pos', 'gone'); setTimeout(function () { paint(); }, 650); }
   };
-  var start = function () { stop(); if (!reduce && visible) timer = setInterval(function () { go(front + 1); }, 3400); };
+  var start = function () { stop(); if (visible) timer = setInterval(function () { go(front + 1); }, 3400); };
   var stop = function () { if (timer) clearInterval(timer); timer = null; };
   var on = false;
   var setup = function () {
