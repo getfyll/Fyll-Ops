@@ -215,7 +215,7 @@ export default function ServicesScreen() {
           <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <View>
               {openedFromSettings ? <Text style={{ color: palette.faint, fontSize: 9.5, lineHeight: 12, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }}>Settings</Text> : null}
-              <Text style={openedFromSettings ? { color: palette.text, fontSize: 17, lineHeight: 21, fontWeight: '600' } : { color: palette.text, ...mobileSectionHeadingStyle, fontWeight: bricolageLoaded ? '400' : '700', fontFamily: bricolageLoaded ? 'BricolageGrotesque_700Bold' : undefined, letterSpacing: -0.6 }}>
+              <Text style={openedFromSettings ? { color: palette.text, fontSize: 17, lineHeight: 21, fontWeight: '600' } : { color: palette.text, ...mobileSectionHeadingStyle, fontWeight: bricolageLoaded ? '400' : '700', fontFamily: bricolageLoaded ? 'PublicSans_700Bold' : undefined, letterSpacing: -0.6 }}>
                 {openedFromSettings ? 'Service Catalog' : 'Services'}
               </Text>
               {!openedFromSettings ? <Text style={{ color: palette.faint }} className="text-sm mt-1">Manage what your business offers</Text> : null}
@@ -236,7 +236,7 @@ export default function ServicesScreen() {
         <View style={{ position: 'absolute', top: 0, left: 24, right: 24, height: 3, backgroundColor: FYLL_LIME }} />
         <View style={{ gap: 4 }}>
           <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>Service catalogue</Text>
-          <Text style={{ color: palette.text, fontSize: 30, lineHeight: 34, fontWeight: bricolageLoaded ? '400' : '700', fontFamily: bricolageLoaded ? 'BricolageGrotesque_700Bold' : undefined, letterSpacing: -0.9 }}>{services.length} services</Text>
+          <Text style={{ color: palette.text, fontSize: 30, lineHeight: 34, fontWeight: bricolageLoaded ? '400' : '700', fontFamily: bricolageLoaded ? 'PublicSans_700Bold' : undefined, letterSpacing: -0.9 }}>{services.length} services</Text>
           <Text style={{ color: palette.muted, fontSize: 13 }}>{serviceSummary.active} currently available</Text>
         </View>
         <View style={{ height: 1, backgroundColor: palette.hairline }} />
@@ -386,7 +386,7 @@ export default function ServicesScreen() {
 
                 <View style={{ flex: 1, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
                   <View>
-                    <Text style={{ color: palette.text, ...pageHeadingStyle, fontWeight: bricolageLoaded ? '400' : '700', fontFamily: bricolageLoaded ? 'BricolageGrotesque_700Bold' : undefined, letterSpacing: -0.6 }}>
+                    <Text style={{ color: palette.text, ...pageHeadingStyle, fontWeight: bricolageLoaded ? '400' : '700', fontFamily: bricolageLoaded ? 'PublicSans_700Bold' : undefined, letterSpacing: -0.6 }}>
                       Services
                     </Text>
                     <Text style={{ color: palette.faint, fontSize: 14, marginTop: 4 }}>
@@ -433,7 +433,7 @@ export default function ServicesScreen() {
                       {dot ? <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: String(dot) }} /> : null}
                       <Text style={{ color: palette.faint, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{label}</Text>
                     </View>
-                    <Text style={{ color: palette.text, fontSize: index ? 22 : 28, fontWeight: index ? '600' : bricolageLoaded ? '400' : '700', fontFamily: !index && bricolageLoaded ? 'BricolageGrotesque_700Bold' : undefined, letterSpacing: index ? -0.5 : -0.9 }} numberOfLines={1}>{value}</Text>
+                    <Text style={{ color: palette.text, fontSize: index ? 22 : 28, fontWeight: index ? '600' : bricolageLoaded ? '400' : '700', fontFamily: !index && bricolageLoaded ? 'PublicSans_700Bold' : undefined, letterSpacing: index ? -0.5 : -0.9 }} numberOfLines={1}>{value}</Text>
                     <Text style={{ color: palette.muted, fontSize: 13 }}>{caption}</Text>
                   </View>
                 ))}

@@ -133,7 +133,7 @@ export default function RequestInviteScreen() {
   const logInLink = (
     <Pressable onPress={() => router.replace('/login')} className="active:opacity-70">
       <Text style={{ color: palette.muted, fontSize: 14 }}>
-        Have an invite code? <Text style={{ color: palette.limeOnSurface, fontWeight: '700' }}>Log in</Text>
+        Have an invite code? <Text style={{ color: palette.limeOnSurface, fontWeight: '600' }}>Log in</Text>
       </Text>
     </Pressable>
   );
@@ -240,7 +240,7 @@ export default function RequestInviteScreen() {
                 style={{ flex: 1, height: 42, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: option.on ? FYLL_LIME : 'transparent', borderWidth: option.on ? 0 : 1, borderColor: palette.outline }}
               >
                 {option.on ? <Check size={14} color={FYLL_LIME_INK} strokeWidth={3} /> : null}
-                <Text style={{ color: option.on ? FYLL_LIME_INK : palette.textSoft, fontSize: 13.5, fontWeight: '700' }}>{option.name}</Text>
+                <Text style={{ color: option.on ? FYLL_LIME_INK : palette.textSoft, fontSize: 13.5, fontWeight: '600' }}>{option.name}</Text>
               </Pressable>
             ))}
           </View>
@@ -303,7 +303,7 @@ export default function RequestInviteScreen() {
                         onPress={() => { row.set(answer); setError(''); }}
                         style={{ width: 56, height: 36, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: selected ? FYLL_LIME : 'transparent', borderWidth: selected ? 0 : 1, borderColor: palette.outline }}
                       >
-                        <Text style={{ color: selected ? FYLL_LIME_INK : palette.textSoft, fontSize: 13.5, fontWeight: '700' }}>{answer ? 'Yes' : 'No'}</Text>
+                        <Text style={{ color: selected ? FYLL_LIME_INK : palette.textSoft, fontSize: 13.5, fontWeight: '600' }}>{answer ? 'Yes' : 'No'}</Text>
                       </Pressable>
                     );
                   })}

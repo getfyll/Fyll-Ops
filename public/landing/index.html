@@ -125,7 +125,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 
 /* ---------- SHOWCASE (floating screens) ---------- */
 .showcase { position: relative; overflow: hidden; }
-.showcase::before { content: ""; position: absolute; inset: 0; background: url(/landing/img/field.jpg) center/cover; opacity: .16; -webkit-mask-image: radial-gradient(ellipse 60% 50% at 50% 50%, #000, transparent 75%); mask-image: radial-gradient(ellipse 60% 50% at 50% 50%, #000, transparent 75%); }
+.showcase::before { content: ""; position: absolute; inset: 0; background: url(/landing/img/field.webp) center/cover; opacity: .16; -webkit-mask-image: radial-gradient(ellipse 60% 50% at 50% 50%, #000, transparent 75%); mask-image: radial-gradient(ellipse 60% 50% at 50% 50%, #000, transparent 75%); }
 .show-grid { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px 48px; align-items: start; }
 .show-head { grid-column: 1 / -1; text-align: center; padding-block: 56px; display: grid; justify-items: center; gap: 20px; }
 .show-head h1 { font-size: clamp(44px, 6.4vw, 104px); max-width: 12em; }
@@ -200,8 +200,8 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .rail { margin-top: 56px; display: grid; grid-auto-flow: column; grid-auto-columns: 340px; gap: 20px; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 20px; scrollbar-width: thin; }
 .fcard { scroll-snap-align: start; border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; background: #fff; display: grid; grid-template-rows: 260px auto; transition: transform .25s ease, box-shadow .25s ease; }
 .fcard:hover { transform: translateY(-4px); box-shadow: var(--shadow); }
-.fimg { position: relative; display: grid; place-items: center; padding: 24px; background: url(/landing/img/field.jpg) var(--pos, center)/cover; }
-.fimg.photo-bg { background-image: url(/landing/img/people-shop.jpg); background-position: 50% 20%; }
+.fimg { position: relative; display: grid; place-items: center; padding: 24px; background: url(/landing/img/field.webp) var(--pos, center)/cover; }
+.fimg.photo-bg { background-image: url(/landing/img/people-shop.webp); background-position: 50% 20%; }
 .fimg .ui { width: 100%; max-width: 250px; font-size: 13px; }
 .fbody { padding: 20px 22px 24px; display: grid; gap: 10px; justify-items: start; }
 .fbody h3 { font-family: var(--sans); font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
@@ -228,7 +228,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 
 /* ---------- CUSTOMERS SEE ---------- */
 .cust { display: grid; grid-template-columns: 1.05fr 1fr; gap: clamp(40px, 7vw, 112px); align-items: center; }
-.cust-stage { position: relative; border-radius: var(--r-xl); background: url(/landing/img/field.jpg) 30% 40%/cover; aspect-ratio: 1 / 1; max-width: 100%; display: grid; place-items: center; overflow: hidden; }
+.cust-stage { position: relative; border-radius: var(--r-xl); background: url(/landing/img/field.webp) 30% 40%/cover; aspect-ratio: 1 / 1; max-width: 100%; display: grid; place-items: center; overflow: hidden; }
 .cust-stage .phone { position: relative; transform: rotate(-3deg); }
 .track-steps { display: grid; gap: 0; }
 .track-steps div { display: grid; grid-template-columns: 22px 1fr; gap: 10px; padding-bottom: 14px; position: relative; }
@@ -266,7 +266,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .ng-head h2 { font-size: clamp(36px, 4.6vw, 64px); max-width: 14em; }
 
 /* ---------- CTA ---------- */
-.cta-card { position: relative; border-radius: var(--r-xl); overflow: hidden; background: url(/landing/img/field.jpg) center 35%/cover; padding: clamp(56px, 9vw, 128px) clamp(24px, 6vw, 80px); display: grid; place-items: center; text-align: center; }
+.cta-card { position: relative; border-radius: var(--r-xl); overflow: hidden; background: url(/landing/img/field.webp) center 35%/cover; padding: clamp(56px, 9vw, 128px) clamp(24px, 6vw, 80px); display: grid; place-items: center; text-align: center; }
 .cta-glass { display: grid; gap: 22px; justify-items: center; max-width: 720px; padding: clamp(32px, 5vw, 56px); border-radius: 28px; background: rgba(20,22,10,.42); border: 1px solid rgba(255,255,255,.18); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); color: #fff; }
 .cta-glass h2 { font-size: clamp(36px, 5vw, 64px); }
 .cta-glass p { color: rgba(255,255,255,.85); font-size: 18px; }
@@ -388,7 +388,6 @@ section[id] { scroll-margin-top: 110px; }
 .logos-track .logo:hover { translate: 0 -3px; }
 @media (prefers-reduced-motion: no-preference) {
   .logos-track.go { animation: marquee 42s linear infinite; }
-  .logos:hover .logos-track { animation-play-state: paused; }
 }
 @keyframes marquee { to { translate: -33.3333% 0; } }
 
@@ -433,7 +432,7 @@ section[id] { scroll-margin-top: 110px; }
 
 /* ---------- FLOW (dark, interactive) ---------- */
 .flow { position: relative; background: #141414; color: #fff; overflow: hidden; }
-.flow::before { content: ""; position: absolute; inset: 0 0 auto; height: 460px; background: url(/landing/img/field.jpg) center 30%/cover; opacity: .55; -webkit-mask-image: linear-gradient(#000, transparent); mask-image: linear-gradient(#000, transparent); }
+.flow::before { content: ""; position: absolute; inset: 0 0 auto; height: 460px; background: url(/landing/img/field.webp) center 30%/cover; opacity: .55; -webkit-mask-image: linear-gradient(#000, transparent); mask-image: linear-gradient(#000, transparent); }
 .flow-grid { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: clamp(40px, 7vw, 120px); align-items: center; }
 .flow-title { font-size: clamp(34px, 4.2vw, 58px); margin-top: 18px; max-width: 13em; }
 .flow-list { list-style: none; padding: 0; margin: 48px 0 0; display: grid; gap: 4px; }
@@ -577,7 +576,7 @@ section[id] { scroll-margin-top: 110px; }
 .p-check p, .p-rev p { color: rgba(255,255,255,.75); }
 .p-check .link-arrow, .p-rev .link-arrow { color: var(--lime); }
 .prod-vis { position: relative; min-width: 0; }
-.p-store .prod-vis { border-radius: 22px; background: url(/landing/img/field.jpg) center/cover; padding: clamp(20px, 3vw, 48px); padding-bottom: 0; display: grid; overflow: hidden; }
+.p-store .prod-vis { border-radius: 22px; background: url(/landing/img/field.webp) center/cover; padding: clamp(20px, 3vw, 48px); padding-bottom: 0; display: grid; overflow: hidden; }
 .browser { position: relative; background: #fff; border-radius: 16px 16px 0 0; box-shadow: var(--shadow-lg); transition: translate .8s var(--spring); }
 .p-store:hover .browser { translate: 0 -8px; }
 .b-bar { display: flex; align-items: center; gap: 6px; padding: 12px 14px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--ink-3); }
@@ -623,7 +622,7 @@ section[id] { scroll-margin-top: 110px; }
 
 /* ---------- BIG FOOTER ---------- */
 .bigfoot { padding-block: 0; position: relative; background: #141414; color: #fff; border-radius: 40px 40px 0 0; overflow: hidden; margin-top: clamp(64px, 8vw, 120px); }
-.bf-field { position: relative; background: url(/landing/img/field.jpg) center 40%/cover; }
+.bf-field { position: relative; background: url(/landing/img/field.webp) center 40%/cover; }
 .bf-field::before { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, rgba(16,18,6,.55) 0%, rgba(16,18,6,.28) 50%, rgba(16,18,6,.18) 100%); pointer-events: none; }
 .bf-field::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(20,20,20,0) 40%, #141414 100%); pointer-events: none; }
 .bf-top { position: relative; z-index: 1; display: grid; grid-template-columns: 1.5fr 1fr; gap: 40px clamp(40px, 6vw, 120px); align-items: end; padding-block: clamp(96px, 11vw, 168px) clamp(120px, 12vw, 190px); }
@@ -881,7 +880,7 @@ section[id] { scroll-margin-top: 110px; }
 .chan-card div span { color: var(--ink-2); font-size: 13px; }
 .chan-card time { margin-left: auto; align-self: start; font-size: 12px; color: var(--ink-3); }
 .chan-card.pop { animation: notifpop .7s var(--spring) both; }
-.slim-vis { background: url(/landing/img/field.jpg) 70% 40%/cover; display: grid; place-items: center; }
+.slim-vis { background: url(/landing/img/field.webp) 70% 40%/cover; display: grid; place-items: center; }
 .mint-phone { position: relative; width: min(250px, 72%); border-radius: 38px; background: #141414; padding: 9px; box-shadow: 0 40px 70px -24px rgba(20,22,6,.55); transition: translate .8s var(--spring), rotate .8s var(--spring); rotate: -3deg; }
 .sell-slim:hover .mint-phone { rotate: 0deg; translate: 0 -6px; }
 .mint-screen { border-radius: 30px; overflow: hidden; aspect-ratio: 390 / 780; max-width: 100%; background: #f6f6f6; }
@@ -1019,7 +1018,8 @@ section[id] { scroll-margin-top: 110px; }
 @media (max-width: 560px) {
   .nav-bar { padding: 0 8px 0 16px; gap: 12px; height: 60px; }
   .nav-bar img { height: 24px; }
-  .nav-right .login { display: none; }
+  .nav-right .login { display: inline-flex; font-size: 14px; font-weight: 600; padding: 0 4px; }
+  .nav-right { gap: 12px; }
   .nav-right .btn { height: 42px; padding: 0 18px; }
   .hero-card { min-height: 420px; }
   .show-grid { grid-template-columns: 1fr; }
@@ -1102,6 +1102,186 @@ section[id] { scroll-margin-top: 110px; }
   .fx-rows b { font-size: 16px; }
   .fx-note { text-align: center; }
 }
+
+/* ---------- MARQUEE: transform keyframes, pause on hover only with a mouse ---------- */
+@keyframes marquee-x { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(-33.3333%, 0, 0); } }
+@media (prefers-reduced-motion: no-preference) {
+  .logos-track.go { animation: marquee-x 42s linear infinite; }
+}
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .logos:hover .logos-track { animation-play-state: paused; }
+}
+.p-short { display: none; }
+
+/* ---------- COOKIE NOTICE ---------- */
+.cookie { position: fixed; z-index: 60; left: max(16px, env(safe-area-inset-left, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); width: min(400px, calc(100% - 32px)); display: grid; gap: 14px; padding: 20px; border-radius: 24px; background: #fff; border: 1px solid var(--line); box-shadow: 0 2px 6px rgba(20,20,20,.05), 0 30px 60px -20px rgba(20,20,20,.28); }
+.cookie[hidden] { display: none !important; }
+.cookie p { margin: 0; font-size: 14px; line-height: 1.5; color: var(--ink-2); }
+.cookie p b { display: block; font-size: 16px; color: var(--ink); margin-bottom: 4px; }
+.cookie p a { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+.cookie-btns { display: flex; gap: 8px; }
+.cbtn { flex: 1; height: 44px; border-radius: 999px; font-family: var(--btn-font); font-size: 15px; font-weight: 600; cursor: pointer; border: 1px solid transparent; transition: background .2s, border-color .2s; }
+.cbtn-ink { background: var(--ink); color: #fff; }
+.cbtn-ink:hover { background: #000; }
+.cbtn-line { background: #fff; color: var(--ink); border-color: var(--line); }
+.cbtn-line:hover { border-color: var(--ink-3); }
+.cbtn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+@media (prefers-reduced-motion: no-preference) {
+  .cookie.in { animation: cookie-in .6s var(--ease) both; }
+  .cookie.out { animation: cookie-out .35s var(--ease) both; }
+}
+@keyframes cookie-in { from { opacity: 0; transform: translateY(24px) scale(.97); } }
+@keyframes cookie-out { to { opacity: 0; transform: translateY(16px) scale(.98); } }
+
+/* ---------- MOBILE HERO: short copy, one stack of cards that changes ---------- */
+@media (max-width: 560px) {
+  .showcase { padding-top: 56px !important; padding-bottom: 80px; }
+  .show-grid { padding-inline: 32px; gap: 0; row-gap: 56px; grid-template-areas: "head" "stack" "dots"; }
+  .show-head { grid-area: head; padding-block: 8px 0; gap: 18px; }
+  .show-head .hero-cta { flex-wrap: nowrap; justify-content: center; }
+  .show-head .eyebrow { font-size: 11px; letter-spacing: .14em; white-space: nowrap; }
+  .show-head h1, .show-head p { text-wrap: balance; }
+  .show-head h1 { font-size: clamp(38px, 11vw, 46px); line-height: 1.02; }
+  .show-head p { font-size: 15px; line-height: 1.5; max-width: 22em; }
+  .p-long { display: none; }
+  .p-short { display: inline; }
+  .show-head .hero-cta { gap: 10px; margin-top: 4px; }
+  .show-head .hero-cta .btn { height: 42px; padding: 0 18px; font-size: 14px; }
+  .stores-hero { gap: 8px; }
+  .stores-hero .store { height: 40px; padding: 0 12px 0 10px; border-radius: 11px; gap: 8px; }
+  .stores-hero .store svg { width: 18px; height: 18px; }
+  .stores-hero .store small { font-size: 8.5px; }
+  .stores-hero .store b { font-size: 13px; }
+  /* phones: just the headline, one line and two buttons (store badges stay in the footer) */
+  .stores-hero, .show-head .show-note { display: none; }
+
+  /* every card shares one grid cell; the script sets which is in front */
+  .shot:nth-child(n+5) { display: none; }
+  .shot { display: block; grid-area: stack; align-self: start; margin-top: 0 !important; max-width: none; transform-origin: 50% 0; transition: transform .8s var(--ease), opacity .6s var(--ease); cursor: pointer; }
+  .shot > .ui, .shot[data-pos] { animation: none; }
+  .shot[data-pos] { opacity: 0; transform: translateY(-28px) scale(.88); pointer-events: none; }
+  .shot[data-pos="0"] { z-index: 3; opacity: 1; transform: none; pointer-events: auto; }
+  .shot[data-pos="1"] { z-index: 2; opacity: .75; transform: translateY(-14px) scale(.94); }
+  .shot[data-pos="2"] { z-index: 1; opacity: .45; transform: translateY(-28px) scale(.88); }
+  .shot[data-pos="gone"] { z-index: 4; opacity: 0; transform: translateY(40px) scale(1.02); }
+  .shot[data-pos] .shot-cap { opacity: 0; transition: opacity .4s; text-align: center; padding-left: 0; }
+  .shot[data-pos="0"] .shot-cap { opacity: 1; transition-delay: .25s; }
+  /* cards behind the front one show as plain outlines, no text */
+  .shot[data-pos]:not([data-pos="0"]) > .ui > * { opacity: 0; }
+  .shot[data-pos] > .ui > * { transition: opacity .4s var(--ease); }
+  .shot[data-pos="0"] > .ui > * { transition-delay: .2s; }
+  /* top bar: a smaller button so the hero's Get started leads */
+  .nav-right .btn { height: 36px; padding: 0 14px; font-size: 13px; }
+  .shot[data-pos="0"] > .ui { box-shadow: 0 2px 4px rgba(20,20,20,.04), 0 30px 60px -24px rgba(30,36,6,.3); }
+  .stack-dots { grid-area: dots; display: flex; justify-content: center; gap: 6px; margin-top: -28px; }
+  .stack-dots button { width: 7px; height: 7px; padding: 0; border: 0; border-radius: 999px; background: rgba(20,20,20,.18); cursor: pointer; transition: width .4s var(--ease), background .3s; }
+  .stack-dots button[aria-current="true"] { width: 22px; background: var(--ink); }
+
+  /* trust strip: smaller pills */
+  .trust p { font-size: 13px; }
+  /* phones: the line sits centred on its own row above the brand pills */
+  .trust-in { flex-direction: column; align-items: stretch; gap: 14px; }
+  .trust p { max-width: none; text-align: center; }
+  .logos { flex: none; width: 100%; }
+  .logos-track { padding-block: 6px; }
+  .logos-track .logo { margin-right: 10px; padding: 6px 14px 6px 6px; gap: 8px; font-size: 12.5px; }
+  .logos-track .logo img { width: 26px; height: 26px; }
+
+  /* type: smaller paragraphs and card titles on phones */
+  main section:not(.showcase) p, main .lede, .ticks li { font-size: 13px; line-height: 1.6; }
+  /* shorter page on phones: skip the sections that repeat others or aren't live yet */
+  .m-hide { display: none; }
+  #currencies .ng { display: none; }
+  /* phones: headings carry these sections on their own */
+  .prod-head .lede, #currencies .ng-head .lede { display: none; }
+  /* currencies: its own top spacing now that Builders Circle is hidden above it */
+  #currencies { padding-top: 72px !important; }
+  #currencies .wrap { padding-inline: max(28px, env(safe-area-inset-left, 0px)); }
+  #currencies .ng-head h2 { margin-top: 14px !important; }
+  #currencies .ng-head .lede { margin-top: 14px !important; max-width: 24em; text-wrap: balance; }
+  #currencies .fx { margin-top: 32px; gap: 18px; }
+  .fx-chips button { padding: 8px 13px; font-size: 13.5px; }
+  .fx-card { padding: 20px; gap: 14px; }
+  .fx-amt { font-size: clamp(36px, 11vw, 44px); }
+  .fx-top .up { font-size: 12px; }
+  main h3 { font-size: 18px; line-height: 1.25; }
+  .qa h3 button { font-size: 16px; }
+}
+@media (min-width: 561px) { .stack-dots { display: none; } }
+
+/* ---------- MOBILE: order flow as step pills right above the two phones ---------- */
+@media (max-width: 560px) {
+  .flow-sub, .flow-count, .flow .touch { display: none; }
+  .flow-grid > * { min-width: 0; }
+  .flow-pills { display: flex; gap: 6px; margin-top: 24px; max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; touch-action: pan-x pan-y; cursor: grab; scrollbar-width: none; -webkit-overflow-scrolling: touch; scroll-behavior: smooth; -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent); mask-image: linear-gradient(90deg, #000 85%, transparent); }
+  .flow-pills::-webkit-scrollbar { display: none; }
+  .flow-pills.at-end { -webkit-mask-image: none; mask-image: none; }
+  .flow-pills.dragging { cursor: grabbing; scroll-behavior: auto; }
+  .flow-pills.dragging button { pointer-events: none; }
+  .flow-pills button { all: unset; flex: none; cursor: pointer; font-family: var(--btn-font); font-size: 13px; font-weight: 600; line-height: 1.2; padding: 8px 14px; border-radius: 999px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); color: rgba(255,255,255,.72); white-space: nowrap; transition: background .3s, color .3s, border-color .3s; }
+  .flow-pills button[aria-selected="true"] { background: var(--lime); border-color: var(--lime); color: var(--ink); }
+  .flow-pills button:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
+  .flow-list { display: flex; flex-wrap: wrap; margin-top: 0; }
+  .flow-list li { display: contents; }
+  .flow-list li > button { display: none; }
+  .flow-list .fb, .flow-list .flow-prog { display: none; }
+  .flow-list li.on .fb { display: block; order: 1; flex-basis: 100%; margin-top: 14px; }
+  .flow-list li.on .fb p { opacity: 1; translate: none; padding: 0; font-size: 13px; line-height: 1.55; min-height: 4.65em; }
+  .flow-list li.on .flow-prog { display: block; order: 2; position: relative; flex-basis: 100%; top: auto; bottom: auto; left: auto; width: auto; height: 2px; margin-top: 10px; }
+  .flow-list li.on .flow-prog i { height: 100%; width: 0; animation-name: flowprogx; }
+  .flow.paused .flow-list li.on .flow-prog i { width: 100%; }
+  .flow.inview .flow-list:hover li.on .flow-prog i { animation-play-state: running; }
+  .flow-stage { padding-top: 28px; justify-items: stretch; }
+  /* phones: size the two screens to the column instead of zooming (zoom centres unevenly on mobile Safari) */
+  .duo { zoom: 1; width: 100%; justify-content: center; gap: 12px; }
+  .duo .side { flex: 1 1 0; min-width: 0; max-width: 190px; gap: 10px; }
+  .duo .phone { width: 100%; padding: 6px; border-radius: 26px; }
+  .duo .phone-screen { border-radius: 21px; }
+  .duo .side-tag { font-size: 11px; padding: 5px 10px; gap: 6px; white-space: nowrap; }
+  .duo .side-tag img { height: 10px; }
+  .cust-side { margin-top: 28px; }
+  .duo-note { margin-top: 14px; font-size: 12px; }
+}
+@keyframes flowprogx { to { width: 100%; } }
+.flow-pills { display: none; }
+@media (max-width: 560px) { .flow-pills { display: flex; } }
+
+/* ---------- MORE FROM FYLL: three compact cards (row on computers, swipe row on phones) ---------- */
+.prods { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 40px; }
+.prods .prod { grid-column: auto; grid-row: auto; grid-template-columns: 1fr; grid-template-rows: auto 1fr; align-content: start; align-items: start; gap: 18px; padding: 22px 22px 0; border-radius: 24px; }
+.prods .prod-copy { gap: 10px; padding-bottom: 0; align-self: start; }
+.prods .prod h3 { font-size: 20px; line-height: 1.2; letter-spacing: -0.015em; }
+.prods .prod p { font-size: 14px; line-height: 1.5; }
+.prods .prod-name { font-size: 11px; gap: 5px; padding: 3px 9px 3px 8px; }
+.prods .prod-name img { height: 9px; }
+.prods .mini-steps, .p-store .prod-copy .link-arrow + .link-arrow { display: none; }
+.prods .link-arrow { font-size: 14px; }
+/* the picture: one short strip at the bottom of each card */
+.prods .prod-vis { height: 190px; overflow: hidden; align-self: end; border-radius: 16px 16px 0 0; }
+.prods .p-store .prod-vis { padding: 16px 16px 0; }
+.prods .browser { border-radius: 12px 12px 0 0; }
+.prods .b-bar { padding: 8px 10px; font-size: 10px; }
+.prods .b-bar i { width: 7px; height: 7px; }
+.prods .added, .prods .stamp-pop { font-size: 11px; padding: 6px 12px 6px 6px; gap: 8px; bottom: 14px; }
+.prods .added .tick, .prods .stamp-pop .tick { width: 18px; height: 18px; font-size: 10px; }
+.prods .checkout-shot { margin: 0 10px; rotate: -2deg; translate: 0 10px; }
+.prods .checkout-shot img { border-radius: 14px; }
+.prods .stamp-pop { top: auto; bottom: 18px; }
+.prods .p-rev .prod-vis { display: grid; align-content: start; padding: 8px 10px 0; }
+.prods .rev { padding: 12px 14px; font-size: 12px; }
+.prods .r2 { margin: -4px -4px 0 18px; }
+@media (max-width: 1080px) {
+  .prods { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 860px) {
+  /* phones and small tablets: a sideways swipe row, one card and a peek of the next */
+  .prods { display: grid; grid-auto-flow: column; grid-template-columns: none; grid-auto-columns: 78%; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; -webkit-overflow-scrolling: touch; margin-top: 28px; padding-bottom: 4px; }
+  .prods::-webkit-scrollbar { display: none; }
+  .prods .prod { scroll-snap-align: start; padding: 18px 18px 0; gap: 14px; }
+  .prods .prod h3 { font-size: 18px; }
+  .prods .prod p { font-size: 13px; }
+  .prods .prod-vis { height: 160px; }
+}
 </style>
 
 <!-- NAV -->
@@ -1157,9 +1337,9 @@ section[id] { scroll-margin-top: 110px; }
     </div>
 
     <div class="show-head">
-      <span class="eyebrow">The operations app for growing businesses</span>
+      <span class="eyebrow"><span class="p-long">The operations app for growing businesses</span><span class="p-short">For growing businesses</span></span>
       <h1>Your whole back office, in one app.</h1>
-      <p>Orders, payments, deliveries, stock, money and your team. Built with business owners who used to run things across social media, chats, notebooks and spreadsheets.</p>
+      <p><span class="p-long">Orders, payments, deliveries, stock, money and your team. Built with business owners who used to run things across social media, chats, notebooks and spreadsheets.</span><span class="p-short">Orders, payments, stock and deliveries,<br> all in one place.</span></p>
       <div class="hero-cta" style="justify-content:center">
         <a class="btn btn-ink" href="https://dashboard.fyll.app/request-invite">Get started</a>
         <a class="btn btn-line" href="#features">Explore features</a>
@@ -1208,11 +1388,11 @@ section[id] { scroll-margin-top: 110px; }
   <div class="wrap mid trust-in">
     <p>Already trusted by growing Nigerian brands.</p>
     <div class="logos"><div class="logos-track">
-      <a class="logo" href="https://minteyewear.fyll.store"><img loading="lazy" decoding="async" src="/landing/img/brands/minteyewear.png" alt="">Mint Eyewear</a>
-      <a class="logo" href="https://mymaiskin.fyll.store"><img loading="lazy" decoding="async" src="/landing/img/brands/mymaiskin.jpg" alt="">My Mai Skin</a>
-      <a class="logo" href="https://perfumeelysium.fyll.store"><img loading="lazy" decoding="async" src="/landing/img/brands/perfumeelysium.jpg" alt="">Perfume Elysium</a>
-      <a class="logo" href="https://hausofkorey.fyll.store"><img loading="lazy" decoding="async" src="/landing/img/brands/hausofkorey.jpg" alt="">Haus of Korey</a>
-      <a class="logo" href="https://ijekujebustop.fyll.store"><img loading="lazy" decoding="async" src="/landing/img/brands/ijekujebustop.jpg" alt="">Ijekuje Bustop</a>
+      <a class="logo" href="https://minteyewear.fyll.store"><img loading="lazy" decoding="async" src="/landing/img/brands/minteyewear.webp" alt="">Mint Eyewear</a>
+      <a class="logo" href="https://mymaiskin.fyll.store"><img loading="lazy" decoding="async" src="/landing/img/brands/mymaiskin.webp" alt="">My Mai Skin</a>
+      <a class="logo" href="https://perfumeelysium.fyll.store"><img loading="lazy" decoding="async" src="/landing/img/brands/perfumeelysium.webp" alt="">Perfume Elysium</a>
+      <a class="logo" href="https://hausofkorey.fyll.store"><img loading="lazy" decoding="async" src="/landing/img/brands/hausofkorey.webp" alt="">Haus of Korey</a>
+      <a class="logo" href="https://ijekujebustop.fyll.store"><img loading="lazy" decoding="async" src="/landing/img/brands/ijekujebustop.webp" alt="">Ijekuje Bustop</a>
     </div></div>
   </div>
 </div>
@@ -1221,22 +1401,22 @@ section[id] { scroll-margin-top: 110px; }
 <section class="people-sec" aria-label="Businesses that run on chats, shops and stalls">
   <div class="people">
     <figure class="pp" tabindex="0">
-      <img loading="lazy" decoding="async" src="/landing/img/u/fashion.jpg" alt="A fashion store owner smiling with her phone at the counter">
+      <img loading="lazy" decoding="async" src="/landing/img/u/fashion.webp" alt="A fashion store owner smiling with her phone at the counter">
       <div class="ui ui-pad pp-ui"><div class="ui-label">Partner job</div><div class="row" style="margin-top:8px"><span class="who">12 kaftans<small>Due Friday</small></span><span class="pill p-lime">In progress</span></div></div>
       <figcaption class="pp-tag">Fashion &amp; boutiques</figcaption>
     </figure>
     <figure class="pp" tabindex="0">
-      <img loading="lazy" decoding="async" src="/landing/img/u/shop.jpg" alt="A store owner checking stock on a tablet">
+      <img loading="lazy" decoding="async" src="/landing/img/u/shop.webp" alt="A store owner checking stock on a tablet">
       <div class="ui ui-pad pp-ui"><div class="ui-label">Walk-in sale</div><div class="row" style="margin-top:8px"><span class="who">#1046 · In store<small>Stock updated</small></span><span class="amt num">₦9,500</span></div></div>
       <figcaption class="pp-tag">Shops &amp; stores</figcaption>
     </figure>
     <figure class="pp" tabindex="0">
-      <img loading="lazy" decoding="async" src="/landing/img/u/packing.jpg" alt="Two founders packing an order together">
+      <img loading="lazy" decoding="async" src="/landing/img/u/packing.webp" alt="Two founders packing an order together">
       <div class="ui ui-pad pp-ui"><div class="ui-label">Order #1043</div><div class="row" style="margin-top:8px"><span class="who">Packed<small>Label ready to print</small></span><span class="pill p-paid">Ready</span></div></div>
       <figcaption class="pp-tag">Makers &amp; brands</figcaption>
     </figure>
     <figure class="pp" tabindex="0">
-      <img loading="lazy" decoding="async" src="/landing/img/u/baker.jpg" alt="A smiling baker in his bakery">
+      <img loading="lazy" decoding="async" src="/landing/img/u/baker.webp" alt="A smiling baker in his bakery">
       <div class="ui ui-pad pp-ui"><div class="ui-label">Transfer received</div><div class="row" style="margin-top:8px"><span class="who">Paid via transfer<small>Approved in one tap</small></span><span class="amt num">₦7,800</span></div></div>
       <figcaption class="pp-tag">Food &amp; bakeries</figcaption>
     </figure>
@@ -1252,7 +1432,7 @@ section[id] { scroll-margin-top: 110px; }
     <div class="sell">
       <figure class="sell-card sell-wide">
         <div class="sell-vis">
-          <img loading="lazy" decoding="async" src="/landing/img/u/boutique.jpg" alt="A boutique owner smiling at an order on her phone">
+          <img loading="lazy" decoding="async" src="/landing/img/u/boutique.webp" alt="A boutique owner smiling at an order on her phone">
           <div class="chan" aria-hidden="true">
             <div class="chan-pills">
               <span class="on" data-c="0">Instagram</span><span data-c="1">WhatsApp</span><span data-c="2">Storefront</span><span data-c="3">Walk-in</span><span data-c="4">WooCommerce</span>
@@ -1269,7 +1449,7 @@ section[id] { scroll-margin-top: 110px; }
       <figure class="sell-card sell-slim">
         <div class="sell-vis slim-vis">
           <div class="phone mint-phone">
-            <div class="phone-screen mint-screen"><img loading="lazy" decoding="async" src="/landing/img/app/mint-store.jpg" alt="Mint Eyewear's store on Fyll, on a phone"></div>
+            <div class="phone-screen mint-screen"><img loading="lazy" decoding="async" src="/landing/img/app/mint-store.webp" alt="Mint Eyewear's store on Fyll, on a phone"></div>
           </div>
           <span class="live-tag"><i></i>Live on Fyll</span>
         </div>
@@ -1280,10 +1460,10 @@ section[id] { scroll-margin-top: 110px; }
 </section>
 
 <!-- HUMAN SPLIT -->
-<section style="padding-top:0">
+<section class="m-hide" style="padding-top:0">
   <div class="wrap mid human">
     <div class="photo">
-      <img loading="lazy" decoding="async" src="/landing/img/u/snap.jpg" alt="A seller photographing a jumper on his phone for his store">
+      <img loading="lazy" decoding="async" src="/landing/img/u/snap.webp" alt="A seller photographing a jumper on his phone for his store">
       <div class="notifs" aria-hidden="true">
         <div class="notif"><span class="ic"><img loading="lazy" decoding="async" src="/landing/img/wordmark.svg" alt=""></span><div><b>New order · ₦42,500</b><span>Bola Adeyemi paid via Instagram</span></div><time>now</time></div>
         <div class="notif"><span class="ic"><img loading="lazy" decoding="async" src="/landing/img/wordmark.svg" alt=""></span><div><b>Transfer proof uploaded</b><span>Tap to approve ₦18,000</span></div><time>2m</time></div>
@@ -1324,7 +1504,7 @@ section[id] { scroll-margin-top: 110px; }
         <div class="prod-vis" aria-hidden="true">
           <div class="browser">
             <div class="b-bar"><i></i><i></i><i></i><span>🔒 perfumeelysium.fyll.store</span></div>
-            <div class="b-shot"><img loading="lazy" decoding="async" src="/landing/img/shot-storefront.jpg" alt=""></div>
+            <div class="b-shot"><img loading="lazy" decoding="async" src="/landing/img/shot-storefront.webp" alt=""></div>
             <div class="added"><span class="tick">✓</span>Added to bag · Leen Perfume 100ml</div>
           </div>
         </div>
@@ -1340,7 +1520,7 @@ section[id] { scroll-margin-top: 110px; }
         </div>
         <div class="prod-vis" aria-hidden="true">
           <div class="checkout-shot">
-            <img loading="lazy" decoding="async" src="/landing/img/shot-checkout.jpg" alt="">
+            <img loading="lazy" decoding="async" src="/landing/img/shot-checkout.webp" alt="">
             <div class="stamp-pop"><span class="tick">✓</span>Receipt uploaded · Order confirmed</div>
           </div>
         </div>
@@ -1371,7 +1551,7 @@ section[id] { scroll-margin-top: 110px; }
     </div>
     <div class="rail">
       <article class="fcard">
-        <div class="fimg photo-bg mai-bg" style="background-image:url(/landing/img/u/mai.jpg);background-position:50% 45%"><div class="ui ui-pad"><div class="ui-label">Today</div><div class="ui-big num" style="font-size:30px">24 orders</div><div style="font-size:12px;color:var(--ink-3)">9 to dispatch · 3 awaiting payment</div></div></div>
+        <div class="fimg photo-bg mai-bg" style="background-image:url(/landing/img/u/mai.webp);background-position:50% 45%"><div class="ui ui-pad"><div class="ui-label">Today</div><div class="ui-big num" style="font-size:30px">24 orders</div><div style="font-size:12px;color:var(--ink-3)">9 to dispatch · 3 awaiting payment</div></div></div>
         <div class="fbody"><h3>Orders</h3><p>One list across every channel, with what needs attention first.</p><span class="tag t-ord">Orders</span></div>
       </article>
       <article class="fcard">
@@ -1379,15 +1559,15 @@ section[id] { scroll-margin-top: 110px; }
         <div class="fbody"><h3>Payment links</h3><p>Customer pays by transfer, uploads proof, you approve.</p><span class="tag t-pay">Fyll payment links</span></div>
       </article>
       <article class="fcard">
-        <div class="fimg photo-bg" style="background-image:url(/landing/img/u/bloomingblends.jpg);background-position:40% 50%"><div class="ui ui-pad" style="padding:14px 16px"><div style="font-size:12px;color:var(--ink-3)">🔒 bloomingblends.fyll.store</div><div style="font-weight:700;margin-top:4px">Shop now, pay by transfer</div></div></div>
+        <div class="fimg photo-bg" style="background-image:url(/landing/img/u/bloomingblends.webp);background-position:40% 50%"><div class="ui ui-pad" style="padding:14px 16px"><div style="font-size:12px;color:var(--ink-3)">🔒 bloomingblends.fyll.store</div><div style="font-weight:700;margin-top:4px">Shop now, pay by transfer</div></div></div>
         <div class="fbody"><h3>Your own storefront</h3><p>A shop page with checkout built in. Orders arrive in Fyll straight away.</p><span class="tag t-shop">Storefront</span></div>
       </article>
       <article class="fcard">
-        <div class="fimg photo-bg" style="background-image:url(/landing/img/u/boxes.jpg)"><div class="ui ui-pad"><div class="ui-label">Status</div><div style="display:grid;gap:8px;margin-top:10px"><span class="pill p-paid" style="justify-self:start">● Delivered</span><span class="pill p-lime" style="justify-self:start">● With courier</span><span class="pill p-wait" style="justify-self:start">● Packing</span></div></div></div>
+        <div class="fimg photo-bg" style="background-image:url(/landing/img/u/boxes.webp)"><div class="ui ui-pad"><div class="ui-label">Status</div><div style="display:grid;gap:8px;margin-top:10px"><span class="pill p-paid" style="justify-self:start">● Delivered</span><span class="pill p-lime" style="justify-self:start">● With courier</span><span class="pill p-wait" style="justify-self:start">● Packing</span></div></div></div>
         <div class="fbody"><h3>Delivery and tracking</h3><p>Log couriers and give customers a tracking page.</p><span class="tag t-del">Delivery</span></div>
       </article>
       <article class="fcard">
-        <div class="fimg photo-bg inv-bg" style="background-image:url(/landing/img/u/inventory-tablet.jpg);background-position:50% 45%"><div class="ui ui-pad"><div class="row"><span class="who">Rose Oud 50ml<small>Low stock alert</small></span><span class="pill p-wait">3 left</span></div><div class="bar" style="margin-top:10px"><i style="width:12%;background:var(--warn)"></i></div></div></div>
+        <div class="fimg photo-bg inv-bg" style="background-image:url(/landing/img/u/inventory-tablet.webp);background-position:50% 45%"><div class="ui ui-pad"><div class="row"><span class="who">Rose Oud 50ml<small>Low stock alert</small></span><span class="pill p-wait">3 left</span></div><div class="bar" style="margin-top:10px"><i style="width:12%;background:var(--warn)"></i></div></div></div>
         <div class="fbody"><h3>Inventory</h3><p>Products, variants and stock across warehouses, with monthly audits.</p><span class="tag t-stk">Inventory</span></div>
       </article>
       <article class="fcard">
@@ -1395,7 +1575,7 @@ section[id] { scroll-margin-top: 110px; }
         <div class="fbody"><h3>Finance and expenses</h3><p>Record spending as it happens. See money in, out and left.</p><span class="tag t-fin">Finance</span></div>
       </article>
       <article class="fcard">
-        <div class="fimg photo-bg" style="background-image:url(/landing/img/u/voice.jpg)"><div class="ui ui-pad"><div class="row"><span class="av" style="background:var(--lime)">✦</span><span class="who">Case drafted<small>Wrong size delivered</small></span></div></div></div>
+        <div class="fimg photo-bg" style="background-image:url(/landing/img/u/voice.webp)"><div class="ui ui-pad"><div class="row"><span class="av" style="background:var(--lime)">✦</span><span class="who">Case drafted<small>Wrong size delivered</small></span></div></div></div>
         <div class="fbody"><h3>Cases with Fyll AI</h3><p>Upload complaint screenshots. Fyll AI drafts the case for your team.</p><span class="tag t-ai">Fyll AI</span></div>
       </article>
     </div>
@@ -1425,11 +1605,11 @@ section[id] { scroll-margin-top: 110px; }
           <div class="side-tag"><img loading="lazy" decoding="async" src="/landing/img/wordmark.svg" alt="">Your side</div>
           <div class="phone">
             <div class="phone-screen shots">
-              <img loading="lazy" decoding="async" class="screen-panel shot-panel on" data-step="0" src="/landing/img/app/y1-orders.jpg" alt="Fyll orders list">
-              <img class="screen-panel shot-panel" data-step="1" src="/landing/img/app/y2-payments.jpg" alt="Payments needing review in Fyll" loading="lazy">
-              <img class="screen-panel shot-panel" data-step="2" src="/landing/img/app/y3-detail.jpg" alt="Order detail with shipping label in Fyll" loading="lazy">
-              <img class="screen-panel shot-panel" data-step="3" src="/landing/img/app/y4-deliveries.jpg" alt="Deliveries in Fyll" loading="lazy">
-              <img class="screen-panel shot-panel" data-step="4" src="/landing/img/app/y5-delivered.jpg" alt="Delivered orders in Fyll" loading="lazy">
+              <img loading="lazy" decoding="async" class="screen-panel shot-panel on" data-step="0" src="/landing/img/app/y1-orders.webp" alt="Fyll orders list">
+              <img class="screen-panel shot-panel" data-step="1" src="/landing/img/app/y2-payments.webp" alt="Payments needing review in Fyll" loading="lazy">
+              <img class="screen-panel shot-panel" data-step="2" src="/landing/img/app/y3-detail.webp" alt="Order detail with shipping label in Fyll" loading="lazy">
+              <img class="screen-panel shot-panel" data-step="3" src="/landing/img/app/y4-deliveries.webp" alt="Deliveries in Fyll" loading="lazy">
+              <img class="screen-panel shot-panel" data-step="4" src="/landing/img/app/y5-delivered.webp" alt="Delivered orders in Fyll" loading="lazy">
             </div>
           </div>
         </div>
@@ -1437,11 +1617,11 @@ section[id] { scroll-margin-top: 110px; }
           <div class="side-tag light"><span class="cust-dot" aria-hidden="true"></span>Your customer's side</div>
           <div class="phone phone-light">
             <div class="phone-screen shots">
-              <img loading="lazy" decoding="async" class="screen-panel shot-panel on" data-step="0" src="/landing/img/app/c1-store.jpg" alt="The business storefront">
-              <img class="screen-panel shot-panel" data-step="1" src="/landing/img/app/c2-confirming.jpg" alt="Customer payment page confirming the transfer" loading="lazy">
-              <img class="screen-panel shot-panel" data-step="2" src="/landing/img/app/c3-preparing.jpg" alt="Customer tracking page showing the order being prepared" loading="lazy">
-              <img class="screen-panel shot-panel" data-step="3" src="/landing/img/app/c4-ontheway.jpg" alt="Customer tracking page showing the order on its way" loading="lazy">
-              <img class="screen-panel shot-panel" data-step="4" src="/landing/img/app/c5-confirm.jpg" alt="Customer delivery confirmation page" loading="lazy">
+              <img loading="lazy" decoding="async" class="screen-panel shot-panel on" data-step="0" src="/landing/img/app/c1-store.webp" alt="The business storefront">
+              <img class="screen-panel shot-panel" data-step="1" src="/landing/img/app/c2-confirming.webp" alt="Customer payment page confirming the transfer" loading="lazy">
+              <img class="screen-panel shot-panel" data-step="2" src="/landing/img/app/c3-preparing.webp" alt="Customer tracking page showing the order being prepared" loading="lazy">
+              <img class="screen-panel shot-panel" data-step="3" src="/landing/img/app/c4-ontheway.webp" alt="Customer tracking page showing the order on its way" loading="lazy">
+              <img class="screen-panel shot-panel" data-step="4" src="/landing/img/app/c5-confirm.webp" alt="Customer delivery confirmation page" loading="lazy">
             </div>
           </div>
         </div>
@@ -1460,7 +1640,7 @@ section[id] { scroll-margin-top: 110px; }
 </section>
 
 <!-- BUILDERS CIRCLE -->
-<section id="stories">
+<section id="stories" class="m-hide">
   <div class="wrap wide">
     <div class="circle-head">
       <h2><span>Hear from the founders building</span> <span>Africa's next great businesses.</span></h2>
@@ -1474,7 +1654,7 @@ section[id] { scroll-margin-top: 110px; }
         </div>
       </article>
       <article class="story pic">
-        <img loading="lazy" decoding="async" src="/landing/img/u/cafe.jpg" alt="Two café owners checking orders on a tablet">
+        <img loading="lazy" decoding="async" src="/landing/img/u/cafe.webp" alt="Two café owners checking orders on a tablet">
         <div class="glass">
           <span class="ep"><span class="play" aria-hidden="true"></span>The Builders Circle podcast · Coming soon</span>
           Founders on how they run their businesses, day to day.
@@ -1482,7 +1662,7 @@ section[id] { scroll-margin-top: 110px; }
       </article>
       <article class="story circle">
         <div class="avatars" aria-hidden="true">
-          <img loading="lazy" decoding="async" src="/landing/img/u/fashion.jpg" alt=""><img loading="lazy" decoding="async" src="/landing/img/u/shop.jpg" alt=""><img loading="lazy" decoding="async" src="/landing/img/u/packing.jpg" alt=""><img loading="lazy" decoding="async" src="/landing/img/u/baker.jpg" alt=""><span>+</span>
+          <img loading="lazy" decoding="async" src="/landing/img/u/fashion.webp" alt=""><img loading="lazy" decoding="async" src="/landing/img/u/shop.webp" alt=""><img loading="lazy" decoding="async" src="/landing/img/u/packing.webp" alt=""><img loading="lazy" decoding="async" src="/landing/img/u/baker.webp" alt=""><span>+</span>
         </div>
         <div style="display:grid;gap:16px;justify-items:start">
           <span class="soon">Coming soon</span>
@@ -1501,7 +1681,7 @@ section[id] { scroll-margin-top: 110px; }
     <div class="ng-head">
       <span class="eyebrow">Made for how Africa does business</span>
       <h2 style="margin-top:18px">Your money, in your currency.</h2>
-      <p class="lede" style="margin-top:20px">From naira to cedis, shillings and rand, Fyll keeps your prices, payments and reports in the currency your business runs on.</p>
+      <p class="lede" style="margin-top:20px"><span class="p-long">From naira to cedis, shillings and rand, Fyll keeps your prices, payments and reports in the currency your business runs on.</span><span class="p-short">Prices, payments and reports in naira, cedis, shillings, rand or dollars.</span></p>
     </div>
 
     <div class="fx">
@@ -1861,8 +2041,38 @@ section[id] { scroll-margin-top: 110px; }
   if (flow) {
     var items = $$('.flow-list li', flow), panels = $$('.screen-panel', flow), count = $('#flow-n');
     if (reduce) flow.classList.add('paused');
+    /* phones: the steps as one row of pills that scrolls sideways */
+    var pillRow = document.createElement('div'), pills = [];
+    pillRow.className = 'flow-pills'; pillRow.setAttribute('role', 'tablist'); pillRow.setAttribute('aria-label', 'Order steps');
+    items.forEach(function (li, i) {
+      var b = document.createElement('button'); b.type = 'button'; b.setAttribute('role', 'tab');
+      b.textContent = $('button', li).textContent; b.setAttribute('aria-selected', i === 0 ? 'true' : 'false');
+      b.addEventListener('click', function () { $('button', li).click(); });
+      pills.push(b); pillRow.appendChild(b);
+    });
+    var list = $('.flow-list', flow); list.parentNode.insertBefore(pillRow, list);
+    var dragX = null, dragLeft = 0, dragMoved = false;
+    pillRow.addEventListener('pointerdown', function (e) {
+      if (e.pointerType !== 'mouse') return;
+      dragX = e.clientX; dragLeft = pillRow.scrollLeft; dragMoved = false;
+    });
+    window.addEventListener('pointermove', function (e) {
+      if (dragX === null) return;
+      var dx = e.clientX - dragX;
+      if (!dragMoved && Math.abs(dx) > 5) { dragMoved = true; pillRow.classList.add('dragging'); }
+      if (dragMoved) pillRow.scrollLeft = dragLeft - dx;
+    });
+    window.addEventListener('pointerup', function () {
+      if (dragX === null) return;
+      dragX = null;
+      setTimeout(function () { pillRow.classList.remove('dragging'); }, 0);
+    });
+    pillRow.addEventListener('click', function (e) { if (dragMoved) { e.stopPropagation(); e.preventDefault(); dragMoved = false; } }, true);
+    pillRow.addEventListener('scroll', function () { pillRow.classList.toggle('at-end', pillRow.scrollLeft + pillRow.clientWidth >= pillRow.scrollWidth - 4); });
     var showStep = function (i) {
       items.forEach(function (li, n) { li.classList.toggle('on', n === i); });
+      pills.forEach(function (b, n) { b.setAttribute('aria-selected', n === i ? 'true' : 'false'); });
+      if (pills[i] && pillRow.scrollWidth > pillRow.clientWidth) pillRow.scrollLeft = Math.max(0, pills[i].offsetLeft - pillRow.offsetLeft - 24);
       panels.forEach(function (p) { p.classList.toggle('on', +p.getAttribute('data-step') === i); });
       if (count) count.textContent = i + 1;
     };
@@ -2086,4 +2296,76 @@ section[id] { scroll-margin-top: 110px; }
 })();
 </script>
 
+
+<!-- COOKIE NOTICE -->
+<div class="cookie" id="cookie" role="dialog" aria-labelledby="cookie-title" aria-describedby="cookie-text" hidden>
+  <p id="cookie-text"><b id="cookie-title">Cookies on fyll.app</b>We use a few cookies to keep the site working and to see which pages help people most.</p>
+  <div class="cookie-btns">
+    <button type="button" class="cbtn cbtn-line" data-choice="declined">Decline</button>
+    <button type="button" class="cbtn cbtn-ink" data-choice="accepted">Accept</button>
+  </div>
+</div>
+<script>
+(function () {
+  /* cookie notice: shown once, the answer is remembered on this device */
+  var box = document.getElementById('cookie'), KEY = 'fyll-cookie-choice', saved = null;
+  try { saved = localStorage.getItem(KEY); } catch (e) {}
+  if (box && !saved) {
+    setTimeout(function () { box.hidden = false; box.classList.add('in'); }, 1200);
+    box.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-choice]'); if (!b) return;
+      try { localStorage.setItem(KEY, b.getAttribute('data-choice')); } catch (err) {}
+      box.classList.remove('in'); box.classList.add('out');
+      setTimeout(function () { box.hidden = true; }, 360);
+    });
+  }
+
+  /* phones: the hero cards become one stack that changes every few seconds */
+  var grid = document.querySelector('.show-grid');
+  var small = window.matchMedia ? window.matchMedia('(max-width: 560px)') : null;
+  if (!grid || !small) return;
+  /* three cards on phones: payment, stock, delivery */
+  var shots = Array.prototype.slice.call(grid.querySelectorAll('.shot')).slice(0, 3);
+  if (shots.length < 2) return;
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var front = 0, timer = null, visible = true, dots = null;
+  var paint = function () {
+    shots.forEach(function (s, i) {
+      var pos = (i - front + shots.length) % shots.length;
+      s.setAttribute('data-pos', pos < 3 ? String(pos) : 'back');
+      s.setAttribute('aria-hidden', pos === 0 ? 'false' : 'true');
+    });
+    if (dots) Array.prototype.forEach.call(dots.children, function (d, i) { d.setAttribute('aria-current', i === front ? 'true' : 'false'); });
+  };
+  var go = function (to) {
+    var leaving = shots[front];
+    front = (to + shots.length) % shots.length;
+    paint();
+    if (leaving !== shots[front]) { leaving.setAttribute('data-pos', 'gone'); setTimeout(function () { paint(); }, 650); }
+  };
+  var start = function () { stop(); if (!reduce && visible) timer = setInterval(function () { go(front + 1); }, 3400); };
+  var stop = function () { if (timer) clearInterval(timer); timer = null; };
+  var on = false;
+  var setup = function () {
+    if (small.matches && !on) {
+      on = true;
+      dots = document.createElement('div'); dots.className = 'stack-dots'; dots.setAttribute('aria-label', 'Choose a card');
+      shots.forEach(function (_, i) { var d = document.createElement('button'); d.type = 'button'; d.setAttribute('aria-label', 'Card ' + (i + 1)); d.addEventListener('click', function () { go(i); start(); }); dots.appendChild(d); });
+      grid.appendChild(dots);
+      shots.forEach(function (s) { s.addEventListener('click', onTap); });
+      paint(); start();
+    } else if (!small.matches && on) {
+      on = false; stop();
+      shots.forEach(function (s) { s.removeAttribute('data-pos'); s.removeAttribute('aria-hidden'); s.removeEventListener('click', onTap); });
+      if (dots) dots.remove(); dots = null;
+    }
+  };
+  var onTap = function () { go(front + 1); start(); };
+  if ('IntersectionObserver' in window) {
+    new IntersectionObserver(function (es) { visible = es[0].isIntersecting; if (on) { if (visible) start(); else stop(); } }).observe(grid);
+  }
+  if (small.addEventListener) small.addEventListener('change', setup); else if (small.addListener) small.addListener(setup);
+  setup();
+})();
+</script>
 </body></html>

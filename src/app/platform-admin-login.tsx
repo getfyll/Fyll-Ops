@@ -9,8 +9,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { FyllLogo } from '@/components/FyllLogo';
 import useAuthStore from '@/lib/state/auth-store';
 import { useThemeColors } from '@/lib/theme';
+import { useAuthButtonFont } from '@/components/auth/AuthShell';
 
 export default function PlatformAdminLoginScreen() {
+  const buttonFont = useAuthButtonFont();
   const router = useRouter();
   const colors = useThemeColors();
   const login = useAuthStore((s) => s.login);
@@ -100,7 +102,7 @@ export default function PlatformAdminLoginScreen() {
                     >
                       <Shield size={28} color="#F8FAFC" strokeWidth={1.8} />
                     </View>
-                    <Text style={{ color: '#F8FAFC', fontSize: 34, fontWeight: '700', marginTop: 22 }}>
+                    <Text style={{ color: '#F8FAFC', fontSize: 34, fontWeight: '600', marginTop: 22 }}>
                       Fyll Platform Console
                     </Text>
                     <Text style={{ color: 'rgba(248,250,252,0.72)', fontSize: 15, lineHeight: 23, marginTop: 10, maxWidth: 420 }}>
@@ -153,7 +155,7 @@ export default function PlatformAdminLoginScreen() {
                           {item.icon}
                         </View>
                         <View style={{ flex: 1 }}>
-                          <Text style={{ color: '#F8FAFC', fontSize: 14, fontWeight: '700' }}>
+                          <Text style={{ color: '#F8FAFC', fontSize: 14, fontWeight: '600' }}>
                             {item.title}
                           </Text>
                           <Text style={{ color: 'rgba(248,250,252,0.68)', fontSize: 12, lineHeight: 18, marginTop: 4 }}>
@@ -192,7 +194,7 @@ export default function PlatformAdminLoginScreen() {
                   </View>
 
                   <FyllLogo width={82} color="#111111" />
-                  <Text style={{ color: '#111111', fontSize: 28, fontWeight: '700', marginTop: 18 }}>
+                  <Text style={{ color: '#111111', fontSize: 28, fontWeight: '600', marginTop: 18 }}>
                     Admin Sign In
                   </Text>
                   <Text style={{ color: '#6B7280', fontSize: 14, lineHeight: 21, marginTop: 8 }}>
@@ -310,13 +312,13 @@ export default function PlatformAdminLoginScreen() {
                     {isLoading ? (
                       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                         <ActivityIndicator size="small" color="#FFFFFF" />
-                        <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '700', marginLeft: 10 }}>
+                        <Text style={[{ color: '#FFFFFF', fontSize: 15, marginLeft: 10 }, buttonFont]}>
                           Signing in...
                         </Text>
                       </View>
                     ) : (
                       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '700' }}>
+                        <Text style={[{ color: '#FFFFFF', fontSize: 15 }, buttonFont]}>
                           Enter platform console
                         </Text>
                         <ArrowRight size={16} color="#FFFFFF" strokeWidth={2.2} style={{ marginLeft: 8 }} />

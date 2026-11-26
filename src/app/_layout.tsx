@@ -4,6 +4,7 @@ import { useBusinessSwitcherStore } from '@/lib/state/business-switcher-store';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack, useGlobalSearchParams, usePathname, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+import { useFonts as usePublicSansFonts, PublicSans_300Light, PublicSans_400Regular, PublicSans_500Medium, PublicSans_600SemiBold, PublicSans_700Bold, PublicSans_800ExtraBold } from '@expo-google-fonts/public-sans';
 import { StatusBar } from 'expo-status-bar';
 import { useColorScheme } from '@/lib/useColorScheme';
 import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
@@ -842,6 +843,8 @@ function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null |
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+  // Public Sans is the Fyll font for all text and headings (buttons use Bricolage SemiBold).
+  usePublicSansFonts({ PublicSans_300Light, PublicSans_400Regular, PublicSans_500Medium, PublicSans_600SemiBold, PublicSans_700Bold, PublicSans_800ExtraBold });
 
   // On phones, tell React Query when the app goes to the background so background polling pauses (the browser
   // does this for web tabs already).

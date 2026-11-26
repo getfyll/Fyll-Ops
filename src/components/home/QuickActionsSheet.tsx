@@ -55,7 +55,7 @@ export function QuickActionsSheet({
   const reduced = useReducedMotion();
   const [fontLoaded] = useFonts({ BricolageGrotesque_600SemiBold });
   // Titles are Bricolage SemiBold (a step lighter than the bold used for big numbers).
-  const titleFont = fontLoaded ? ({ fontFamily: 'BricolageGrotesque_600SemiBold', fontWeight: '400' } as const) : ({ fontWeight: '600' } as const);
+  const titleFont = fontLoaded ? ({ fontFamily: 'PublicSans_600SemiBold', fontWeight: '400' } as const) : ({ fontWeight: '600' } as const);
   const { width } = useWindowDimensions();
   const progress = useSharedValue(0);
   const dragY = useSharedValue(0);

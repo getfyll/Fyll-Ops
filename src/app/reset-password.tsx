@@ -6,12 +6,14 @@ import { Eye, EyeOff, KeyRound } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
 import { useThemeColors } from '@/lib/theme';
 import { FYLL_LIME, FYLL_LIME_INK } from '@/components/payments/payments-ui';
+import { useAuthButtonFont } from '@/components/auth/AuthShell';
 
 // Public page: the "Reset your password" email links here. Supabase signs the visitor into a
 // short-lived recovery session from the link, and this page uses it to set the new password.
 type Stage = 'checking' | 'form' | 'invalid' | 'done';
 
 export default function ResetPasswordScreen() {
+  const buttonFont = useAuthButtonFont();
   const router = useRouter();
   const colors = useThemeColors();
   const [stage, setStage] = useState<Stage>('checking');
@@ -87,7 +89,7 @@ export default function ResetPasswordScreen() {
       disabled={loading}
       style={{ height: 50, borderRadius: 999, backgroundColor: FYLL_LIME, alignItems: 'center', justifyContent: 'center', opacity: loading ? 0.7 : 1 }}
     >
-      {loading ? <ActivityIndicator color={FYLL_LIME_INK} /> : <Text style={{ color: FYLL_LIME_INK, fontSize: 15.5, fontWeight: '700' }}>{label}</Text>}
+      {loading ? <ActivityIndicator color={FYLL_LIME_INK} /> : <Text style={[{ color: FYLL_LIME_INK, fontSize: 15.5 }, buttonFont]}>{label}</Text>}
     </Pressable>
   );
 
@@ -109,7 +111,7 @@ export default function ResetPasswordScreen() {
           {stage === 'form' ? (
             <>
               <View style={{ gap: 4 }}>
-                <Text style={{ color: colors.text.primary, fontSize: 22, fontWeight: '700' }}>Choose a new password</Text>
+                <Text style={{ color: colors.text.primary, fontSize: 22, fontWeight: '600' }}>Choose a new password</Text>
                 <Text style={{ color: colors.text.tertiary, fontSize: 14, lineHeight: 20 }}>Use at least 6 characters. You will sign in with it straight after.</Text>
               </View>
               <View style={{ gap: 10 }}>
@@ -150,7 +152,7 @@ export default function ResetPasswordScreen() {
           {stage === 'invalid' ? (
             <>
               <View style={{ gap: 4 }}>
-                <Text style={{ color: colors.text.primary, fontSize: 22, fontWeight: '700' }}>This link has expired</Text>
+                <Text style={{ color: colors.text.primary, fontSize: 22, fontWeight: '600' }}>This link has expired</Text>
                 <Text style={{ color: colors.text.tertiary, fontSize: 14, lineHeight: 20 }}>Reset links work once and expire quickly. Go back to sign in and choose Forgot password to get a fresh one.</Text>
               </View>
               {primaryButton('Back to sign in', goToLogin)}
@@ -160,7 +162,7 @@ export default function ResetPasswordScreen() {
           {stage === 'done' ? (
             <>
               <View style={{ gap: 4 }}>
-                <Text style={{ color: colors.text.primary, fontSize: 22, fontWeight: '700' }}>Password updated</Text>
+                <Text style={{ color: colors.text.primary, fontSize: 22, fontWeight: '600' }}>Password updated</Text>
                 <Text style={{ color: colors.text.tertiary, fontSize: 14, lineHeight: 20 }}>Sign in with your new password.</Text>
               </View>
               {primaryButton('Sign in', goToLogin)}

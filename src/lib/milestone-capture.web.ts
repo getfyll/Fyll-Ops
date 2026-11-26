@@ -8,8 +8,8 @@ const wordmarkAsset = require('../../assets/fyll-wordmark-thick-light.png');
 
 const LIME = '#d5e057';
 const SYSTEM_FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
-const DISPLAY_800 = 'BricolageGrotesque_800ExtraBold, "Helvetica Neue", Arial, sans-serif';
-const DISPLAY_700 = 'BricolageGrotesque_700Bold, "Helvetica Neue", Arial, sans-serif';
+const DISPLAY_800 = 'PublicSans_800ExtraBold, "Helvetica Neue", Arial, sans-serif';
+const DISPLAY_700 = 'PublicSans_700Bold, "Helvetica Neue", Arial, sans-serif';
 
 const loadImage = (uri: string) =>
   new Promise<HTMLImageElement | null>((resolve) => {

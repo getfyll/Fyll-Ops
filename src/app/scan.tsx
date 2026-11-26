@@ -38,7 +38,7 @@ export default function ScanScreen() {
   const palette = usePaymentsPalette();
   const { width } = useWindowDimensions();
   const [fontLoaded] = useFonts({ BricolageGrotesque_600SemiBold });
-  const semiBold = fontLoaded ? ({ fontFamily: 'BricolageGrotesque_600SemiBold', fontWeight: '400' } as const) : ({ fontWeight: '600' } as const);
+  const semiBold = fontLoaded ? ({ fontFamily: 'PublicSans_600SemiBold', fontWeight: '400' } as const) : ({ fontWeight: '600' } as const);
   const products = useFyllStore((s) => s.products);
   const updateVariantStock = useFyllStore((s) => s.updateVariantStock);
   const businessId = useAuthStore((s) => s.businessId ?? s.currentUser?.businessId ?? null);

@@ -39,7 +39,7 @@ export function MilestoneStoryCard({
   const number = formatMilestoneNumber(milestone);
   const display = (weight: '700' | '800') => (
     fontsReady
-      ? ({ fontFamily: weight === '800' ? 'BricolageGrotesque_800ExtraBold' : 'BricolageGrotesque_700Bold', fontWeight: '400' } as const)
+      ? ({ fontFamily: weight === '800' ? 'PublicSans_800ExtraBold' : 'PublicSans_700Bold', fontWeight: '400' } as const)
       : ({ fontWeight: weight } as const)
   );
   const initial = businessName.trim().charAt(0).toUpperCase() || 'F';

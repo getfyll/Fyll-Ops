@@ -67,7 +67,7 @@ export default function TeamManagementScreen({ embeddedInSettings = false }: Tea
   } as const;
   const primaryPillTextStyle = {
     color: '#202117',
-    fontFamily: 'BricolageGrotesque_700Bold',
+    fontFamily: 'PublicSans_700Bold',
     fontWeight: '400' as const,
   } as const;
 
@@ -382,7 +382,7 @@ export default function TeamManagementScreen({ embeddedInSettings = false }: Tea
           </View>
           <View className="flex-1 items-center justify-center px-6">
             <View style={{ width: 68, height: 68, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.limeWash, borderWidth: 1, borderColor: palette.limeBorder }}><Shield size={29} color={palette.limeInk} strokeWidth={1.8} /></View>
-            <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold', fontSize: 22, fontWeight: '400' }} className="mt-4">
+            <Text style={{ color: palette.ink, fontFamily: 'PublicSans_700Bold', fontSize: 22, fontWeight: '400' }} className="mt-4">
               Admin Access Required
             </Text>
             <Text style={{ color: palette.muted }} className="text-center mt-2">
@@ -421,7 +421,7 @@ export default function TeamManagementScreen({ embeddedInSettings = false }: Tea
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Workspace access</Text>
-                    <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_800ExtraBold', fontSize: 29, lineHeight: 34, letterSpacing: -0.8, marginTop: 2 }}>{teamMembers.length} {teamMembers.length === 1 ? 'member' : 'members'}</Text>
+                    <Text style={{ color: palette.ink, fontFamily: 'PublicSans_800ExtraBold', fontSize: 29, lineHeight: 34, letterSpacing: -0.8, marginTop: 2 }}>{teamMembers.length} {teamMembers.length === 1 ? 'member' : 'members'}</Text>
                     <Text style={{ color: palette.faint, fontSize: 12, marginTop: 2 }}>{pendingInvitesFiltered.length > 0 ? `${pendingInvitesFiltered.length} invitation${pendingInvitesFiltered.length === 1 ? '' : 's'} pending` : 'Roles and access are up to date'}</Text>
                   </View>
                 </View>
@@ -429,7 +429,7 @@ export default function TeamManagementScreen({ embeddedInSettings = false }: Tea
 
               <Pressable onPress={() => { resetInviteForm(); setShowInviteModal(true); }} style={({ pressed }) => ({ height: 48, marginBottom: 26, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, backgroundColor: palette.lime, opacity: pressed ? 0.78 : 1 })}>
                 <Mail size={16} color="#202117" strokeWidth={2.5} />
-                <Text style={{ color: '#202117', fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: 14 }}>Invite team member</Text>
+                <Text style={{ color: '#202117', fontFamily: 'PublicSans_700Bold', fontWeight: '400', fontSize: 14 }}>Invite team member</Text>
               </Pressable>
 
               {/* Pending Invites Section */}
@@ -547,7 +547,7 @@ export default function TeamManagementScreen({ embeddedInSettings = false }: Tea
               }}
             >
               <View className="flex-row items-center justify-between mb-6">
-                <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold', fontSize: 22, lineHeight: 27, fontWeight: '400' }}>
+                <Text style={{ color: palette.ink, fontFamily: 'PublicSans_700Bold', fontSize: 22, lineHeight: 27, fontWeight: '400' }}>
                   {lastCreatedInvite ? 'Invite Created' : 'Invite Member'}
                 </Text>
                 <Pressable
@@ -716,7 +716,7 @@ export default function TeamManagementScreen({ embeddedInSettings = false }: Tea
             <Pressable onPress={() => {}}>
             <View className="rounded-t-3xl px-5 pt-6 pb-10" style={{ backgroundColor: palette.surface, borderTopWidth: 1, borderColor: palette.edge }}>
               <View className="flex-row items-center justify-between mb-6">
-                <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold', fontSize: 22, lineHeight: 27, fontWeight: '400' }}>Edit Member</Text>
+                <Text style={{ color: palette.ink, fontFamily: 'PublicSans_700Bold', fontSize: 22, lineHeight: 27, fontWeight: '400' }}>Edit Member</Text>
                 <Pressable
                   onPress={() => {
                     setShowEditModal(false);

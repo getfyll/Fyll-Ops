@@ -107,8 +107,8 @@ export default function FyllPayPublicScreen() {
   const { width } = useWindowDimensions();
   const compact = width < 768;
   const [fontsLoaded] = useFonts({ BricolageGrotesque_600SemiBold, BricolageGrotesque_700Bold });
-  const headingFont = fontsLoaded ? { fontFamily: 'BricolageGrotesque_600SemiBold', fontWeight: '400' as const } : { fontWeight: '600' as const };
-  const numberFont = fontsLoaded ? { fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400' as const } : { fontWeight: '700' as const };
+  const headingFont = fontsLoaded ? { fontFamily: 'PublicSans_600SemiBold', fontWeight: '400' as const } : { fontWeight: '600' as const };
+  const numberFont = fontsLoaded ? { fontFamily: 'PublicSans_700Bold', fontWeight: '400' as const } : { fontWeight: '700' as const };
 
   const [amountText, setAmountText] = useState('');
   const [name, setName] = useState('');

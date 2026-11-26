@@ -45,7 +45,7 @@ function AmountText({ fontReady, style, ...props }: TextProps & { fontReady: boo
     <NativeText
       {...props}
       style={[
-        { fontFamily: fontReady ? 'BricolageGrotesque_800ExtraBold' : undefined, fontWeight: '800' },
+        { fontFamily: fontReady ? 'PublicSans_800ExtraBold' : undefined, fontWeight: '800' },
         style,
       ]}
     />

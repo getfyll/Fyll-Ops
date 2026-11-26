@@ -18,6 +18,7 @@
     "@bottom-tabs/react-navigation": "^0.12.2",
     "@expo-google-fonts/bricolage-grotesque": "^0.4.1",
     "@expo-google-fonts/dm-sans": "^0.4.2",
+    "@expo-google-fonts/public-sans": "^0.4.2",
     "@expo/html-elements": "^0.13.7",
     "@expo/metro-runtime": "~6.1.2",
     "@expo/react-native-action-sheet": "^4.1.1",

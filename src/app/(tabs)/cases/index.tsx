@@ -324,7 +324,7 @@ export default function CasesScreen() {
                     {dot ? <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: String(dot) }} /> : null}
                     <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>{label}</Text>
                   </View>
-                  <Text style={{ color: colors.text.primary, fontSize: index ? 22 : 28, fontWeight: index ? '600' : bricolageLoaded ? '400' : '700', fontFamily: !index && bricolageLoaded ? 'BricolageGrotesque_700Bold' : undefined, letterSpacing: index ? -0.5 : -0.9 }}>{value}</Text>
+                  <Text style={{ color: colors.text.primary, fontSize: index ? 22 : 28, fontWeight: index ? '600' : bricolageLoaded ? '400' : '700', fontFamily: !index && bricolageLoaded ? 'PublicSans_700Bold' : undefined, letterSpacing: index ? -0.5 : -0.9 }}>{value}</Text>
                   <Text style={{ color: colors.text.muted, fontSize: 13 }}>{caption}</Text>
                 </View>
               ))}
@@ -508,7 +508,7 @@ export default function CasesScreen() {
           <View style={{ marginHorizontal: 16, marginTop: 8, borderRadius: 20, borderWidth: 1, borderColor: separatorColor, backgroundColor: colors.bg.card, padding: 18, gap: 14 }}>
             <View style={{ gap: 4 }}>
               <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' }}>Open cases</Text>
-              <Text style={{ color: colors.text.primary, fontSize: 32, lineHeight: 36, fontWeight: bricolageLoaded ? '400' : '700', fontFamily: bricolageLoaded ? 'BricolageGrotesque_700Bold' : undefined, letterSpacing: -1 }}>{caseSummary.open} cases</Text>
+              <Text style={{ color: colors.text.primary, fontSize: 32, lineHeight: 36, fontWeight: bricolageLoaded ? '400' : '700', fontFamily: bricolageLoaded ? 'PublicSans_700Bold' : undefined, letterSpacing: -1 }}>{caseSummary.open} cases</Text>
               <Text style={{ color: colors.text.muted, fontSize: 13 }}>Currently requiring attention</Text>
             </View>
             <View style={{ height: 1, backgroundColor: separatorColor }} />

@@ -105,8 +105,7 @@ export function SectionLabel({ children, palette }: { children: React.ReactNode;
   );
 }
 
-// Headline money figures use Fyll's display face (Bricolage Grotesque, as on
-// the customer payment pages) — the one typographic brand moment in Ops.
+// Headline money figures in the Fyll font (Public Sans Bold), with tabular numbers.
 // Falls back to system bold until the font has loaded.
 export function MoneyText({ style, ...props }: TextProps) {
   const [fontLoaded] = useFonts({ BricolageGrotesque_700Bold });
@@ -117,7 +116,7 @@ export function MoneyText({ style, ...props }: TextProps) {
         { fontWeight: '700', fontVariant: ['tabular-nums'] },
         style,
         // Single-weight face: ask for 400 so web doesn't synthesise a faux bold.
-        fontLoaded ? { fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400' } : null,
+        fontLoaded ? { fontFamily: 'PublicSans_700Bold', fontWeight: '400' } : null,
       ]}
     />
   );

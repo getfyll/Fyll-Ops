@@ -176,7 +176,7 @@ export function FeaturesSettings({ onConfigure }: { onConfigure: (feature: Featu
                     <LimeToggle compact value={row.on} onValueChange={() => flip(row)} disabled={!canFlip || savingKey !== null} accessibilityLabel={`${row.name} ${row.on ? 'on' : 'off'}`} activeColor={FYLL_LIME} inactiveColor={palette.softFill} inactiveBorderColor={palette.outline} />
                   )}
                   <Pressable onPress={() => onConfigure(row.key)} disabled={!row.on} style={({ pressed }) => ({ minWidth: wide ? 92 : 78, height: 34, paddingHorizontal: wide ? 14 : 10, borderRadius: 999, borderWidth: 1, borderColor: palette.outline, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? palette.softFill : 'transparent', opacity: row.on ? 1 : 0.4 })}>
-                    <Text style={{ color: palette.text, fontFamily: 'BricolageGrotesque_700Bold', fontSize: wide ? 13 : 11, fontWeight: '400' }}>Configure</Text>
+                    <Text style={{ color: palette.text, fontFamily: 'PublicSans_700Bold', fontSize: wide ? 13 : 11, fontWeight: '400' }}>Configure</Text>
                   </Pressable>
                 </View>
               </View>

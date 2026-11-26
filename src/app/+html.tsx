@@ -41,6 +41,10 @@ export default function Root({ children }: { children: React.ReactNode }) {
         <style dangerouslySetInnerHTML={{ __html: responsiveBackground }} />
         <style dangerouslySetInnerHTML={{ __html: iosInstallPromptStyles }} />
         {/* Add any additional <head> elements that you want globally available on web... */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@300;400;500;600;700;800&display=swap" />
+        <style dangerouslySetInnerHTML={{ __html: fyllFontStyles }} />
       </head>
       <body>
         {children}
@@ -91,6 +95,12 @@ const partnerBrandingScript = `
     setLinkHref('link[rel="manifest"]', '/manifest-partner.json');
   } catch (e) {}
 })();
+`;
+
+// Fyll font: Public Sans for every text and input that doesn't set its own font (an explicit fontFamily,
+// such as Bricolage on buttons, is an inline style and still wins).
+const fyllFontStyles = `
+div[dir="auto"], input, textarea { font-family: "Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
 `;
 
 const responsiveBackground = `

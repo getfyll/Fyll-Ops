@@ -64,7 +64,7 @@ export function EmptyState({
           textAlign: 'center',
           marginTop: 16,
           fontWeight: fontLoaded ? '400' : '600',
-          fontFamily: fontLoaded ? 'BricolageGrotesque_600SemiBold' : undefined,
+          fontFamily: fontLoaded ? 'PublicSans_600SemiBold' : undefined,
         }}
       >
         {title}
@@ -106,7 +106,7 @@ export function EmptyState({
               color: FYLL_LIME_INK,
               fontSize: 14,
               fontWeight: fontLoaded ? '400' : '600',
-              fontFamily: fontLoaded ? 'BricolageGrotesque_600SemiBold' : undefined,
+              fontFamily: fontLoaded ? 'PublicSans_600SemiBold' : undefined,
             }}
           >
             {actionLabel}

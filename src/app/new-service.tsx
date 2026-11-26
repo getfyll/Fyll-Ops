@@ -60,7 +60,7 @@ export default function NewServiceScreen() {
   const canvasBg = palette.page;
   const panelBg = palette.page;
   const cardClass = cn('rounded-[18px] p-4 border', isDark ? 'bg-[#1C1C1C] border-white/[0.07]' : 'bg-white border-[#ECECEC]');
-  const sectionTitleStyle = { color: palette.text, fontSize: 16, fontWeight: '500' as const, fontFamily: bricolageMediumLoaded ? 'BricolageGrotesque_500Medium' : undefined };
+  const sectionTitleStyle = { color: palette.text, fontSize: 16, fontWeight: '500' as const, fontFamily: bricolageMediumLoaded ? 'PublicSans_500Medium' : undefined };
   const configPanelStyle = { borderRadius: 18, padding: 14, backgroundColor: palette.inset, borderWidth: 1, borderColor: palette.border } as const;
   const configControlStyle = { height: CONTROL_HEIGHT, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.outline, borderRadius: 14, paddingHorizontal: 14, color: palette.text, fontSize: 14 } as const;
   const configLabelStyle = { color: palette.textSoft, fontSize: 12, fontWeight: '600' as const, marginBottom: 7 };

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ActivityIndicator, Image, ImageBackground, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useFonts, BricolageGrotesque_700Bold } from '@expo-google-fonts/bricolage-grotesque';
+import { useFonts, BricolageGrotesque_600SemiBold } from '@expo-google-fonts/bricolage-grotesque';
 import { FYLL_LIME, FYLL_LIME_HOVER, FYLL_LIME_INK, usePaymentsPalette } from '@/components/payments/payments-ui';
 
 const fieldPhone = require('../../../assets/fyll-field-phone.jpg');
@@ -16,11 +16,15 @@ export type AuthHero = {
   chips: string[];
 };
 
-const useDisplayFont = () => {
-  const [loaded] = useFonts({ BricolageGrotesque_700Bold });
+// Headings on the sign-in screens: the Fyll font (Public Sans) at 600.
+const useDisplayFont = () => ({ fontWeight: '600' } as const);
+
+// Button labels on the sign-in screens: Bricolage SemiBold (falls back to the Fyll font at 600 until it loads).
+export const useAuthButtonFont = () => {
+  const [loaded] = useFonts({ BricolageGrotesque_600SemiBold });
   return loaded
-    ? ({ fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400' } as const)
-    : ({ fontWeight: '700' } as const);
+    ? ({ fontFamily: 'BricolageGrotesque_600SemiBold', fontWeight: '400' } as const)
+    : ({ fontWeight: '600' } as const);
 };
 
 // The wordmark with a small product tag, like "fyll | OPS".
@@ -31,7 +35,7 @@ function Brand({ onField = false }: { onField?: boolean }) {
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
       <Image source={wordmark} style={{ width: 52, height: 28, tintColor: light ? '#F4F4EF' : '#1E1E1E' }} resizeMode="contain" />
       <View style={{ width: 1, height: 20, backgroundColor: light ? 'rgba(255,255,255,0.3)' : 'rgba(17,17,17,0.25)' }} />
-      <Text style={{ color: light ? '#EEF2C4' : '#3A3B35', fontSize: 12, fontWeight: '700', letterSpacing: 2 }}>OPS</Text>
+      <Text style={{ color: light ? '#EEF2C4' : '#3A3B35', fontSize: 12, fontWeight: '600', letterSpacing: 2 }}>OPS</Text>
     </View>
   );
 }
@@ -198,7 +202,7 @@ export function AuthPrimaryButton({
   loading?: boolean;
   disabled?: boolean;
 }) {
-  const display = useDisplayFont();
+  const buttonFont = useAuthButtonFont();
   return (
     <Pressable
       onPress={onPress}
@@ -222,7 +226,7 @@ export function AuthPrimaryButton({
       ]}
     >
       {loading ? <ActivityIndicator size="small" color={FYLL_LIME_INK} style={{ marginRight: 8 }} /> : null}
-      <Text style={[{ color: FYLL_LIME_INK, fontSize: 17 }, display]}>{label}</Text>
+      <Text style={[{ color: FYLL_LIME_INK, fontSize: 17 }, buttonFont]}>{label}</Text>
     </Pressable>
   );
 }
@@ -240,7 +244,7 @@ export function AuthNote({ rows, compact = false }: { rows: { label: string; act
           style={{ minHeight: compact ? 46 : 54, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, borderTopWidth: index === 0 ? 0 : 1, borderTopColor: palette.hairline }}
         >
           <Text style={{ color: palette.muted, fontSize: compact ? 12 : 14.5, flexShrink: 1 }}>{row.label}</Text>
-          <Text style={{ color: palette.limeOnSurface, fontSize: compact ? 12 : 14.5, fontWeight: '700' }}>{row.action}</Text>
+          <Text style={{ color: palette.limeOnSurface, fontSize: compact ? 12 : 14.5, fontWeight: '600' }}>{row.action}</Text>
         </Pressable>
       ))}
     </View>

@@ -72,7 +72,7 @@ export function EditFieldModal({
         <Pressable onPress={onClose} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
           <Pressable onPress={() => {}} style={{ width: '100%', maxWidth: 440, backgroundColor: palette.surface, borderRadius: 28, padding: 22 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-              <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold', fontSize: 18 }}>{title}</Text>
+              <Text style={{ color: palette.ink, fontFamily: 'PublicSans_700Bold', fontSize: 18 }}>{title}</Text>
               <Pressable onPress={onClose} hitSlop={10} accessibilityLabel="Close" style={{ width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.navButton }}>
                 <X size={16} color={palette.ink} />
               </Pressable>
@@ -114,10 +114,10 @@ export function EditFieldModal({
 
             <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
               <Pressable onPress={onClose} style={({ pressed }) => ({ flex: 1, height: 48, borderRadius: 999, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: palette.edgeStrong, opacity: pressed ? 0.7 : 1 })}>
-                <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold', fontSize: 14 }}>Cancel</Text>
+                <Text style={{ color: palette.ink, fontFamily: 'PublicSans_700Bold', fontSize: 14 }}>Cancel</Text>
               </Pressable>
               <Pressable onPress={() => onSave(draft)} style={({ pressed }) => ({ flex: 1, height: 48, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.lime, opacity: pressed ? 0.78 : 1 })}>
-                <Text style={{ color: '#202117', fontFamily: 'BricolageGrotesque_700Bold', fontSize: 14 }}>Done</Text>
+                <Text style={{ color: '#202117', fontFamily: 'PublicSans_700Bold', fontSize: 14 }}>Done</Text>
               </Pressable>
             </View>
           </Pressable>

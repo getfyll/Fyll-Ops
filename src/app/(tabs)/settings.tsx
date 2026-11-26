@@ -287,7 +287,7 @@ function EditableItem({
   // Bricolage is single-weight, so ask for 400 to stop the web faux-bolding it.
   const primaryPillTextStyle = {
     color: FYLL_LIME_INK,
-    fontFamily: 'BricolageGrotesque_700Bold',
+    fontFamily: 'PublicSans_700Bold',
     fontWeight: '400',
   } as const;
   const [isEditing, setIsEditing] = useState(false);
@@ -918,7 +918,7 @@ export default function SettingsScreen() {
           <View className="px-5 py-4" style={{ borderBottomWidth: 1, borderBottomColor: settingsPalette.hairline }}>
             <View className="flex-row items-center justify-between">
               <View className="flex-1 pr-4">
-                <Text style={{ color: settingsPalette.text, fontFamily: 'BricolageGrotesque_700Bold', fontSize: isMobile ? 18 : 22, lineHeight: isMobile ? 22 : 27, fontWeight: '400' }}>
+                <Text style={{ color: settingsPalette.text, fontFamily: 'PublicSans_700Bold', fontSize: isMobile ? 18 : 22, lineHeight: isMobile ? 22 : 27, fontWeight: '400' }}>
                   {editingOrderStatusId ? 'Edit Order Status' : 'New Order Status'}
                 </Text>
                 <Text style={{ color: colors.text.tertiary, fontSize: 12, marginTop: 4 }}>
@@ -2577,7 +2577,7 @@ export default function SettingsScreen() {
   // Bricolage is single-weight, so ask for 400 to stop the web faux-bolding it.
   const primaryPillTextStyle = {
     color: FYLL_LIME_INK,
-    fontFamily: 'BricolageGrotesque_700Bold',
+    fontFamily: 'PublicSans_700Bold',
     fontWeight: '400',
   } as const;
   const settingsMainContentWrapStyle = ({ flex: 1 } as const);
@@ -3354,7 +3354,7 @@ export default function SettingsScreen() {
                 style={{ height: 46, borderRadius: 999, gap: 8, backgroundColor: FYLL_LIME }}
               >
                 <Plus size={16} color={FYLL_LIME_INK} strokeWidth={2.5} />
-                <Text style={{ color: FYLL_LIME_INK, fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: 14 }}>Add new status</Text>
+                <Text style={{ color: FYLL_LIME_INK, fontFamily: 'PublicSans_700Bold', fontWeight: '400', fontSize: 14 }}>Add new status</Text>
               </Pressable>
 
               {false && showAddOrderStatusForm ? (
@@ -3456,7 +3456,7 @@ export default function SettingsScreen() {
                         {index > 0 ? <View style={{ position: 'absolute', top: 0, width: 2, height: 16, backgroundColor: settingsPalette.outline }} /> : null}
                         {index < fulfillmentOrderStatuses.length - 1 ? <View style={{ position: 'absolute', top: 34, bottom: 0, width: 2, backgroundColor: settingsPalette.outline }} /> : null}
                         <View style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: settingsPalette.nudgeBg, borderWidth: 1, borderColor: settingsPalette.outline, zIndex: 1 }}>
-                          <Text style={{ color: settingsPalette.limeOnSurface, fontFamily: 'BricolageGrotesque_700Bold', fontSize: 12, fontWeight: '400' }}>{index + 1}</Text>
+                          <Text style={{ color: settingsPalette.limeOnSurface, fontFamily: 'PublicSans_700Bold', fontSize: 12, fontWeight: '400' }}>{index + 1}</Text>
                         </View>
                       </View>
                       <View style={{ flex: 1, marginLeft: 8, marginBottom: 12, minHeight: 88, padding: 14, borderRadius: 22, borderWidth: 1, borderColor: settingsPalette.border, backgroundColor: settingsPalette.card, flexDirection: 'row', alignItems: 'center', gap: 11 }}>
@@ -3479,7 +3479,7 @@ export default function SettingsScreen() {
             ) : fulfillmentOrderStatuses.map((status, index) => (
               <View key={status.id} style={{ marginBottom: 10 }}>
                 <View className="flex-row items-center mb-2" style={{ gap: 8 }}>
-                  <View className="rounded-full items-center justify-center" style={{ minWidth: 28, height: 28, backgroundColor: settingsPalette.nudgeBg, borderWidth: 1, borderColor: settingsPalette.outline }}><Text style={{ color: settingsPalette.limeOnSurface, fontFamily: 'BricolageGrotesque_700Bold', fontSize: 12, fontWeight: '400' }}>{index + 1}</Text></View>
+                  <View className="rounded-full items-center justify-center" style={{ minWidth: 28, height: 28, backgroundColor: settingsPalette.nudgeBg, borderWidth: 1, borderColor: settingsPalette.outline }}><Text style={{ color: settingsPalette.limeOnSurface, fontFamily: 'PublicSans_700Bold', fontSize: 12, fontWeight: '400' }}>{index + 1}</Text></View>
                   <Text style={{ color: settingsPalette.faint }} className="flex-1 text-xs font-semibold">Step {index + 1}</Text>
                 </View>
                 <EditableItem
@@ -3566,7 +3566,7 @@ export default function SettingsScreen() {
                       <TextInput autoFocus placeholder="e.g. Confirm lenses are clean" placeholderTextColor={colors.input.placeholder} value={newItemName} onChangeText={setNewItemName} style={{ color: settingsPalette.text, fontSize: isMobile ? 14 : 15 }} selectionColor={colors.text.primary} />
                     </View>
                     <View style={{ flexDirection: 'row', gap: 10 }}>
-                      <Pressable onPress={() => { setNewItemName(''); setShowAddQcCheckForm(false); }} className="rounded-full items-center justify-center active:opacity-70" style={{ flex: 1, height: 46, backgroundColor: settingsPalette.softFill, borderWidth: 1, borderColor: settingsPalette.outline }}><Text style={{ color: settingsPalette.text, fontFamily: 'BricolageGrotesque_700Bold', fontSize: 13, fontWeight: '400' }}>Cancel</Text></Pressable>
+                      <Pressable onPress={() => { setNewItemName(''); setShowAddQcCheckForm(false); }} className="rounded-full items-center justify-center active:opacity-70" style={{ flex: 1, height: 46, backgroundColor: settingsPalette.softFill, borderWidth: 1, borderColor: settingsPalette.outline }}><Text style={{ color: settingsPalette.text, fontFamily: 'PublicSans_700Bold', fontSize: 13, fontWeight: '400' }}>Cancel</Text></Pressable>
                       <Pressable onPress={() => { if (!newItemName.trim()) return; handleAddItem(); setShowAddQcCheckForm(false); }} className="rounded-full flex-row items-center justify-center active:opacity-80" style={[primaryPillButtonStyle, { flex: 1.4, height: 46, gap: 8 }]}><Plus size={16} color={FYLL_LIME_INK} strokeWidth={2.5} /><Text style={[primaryPillTextStyle, { fontSize: isMobile ? 14 : 15 }]}>Add check</Text></Pressable>
                     </View>
                   </View>

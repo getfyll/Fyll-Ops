@@ -146,7 +146,7 @@ export function CaseAreaStats({ hero, stats }: { hero: CaseAreaStat; stats: Case
   const isDark = colors.text.primary === '#FFFFFF';
   const separatorColor = isDark ? 'rgba(255,255,255,0.08)' : '#E5E7EB';
   const label = { color: colors.text.tertiary, fontSize: 10, fontWeight: '600' as const, letterSpacing: 0.6, textTransform: 'uppercase' as const };
-  const heroFont = { fontWeight: (bricolageLoaded ? '400' : '700') as '400' | '700', fontFamily: bricolageLoaded ? 'BricolageGrotesque_700Bold' : undefined };
+  const heroFont = { fontWeight: (bricolageLoaded ? '400' : '700') as '400' | '700', fontFamily: bricolageLoaded ? 'PublicSans_700Bold' : undefined };
 
   if (isMobile) {
     return (

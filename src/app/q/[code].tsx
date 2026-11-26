@@ -262,7 +262,7 @@ function Hero({
           fontSize: titleSize,
           lineHeight: titleSize * 0.98,
           letterSpacing: -titleSize * 0.04,
-          fontFamily: fontsReady ? 'BricolageGrotesque_800ExtraBold' : undefined,
+          fontFamily: fontsReady ? 'PublicSans_800ExtraBold' : undefined,
           fontWeight: fontsReady ? '400' : '800',
         }}
       >

@@ -149,7 +149,7 @@ function CaseStepCard({ n, title, compact, palette, raised, titleFontLoaded, chi
         <View style={{ width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.nudgeBg }}>
           <Text style={{ color: palette.limeOnSurface, fontSize: 12.5, fontWeight: '700' }}>{n}</Text>
         </View>
-        <Text style={{ flex: 1, color: palette.text, fontSize: 17, fontWeight: '500', fontFamily: titleFontLoaded ? 'BricolageGrotesque_500Medium' : undefined }}>{title}</Text>
+        <Text style={{ flex: 1, color: palette.text, fontSize: 17, fontWeight: '500', fontFamily: titleFontLoaded ? 'PublicSans_500Medium' : undefined }}>{title}</Text>
       </View>
       <View style={{ marginBottom: -14 }}>{children}</View>
     </View>
@@ -711,7 +711,7 @@ export function CaseForm({
         <View style={{ flex: 1, backgroundColor: palette.page }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: inline ? 28 : 20, paddingTop: inline ? 28 : 14, paddingBottom: 14, backgroundColor: palette.page }}>
             <BackButton onPress={() => { Haptics.selectionAsync(); onClose(); }} palette={palette} label="Close" />
-            <Text style={{ color: palette.text, fontSize: inline ? 28 : 22, fontWeight: bricolageLoaded ? '400' : '700', fontFamily: bricolageLoaded ? 'BricolageGrotesque_700Bold' : undefined, letterSpacing: -0.8 }}>
+            <Text style={{ color: palette.text, fontSize: inline ? 28 : 22, fontWeight: bricolageLoaded ? '400' : '700', fontFamily: bricolageLoaded ? 'PublicSans_700Bold' : undefined, letterSpacing: -0.8 }}>
               {isEditing ? 'Edit case' : 'New case'}
             </Text>
           </View>

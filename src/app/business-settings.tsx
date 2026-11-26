@@ -138,7 +138,7 @@ function OptionSheet({
       <Pressable onPress={onClose} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
         <Pressable onPress={() => {}} style={{ width: '100%', maxWidth: 440, maxHeight: '70%', backgroundColor: palette.surface, borderRadius: 28, paddingTop: 18, paddingBottom: 12, overflow: 'hidden' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 22, marginBottom: 8 }}>
-            <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold', fontSize: 18 }}>{title}</Text>
+            <Text style={{ color: palette.ink, fontFamily: 'PublicSans_700Bold', fontSize: 18 }}>{title}</Text>
             <Pressable onPress={onClose} hitSlop={10} style={{ width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.navButton }}>
               <X size={16} color={palette.ink} />
             </Pressable>
@@ -512,7 +512,7 @@ export default function BusinessSettingsScreen({ embeddedInSettings = false }: B
               <View style={{ flex: 1, justifyContent: 'center' }}>
                 <View style={{ minWidth: 0 }}>
                   <Text style={{ color: palette.faint, fontWeight: '700', fontSize: 10, letterSpacing: 1.15, textTransform: 'uppercase', marginBottom: 4 }}>Business identity</Text>
-                  <Text numberOfLines={1} style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_800ExtraBold', fontSize: isDesktop ? 29 : 18, lineHeight: isDesktop ? 34 : 24, letterSpacing: isDesktop ? -0.8 : -0.4 }}>{displayName.trim() || 'Your business'}</Text>
+                  <Text numberOfLines={1} style={{ color: palette.ink, fontFamily: 'PublicSans_800ExtraBold', fontSize: isDesktop ? 29 : 18, lineHeight: isDesktop ? 34 : 24, letterSpacing: isDesktop ? -0.8 : -0.4 }}>{displayName.trim() || 'Your business'}</Text>
                   <Text numberOfLines={1} style={{ color: palette.faint, fontSize: 12, lineHeight: 18, marginTop: 2 }}>{company.trim() || 'Company details'}</Text>
                   <View style={{ alignSelf: 'flex-start', maxWidth: '100%', minHeight: 27, marginTop: 10, paddingHorizontal: 10, borderRadius: 999, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: palette.limeWashStrong }}>
                     <ShieldCheck size={12} color={palette.limeInk} strokeWidth={2.2} />
@@ -538,7 +538,7 @@ export default function BusinessSettingsScreen({ embeddedInSettings = false }: B
                   <Text numberOfLines={1} style={{ color: palette.faint, fontSize: 10, lineHeight: 15, marginTop: 2 }}>Square PNG or JPG · maximum 400 KB</Text>
                 </View>
                 <Pressable onPress={handlePickImage} style={({ pressed }) => ({ minWidth: 76, height: 36, paddingHorizontal: 13, borderRadius: 999, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: palette.edgeStrong, opacity: pressed ? 0.72 : 1 })}>
-                  <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: 12 }}>{logo ? 'Change' : 'Upload'}</Text>
+                  <Text style={{ color: palette.ink, fontFamily: 'PublicSans_700Bold', fontWeight: '400', fontSize: 12 }}>{logo ? 'Change' : 'Upload'}</Text>
                 </Pressable>
                 {logo ? (
                   <Pressable onPress={handleRemoveLogo} accessibilityLabel="Remove business logo" style={({ pressed }) => ({ width: 32, height: 36, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}>
@@ -609,7 +609,7 @@ export default function BusinessSettingsScreen({ embeddedInSettings = false }: B
           {hasChanges ? (
             <LinearGradient colors={[palette.topGlowEnd, palette.ground, palette.ground]} locations={[0, 0.35, 1]} pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, paddingTop: 28, paddingHorizontal: 16, paddingBottom: 18 }}>
               <Pressable onPress={handleSave} disabled={isSaving} style={({ pressed }) => ({ width: '100%', maxWidth: contentMaxWidth - 32, alignSelf: 'center', height: 56, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.lime, shadowColor: palette.lime, shadowOpacity: 0.28, shadowRadius: 24, shadowOffset: { width: 0, height: 8 }, opacity: isSaving ? 0.62 : pressed ? 0.78 : 1 })}>
-                {isSaving ? <ActivityIndicator color="#202117" /> : <Text style={{ color: '#202117', fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: 14 }}>Save changes</Text>}
+                {isSaving ? <ActivityIndicator color="#202117" /> : <Text style={{ color: '#202117', fontFamily: 'PublicSans_700Bold', fontWeight: '400', fontSize: 14 }}>Save changes</Text>}
               </Pressable>
             </LinearGradient>
           ) : null}

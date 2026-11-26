@@ -367,7 +367,7 @@ export default function LoginScreen() {
       className="active:opacity-70"
     >
       <Text style={{ color: palette.muted, fontSize: 14 }}>
-        Already have an account? <Text style={{ color: palette.limeOnSurface, fontWeight: '700' }}>Log in</Text>
+        Already have an account? <Text style={{ color: palette.limeOnSurface, fontWeight: '600' }}>Log in</Text>
       </Text>
     </Pressable>
   );
@@ -796,7 +796,7 @@ export default function LoginScreen() {
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
           <Text style={{ color: palette.textSoft, fontSize: 15, fontWeight: '500' }}>Password</Text>
           <Pressable onPress={handlePasswordReset} disabled={isResetting} className="active:opacity-70">
-            <Text style={{ color: palette.limeOnSurface, fontSize: 14.5, fontWeight: '700' }}>
+            <Text style={{ color: palette.limeOnSurface, fontSize: 14.5, fontWeight: '600' }}>
               {isResetting ? 'Sending reset email...' : 'Forgot password?'}
             </Text>
           </Pressable>

@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import type { TextStyle } from 'react-native';
-import { useFonts, BricolageGrotesque_700Bold } from '@expo-google-fonts/bricolage-grotesque';
+import { useFonts, PublicSans_700Bold } from '@expo-google-fonts/public-sans';
 
 export const DESKTOP_PAGE_HEADER_MIN_HEIGHT = 92;
 export const DESKTOP_PAGE_HEADER_GUTTER = 8;
@@ -18,15 +18,15 @@ export const getDashboardHeadingStyle = (isMobile: boolean): TextStyle => ({
   fontWeight: '700',
 });
 
-// Page titles across the app: the standard size/weight in Bricolage Grotesque
+// Page titles across the app: the standard size/weight in Public Sans Bold
 // (falls back to the system bold font until the typeface has loaded).
 export const usePageHeadingStyle = (isMobile: boolean): TextStyle => {
-  const [bricolageLoaded] = useFonts({ BricolageGrotesque_700Bold });
+  const [fontLoaded] = useFonts({ PublicSans_700Bold });
   return useMemo(
     () => ({
       ...getStandardPageHeadingStyle(isMobile),
-      ...(bricolageLoaded ? { fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400' as const } : null),
+      ...(fontLoaded ? { fontFamily: 'PublicSans_700Bold', fontWeight: '400' as const } : null),
     }),
-    [isMobile, bricolageLoaded]
+    [isMobile, fontLoaded]
   );
 };

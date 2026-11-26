@@ -116,7 +116,7 @@ const getTaskStatusMeta = (status: Task['status']) => {
 // Banner titles use Bricolage; falls back to the system bold until the font loads.
 function useBannerTitleStyle() {
   const [loaded] = useFonts({ BricolageGrotesque_700Bold });
-  return loaded ? { fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400' as const } : { fontWeight: '700' as const };
+  return loaded ? { fontFamily: 'PublicSans_700Bold', fontWeight: '400' as const } : { fontWeight: '700' as const };
 }
 
 // Shown on Home while a newer version of Fyll Ops is live (or just installed).
@@ -2418,7 +2418,7 @@ export default function DashboardScreen() {
             <WebContainer>
               <WebPageHeader
                 title={firstName ? `${greeting}, ${firstName}` : greeting}
-                titleTextStyle={bricolageLoaded ? { fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400' } : undefined}
+                titleTextStyle={bricolageLoaded ? { fontFamily: 'PublicSans_700Bold', fontWeight: '400' } : undefined}
                 subtitle={`${todayLabel} · ${needsSummary}`}
                 actions={
                   <>
@@ -2548,7 +2548,7 @@ export default function DashboardScreen() {
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
               <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
                 <Text style={{ color: palette.faint, fontSize: 12 }}>{todayLabel}</Text>
-                <Text style={{ color: palette.text, fontSize: 22, fontWeight: bricolageLoaded ? '400' : '700', fontFamily: bricolageLoaded ? 'BricolageGrotesque_700Bold' : undefined, letterSpacing: -0.4 }} numberOfLines={1}>
+                <Text style={{ color: palette.text, fontSize: 22, fontWeight: bricolageLoaded ? '400' : '700', fontFamily: bricolageLoaded ? 'PublicSans_700Bold' : undefined, letterSpacing: -0.4 }} numberOfLines={1}>
                   {firstName ? `${greeting}, ${firstName}` : greeting}
                 </Text>
               </View>

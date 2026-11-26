@@ -3,13 +3,15 @@ import { ActivityIndicator, Image, KeyboardAvoidingView, Platform, Pressable, Te
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Eye, EyeOff, Lock, Mail } from 'lucide-react-native';
-import { FYLL_LIME, FYLL_LIME_INK, MoneyText, usePaymentsPalette } from '@/components/payments/payments-ui';
+import { FYLL_LIME, FYLL_LIME_INK, usePaymentsPalette } from '@/components/payments/payments-ui';
+import { useAuthButtonFont } from '@/components/auth/AuthShell';
 import { supabase } from '@/lib/supabase';
 import { acceptPartnerInvite, lookupPartnerPortalByAuth } from '@/lib/supabase/partner-portal';
 
 const fyllWordmarkPng = require('../../assets/fyll-wordmark-thick-light.png');
 
 export default function PartnerLoginScreen() {
+  const buttonFont = useAuthButtonFont();
   const palette = usePaymentsPalette();
   const router = useRouter();
   const { email: emailParam, invite: inviteParam } = useLocalSearchParams<{ email?: string | string[]; invite?: string | string[] }>();
@@ -84,9 +86,9 @@ export default function PartnerLoginScreen() {
             <View style={{ alignItems: 'flex-start', marginBottom: 32 }}>
               <Image source={fyllWordmarkPng} accessibilityLabel="Fyll" resizeMode="contain" style={{ width: 30 * (900 / 493), height: 30, tintColor: palette.text }} />
               <View style={{ marginTop: 28, paddingVertical: 4, paddingHorizontal: 10, borderRadius: 999, backgroundColor: palette.nudgeBg, borderWidth: 1, borderColor: palette.nudgeBorder }}>
-                <Text style={{ color: palette.limeOnSurface, fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' }}>Partner portal</Text>
+                <Text style={{ color: palette.limeOnSurface, fontSize: 11, fontWeight: '600', letterSpacing: 0.8, textTransform: 'uppercase' }}>Partner portal</Text>
               </View>
-              <MoneyText style={{ color: palette.text, fontSize: 34, letterSpacing: -1.2, marginTop: 14 }}>Welcome back</MoneyText>
+              <Text style={{ color: palette.text, fontWeight: '600', fontSize: 34, letterSpacing: -1.2, marginTop: 14 }}>Welcome back</Text>
               <Text style={{ color: palette.faint, fontSize: 14, lineHeight: 20, marginTop: 6 }}>
                 Sign in with the account you were invited with.
               </Text>
@@ -140,7 +142,7 @@ export default function PartnerLoginScreen() {
                 {isLoading ? (
                   <ActivityIndicator color={FYLL_LIME_INK} size="small" />
                 ) : (
-                  <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 16 }}>Sign in</MoneyText>
+                  <Text style={[{ color: FYLL_LIME_INK, fontSize: 16 }, buttonFont]}>Sign in</Text>
                 )}
               </Pressable>
             </View>

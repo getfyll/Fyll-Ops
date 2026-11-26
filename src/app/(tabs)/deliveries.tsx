@@ -575,7 +575,7 @@ export default function DeliveriesScreen() {
                 <View style={{ borderRadius: 20, borderWidth: 1, borderColor: separatorColor, backgroundColor: colors.bg.card, padding: 18, gap: 14, marginBottom: 16 }}>
                   <View style={{ gap: 4 }}>
                     <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.6 }}>{stats[1].label}</Text>
-                    <Text style={{ color: colors.text.primary, fontSize: 32, lineHeight: 36, fontWeight: bricolageLoaded ? '400' : '700', fontFamily: bricolageLoaded ? 'BricolageGrotesque_700Bold' : undefined, letterSpacing: -1 }}>{stats[1].value} deliveries</Text>
+                    <Text style={{ color: colors.text.primary, fontSize: 32, lineHeight: 36, fontWeight: bricolageLoaded ? '400' : '700', fontFamily: bricolageLoaded ? 'PublicSans_700Bold' : undefined, letterSpacing: -1 }}>{stats[1].value} deliveries</Text>
                     <Text style={{ color: colors.text.muted, fontSize: 13 }}>{stats[1].caption}</Text>
                   </View>
                   <View style={{ height: 1, backgroundColor: separatorColor }} />
@@ -593,7 +593,7 @@ export default function DeliveriesScreen() {
                   {stats.map((item, index) => (
                     <View key={item.key} style={{ flex: index === 0 ? 1.3 : 1, padding: 18, gap: 4, borderLeftWidth: index ? 1 : 0, borderColor: separatorColor }}>
                       <Text style={{ color: colors.text.tertiary, fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.6 }}>{item.label}</Text>
-                      <Text style={{ color: colors.text.primary, fontSize: index === 0 ? 28 : 22, fontWeight: index === 0 && bricolageLoaded ? '400' : '600', fontFamily: index === 0 && bricolageLoaded ? 'BricolageGrotesque_700Bold' : undefined, letterSpacing: index === 0 ? -0.9 : -0.5 }}>{item.value}</Text>
+                      <Text style={{ color: colors.text.primary, fontSize: index === 0 ? 28 : 22, fontWeight: index === 0 && bricolageLoaded ? '400' : '600', fontFamily: index === 0 && bricolageLoaded ? 'PublicSans_700Bold' : undefined, letterSpacing: index === 0 ? -0.9 : -0.5 }}>{item.value}</Text>
                       <Text style={{ color: colors.text.muted, fontSize: 13 }}>{item.caption}</Text>
                     </View>
                   ))}

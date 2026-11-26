@@ -40,7 +40,7 @@ export function StorefrontCard({
   const urlInput = { storefrontSlug, businessName };
   const storeUrl = buildStorefrontSubdomainUrl(urlInput);
   const host = storeUrl.replace(/^https?:\/\//, '');
-  const semiBold = fontsLoaded ? ({ fontFamily: 'BricolageGrotesque_600SemiBold', fontWeight: '400' } as const) : ({ fontWeight: '600' } as const);
+  const semiBold = fontsLoaded ? ({ fontFamily: 'PublicSans_600SemiBold', fontWeight: '400' } as const) : ({ fontWeight: '600' } as const);
 
   useEffect(() => () => {
     if (copiedTimer.current) clearTimeout(copiedTimer.current);
@@ -89,7 +89,7 @@ export function StorefrontCard({
           >
             <Globe size={19} color={palette.muted} strokeWidth={1.8} />
             <Text
-              style={[{ flex: 1, minWidth: 0, color: palette.text, fontSize: 16 }, fontsLoaded ? { fontFamily: 'BricolageGrotesque_500Medium', fontWeight: '400' } : { fontWeight: '500' }]}
+              style={[{ flex: 1, minWidth: 0, color: palette.text, fontSize: 16 }, fontsLoaded ? { fontFamily: 'PublicSans_500Medium', fontWeight: '400' } : { fontWeight: '500' }]}
               numberOfLines={1}
               selectable
             >

@@ -8,7 +8,8 @@ import { ArrowRight, Check, Clock3, Copy, Link2, MapPin, MessageCircle, Package,
 import * as Haptics from 'expo-haptics';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useFonts, BricolageGrotesque_700Bold, BricolageGrotesque_800ExtraBold } from '@expo-google-fonts/bricolage-grotesque';
+import { useFonts, BricolageGrotesque_600SemiBold } from '@expo-google-fonts/bricolage-grotesque';
+import { PublicSans_600SemiBold, PublicSans_700Bold, PublicSans_800ExtraBold } from '@expo-google-fonts/public-sans';
 import useFyllStore, { formatCurrency, type Order } from '@/lib/state/fyll-store';
 import useAuthStore from '@/lib/state/auth-store';
 import { findOrderTrackingStageByName } from '@/lib/order-status';
@@ -237,12 +238,18 @@ function DeliveryConfetti({ burstKey }: { burstKey: number }) {
 }
 
 const trackingDisplayFont = Platform.OS === 'web'
-  ? "BricolageGrotesque_800ExtraBold, 'Arial Black', sans-serif"
-  : 'BricolageGrotesque_800ExtraBold';
+  ? "PublicSans_800ExtraBold, 'Arial Black', sans-serif"
+  : 'PublicSans_800ExtraBold';
 // Phones use one weight lighter (700) for headings.
 const trackingDisplayFontCompact = Platform.OS === 'web'
-  ? "BricolageGrotesque_700Bold, 'Arial Black', sans-serif"
-  : 'BricolageGrotesque_700Bold';
+  ? "PublicSans_700Bold, 'Arial Black', sans-serif"
+  : 'PublicSans_700Bold';
+const trackingHeadingFont = Platform.OS === 'web'
+  ? "PublicSans_600SemiBold, system-ui, -apple-system, 'Segoe UI', sans-serif"
+  : 'PublicSans_600SemiBold';
+const trackingButtonFont = Platform.OS === 'web'
+  ? "BricolageGrotesque_600SemiBold, system-ui, -apple-system, 'Segoe UI', sans-serif"
+  : 'BricolageGrotesque_600SemiBold';
 const trackingBodyFont: string | undefined = Platform.OS === 'web'
   ? "system-ui, -apple-system, 'Segoe UI', sans-serif"
   : undefined;
@@ -1274,6 +1281,11 @@ export type TrackLandingCopy = {
   hint: string;
   // Optional (lighter) font for the big headline and the form title; the tracking page keeps its own.
   headlineFont?: string;
+  // Optional action font for pages that reuse the tracking lookup form.
+  buttonFont?: string;
+  // Optional breathing room around the hero copy for reused public pages.
+  heroPaddingVertical?: number;
+  heroPaddingVerticalCompact?: number;
 };
 
 const TRACK_LANDING_COPY: TrackLandingCopy = {
@@ -1290,6 +1302,10 @@ const TRACK_LANDING_COPY: TrackLandingCopy = {
   submit: 'Track order',
   submitting: 'Finding your order…',
   hint: 'Your order or payment number is in your confirmation email and in the DM from the business.',
+  headlineFont: trackingHeadingFont,
+  buttonFont: trackingButtonFont,
+  heroPaddingVertical: 20,
+  heroPaddingVerticalCompact: 36,
 };
 
 // The public landing page. track.fyll.app uses it as is; confirm.fyll.app reuses it with its own wording (`copy`).
@@ -1470,7 +1486,7 @@ export function TrackLanding({
         })}
       >
         {pending ? <ActivityIndicator color="#1E1E1E" /> : null}
-        <Text style={{ fontWeight: '600', fontSize: compact ? (sheet ? 16 : 12) : 17, color: canSubmit || pending ? '#1E1E1E' : 'rgba(244,244,239,0.55)' }}>
+        <Text style={{ fontFamily: copy.buttonFont, fontWeight: copy.buttonFont ? '400' : '600', fontSize: compact ? (sheet ? 16 : 12) : 17, color: canSubmit || pending ? '#1E1E1E' : 'rgba(244,244,239,0.55)' }}>
           {pending ? (openingDeepLink ? 'Opening your order…' : copy.submitting) : copy.submit}
         </Text>
         {!pending ? <ArrowRight size={18} color={canSubmit ? '#1E1E1E' : 'rgba(244,244,239,0.55)'} strokeWidth={2.4} /> : null}
@@ -1493,8 +1509,11 @@ export function TrackLanding({
   );
 
   const steps = copy.steps;
+  const heroPaddingVertical = compact
+    ? (copy.heroPaddingVerticalCompact ?? copy.heroPaddingVertical ?? 0)
+    : (copy.heroPaddingVertical ?? 0);
   const headingBlock = (
-  <View style={{ flex: wide && !splitMode ? 1 : undefined, gap: compact ? 14 : 22, paddingTop: wide && !splitMode ? 30 : 0, paddingHorizontal: sheetMode ? 20 : 0, ...(sheetMode ? { flexGrow: 1, justifyContent: 'center' as const } : null) }}>
+  <View style={{ flex: wide && !splitMode ? 1 : undefined, gap: compact ? 14 : 22, paddingTop: (wide && !splitMode ? 30 : 0) + heroPaddingVertical, paddingBottom: heroPaddingVertical, paddingHorizontal: sheetMode ? 20 : 0, ...(sheetMode ? { flexGrow: 1, justifyContent: 'center' as const } : null) }}>
     {wide ? (
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <View style={[{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#D5E057' }, Platform.OS === 'web' ? ({ boxShadow: '0 0 10px #D5E057' } as object) : null]} />
@@ -1604,7 +1623,7 @@ export function TrackLanding({
 }
 
 export default function TrackOrderScreen() {
-  useFonts({ BricolageGrotesque_700Bold, BricolageGrotesque_800ExtraBold });
+  useFonts({ PublicSans_600SemiBold, PublicSans_700Bold, PublicSans_800ExtraBold, BricolageGrotesque_600SemiBold });
   const router = useRouter();
   const isTrackingHost = Platform.OS === 'web'
     && typeof window !== 'undefined'
@@ -1991,6 +2010,8 @@ export default function TrackOrderScreen() {
       pending={lookupMutation.isPending}
       openingDeepLink={hasDeepLinkLookup}
       feedback={lookupFeedback ?? (noMatch ? 'No payment or order matched that number and email. Check both and try again.' : null)}
+      sheet
+      split
     />
   );
 }

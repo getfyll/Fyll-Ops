@@ -31,10 +31,10 @@ const INK = '#1e1e1e';
 
 type Weight = 400 | 600 | 700 | 800;
 const FONT_FAMILY: Record<Weight, string> = {
-  400: 'BricolageGrotesque_400Regular',
-  600: 'BricolageGrotesque_600SemiBold',
-  700: 'BricolageGrotesque_700Bold',
-  800: 'BricolageGrotesque_800ExtraBold',
+  400: 'PublicSans_400Regular',
+  600: 'PublicSans_600SemiBold',
+  700: 'PublicSans_700Bold',
+  800: 'PublicSans_800ExtraBold',
 };
 
 // Fades and rises into place after `delay` ms (or simply shows when motion is reduced).

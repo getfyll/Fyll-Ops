@@ -63,7 +63,7 @@ export function MilestoneReplay({ visible, onClose }: { visible: boolean; onClos
     : "Keep going. We'll celebrate it with you the moment you get there.";
   const display = (weight: '600' | '700' | '800') =>
     fontsLoaded
-      ? ({ fontFamily: weight === '800' ? 'BricolageGrotesque_800ExtraBold' : weight === '600' ? 'BricolageGrotesque_600SemiBold' : 'BricolageGrotesque_700Bold', fontWeight: '400' } as const)
+      ? ({ fontFamily: weight === '800' ? 'PublicSans_800ExtraBold' : weight === '600' ? 'PublicSans_600SemiBold' : 'PublicSans_700Bold', fontWeight: '400' } as const)
       : ({ fontWeight: weight } as const);
 
   return (

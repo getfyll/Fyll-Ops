@@ -387,7 +387,7 @@ export default function NewProductScreen() {
     color: palette.text,
     fontSize: 16,
     fontWeight: '500' as const,
-    fontFamily: bricolageMediumLoaded ? 'BricolageGrotesque_500Medium' : undefined,
+    fontFamily: bricolageMediumLoaded ? 'PublicSans_500Medium' : undefined,
   };
   const sub = { color: palette.faint, fontSize: isMobile ? 12 : 13 };
   const lab = { color: palette.textSoft, fontSize: isMobile ? 12 : 13, fontWeight: '600' as const };

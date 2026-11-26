@@ -333,7 +333,7 @@ export default function AccountSettingsScreen({ embeddedInSettings = false }: Ac
 
                 <View style={{ flex: 1, minWidth: 0, justifyContent: 'center' }}>
                   <Text style={{ color: palette.faint, fontWeight: '700', fontSize: 10, letterSpacing: 1.15, textTransform: 'uppercase' }}>Account owner</Text>
-                  <Text numberOfLines={1} style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_800ExtraBold', fontSize: 28, lineHeight: 34, letterSpacing: -0.8, marginTop: 2 }}>Profile</Text>
+                  <Text numberOfLines={1} style={{ color: palette.ink, fontFamily: 'PublicSans_800ExtraBold', fontSize: 28, lineHeight: 34, letterSpacing: -0.8, marginTop: 2 }}>Profile</Text>
                   <Text numberOfLines={2} style={{ color: palette.faint, fontSize: 12, lineHeight: 18, marginTop: 4 }}>{name.trim() || 'Your name'} · {roleLabel} at {businessLabel}</Text>
                 </View>
               </View>
@@ -371,7 +371,7 @@ export default function AccountSettingsScreen({ embeddedInSettings = false }: Ac
                     <AccountField palette={palette} label="New password" value={newPassword} onChangeText={(value) => { setNewPassword(value); clearFeedback(); }} placeholder="At least 6 characters" icon={Lock} secureTextEntry={!showNewPassword} trailing={<PasswordEyeToggle visible={showNewPassword} onToggle={() => setShowNewPassword((value) => !value)} color={palette.faint} />} />
                     <AccountField palette={palette} label="Confirm new password" value={confirmPassword} onChangeText={(value) => { setConfirmPassword(value); clearFeedback(); }} placeholder="Type it again" icon={Lock} secureTextEntry={!showConfirmPassword} trailing={<PasswordEyeToggle visible={showConfirmPassword} onToggle={() => setShowConfirmPassword((value) => !value)} color={palette.faint} />} />
                     <Pressable onPress={handleUpdatePassword} disabled={isLoading} style={({ pressed }) => ({ height: 48, marginTop: 2, borderRadius: 999, borderWidth: 1, borderColor: palette.lime, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.lime, shadowColor: palette.lime, shadowOpacity: 0.18, shadowRadius: 14, shadowOffset: { width: 0, height: 5 }, opacity: isLoading ? 0.55 : pressed ? 0.72 : 1 })}>
-                      {isLoading ? <ActivityIndicator color="#202117" /> : <Text style={{ color: '#202117', fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: innerSettingsFont(15) }}>Update password</Text>}
+                      {isLoading ? <ActivityIndicator color="#202117" /> : <Text style={{ color: '#202117', fontFamily: 'PublicSans_700Bold', fontWeight: '400', fontSize: innerSettingsFont(15) }}>Update password</Text>}
                     </Pressable>
                   </View>
                 ) : null}
@@ -390,7 +390,7 @@ export default function AccountSettingsScreen({ embeddedInSettings = false }: Ac
             {profileDirty ? (
               <LinearGradient colors={[palette.topGlowEnd, palette.ground, palette.ground]} locations={[0, 0.35, 1]} pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, paddingTop: 28, paddingHorizontal: 16, paddingBottom: 18 }}>
                 <Pressable onPress={handleUpdateProfile} disabled={isLoading} style={({ pressed }) => ({ width: '100%', maxWidth: contentMaxWidth - 32, alignSelf: 'center', height: 56, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.lime, shadowColor: palette.lime, shadowOpacity: 0.28, shadowRadius: 24, shadowOffset: { width: 0, height: 8 }, opacity: isLoading ? 0.62 : pressed ? 0.78 : 1 })}>
-                  {isLoading ? <ActivityIndicator color="#202117" /> : <Text style={{ color: '#202117', fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: 14 }}>Save changes</Text>}
+                  {isLoading ? <ActivityIndicator color="#202117" /> : <Text style={{ color: '#202117', fontFamily: 'PublicSans_700Bold', fontWeight: '400', fontSize: 14 }}>Save changes</Text>}
                 </Pressable>
               </LinearGradient>
             ) : null}
@@ -400,13 +400,13 @@ export default function AccountSettingsScreen({ embeddedInSettings = false }: Ac
             <Pressable onPress={() => setShowSignOut(false)} style={{ flex: 1, padding: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.overlay }}>
               <Pressable onPress={(event) => event.stopPropagation()} style={{ width: '100%', maxWidth: 390, borderRadius: 26, padding: 22, backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.edge, gap: 18 }}>
                 <View style={{ gap: 6 }}>
-                  <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_800ExtraBold', fontSize: 24, letterSpacing: -0.5 }}>Sign out of Fyll?</Text>
+                  <Text style={{ color: palette.ink, fontFamily: 'PublicSans_800ExtraBold', fontSize: 24, letterSpacing: -0.5 }}>Sign out of Fyll?</Text>
                   <Text style={{ color: palette.muted, fontSize: 14, lineHeight: 20 }}>You’ll need to enter your details again to access {businessLabel}.</Text>
                 </View>
                 <View style={{ flexDirection: 'row', gap: 10 }}>
-                  <Pressable onPress={() => setShowSignOut(false)} style={({ pressed }) => ({ flex: 1, height: 48, borderRadius: 999, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: palette.edgeStrong, opacity: pressed ? 0.7 : 1 })}><Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: 14 }}>Cancel</Text></Pressable>
+                  <Pressable onPress={() => setShowSignOut(false)} style={({ pressed }) => ({ flex: 1, height: 48, borderRadius: 999, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: palette.edgeStrong, opacity: pressed ? 0.7 : 1 })}><Text style={{ color: palette.ink, fontFamily: 'PublicSans_700Bold', fontWeight: '400', fontSize: 14 }}>Cancel</Text></Pressable>
                   <Pressable onPress={handleSignOut} disabled={isLoading} style={({ pressed }) => ({ flex: 1, height: 48, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.danger, opacity: isLoading ? 0.6 : pressed ? 0.75 : 1 })}>
-                    {isLoading ? <ActivityIndicator color={palette.surface} /> : <Text style={{ color: palette.surface, fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: 14 }}>Sign out</Text>}
+                    {isLoading ? <ActivityIndicator color={palette.surface} /> : <Text style={{ color: palette.surface, fontFamily: 'PublicSans_700Bold', fontWeight: '400', fontSize: 14 }}>Sign out</Text>}
                   </Pressable>
                 </View>
               </Pressable>

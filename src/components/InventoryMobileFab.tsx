@@ -59,7 +59,7 @@ export function InventoryMobileFab({
   const tabBarHeight = useTabBarHeight();
   const { width } = useWindowDimensions();
   const [fontLoaded] = useFonts({ BricolageGrotesque_600SemiBold });
-  const titleFont = fontLoaded ? ({ fontFamily: 'BricolageGrotesque_600SemiBold', fontWeight: '400' } as const) : ({ fontWeight: '600' } as const);
+  const titleFont = fontLoaded ? ({ fontFamily: 'PublicSans_600SemiBold', fontWeight: '400' } as const) : ({ fontWeight: '600' } as const);
   const [open, setOpen] = useState<boolean>(false);
   const [mounted, setMounted] = useState<boolean>(false);
   const progress = useSharedValue(0);

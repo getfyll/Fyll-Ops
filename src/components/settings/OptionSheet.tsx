@@ -37,7 +37,7 @@ export function OptionSheet({
       <Pressable onPress={onClose} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
         <Pressable onPress={() => {}} style={{ width: '100%', maxWidth: 440, maxHeight: '70%', backgroundColor: palette.surface, borderRadius: 28, paddingTop: 18, paddingBottom: 12, overflow: 'hidden' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 22, marginBottom: 8 }}>
-            <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold', fontSize: 18 }}>{title}</Text>
+            <Text style={{ color: palette.ink, fontFamily: 'PublicSans_700Bold', fontSize: 18 }}>{title}</Text>
             <Pressable onPress={onClose} hitSlop={10} accessibilityLabel="Close" style={{ width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.navButton }}>
               <X size={16} color={palette.ink} />
             </Pressable>

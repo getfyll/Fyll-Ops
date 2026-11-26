@@ -28,8 +28,8 @@ export function WhatsNewModal({ state, onDismiss, onUpdate }: Props) {
   const { isMobile } = useBreakpoint();
   const [fontsLoaded] = useFonts({ BricolageGrotesque_600SemiBold, BricolageGrotesque_700Bold });
   if (!state) return null;
-  const bold = fontsLoaded ? { fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400' as const } : { fontWeight: '700' as const };
-  const semi = fontsLoaded ? { fontFamily: 'BricolageGrotesque_600SemiBold', fontWeight: '400' as const } : { fontWeight: '600' as const };
+  const bold = fontsLoaded ? { fontFamily: 'PublicSans_700Bold', fontWeight: '400' as const } : { fontWeight: '700' as const };
+  const semi = fontsLoaded ? { fontFamily: 'PublicSans_600SemiBold', fontWeight: '400' as const } : { fontWeight: '600' as const };
 
   const isUpdate = state.mode === 'update';
   const { release } = state;

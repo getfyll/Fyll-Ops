@@ -182,7 +182,7 @@ export default function OrderAutomationScreen() {
   } as const;
   const primaryPillTextStyle = {
     color: FYLL_LIME_INK,
-    fontFamily: 'BricolageGrotesque_700Bold',
+    fontFamily: 'PublicSans_700Bold',
   } as const;
   const fieldHeight = 56;
   const settingsContentWidthStyle = (

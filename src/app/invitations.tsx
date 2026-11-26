@@ -395,7 +395,7 @@ export default function InvitationsScreen({ embeddedInSettings = false }: Invita
           </View>
           <View className="flex-1 items-center justify-center px-6">
             <View style={{ width: 68, height: 68, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.limeWash, borderWidth: 1, borderColor: palette.limeBorder }}><Shield size={29} color={palette.limeInk} strokeWidth={1.8} /></View>
-            <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold', fontSize: 22, fontWeight: '400' }} className="mt-4">Admin Access Required</Text>
+            <Text style={{ color: palette.ink, fontFamily: 'PublicSans_700Bold', fontSize: 22, fontWeight: '400' }} className="mt-4">Admin Access Required</Text>
             <Text style={{ color: palette.muted }} className="text-center mt-2">
               Only admins can generate founder VIP invites.
             </Text>
@@ -475,7 +475,7 @@ export default function InvitationsScreen({ embeddedInSettings = false }: Invita
                     <View className="flex-row items-center flex-1 mr-3">
                       <View className="flex-1">
                         <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Founder referrals</Text>
-                        <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_800ExtraBold', fontSize: 26, lineHeight: 31, letterSpacing: -0.7 }}>VIP Access</Text>
+                        <Text style={{ color: palette.ink, fontFamily: 'PublicSans_800ExtraBold', fontSize: 26, lineHeight: 31, letterSpacing: -0.7 }}>VIP Access</Text>
                         <Text style={{ color: palette.faint }} className="text-xs mt-1" numberOfLines={1}>{businessName}</Text>
                       </View>
                     </View>
@@ -487,15 +487,15 @@ export default function InvitationsScreen({ embeddedInSettings = false }: Invita
               <View className="mt-4 flex-row" style={{ gap: 10 }}>
                 <View className="flex-1 rounded-xl p-3" style={{ backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.edge }}>
                   <Text style={{ color: palette.faint }} className="text-[10px] uppercase">Invite limit</Text>
-                  <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold' }} className="text-xl mt-1">{inviteLimitTotal}</Text>
+                  <Text style={{ color: palette.ink, fontFamily: 'PublicSans_700Bold' }} className="text-xl mt-1">{inviteLimitTotal}</Text>
                 </View>
                 <View className="flex-1 rounded-xl p-3" style={{ backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.edge }}>
                   <Text style={{ color: palette.faint }} className="text-[10px] uppercase">Used</Text>
-                  <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold' }} className="text-xl mt-1">{usedInviteCount}</Text>
+                  <Text style={{ color: palette.ink, fontFamily: 'PublicSans_700Bold' }} className="text-xl mt-1">{usedInviteCount}</Text>
                 </View>
                 <View className="flex-1 rounded-xl p-3" style={{ backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.edge }}>
                   <Text style={{ color: palette.limeInk }} className="text-[10px] uppercase">Remaining</Text>
-                  <Text style={{ color: palette.limeInk, fontFamily: 'BricolageGrotesque_700Bold' }} className="text-xl mt-1">{inviteRemaining}</Text>
+                  <Text style={{ color: palette.limeInk, fontFamily: 'PublicSans_700Bold' }} className="text-xl mt-1">{inviteRemaining}</Text>
                 </View>
               </View>
 
@@ -588,10 +588,10 @@ export default function InvitationsScreen({ embeddedInSettings = false }: Invita
                   {isGenerating ? (
                     <View className="flex-row items-center">
                       <ActivityIndicator size="small" color="#202117" />
-                      <Text style={{ color: '#202117', fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: 16 }} className="ml-2">Generating...</Text>
+                      <Text style={{ color: '#202117', fontFamily: 'PublicSans_700Bold', fontWeight: '400', fontSize: 16 }} className="ml-2">Generating...</Text>
                     </View>
                   ) : (
-                    <Text style={{ color: '#202117', fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: 16 }}>Generate invite code</Text>
+                    <Text style={{ color: '#202117', fontFamily: 'PublicSans_700Bold', fontWeight: '400', fontSize: 16 }}>Generate invite code</Text>
                   )}
                 </Pressable>
               </View>
@@ -614,26 +614,26 @@ export default function InvitationsScreen({ embeddedInSettings = false }: Invita
                 {latestInvite ? (
                   <View className="p-4 mb-6" style={{ borderRadius: 26, backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.limeBorder }}>
                 <View className="flex-row items-center justify-between mb-2">
-                  <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold', fontSize: 18, fontWeight: '400' }}>Latest invite code</Text>
+                  <Text style={{ color: palette.ink, fontFamily: 'PublicSans_700Bold', fontSize: 18, fontWeight: '400' }}>Latest invite code</Text>
                   <View className="px-2.5 py-1 rounded-full" style={{ backgroundColor: `${roleColors[latestInvite.role]}12` }}>
                     <Text style={{ color: roleColors[latestInvite.role] }} className="text-xs font-semibold">{roleLabels[latestInvite.role]}</Text>
                   </View>
                 </View>
                 <Text style={{ color: palette.faint }} className="text-xs">{latestInvite.email}</Text>
                 <View className="mt-3 rounded-xl p-4" style={{ backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.edge }}>
-                  <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold' }} className="text-xl tracking-widest text-center">{latestInvite.inviteCode}</Text>
+                  <Text style={{ color: palette.ink, fontFamily: 'PublicSans_700Bold' }} className="text-xl tracking-widest text-center">{latestInvite.inviteCode}</Text>
                 </View>
                 <View className="flex-row mt-3" style={{ gap: 10 }}>
                   <Pressable onPress={() => handleCopyCode(latestInvite)} className="flex-1 rounded-full items-center justify-center active:opacity-80" style={{ backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.edgeStrong, height: 46 }}>
                     <View className="flex-row items-center">
                       <Copy size={15} color={palette.ink} strokeWidth={2} />
-                      <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400' }} className="text-sm ml-2">Copy</Text>
+                      <Text style={{ color: palette.ink, fontFamily: 'PublicSans_700Bold', fontWeight: '400' }} className="text-sm ml-2">Copy</Text>
                     </View>
                   </Pressable>
                   <Pressable onPress={() => handleShareInvite(latestInvite)} className="flex-1 rounded-full items-center justify-center active:opacity-80" style={{ backgroundColor: palette.lime, height: 46 }}>
                     <View className="flex-row items-center">
                       <Send size={15} color="#202117" strokeWidth={2} />
-                      <Text style={{ color: '#202117', fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400' }} className="text-sm ml-2">Share</Text>
+                      <Text style={{ color: '#202117', fontFamily: 'PublicSans_700Bold', fontWeight: '400' }} className="text-sm ml-2">Share</Text>
                     </View>
                   </Pressable>
                 </View>

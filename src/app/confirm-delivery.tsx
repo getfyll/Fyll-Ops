@@ -20,7 +20,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { ArrowRight, Check, ChevronRight, Clock3, MapPin, Package } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useFonts, BricolageGrotesque_300Light, BricolageGrotesque_700Bold, BricolageGrotesque_800ExtraBold } from '@expo-google-fonts/bricolage-grotesque';
+import { useFonts, BricolageGrotesque_600SemiBold } from '@expo-google-fonts/bricolage-grotesque';
+import { PublicSans_600SemiBold } from '@expo-google-fonts/public-sans';
 import {
   confirmPublicOrderDelivery,
   fetchPublicTrackingBusiness,
@@ -52,10 +53,8 @@ const CARD_BORDER = 'rgba(30,30,30,0.08)';
 const AMBER = '#A8741C';
 const AMBER_SOFT = 'rgba(227,177,90,0.18)';
 const DANGER = '#C2410C';
-// The big headlines on the confirm page use a light Bricolage weight (300), lighter than the rest of the app.
-const HEADLINE_FONT = 'BricolageGrotesque_300Light';
-const DISPLAY_FONT = Platform.OS === 'web' ? "BricolageGrotesque_800ExtraBold, 'Arial Black', sans-serif" : 'BricolageGrotesque_800ExtraBold';
-const DISPLAY_FONT_COMPACT = Platform.OS === 'web' ? "BricolageGrotesque_700Bold, 'Arial Black', sans-serif" : 'BricolageGrotesque_700Bold';
+const HEADING_FONT = Platform.OS === 'web' ? "PublicSans_600SemiBold, system-ui, -apple-system, 'Segoe UI', sans-serif" : 'PublicSans_600SemiBold';
+const BUTTON_FONT = Platform.OS === 'web' ? "BricolageGrotesque_600SemiBold, system-ui, -apple-system, 'Segoe UI', sans-serif" : 'BricolageGrotesque_600SemiBold';
 const BODY_FONT: string | undefined = Platform.OS === 'web' ? "system-ui, -apple-system, 'Segoe UI', sans-serif" : undefined;
 
 const CONFETTI_PIECES = [
@@ -310,7 +309,10 @@ const CONFIRM_LANDING_COPY: TrackLandingCopy = {
   submit: 'Confirm delivery',
   submitting: 'Finding your order…',
   hint: 'Your order number is in your confirmation email and in the DM from the business.',
-  headlineFont: HEADLINE_FONT,
+  headlineFont: HEADING_FONT,
+  buttonFont: BUTTON_FONT,
+  heroPaddingVertical: 20,
+  heroPaddingVerticalCompact: 36,
 };
 
 const CARD = { borderRadius: 22, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: CARD_BORDER } as const;
@@ -392,8 +394,9 @@ function Hero({
     <View style={{ gap: wide ? 12 : 8, maxWidth: wide ? 520 : undefined }}>
       <Text style={{ fontFamily: BODY_FONT, fontWeight: '600', fontSize: wide ? 17 : 15, color: 'rgba(244,244,239,0.9)' }}>{eyebrow}</Text>
       <Text
+        accessibilityRole="header"
         style={{
-          fontFamily: HEADLINE_FONT,
+          fontFamily: HEADING_FONT,
           fontWeight: '400',
           fontSize: wide ? 56 : 36,
           lineHeight: wide ? 56 : 37,
@@ -478,7 +481,7 @@ function LimePill({ label, onPress, disabled }: { label: string; onPress: () => 
       accessibilityRole="button"
       style={({ pressed }) => ({ height: 54, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? '#E1EB6B' : LIME, opacity: disabled ? 0.6 : 1 })}
     >
-      <Text style={{ fontWeight: '700', fontSize: 16, color: INK }}>{label}</Text>
+      <Text style={{ fontFamily: BUTTON_FONT, fontWeight: '400', fontSize: 16, color: INK }}>{label}</Text>
     </Pressable>
   );
 }
@@ -523,7 +526,7 @@ function ChoiceRow({
         {icon}
       </View>
       <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
-        <Text style={{ fontWeight: '700', fontSize: 16, color: glass && !primary ? '#F4F4EF' : INK }}>{title}</Text>
+        <Text style={{ fontFamily: BUTTON_FONT, fontWeight: '400', fontSize: 16, color: glass && !primary ? '#F4F4EF' : INK }}>{title}</Text>
         <Text style={{ fontFamily: BODY_FONT, fontSize: 13, color: primary ? LIME_DEEP : glass ? 'rgba(244,244,239,0.82)' : MUTED }}>{subtitle}</Text>
       </View>
       <ChevronRight size={18} color={primary ? INK : glass ? 'rgba(244,244,239,0.8)' : '#9A9B90'} strokeWidth={2.2} />
@@ -753,7 +756,7 @@ export default function ConfirmDeliveryScreen() {
   };
   const wide = width >= 1000;
 
-  const [fontsLoaded] = useFonts({ BricolageGrotesque_300Light, BricolageGrotesque_700Bold, BricolageGrotesque_800ExtraBold });
+  const [fontsLoaded] = useFonts({ PublicSans_600SemiBold, BricolageGrotesque_600SemiBold });
   void fontsLoaded;
 
   const firstName = (order?.customerName ?? '').trim().split(/\s+/)[0] ?? '';
@@ -797,7 +800,7 @@ export default function ConfirmDeliveryScreen() {
       style={({ pressed }) => ({ height: 52, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)', backgroundColor: pressed ? 'rgba(20,20,20,0.6)' : 'rgba(20,20,20,0.45)' })}
     >
       <MapPin size={17} color="#F4F4EF" strokeWidth={2} />
-      <Text style={{ fontFamily: BODY_FONT, fontWeight: '600', fontSize: 15, color: '#F4F4EF' }}>Track my order</Text>
+      <Text style={{ fontFamily: BUTTON_FONT, fontWeight: '400', fontSize: 15, color: '#F4F4EF' }}>Track my order</Text>
     </Pressable>
   ) : null;
   const whatsappButton = whatsappDigits ? (
@@ -806,7 +809,7 @@ export default function ConfirmDeliveryScreen() {
       accessibilityRole="button"
       style={({ pressed }) => ({ height: 54, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? '#E1EB6B' : LIME })}
     >
-      <Text style={{ fontWeight: '700', fontSize: 16, color: INK }}>Message {businessName} on WhatsApp</Text>
+      <Text style={{ fontFamily: BUTTON_FONT, fontWeight: '400', fontSize: 16, color: INK }}>Message {businessName} on WhatsApp</Text>
     </Pressable>
   ) : null;
 
@@ -819,7 +822,7 @@ export default function ConfirmDeliveryScreen() {
       {showDecisionState && !issueView ? (
         <>
           {wide ? (
-            <Text style={{ fontWeight: '700', fontSize: 20, letterSpacing: -0.3, color: textInk, marginBottom: 4 }}>Let {businessName} know</Text>
+            <Text accessibilityRole="header" style={{ fontFamily: HEADING_FONT, fontWeight: '400', fontSize: 20, letterSpacing: -0.2, color: textInk, marginBottom: 4 }}>Let {businessName} know</Text>
           ) : (
             <View style={[cardSurface, { padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }]}>
               <View style={{ width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.12)' }}>
@@ -852,7 +855,7 @@ export default function ConfirmDeliveryScreen() {
           </View>
           {trackButton}
           <Pressable onPress={() => setIssueView(true)} accessibilityRole="button" style={{ alignSelf: 'center', paddingVertical: 6 }}>
-            <Text style={{ fontFamily: BODY_FONT, fontWeight: '600', fontSize: 14.5, color: glass ? LIME : LIME_TEXT }}>It arrived, but something's wrong</Text>
+            <Text style={{ fontFamily: BUTTON_FONT, fontWeight: '400', fontSize: 14.5, color: glass ? LIME : LIME_TEXT }}>It arrived, but something's wrong</Text>
           </Pressable>
           {messageText}
         </>
@@ -861,7 +864,7 @@ export default function ConfirmDeliveryScreen() {
       {showIssueState ? (
         <>
           <View style={[cardSurface, { padding: 16, gap: 6 }]}>
-            <Text style={{ fontWeight: '700', fontSize: 15, color: textInk }}>Tell them what happened</Text>
+            <Text accessibilityRole="header" style={{ fontFamily: HEADING_FONT, fontWeight: '400', fontSize: 15, color: textInk }}>Tell them what happened</Text>
             <Text style={{ fontFamily: BODY_FONT, fontSize: 14, lineHeight: 21, color: textBody }}>
               Send a message with a photo of the problem and {businessName} will sort it out with you.
             </Text>
@@ -869,7 +872,7 @@ export default function ConfirmDeliveryScreen() {
           {whatsappButton}
           {trackButton}
           <Pressable onPress={() => setIssueView(false)} accessibilityRole="button" style={{ alignSelf: 'center', paddingVertical: 6 }}>
-            <Text style={{ fontFamily: BODY_FONT, fontWeight: '600', fontSize: 14.5, color: glass ? LIME : LIME_TEXT }}>Back</Text>
+            <Text style={{ fontFamily: BUTTON_FONT, fontWeight: '400', fontSize: 14.5, color: glass ? LIME : LIME_TEXT }}>Back</Text>
           </Pressable>
         </>
       ) : null}
@@ -877,7 +880,7 @@ export default function ConfirmDeliveryScreen() {
       {showPendingState ? (
         <>
           <View style={[cardSurface, { padding: 16, gap: 6 }]}>
-            <Text style={{ fontWeight: '700', fontSize: 15, color: textInk }}>What happens now</Text>
+            <Text accessibilityRole="header" style={{ fontFamily: HEADING_FONT, fontWeight: '400', fontSize: 15, color: textInk }}>What happens now</Text>
             <Text style={{ fontFamily: BODY_FONT, fontSize: 14, lineHeight: 21, color: textBody }}>
               We have marked this order as Pending Delivery and {businessName} will keep following up. Deliveries outside Lagos may take up to 7 days, and you will get an update by email shortly.
             </Text>
@@ -896,7 +899,7 @@ export default function ConfirmDeliveryScreen() {
             <View style={{ width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center', backgroundColor: LIME }}>
               <Check size={30} color={INK} strokeWidth={2.8} />
             </View>
-            <Text style={{ fontWeight: '700', fontSize: 16, color: textInk }}>Delivery confirmed</Text>
+            <Text accessibilityRole="header" style={{ fontFamily: HEADING_FONT, fontWeight: '400', fontSize: 16, color: textInk }}>Delivery confirmed</Text>
             <Text style={{ textAlign: 'center', fontFamily: BODY_FONT, fontSize: 14, lineHeight: 21, color: textBody }}>
               We have updated your order to Delivered. Thank you for shopping with {businessName}.
             </Text>

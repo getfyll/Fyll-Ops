@@ -3,13 +3,15 @@ import { ActivityIndicator, Image, KeyboardAvoidingView, Platform, Pressable, Te
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Building2, Eye, EyeOff, Lock } from 'lucide-react-native';
-import { FYLL_LIME, FYLL_LIME_INK, MoneyText, usePaymentsPalette } from '@/components/payments/payments-ui';
+import { FYLL_LIME, FYLL_LIME_INK, usePaymentsPalette } from '@/components/payments/payments-ui';
+import { useAuthButtonFont } from '@/components/auth/AuthShell';
 import { supabase } from '@/lib/supabase';
 import { acceptPartnerInvite, getPartnerInvite, type PartnerInvite } from '@/lib/supabase/partner-portal';
 
 const fyllWordmarkPng = require('../../../assets/fyll-wordmark-thick-light.png');
 
 export default function PartnerInviteScreen() {
+  const buttonFont = useAuthButtonFont();
   const palette = usePaymentsPalette();
   const router = useRouter();
   const { code: rawCode } = useLocalSearchParams<{ code?: string | string[] }>();
@@ -110,9 +112,9 @@ export default function PartnerInviteScreen() {
           <View style={{ width: 56, height: 56, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.dangerBg, borderWidth: 1, borderColor: palette.dangerBorder }}>
             <Building2 size={24} color={palette.danger} strokeWidth={1.8} />
           </View>
-          <MoneyText style={{ color: palette.text, fontSize: 24, letterSpacing: -0.6, marginTop: 18, textAlign: 'center' }}>
+          <Text style={{ color: palette.text, fontWeight: '600', fontSize: 24, letterSpacing: -0.6, marginTop: 18, textAlign: 'center' }}>
             This invite isn't working
-          </MoneyText>
+          </Text>
           <Text style={{ color: palette.faint, fontSize: 14, lineHeight: 20, marginTop: 8, textAlign: 'center', maxWidth: 320 }}>
             {inviteError || 'Ask the business to send you a new invite.'}
           </Text>
@@ -142,11 +144,11 @@ export default function PartnerInviteScreen() {
               <Image source={fyllWordmarkPng} accessibilityLabel="Fyll" resizeMode="contain" style={{ width: 30 * (900 / 493), height: 30, tintColor: palette.text }} />
               <View style={{ marginTop: 28, flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4, paddingHorizontal: 10, borderRadius: 999, backgroundColor: palette.nudgeBg, borderWidth: 1, borderColor: palette.nudgeBorder }}>
                 <Building2 size={12} color={palette.limeOnSurface} strokeWidth={2.2} />
-                <Text style={{ color: palette.limeOnSurface, fontSize: 12, fontWeight: '700' }} numberOfLines={1}>{invite.businessName}</Text>
+                <Text style={{ color: palette.limeOnSurface, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>{invite.businessName}</Text>
               </View>
-              <MoneyText style={{ color: palette.text, fontSize: 32, letterSpacing: -1.1, lineHeight: 38, marginTop: 14 }}>
+              <Text style={{ color: palette.text, fontWeight: '600', fontSize: 32, letterSpacing: -1.1, lineHeight: 38, marginTop: 14 }}>
                 You're invited to join {invite.businessName}
-              </MoneyText>
+              </Text>
               <Text style={{ color: palette.faint, fontSize: 14, lineHeight: 20, marginTop: 8 }}>
                 Create a password for {invite.email} to open your partner portal.
               </Text>
@@ -203,7 +205,7 @@ export default function PartnerInviteScreen() {
                     onPress={() => router.push(`/partner-login?email=${encodeURIComponent(invite.email)}&invite=${encodeURIComponent(invite.inviteCode)}`)}
                     style={{ height: 46, borderRadius: 999, backgroundColor: FYLL_LIME, alignItems: 'center', justifyContent: 'center', marginTop: 12 }}
                   >
-                    <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 15 }}>Log in</MoneyText>
+                    <Text style={[{ color: FYLL_LIME_INK, fontSize: 15 }, buttonFont]}>Log in</Text>
                   </Pressable>
                 </View>
               ) : (
@@ -215,7 +217,7 @@ export default function PartnerInviteScreen() {
                   {isSubmitting ? (
                     <ActivityIndicator color={FYLL_LIME_INK} size="small" />
                   ) : (
-                    <MoneyText style={{ color: FYLL_LIME_INK, fontSize: 16 }}>Create account</MoneyText>
+                    <Text style={[{ color: FYLL_LIME_INK, fontSize: 16 }, buttonFont]}>Create account</Text>
                   )}
                 </Pressable>
               )}

@@ -18,7 +18,8 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ArrowLeftRight, Banknote, Camera, Check, ChevronLeft, MapPin, RefreshCw, Star, X } from 'lucide-react-native';
-import { useFonts, BricolageGrotesque_700Bold, BricolageGrotesque_800ExtraBold } from '@expo-google-fonts/bricolage-grotesque';
+import { useFonts, BricolageGrotesque_600SemiBold } from '@expo-google-fonts/bricolage-grotesque';
+import { PublicSans_600SemiBold } from '@expo-google-fonts/public-sans';
 import { TrackLanding, type TrackLandingCopy } from '@/app/track';
 import {
   fetchPublicTrackingBusiness,
@@ -49,8 +50,8 @@ const GLASS_BG = 'rgba(20,20,20,0.42)';
 const GLASS_EDGE = 'rgba(255,255,255,0.18)';
 const AMBER = '#F5C976';
 const DANGER_TEXT = '#FFB4A8';
-const DISPLAY_FONT = Platform.OS === 'web' ? "BricolageGrotesque_800ExtraBold, 'Arial Black', sans-serif" : 'BricolageGrotesque_800ExtraBold';
-const DISPLAY_FONT_COMPACT = Platform.OS === 'web' ? "BricolageGrotesque_700Bold, 'Arial Black', sans-serif" : 'BricolageGrotesque_700Bold';
+const HEADING_FONT = Platform.OS === 'web' ? "PublicSans_600SemiBold, system-ui, -apple-system, 'Segoe UI', sans-serif" : 'PublicSans_600SemiBold';
+const BUTTON_FONT = Platform.OS === 'web' ? "BricolageGrotesque_600SemiBold, system-ui, -apple-system, 'Segoe UI', sans-serif" : 'BricolageGrotesque_600SemiBold';
 const BODY_FONT: string | undefined = Platform.OS === 'web' ? "system-ui, -apple-system, 'Segoe UI', sans-serif" : undefined;
 const BLUR = Platform.OS === 'web' ? ({ backdropFilter: 'blur(22px) saturate(140%)', WebkitBackdropFilter: 'blur(22px) saturate(140%)' } as object) : null;
 const GLASS_CARD = { borderRadius: 22, backgroundColor: 'rgba(20,20,20,0.45)', borderWidth: 1, borderColor: GLASS_EDGE } as const;
@@ -67,7 +68,10 @@ const RETURNS_LANDING_COPY: TrackLandingCopy = {
   submit: 'Find my order',
   submitting: 'Finding your order…',
   hint: 'Your order number is in your confirmation email and in the DM from the store.',
-  // No headlineFont: the headline and form title use the tracking page's bold Bricolage.
+  headlineFont: HEADING_FONT,
+  buttonFont: BUTTON_FONT,
+  heroPaddingVertical: 20,
+  heroPaddingVerticalCompact: 36,
 };
 
 const STEPS = ['Find your order', "Tell us what's wrong", 'Choose a fix', 'The store replies'];
@@ -112,7 +116,7 @@ export default function StartReturnScreen() {
   const params = useLocalSearchParams<{ code?: string | string[]; order_id?: string | string[]; email?: string | string[]; businessSlug?: string | string[] }>();
   const { width } = useWindowDimensions();
   const wide = width >= 1000;
-  const [fontsLoaded] = useFonts({ BricolageGrotesque_700Bold, BricolageGrotesque_800ExtraBold });
+  const [fontsLoaded] = useFonts({ PublicSans_600SemiBold, BricolageGrotesque_600SemiBold });
   void fontsLoaded;
 
   const initialCode = getParam(params.code) || getParam(params.order_id);
@@ -327,7 +331,7 @@ export default function StartReturnScreen() {
 
   const title = (heading: string, sub: string) => (
     <View style={{ gap: 4 }}>
-      <Text accessibilityRole="header" style={{ fontWeight: '700', fontSize: wide ? 22 : 20, letterSpacing: -0.4, color: TEXT }}>{heading}</Text>
+      <Text accessibilityRole="header" style={{ fontFamily: HEADING_FONT, fontWeight: '400', fontSize: wide ? 22 : 20, letterSpacing: -0.25, color: TEXT }}>{heading}</Text>
       <Text style={{ fontFamily: BODY_FONT, fontSize: 14, color: TEXT_FAINT }}>{sub}</Text>
     </View>
   );
@@ -495,7 +499,7 @@ export default function StartReturnScreen() {
       <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: LIME, alignItems: 'center', justifyContent: 'center', alignSelf: wide ? 'flex-start' : 'center', marginTop: 6, ...(Platform.OS === 'web' ? ({ boxShadow: '0 0 0 12px rgba(213,224,87,0.22)' } as object) : null) }}>
         <Check size={32} color={INK} strokeWidth={2.8} />
       </View>
-      <Text style={{ fontFamily: DISPLAY_FONT, fontWeight: '800', fontSize: 32, letterSpacing: -1, color: '#FFFFFF', marginTop: 8, textAlign: wide ? 'left' : 'center' }}>Request sent</Text>
+      <Text accessibilityRole="header" style={{ fontFamily: HEADING_FONT, fontWeight: '400', fontSize: 32, letterSpacing: -0.6, color: '#FFFFFF', marginTop: 8, textAlign: wide ? 'left' : 'center' }}>Request sent</Text>
       <Text style={{ fontFamily: BODY_FONT, fontSize: 15, lineHeight: 22, color: TEXT_BODY, textAlign: wide ? 'left' : 'center' }}>
         {businessName} will look at it and reply{order.customerEmail ? ` by email to ${order.customerEmail}` : ''}. Keep the item and its packaging until they do.
       </Text>
@@ -519,7 +523,7 @@ export default function StartReturnScreen() {
           style={({ pressed }) => ({ height: 52, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)', backgroundColor: pressed ? 'rgba(20,20,20,0.6)' : 'rgba(20,20,20,0.45)' })}
         >
           <MapPin size={17} color={TEXT} strokeWidth={2} />
-          <Text style={{ fontFamily: BODY_FONT, fontWeight: '600', fontSize: 15, color: TEXT }}>Track my order</Text>
+          <Text style={{ fontFamily: BUTTON_FONT, fontWeight: '400', fontSize: 15, color: TEXT }}>Track my order</Text>
         </Pressable>
       ) : null}
       <Pressable
@@ -529,10 +533,10 @@ export default function StartReturnScreen() {
       >
         <Star size={17} color={LIME} strokeWidth={2.2} />
         <Text style={{ flex: 1, fontFamily: BODY_FONT, fontSize: 14, lineHeight: 19, color: TEXT }}>Save your orders and earn points with a free Fyll account.</Text>
-        <Text style={{ fontFamily: BODY_FONT, fontWeight: '700', fontSize: 14, color: LIME }}>Join</Text>
+        <Text style={{ fontFamily: BUTTON_FONT, fontWeight: '400', fontSize: 14, color: LIME }}>Join</Text>
       </Pressable>
       <Pressable onPress={resetToLookup} accessibilityRole="button" style={{ alignSelf: 'center', paddingVertical: 6 }}>
-        <Text style={{ fontFamily: BODY_FONT, fontWeight: '600', fontSize: 14.5, color: LIME }}>Report another order</Text>
+        <Text style={{ fontFamily: BUTTON_FONT, fontWeight: '400', fontSize: 14.5, color: LIME }}>Report another order</Text>
       </Pressable>
     </>
   );
@@ -549,7 +553,7 @@ export default function StartReturnScreen() {
   const heading = (
     <View style={{ gap: wide ? 12 : 8, maxWidth: wide ? 500 : undefined }}>
       <Text numberOfLines={1} style={{ fontFamily: BODY_FONT, fontWeight: '600', fontSize: wide ? 17 : 15, color: 'rgba(244,244,239,0.9)' }}>{hero.eyebrow}</Text>
-      <Text style={{ fontFamily: wide ? DISPLAY_FONT : DISPLAY_FONT_COMPACT, fontWeight: wide ? '800' : '700', fontSize: wide ? 56 : 38, lineHeight: wide ? 58 : 40, letterSpacing: wide ? -1.8 : -1.2, color: '#FFFFFF' }}>{hero.headline}</Text>
+      <Text accessibilityRole="header" style={{ fontFamily: HEADING_FONT, fontWeight: '400', fontSize: wide ? 56 : 38, lineHeight: wide ? 58 : 40, letterSpacing: wide ? -1.2 : -0.7, color: '#FFFFFF' }}>{hero.headline}</Text>
       <Text style={{ fontFamily: BODY_FONT, fontSize: wide ? 16 : 14, lineHeight: wide ? 23 : 20, color: 'rgba(244,244,239,0.85)' }}>{hero.sub}</Text>
       {wide ? <StepList current={stepIndex} /> : null}
     </View>
@@ -686,7 +690,7 @@ function PrimaryButton({ label, onPress, busy }: { label: string; onPress: () =>
       style={({ pressed }) => ({ height: 54, borderRadius: 999, flexDirection: 'row', gap: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: pressed ? '#E1EB6B' : LIME, opacity: busy ? 0.75 : 1, transform: [{ scale: pressed ? 0.99 : 1 }] })}
     >
       {busy ? <ActivityIndicator color={INK} /> : null}
-      <Text style={{ fontWeight: '700', fontSize: 16, color: INK }}>{label}</Text>
+      <Text style={{ fontFamily: BUTTON_FONT, fontWeight: '400', fontSize: 16, color: INK }}>{label}</Text>
     </Pressable>
   );
 }

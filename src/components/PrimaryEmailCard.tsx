@@ -42,7 +42,7 @@ export function PrimaryEmailCard({ fieldBorderColor, appearance = 'default' }: {
   const actionBackgroundColor = usesAccountAppearance ? '#D5E057' : colors.text.primary;
   const actionTextColor = usesAccountAppearance ? '#202117' : colors.bg.primary;
   const actionFontStyle = usesAccountAppearance
-    ? { fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400' as const }
+    ? { fontFamily: 'PublicSans_700Bold', fontWeight: '400' as const }
     : { fontWeight: '600' as const };
   const accountAccent = appearance === 'account-dark' ? '#D5E057' : '#667000';
   const accountAccentWash = appearance === 'account-dark' ? 'rgba(213,224,87,0.14)' : 'rgba(135,148,0,0.13)';

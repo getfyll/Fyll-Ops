@@ -257,9 +257,9 @@ export default function PaymentAccountsScreen({ embeddedInSettings = false }: Pa
         <SafeAreaView style={[panelStyles.inner, { flex: 1, backgroundColor: palette.ground }]} edges={['top']}>
           <View style={{ flex: 1, paddingHorizontal: 24, alignItems: 'center', justifyContent: 'center' }}>
             <View style={{ width: 64, height: 64, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.limeWashStrong, borderWidth: 1, borderColor: palette.limeBorder, marginBottom: 18 }}><Landmark size={27} color={palette.limeInk} strokeWidth={2} /></View>
-            <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: 22, textAlign: 'center' }}>Admin access required</Text>
+            <Text style={{ color: palette.ink, fontFamily: 'PublicSans_700Bold', fontWeight: '400', fontSize: 22, textAlign: 'center' }}>Admin access required</Text>
             <Text style={{ color: palette.muted, fontSize: 14, lineHeight: 21, textAlign: 'center', maxWidth: 310, marginTop: 7 }}>Bank account settings are only available to business admins.</Text>
-            <Pressable onPress={goBack} style={({ pressed }) => ({ height: 46, marginTop: 22, paddingHorizontal: 24, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.lime, opacity: pressed ? 0.78 : 1 })}><Text style={{ color: '#202117', fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: innerSettingsFont(15, compactTypography) }}>Back to settings</Text></Pressable>
+            <Pressable onPress={goBack} style={({ pressed }) => ({ height: 46, marginTop: 22, paddingHorizontal: 24, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.lime, opacity: pressed ? 0.78 : 1 })}><Text style={{ color: '#202117', fontFamily: 'PublicSans_700Bold', fontWeight: '400', fontSize: innerSettingsFont(15, compactTypography) }}>Back to settings</Text></Pressable>
           </View>
         </SafeAreaView>
       </View>
@@ -310,7 +310,7 @@ export default function PaymentAccountsScreen({ embeddedInSettings = false }: Pa
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 0 }}>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={{ color: palette.faint, fontSize: 10, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase' }}>Payment destinations</Text>
-                <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_800ExtraBold', fontSize: 29, lineHeight: 34, letterSpacing: -0.8, marginTop: 2 }}>{accounts.length} {accounts.length === 1 ? 'account' : 'accounts'}</Text>
+                <Text style={{ color: palette.ink, fontFamily: 'PublicSans_800ExtraBold', fontSize: 29, lineHeight: 34, letterSpacing: -0.8, marginTop: 2 }}>{accounts.length} {accounts.length === 1 ? 'account' : 'accounts'}</Text>
                 <Text numberOfLines={1} style={{ color: palette.faint, fontSize: 12, marginTop: 2 }}>{defaultAccount ? `Default · ${defaultAccount.bankName}` : 'Add an account for checkout links'}</Text>
               </View>
             </View>
@@ -319,7 +319,7 @@ export default function PaymentAccountsScreen({ embeddedInSettings = false }: Pa
           {!showForm ? (
             <Pressable onPress={openAddForm} style={({ pressed }) => ({ height: 48, marginBottom: 24, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, backgroundColor: palette.lime, opacity: pressed ? 0.78 : 1 })}>
               <Plus size={16} color="#202117" strokeWidth={2.5} />
-              <Text style={{ color: '#202117', fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: 14 }}>Add bank account</Text>
+              <Text style={{ color: '#202117', fontFamily: 'PublicSans_700Bold', fontWeight: '400', fontSize: 14 }}>Add bank account</Text>
             </Pressable>
           ) : null}
 
@@ -376,9 +376,9 @@ export default function PaymentAccountsScreen({ embeddedInSettings = false }: Pa
                   />
                 ))}
                 <View style={{ flexDirection: 'row', gap: 10, marginTop: 3 }}>
-                  <Pressable onPress={closeForm} disabled={isSaving || accounts.length === 0} style={({ pressed }) => ({ flex: 1, height: 48, borderRadius: 999, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: palette.edgeStrong, opacity: accounts.length === 0 ? 0.4 : pressed ? 0.7 : 1 })}><Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: 14 }}>Cancel</Text></Pressable>
+                  <Pressable onPress={closeForm} disabled={isSaving || accounts.length === 0} style={({ pressed }) => ({ flex: 1, height: 48, borderRadius: 999, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: palette.edgeStrong, opacity: accounts.length === 0 ? 0.4 : pressed ? 0.7 : 1 })}><Text style={{ color: palette.ink, fontFamily: 'PublicSans_700Bold', fontWeight: '400', fontSize: 14 }}>Cancel</Text></Pressable>
                   <Pressable onPress={handleSubmit} disabled={isSaving || !formComplete} style={({ pressed }) => ({ flex: 1.4, height: 48, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.lime, opacity: isSaving || !formComplete ? 0.45 : pressed ? 0.78 : 1 })}>
-                    {isSaving ? <ActivityIndicator color="#202117" size="small" /> : <Text style={{ color: '#202117', fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: 14 }}>{editingId ? 'Save account' : 'Add account'}</Text>}
+                    {isSaving ? <ActivityIndicator color="#202117" size="small" /> : <Text style={{ color: '#202117', fontFamily: 'PublicSans_700Bold', fontWeight: '400', fontSize: 14 }}>{editingId ? 'Save account' : 'Add account'}</Text>}
                   </Pressable>
                 </View>
               </View>
@@ -430,12 +430,12 @@ export default function PaymentAccountsScreen({ embeddedInSettings = false }: Pa
             <Pressable onPress={(event) => event.stopPropagation()} style={{ width: '100%', maxWidth: 390, borderRadius: 26, padding: 22, backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.edge, gap: 18 }}>
               <View style={{ width: 46, height: 46, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.dangerWash }}><Trash2 size={20} color={palette.danger} strokeWidth={2.2} /></View>
               <View style={{ gap: 6 }}>
-                <Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_800ExtraBold', fontSize: 23, letterSpacing: -0.45 }}>Remove bank account?</Text>
+                <Text style={{ color: palette.ink, fontFamily: 'PublicSans_800ExtraBold', fontSize: 23, letterSpacing: -0.45 }}>Remove bank account?</Text>
                 <Text style={{ color: palette.muted, fontSize: 14, lineHeight: 20 }}>{deleteAccount ? `${deleteAccount.bankName} · ${deleteAccount.accountNumber} will no longer appear on checkout links.` : ''}</Text>
               </View>
               <View style={{ flexDirection: 'row', gap: 10 }}>
-                <Pressable onPress={() => setDeleteAccount(null)} disabled={isSaving} style={({ pressed }) => ({ flex: 1, height: 48, borderRadius: 999, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: palette.edgeStrong, opacity: pressed ? 0.7 : 1 })}><Text style={{ color: palette.ink, fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: 14 }}>Cancel</Text></Pressable>
-                <Pressable onPress={confirmDelete} disabled={isSaving} style={({ pressed }) => ({ flex: 1, height: 48, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.danger, opacity: isSaving ? 0.6 : pressed ? 0.75 : 1 })}>{isSaving ? <ActivityIndicator color="#FFFFFF" /> : <Text style={{ color: '#FFFFFF', fontFamily: 'BricolageGrotesque_700Bold', fontWeight: '400', fontSize: 14 }}>Remove</Text>}</Pressable>
+                <Pressable onPress={() => setDeleteAccount(null)} disabled={isSaving} style={({ pressed }) => ({ flex: 1, height: 48, borderRadius: 999, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: palette.edgeStrong, opacity: pressed ? 0.7 : 1 })}><Text style={{ color: palette.ink, fontFamily: 'PublicSans_700Bold', fontWeight: '400', fontSize: 14 }}>Cancel</Text></Pressable>
+                <Pressable onPress={confirmDelete} disabled={isSaving} style={({ pressed }) => ({ flex: 1, height: 48, borderRadius: 999, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.danger, opacity: isSaving ? 0.6 : pressed ? 0.75 : 1 })}>{isSaving ? <ActivityIndicator color="#FFFFFF" /> : <Text style={{ color: '#FFFFFF', fontFamily: 'PublicSans_700Bold', fontWeight: '400', fontSize: 14 }}>Remove</Text>}</Pressable>
               </View>
             </Pressable>
           </Pressable>
